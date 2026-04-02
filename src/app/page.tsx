@@ -1,0 +1,36 @@
+
+import { Hero } from "@/components/sections/Hero";
+import { EmailCapture } from "@/components/sections/EmailCapture";
+import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
+import { Coaches } from "@/components/sections/Coaches";
+import { EventsList } from "@/components/sections/EventsList";
+import { LocationsGrid } from "@/components/sections/LocationsGrid";
+
+import { programs } from "@/content/programs";
+import { coaches } from "@/content/coaches";
+import { events } from "@/content/events";
+import { locations } from "@/content/locations";
+
+
+
+
+import { PageStack } from "@/components/layout/PageStack";
+
+export default function HomePage() {
+  return (
+    <main className="min-h-screen bg-[#061427] text-white">
+      <Hero />
+
+      <section className="mx-auto max-w-6xl px-6 -mt-10">
+        <EmailCapture />
+      </section>
+
+      <PageStack>
+        <ProgramsGrid programs={programs.slice(0, 3)} title="Our Programs" />
+        <Coaches coaches={coaches} title="Meet the Coaches" />
+        <EventsList events={events} title="Upcoming Events" />
+        <LocationsGrid locations={locations} title="Our Locations" />
+      </PageStack>
+    </main>
+  );
+}
