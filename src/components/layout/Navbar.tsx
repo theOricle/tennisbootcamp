@@ -16,6 +16,9 @@ export function Navbar() {
           <Button variant="secondary" href="/login" className="rounded-full px-5 py-2">
             Login/Register
           </Button>
+          <Button variant="primary" href="/intake" className="rounded-full px-5 py-2">
+            Get Priority Placement
+          </Button>
 
           <button
             aria-label="Menu"

@@ -257,14 +257,18 @@ export default function IntakePage() {
   }
 
   async function onSubmit() {
-    // For now: no backend required. We still simulate submit safely.
     setSubmitting(true);
     try {
-      // You can later POST this to /api/intake.
-      // await fetch("/api/intake", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-
-      console.log("INTAKE_SUBMISSION", form);
+      const res = await fetch("/api/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) throw new Error("Submission failed");
       setSubmitted(true);
+    } catch (err) {
+      console.error("Intake submission error:", err);
+      alert("Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
     }
