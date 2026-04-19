@@ -1,9 +1,27 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 
 export function Navbar() {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 80);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50">
+    <header
+      className={`sticky top-0 z-50 transition-all duration-300 ${
+        scrolled
+          ? "bg-[#061427]/95 shadow-[0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-sm"
+          : ""
+      }`}
+    >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-3">
           <img src="/images/brand/logo.svg" alt="Tennis Bootcamp" className="h-10 w-auto" />
