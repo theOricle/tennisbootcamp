@@ -1,200 +1,195 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import * as THREE from "three";
 
-// ── Perspective projection ────────────────────────────────────────────────────
+// ── Particle wave background ──────────────────────────────────────────────────
 //
-// Maps court coordinates to canvas pixels.
-//   t  0→1 : near baseline → far baseline (depth)
-//   s -1→1 : left doubles sideline → right doubles sideline (lateral)
-//
-// Vanishing point sits near the top-centre of the canvas.
-// Near baseline bleeds beyond the canvas edges for an immersive "on-court" feel.
+// Faithful port of the Three.js "particles waves" CodePen (deathfang/WxNVoq).
+// Same grid size, separation, wave math and camera-follow-mouse behaviour.
+// Modernised: uses BufferGeometry + Points + a tiny shader instead of the
+// deprecated CanvasRenderer + THREE.Particle pipeline.
 
-function project(t: number, s: number, W: number, H: number) {
-  const vpY    = H * 0.08;   // vanishing point
-  const nearY  = H * 0.96;   // near baseline (slightly off bottom edge)
-  const nearHW = W * 0.62;   // half-width at near baseline — wider than canvas
-
-  const y     = nearY + (vpY - nearY) * t;
-  const halfW = nearHW * (1 - t);
-  const x     = W / 2 + s * halfW;
-  return { x, y };
-}
-
-// ── Court line definitions ────────────────────────────────────────────────────
-//
-// Real proportions (full court, 23.77 m):
-//   Net          t = 0.50
-//   Service line t = 0.23  (near)  /  0.77  (far)
-//   Singles s    ± 0.75   (8.23 m of 10.97 m doubles width)
-
-const LINES: [number, number, number, number][] = [
-  // Baselines
-  [0,     -1,     0,     1    ],
-  [1,     -1,     1,     1    ],
-  // Doubles sidelines
-  [0,     -1,     1,    -1    ],
-  [0,      1,     1,     1    ],
-  // Singles sidelines
-  [0,     -0.75,  1,    -0.75 ],
-  [0,      0.75,  1,     0.75 ],
-  // Net
-  [0.5,   -1,     0.5,   1    ],
-  // Service lines
-  [0.23,  -0.75,  0.23,  0.75 ],
-  [0.77,  -0.75,  0.77,  0.75 ],
-  // Centre service lines
-  [0.23,   0,     0.5,   0    ],
-  [0.5,    0,     0.77,  0    ],
-  // Centre marks
-  [0,     -0.03,  0,     0.03 ],
-  [1,     -0.03,  1,     0.03 ],
-];
-
-// Net posts (vertical stubs — drawn separately at a different opacity)
-const NET_POSTS: [number, number, number, number][] = [
-  [0.48, -1, 0.52, -1],
-  [0.48,  1, 0.52,  1],
-];
-
-// ── Sweep opacity envelope ────────────────────────────────────────────────────
-// Fades in at the near end and out at the far end so the loop is seamless.
-
-function sweepAlpha(t: number): number {
-  const fadeZone = 0.06;
-  if (t < fadeZone)       return t / fadeZone;
-  if (t > 1 - fadeZone)   return (1 - t) / fadeZone;
-  return 1;
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
+const SEPARATION = 100;
+const AMOUNTX    = 100;
+const AMOUNTY    = 70;
 
 export function CourtBackground() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const container = containerRef.current;
+    if (!container) return;
 
-    let rafId: number;
-    let sweepT = 0; // 0 = near baseline, travels toward 1 = far baseline
+    let W = container.clientWidth;
+    let H = container.clientHeight;
+    let halfW = W / 2;
+    let halfH = H / 2;
 
-    // Base sweep speed — full traverse in ~5 s at 60 fps
-    const BASE_SPEED = 1 / (60 * 5);
-    let currentSpeed = BASE_SPEED;
-    const TARGET_SPEED = { value: BASE_SPEED };
+    // Initial mouse offset matches the original (slightly tilted view)
+    let mouseX = 85;
+    let mouseY = -342;
+    let count  = 0;
 
-    // ── Resize ──────────────────────────────────────────────────────────────
+    // ── Camera & scene ────────────────────────────────────────────────────
 
-    function resize() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width  = canvas.offsetWidth  * dpr;
-      canvas.height = canvas.offsetHeight * dpr;
-      ctx.scale(dpr, dpr);
+    const camera = new THREE.PerspectiveCamera(120, W / H, 1, 10000);
+    camera.position.z = 1000;
+    camera.position.y = 350;  // elevate camera so we look DOWN at the wave plane
+
+    const scene = new THREE.Scene();
+
+    // ── Particle geometry ─────────────────────────────────────────────────
+
+    const NUM = AMOUNTX * AMOUNTY;
+    const positions = new Float32Array(NUM * 3);
+    const scales    = new Float32Array(NUM);
+
+    {
+      let i = 0;
+      let j = 0;
+      for (let ix = 0; ix < AMOUNTX; ix++) {
+        for (let iy = 0; iy < AMOUNTY; iy++) {
+          positions[i    ] = ix * SEPARATION - (AMOUNTX * SEPARATION) / 2;
+          positions[i + 1] = 0;
+          positions[i + 2] = iy * SEPARATION - (AMOUNTY * SEPARATION) / 2;
+          scales[j] = 1;
+          i += 3;
+          j += 1;
+        }
+      }
     }
 
-    // ── Pointer: speeds up sweep while cursor is over canvas ─────────────────
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("scale",    new THREE.BufferAttribute(scales,    1));
 
-    function onMouseEnter() { TARGET_SPEED.value = BASE_SPEED * 2.2; }
-    function onMouseLeave() { TARGET_SPEED.value = BASE_SPEED; }
+    // Tiny shader — circular point sprites at per-vertex sizes.
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        color: { value: new THREE.Color(0xe1e1e1) },
+      },
+      vertexShader: `
+        attribute float scale;
+        void main() {
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize    = scale * (300.0 / -mvPosition.z);
+          gl_Position     = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 color;
+        void main() {
+          vec2 c = gl_PointCoord - vec2(0.5);
+          if (length(c) > 0.5) discard;
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `,
+      transparent: true,
+    });
 
-    // ── Render ───────────────────────────────────────────────────────────────
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
 
-    function render() {
-      const W = canvas.offsetWidth;
-      const H = canvas.offsetHeight;
-      ctx.clearRect(0, 0, W, H);
+    // ── Renderer ──────────────────────────────────────────────────────────
 
-      // ── 1. Court lines ──────────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(W, H);
+    renderer.setClearColor(0x000000, 0); // transparent — Hero's #061427 shows through
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.width   = "100%";
+    renderer.domElement.style.height  = "100%";
+    container.appendChild(renderer.domElement);
 
-      ctx.lineWidth   = 0.8;
-      ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    // ── Pointer + resize ──────────────────────────────────────────────────
 
-      for (const [t0, s0, t1, s1] of LINES) {
-        const a = project(t0, s0, W, H);
-        const b = project(t1, s1, W, H);
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
+    // Listen on window (not container) so overlay divs don't eat the events.
+    function onMouseMove(e: MouseEvent) {
+      const rect = container.getBoundingClientRect();
+      // Only react when cursor is over the hero
+      if (
+        e.clientX < rect.left  || e.clientX > rect.right ||
+        e.clientY < rect.top   || e.clientY > rect.bottom
+      ) {
+        return;
       }
-
-      // Net posts slightly brighter
-      ctx.lineWidth   = 1.2;
-      ctx.strokeStyle = "rgba(255,255,255,0.12)";
-      for (const [t0, s0, t1, s1] of NET_POSTS) {
-        const a = project(t0, s0, W, H);
-        const b = project(t1, s1, W, H);
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
-      }
-
-      // ── 2. Sweep band ───────────────────────────────────────────────────
-
-      const left  = project(sweepT, -1, W, H);
-      const right = project(sweepT,  1, W, H);
-      const sweepY = left.y;
-      const envelope = sweepAlpha(sweepT);
-
-      // Band height scales with depth (larger near the viewer, thinner far)
-      const bandH = Math.max(2, H * 0.035 * (1 - sweepT * 0.6));
-
-      const grad = ctx.createLinearGradient(0, sweepY - bandH, 0, sweepY + bandH);
-      grad.addColorStop(0,    `rgba(255,255,255,0)`);
-      grad.addColorStop(0.35, `rgba(255,255,255,${(0.07  * envelope).toFixed(3)})`);
-      grad.addColorStop(0.5,  `rgba(255,255,255,${(0.22  * envelope).toFixed(3)})`);
-      grad.addColorStop(0.65, `rgba(255,255,255,${(0.07  * envelope).toFixed(3)})`);
-      grad.addColorStop(1,    `rgba(255,255,255,0)`);
-
-      ctx.fillStyle = grad;
-      ctx.fillRect(left.x, sweepY - bandH, right.x - left.x, bandH * 2);
-
-      // Thin bright leading edge line
-      ctx.beginPath();
-      ctx.moveTo(left.x,  sweepY);
-      ctx.lineTo(right.x, sweepY);
-      ctx.strokeStyle = `rgba(255,255,255,${(0.30 * envelope).toFixed(3)})`;
-      ctx.lineWidth   = 0.6;
-      ctx.stroke();
-
-      // ── 3. Advance sweep ────────────────────────────────────────────────
-
-      // Ease speed toward target
-      currentSpeed += (TARGET_SPEED.value - currentSpeed) * 0.05;
-      sweepT += currentSpeed;
-      if (sweepT > 1) sweepT = 0;
-
-      rafId = requestAnimationFrame(render);
+      mouseX = ((e.clientX - rect.left) - halfW) * 1.0;
+      mouseY = ((e.clientY - rect.top)  - halfH) * 1.0;
     }
 
-    // ── Init ─────────────────────────────────────────────────────────────────
+    function onResize() {
+      W = container.clientWidth;
+      H = container.clientHeight;
+      halfW = W / 2;
+      halfH = H / 2;
+      camera.aspect = W / H;
+      camera.updateProjectionMatrix();
+      renderer.setSize(W, H);
+    }
 
-    resize();
+    window.addEventListener("mousemove", onMouseMove);
+    const ro = new ResizeObserver(onResize);
+    ro.observe(container);
 
-    canvas.addEventListener("mouseenter", onMouseEnter);
-    canvas.addEventListener("mouseleave", onMouseLeave);
+    // ── Animation loop ────────────────────────────────────────────────────
 
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas);
+    let rafId = 0;
 
-    rafId = requestAnimationFrame(render);
+    function animate() {
+      // Camera follows mouse horizontally only — vertical axis locked
+      camera.position.x += (mouseX - camera.position.x) * 0.06;
+      // camera.position.y stays at its initial value
+      camera.lookAt(scene.position);
+
+      const posAttr   = geometry.attributes.position as THREE.BufferAttribute;
+      const scaleAttr = geometry.attributes.scale    as THREE.BufferAttribute;
+      const pos       = posAttr.array   as Float32Array;
+      const sca       = scaleAttr.array as Float32Array;
+
+      let i = 0;
+      let j = 0;
+      for (let ix = 0; ix < AMOUNTX; ix++) {
+        for (let iy = 0; iy < AMOUNTY; iy++) {
+          pos[i + 1] =
+            Math.sin((ix + count) * 0.3) * 50 +
+            Math.sin((iy + count) * 0.5) * 50;
+          sca[j] =
+            (Math.sin((ix + count) * 0.3) + 1) * 5.5 +
+            (Math.sin((iy + count) * 0.5) + 1) * 5.5;
+          i += 3;
+          j += 1;
+        }
+      }
+
+      posAttr.needsUpdate   = true;
+      scaleAttr.needsUpdate = true;
+
+      renderer.render(scene, camera);
+      count += 0.1;
+      rafId = requestAnimationFrame(animate);
+    }
+
+    rafId = requestAnimationFrame(animate);
+
+    // ── Cleanup ───────────────────────────────────────────────────────────
 
     return () => {
       cancelAnimationFrame(rafId);
       ro.disconnect();
-      canvas.removeEventListener("mouseenter", onMouseEnter);
-      canvas.removeEventListener("mouseleave", onMouseLeave);
+      window.removeEventListener("mousemove", onMouseMove);
+      if (renderer.domElement.parentNode) {
+        renderer.domElement.parentNode.removeChild(renderer.domElement);
+      }
+      geometry.dispose();
+      material.dispose();
+      renderer.dispose();
     };
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
+    <div
+      ref={containerRef}
       aria-hidden="true"
       className="block h-full w-full"
     />
