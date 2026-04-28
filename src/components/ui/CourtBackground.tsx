@@ -20,9 +20,11 @@ export function CourtBackground() {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    // Narrow for closures — TS doesn't preserve null narrowing through nested fns
+    const c: HTMLDivElement = container;
 
-    let W = container.clientWidth;
-    let H = container.clientHeight;
+    let W = c.clientWidth;
+    let H = c.clientHeight;
     let halfW = W / 2;
     let halfH = H / 2;
 
@@ -100,13 +102,13 @@ export function CourtBackground() {
     renderer.domElement.style.display = "block";
     renderer.domElement.style.width   = "100%";
     renderer.domElement.style.height  = "100%";
-    container.appendChild(renderer.domElement);
+    c.appendChild(renderer.domElement);
 
     // ── Pointer + resize ──────────────────────────────────────────────────
 
     // Listen on window (not container) so overlay divs don't eat the events.
     function onMouseMove(e: MouseEvent) {
-      const rect = container.getBoundingClientRect();
+      const rect = c.getBoundingClientRect();
       // Only react when cursor is over the hero
       if (
         e.clientX < rect.left  || e.clientX > rect.right ||
@@ -119,8 +121,8 @@ export function CourtBackground() {
     }
 
     function onResize() {
-      W = container.clientWidth;
-      H = container.clientHeight;
+      W = c.clientWidth;
+      H = c.clientHeight;
       halfW = W / 2;
       halfH = H / 2;
       camera.aspect = W / H;
@@ -130,7 +132,7 @@ export function CourtBackground() {
 
     window.addEventListener("mousemove", onMouseMove);
     const ro = new ResizeObserver(onResize);
-    ro.observe(container);
+    ro.observe(c);
 
     // ── Animation loop ────────────────────────────────────────────────────
 
