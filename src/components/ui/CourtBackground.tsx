@@ -3,13 +3,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-// ── Particle wave background ──────────────────────────────────────────────────
-//
-// Faithful port of the Three.js "particles waves" CodePen (deathfang/WxNVoq).
-// Same grid size, separation, wave math and camera-follow-mouse behaviour.
-// Modernised: uses BufferGeometry + Points + a tiny shader instead of the
-// deprecated CanvasRenderer + THREE.Particle pipeline.
-
 const SEPARATION = 100;
 const AMOUNTX    = 100;
 const AMOUNTY    = 70;
@@ -20,28 +13,20 @@ export function CourtBackground() {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    // Narrow for closures — TS doesn't preserve null narrowing through nested fns
     const c: HTMLDivElement = container;
 
     let W = c.clientWidth;
     let H = c.clientHeight;
     let halfW = W / 2;
-    let halfH = H / 2;
 
-    // Initial mouse offset matches the original (slightly tilted view)
     let mouseX = 85;
-    let mouseY = -342;
     let count  = 0;
-
-    // ── Camera & scene ────────────────────────────────────────────────────
 
     const camera = new THREE.PerspectiveCamera(120, W / H, 1, 10000);
     camera.position.z = 1000;
-    camera.position.y = 350;  // elevate camera so we look DOWN at the wave plane
+    camera.position.y = 350;
 
     const scene = new THREE.Scene();
-
-    // ── Particle geometry ─────────────────────────────────────────────────
 
     const NUM = AMOUNTX * AMOUNTY;
     const positions = new Float32Array(NUM * 3);
@@ -66,65 +51,52 @@ export function CourtBackground() {
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute("scale",    new THREE.BufferAttribute(scales,    1));
 
-    // Tiny shader — circular point sprites at per-vertex sizes.
     const material = new THREE.ShaderMaterial({
-      uniforms: {
-        color: { value: new THREE.Color(0xe1e1e1) },
-      },
-      vertexShader: `
-        attribute float scale;
-        void main() {
-          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize    = scale * (300.0 / -mvPosition.z);
-          gl_Position     = projectionMatrix * mvPosition;
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 color;
-        void main() {
-          vec2 c = gl_PointCoord - vec2(0.5);
-          if (length(c) > 0.5) discard;
-          gl_FragColor = vec4(color, 1.0);
-        }
-      `,
+      uniforms: { color: { value: new THREE.Color(0xe1e1e1) } },
+      vertexShader: [
+        "attribute float scale;",
+        "void main() {",
+        "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
+        "  gl_PointSize    = scale * (300.0 / -mvPosition.z);",
+        "  gl_Position     = projectionMatrix * mvPosition;",
+        "}"
+      ].join("\n"),
+      fragmentShader: [
+        "uniform vec3 color;",
+        "void main() {",
+        "  vec2 c = gl_PointCoord - vec2(0.5);",
+        "  if (length(c) > 0.5) discard;",
+        "  gl_FragColor = vec4(color, 1.0);",
+        "}"
+      ].join("\n"),
       transparent: true,
     });
 
     const points = new THREE.Points(geometry, material);
     scene.add(points);
 
-    // ── Renderer ──────────────────────────────────────────────────────────
-
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W, H);
-    renderer.setClearColor(0x000000, 0); // transparent — Hero's #061427 shows through
+    renderer.setClearColor(0x000000, 0);
     renderer.domElement.style.display = "block";
     renderer.domElement.style.width   = "100%";
     renderer.domElement.style.height  = "100%";
     c.appendChild(renderer.domElement);
 
-    // ── Pointer + resize ──────────────────────────────────────────────────
-
-    // Listen on window (not container) so overlay divs don't eat the events.
     function onMouseMove(e: MouseEvent) {
       const rect = c.getBoundingClientRect();
-      // Only react when cursor is over the hero
       if (
         e.clientX < rect.left  || e.clientX > rect.right ||
         e.clientY < rect.top   || e.clientY > rect.bottom
-      ) {
-        return;
-      }
+      ) { return; }
       mouseX = ((e.clientX - rect.left) - halfW) * 1.0;
-      mouseY = ((e.clientY - rect.top)  - halfH) * 1.0;
     }
 
     function onResize() {
       W = c.clientWidth;
       H = c.clientHeight;
       halfW = W / 2;
-      halfH = H / 2;
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
       renderer.setSize(W, H);
@@ -134,20 +106,16 @@ export function CourtBackground() {
     const ro = new ResizeObserver(onResize);
     ro.observe(c);
 
-    // ── Animation loop ────────────────────────────────────────────────────
-
     let rafId = 0;
 
     function animate() {
-      // Camera follows mouse horizontally only — vertical axis locked
       camera.position.x += (mouseX - camera.position.x) * 0.06;
-      // camera.position.y stays at its initial value
       camera.lookAt(scene.position);
 
-      const posAttr   = geometry.attributes.position as THREE.BufferAttribute;
-      const scaleAttr = geometry.attributes.scale    as THREE.BufferAttribute;
-      const pos       = posAttr.array   as Float32Array;
-      const sca       = scaleAttr.array as Float32Array;
+      const posAttr   = geometry.attributes.position as unknown as { array: Float32Array; needsUpdate: boolean };
+      const scaleAttr = geometry.attributes.scale    as unknown as { array: Float32Array; needsUpdate: boolean };
+      const pos       = posAttr.array;
+      const sca       = scaleAttr.array;
 
       let i = 0;
       let j = 0;
@@ -173,8 +141,6 @@ export function CourtBackground() {
     }
 
     rafId = requestAnimationFrame(animate);
-
-    // ── Cleanup ───────────────────────────────────────────────────────────
 
     return () => {
       cancelAnimationFrame(rafId);

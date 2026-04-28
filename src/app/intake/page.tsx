@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 
 type StepType = "single" | "multi" | "text" | "contact";
 
@@ -310,12 +311,12 @@ export default function IntakePage() {
             </label>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <a
+              <Link
                 href="/"
                 className="rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
               >
                 Back to Home
-              </a>
+              </Link>
               <a
                 href="/programs"
                 className="rounded-full bg-emerald-300 px-5 py-2 text-sm font-semibold text-[#061427] hover:bg-emerald-200"
@@ -334,9 +335,9 @@ export default function IntakePage() {
       <div className="mx-auto max-w-2xl px-6 py-10 md:py-14">
         {/* Top bar */}
         <div className="mb-8 flex items-center justify-between">
-          <a href="/" className="text-sm text-white/60 hover:text-white">
+          <Link href="/" className="text-sm text-white/60 hover:text-white">
             ← Home
-          </a>
+          </Link>
           <div className="text-sm text-white/60">
             Step {stepIndex + 1} of {steps.length}
           </div>
@@ -463,7 +464,7 @@ export default function IntakePage() {
 
         <p className="mt-6 text-center text-xs text-white/45">
           Welcoming at any level — built for athletes who want consistent, structured improvement.
-        </p>
+               </p>
       </div>
     </main>
   );
