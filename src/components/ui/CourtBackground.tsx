@@ -22,6 +22,11 @@ export function CourtBackground() {
     let mouseX = 85;
     let count  = 0;
 
+    // Normalised cursor (-1..1 across the hero), used for per-particle bounce.
+    let nmx = 0;
+    let nmy = 0;
+    let cursorActive = false;
+
     const camera = new THREE.PerspectiveCamera(120, W / H, 1, 10000);
     camera.position.z = 1000;
     camera.position.y = 350;
@@ -89,8 +94,16 @@ export function CourtBackground() {
       if (
         e.clientX < rect.left  || e.clientX > rect.right ||
         e.clientY < rect.top   || e.clientY > rect.bottom
-      ) { return; }
-      mouseX = ((e.clientX - rect.left) - halfW) * 1.0;
+      ) {
+        cursorActive = false;
+        return;
+      }
+      const rx = (e.clientX - rect.left) - halfW;
+      const ry = (e.clientY - rect.top)  - rect.height / 2;
+      mouseX = rx;
+      nmx = rx / (rect.width  / 2);
+      nmy = ry / (rect.height / 2);
+      cursorActive = true;
     }
 
     function onResize() {
@@ -109,7 +122,8 @@ export function CourtBackground() {
     let rafId = 0;
 
     function animate() {
-      camera.position.x += (mouseX - camera.position.x) * 0.06;
+      // Slight camera follow — half the previous amplitude (subtler rotation)
+      camera.position.x += ((mouseX * 0.5) - camera.position.x) * 0.06;
       camera.lookAt(scene.position);
 
       const posAttr   = geometry.attributes.position as unknown as { array: Float32Array; needsUpdate: boolean };
@@ -117,13 +131,31 @@ export function CourtBackground() {
       const pos       = posAttr.array;
       const sca       = scaleAttr.array;
 
+      // Approximate cursor's world position projected onto the wave plane.
+      const cursorWX = camera.position.x + nmx * 1400;
+      const cursorWZ = nmy * 900;
+      const RADIUS_SQ_INV = 1 / (300 * 300); // bounce decays past ~300 world units
+
       let i = 0;
       let j = 0;
       for (let ix = 0; ix < AMOUNTX; ix++) {
         for (let iy = 0; iy < AMOUNTY; iy++) {
-          pos[i + 1] =
+          // Base wave (unchanged)
+          let y =
             Math.sin((ix + count) * 0.3) * 50 +
             Math.sin((iy + count) * 0.5) * 50;
+
+          // Per-particle cursor bounce — gaussian-ish falloff
+          if (cursorActive) {
+            const dx = pos[i    ] - cursorWX;
+            const dz = pos[i + 2] - cursorWZ;
+            const d2 = (dx * dx + dz * dz) * RADIUS_SQ_INV;
+            if (d2 < 6) {
+              y += Math.exp(-d2) * 55 * Math.cos(count * 0.3);
+            }
+          }
+
+          pos[i + 1] = y;
           sca[j] =
             (Math.sin((ix + count) * 0.3) + 1) * 5.5 +
             (Math.sin((iy + count) * 0.5) + 1) * 5.5;
