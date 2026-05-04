@@ -31,9 +31,6 @@ export function Navbar() {
           <Button variant="secondary" href="/programs" className="rounded-full px-5 py-2">
             Our Programs
           </Button>
-          <Button variant="secondary" href="/login" className="rounded-full px-5 py-2">
-            Login/Register
-          </Button>
           <Button variant="primary" href="/intake" className="rounded-full px-5 py-2">
             Get Priority Placement
           </Button>

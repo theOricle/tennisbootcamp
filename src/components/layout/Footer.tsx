@@ -15,6 +15,24 @@ export function Footer() {
           </div>
         </div>
 
+        {site.socials.filter((s) => s.href !== "#").length > 0 && (
+          <div className="mt-4 flex gap-4">
+            {site.socials
+              .filter((s) => s.href !== "#")
+              .map((s) => (
+                <a
+                  key={s.label}
+                  href={s.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-white/50 hover:text-white/80 transition-colors"
+                >
+                  {s.label}
+                </a>
+              ))}
+          </div>
+        )}
+
         {site.footerNote ? (
           <div className="mt-4 text-xs text-white/40">{site.footerNote}</div>
         ) : null}
