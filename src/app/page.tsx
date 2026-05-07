@@ -1,5 +1,6 @@
 
 import { Hero } from "@/components/sections/Hero";
+import { TrustBar } from "@/components/sections/TrustBar";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { Coaches } from "@/components/sections/Coaches";
@@ -20,6 +21,8 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <Hero />
+
+      <TrustBar />
 
       <section className="mx-auto max-w-6xl px-6 -mt-10">
         <EmailCapture />
