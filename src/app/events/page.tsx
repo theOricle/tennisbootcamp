@@ -1,5 +1,11 @@
-﻿import { events } from "@/content/events";
+﻿import type { Metadata } from "next";
+import { events } from "@/content/events";
 import { EventsList } from "@/components/sections/EventsList";
+
+export const metadata: Metadata = {
+  title: "Events",
+  description: "Upcoming Tennis Bootcamp training sessions and events in Toronto.",
+};
 
 export default function EventsPage() {
   return (

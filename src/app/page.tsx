@@ -1,4 +1,4 @@
-
+import type { Metadata } from "next";
 import { Hero } from "@/components/sections/Hero";
 import { TrustBar } from "@/components/sections/TrustBar";
 import { EmailCapture } from "@/components/sections/EmailCapture";
@@ -16,6 +16,12 @@ import { locations } from "@/content/locations";
 
 
 import { PageStack } from "@/components/layout/PageStack";
+
+export const metadata: Metadata = {
+  title: { absolute: "Tennis Bootcamp — Where Athletes Evolve!" },
+  description:
+    "Elite tennis coaching for competitive players in Toronto. Complete our intake form to secure priority placement in our next program.",
+};
 
 export default function HomePage() {
   return (

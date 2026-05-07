@@ -1,5 +1,12 @@
-﻿import { locations } from "@/content/locations";
+﻿import type { Metadata } from "next";
+import { locations } from "@/content/locations";
 import { LocationsGrid } from "@/components/sections/LocationsGrid";
+
+export const metadata: Metadata = {
+  title: "Locations",
+  description:
+    "Tennis Bootcamp trains at two Toronto locations: Toronto Tennis City in North York and Tennis Lessons Toronto downtown.",
+};
 
 export default function LocationsPage() {
   return (

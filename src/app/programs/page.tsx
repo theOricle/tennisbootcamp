@@ -1,6 +1,13 @@
-﻿import { programs } from "@/content/programs";
+﻿import type { Metadata } from "next";
+import { programs } from "@/content/programs";
 import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { EmailCapture } from "@/components/sections/EmailCapture";
+
+export const metadata: Metadata = {
+  title: "Programs",
+  description:
+    "Competitive bootcamps, group lessons, and summer camps for tennis players of all levels in Toronto.",
+};
 
 export default function ProgramsPage() {
   return (

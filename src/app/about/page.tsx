@@ -1,5 +1,12 @@
-﻿import { coaches } from "@/content/coaches";
+﻿import type { Metadata } from "next";
+import { coaches } from "@/content/coaches";
 import { Coaches } from "@/components/sections/Coaches";
+
+export const metadata: Metadata = {
+  title: "About",
+  description:
+    "Meet the coaching team behind Tennis Bootcamp — elite training for competitive tennis players in Toronto.",
+};
 
 export default function AboutPage() {
   return (

@@ -1,5 +1,12 @@
-﻿import { VideoLessonsTeaser } from "@/components/sections/VideoLessonsTeaser";
+﻿import type { Metadata } from "next";
+import { VideoLessonsTeaser } from "@/components/sections/VideoLessonsTeaser";
 import { EmailCapture } from "@/components/sections/EmailCapture";
+
+export const metadata: Metadata = {
+  title: "Video Lessons",
+  description:
+    "On-demand video lessons from Tennis Bootcamp coaches. Build technique between sessions from anywhere.",
+};
 
 export default function VideoLessonsPage() {
   return (
