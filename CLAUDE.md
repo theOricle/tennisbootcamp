@@ -2,7 +2,7 @@
 
 Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or Claude Code) should start by reading this.
 
-Last updated: 2026-04-21
+Last updated: 2026-05-08
 
 ---
 
@@ -16,15 +16,16 @@ Last updated: 2026-04-21
 ## Folder layout (this project folder)
 
 ```
-C:\Users\farib\OneDrive\Documents\Claude\Projects\Tennnis Bootcamp\
-├── CLAUDE.md                     ← this file
-├── designs\                      ← Figma exports (reference only)
-│   ├── Tennis BootCamp.zip       ← 106 screens (desktop + mobile)
+C:\Users\farib\tennisbootcamp\     ← repo root (moved from OneDrive 2026-05-04)
+├── CLAUDE.md                      ← this file
+├── designs\                       ← Figma exports (reference only)
+│   ├── Tennis BootCamp.zip        ← 106 screens (desktop + mobile)
 │   └── tennisbootcamp-figma-assets.zip  ← web-ready assets
-└── site\                         ← the actual Next.js app (cloned from GitHub)
+├── .github\workflows\ci.yml       ← GitHub Actions: lint + typecheck on push
+└── src\                           ← Next.js app source
 ```
 
-OneDrive is installed but **not signed in**, so the OneDrive path is behaving as a regular local folder — no sync locks, no delays.
+Project was moved out of OneDrive on 2026-05-04 to eliminate file-truncation bugs from the OneDrive filesystem layer.
 
 ## Tech stack (confirmed from source)
 
@@ -33,44 +34,51 @@ OneDrive is installed but **not signed in**, so the OneDrive path is behaving as
 - **Styling:** Tailwind CSS **3.4.19** + PostCSS + Autoprefixer
 - **Language:** TypeScript 5
 - **Lint:** ESLint 9 with `eslint-config-next`
-- **Runtime integrations:** `googleapis` (v171) — Google Sheets API via service account, used by `/api/intake`
-- **Dev scripts** (from `site/package.json`):
+- **Runtime integrations:** `googleapis` (v171) — Google Sheets API via service account, used by `/api/intake` and `/api/newsletter`; `three` — particle-wave hero background (CourtBackground)
+- **Dev scripts** (from `package.json`):
   - `npm run dev` — start Next dev server
   - `npm run build` — production build
   - `npm run start` — run the built app
   - `npm run lint` — ESLint
   - `npm run agent:run -- "task request"` — in-house AI agent pipeline (see "Agent pipeline" below)
-- **Deployment:** Assumed Vercel (bootstrapped with `create-next-app`, `.vercel` in gitignore) — **confirm with owner**.
+- **Deployment:** Vercel, Hobby plan. Production URL: `tennisbootcamp-seven.vercel.app`. Custom domain `tennisbootcamp.ca` to be connected (DNS pending).
+- **CI:** GitHub Actions (`.github/workflows/ci.yml`) — runs lint + typecheck on every push/PR to main.
 
 ## Environment variables required
 
-The intake pipeline reads these at runtime (`site/src/app/api/intake/route.ts`):
+Both `/api/intake` and `/api/newsletter` share the same credentials:
 
 - `GOOGLE_SHEETS_SPREADSHEET_ID` — target Google Sheet
 - `GOOGLE_SERVICE_ACCOUNT_EMAIL` — service account email
 - `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` — PEM private key (accepts `\n` literals, stripped `\r`, surrounding whitespace)
-- `GOOGLE_SHEETS_TAB_NAME` — optional, defaults to `Sheet1`
+- `GOOGLE_SHEETS_TAB_NAME` — optional, defaults to `Sheet1` (intake tab only)
 
 Anything missing returns HTTP 500 with a descriptive error. Keep these in `.env.local` (git-ignored by default).
+
+**Important:** The "newsletter" tab must be created manually in the Google Sheet before the first production newsletter submission. The API will write the header row automatically on first use, but the tab itself must exist.
 
 ## Site structure
 
 ```
-site/src/
+src/
 ├── app/                          ← Next App Router
 │   ├── about/page.tsx
-│   ├── api/intake/route.ts       ← intake → Google Sheets
+│   ├── api/intake/route.ts       ← intake → Google Sheets (tab: GOOGLE_SHEETS_TAB_NAME)
+│   ├── api/newsletter/route.ts   ← newsletter signup → Google Sheets (tab: "newsletter")
 │   ├── events/page.tsx
-│   ├── intake/page.tsx           ← primary conversion page
-│   ├── layout.tsx
+│   ├── intake/page.tsx + layout.tsx  ← primary conversion page (layout carries metadata)
+│   ├── layout.tsx                ← root layout: metadataBase, title template, OG defaults
 │   ├── locations/page.tsx
+│   ├── opengraph-image.tsx       ← default OG image (1200×630, edge runtime)
 │   ├── page.tsx                  ← homepage
 │   ├── programs/page.tsx
+│   ├── robots.ts                 ← dynamic robots.txt
+│   ├── sitemap.ts                ← dynamic sitemap (7 routes)
 │   ├── video-lessons/page.tsx
 │   └── globals.css
 ├── components/
 │   ├── layout/                   ← Navbar, Footer, PageStack
-│   ├── sections/                 ← Hero, EmailCapture, ProgramsGrid,
+│   ├── sections/                 ← Hero, TrustBar, EmailCapture, ProgramsGrid,
 │   │                                Coaches, EventsList, LocationsGrid,
 │   │                                VideoLessonsTeaser
 │   └── ui/                       ← Button, Card, CourtBackground
@@ -78,12 +86,12 @@ site/src/
 │   ├── site.ts                   ← name, tagline, email, socials
 │   ├── programs.ts
 │   ├── coaches.ts
-│   ├── events.ts
+│   ├── events.ts                 ← placeholder entry hidden via placeholder:true flag
 │   └── locations.ts
 └── types/                        ← TS types for each content file
 ```
 
-Homepage (`src/app/page.tsx`) composes: Hero → EmailCapture → ProgramsGrid (first 3) → Coaches → EventsList → LocationsGrid.
+Homepage (`src/app/page.tsx`) composes: Hero → TrustBar → EmailCapture → ProgramsGrid (first 3) → Coaches → EventsList → LocationsGrid.
 
 ## Primary conversion flow
 
@@ -158,10 +166,10 @@ The code has been partially populated with real info — Figma still shows old p
 - Programs: Bootcamps (available), Kid's Summer Camp (coming soon), Group Lessons (coming soon)
 
 **Still placeholder in code (intentional — replace when real info is available):**
-- `site/src/content/events.ts` uses placeholder dates (e.g. `"2/22/2026 - 2/30/2026"`). The Feb 30 date is a known placeholder, **not a bug to fix** — it'll be replaced with real event dates when they're set.
-- `coaches[1]` is generic — needs real second coach
-- Social hrefs all `"#"`
-- `bookingHref` is `/programs` as a placeholder; owner plans to swap to a Calendly link
+- `src/content/events.ts` has a placeholder entry with `placeholder: true` — EventsList hides it and shows "sessions being scheduled" copy. Replace with real events by removing the flag and filling real data.
+- `coaches` array has only Sina Kassaian — second coach removed until real info available
+- Social hrefs all `"#"` in `site.ts` — Footer already filters these out automatically
+- `bookingHref` is `/programs` as a placeholder; swap to Calendly URL when available
 - Footer copyright year / footer note may need updating when year rolls over
 
 **Figma still shows (but code has moved past):**
@@ -173,28 +181,29 @@ The code has been partially populated with real info — Figma still shows old p
 
 ## Outstanding work / gaps
 
-**Immediate fixes**
-- Replace coach #2 placeholder with real info
-- Wire real social media URLs in `src/content/site.ts`
-- Decide font strategy (Geist via `next/font`, Poppins, or custom)
-- Swap placeholder event dates in `src/content/events.ts` for real ones when the season is set
+**Waiting on owner input**
+- Real social media URLs → `src/content/site.ts` (Footer auto-shows them when set)
+- Calendly (or equivalent) booking URL → `bookingHref` in `src/content/site.ts`
+- Real second coach name, bio, photo → `src/content/coaches.ts`
+- Real event dates → `src/content/events.ts` (remove `placeholder: true`, fill real data)
+- Vercel env vars transfer from other computer (blocks production intake + newsletter)
+- Custom domain `tennisbootcamp.ca` → connect in Vercel dashboard (also update `BASE_URL` in `src/app/robots.ts` and `src/app/sitemap.ts`)
 
 **Not yet built (Figma shows, code doesn't have)**
-- Full registration + payment flow (Figma shows Stripe + PayPal flow; repo is lead-capture-only today)
-- Authentication (login, register, Google sign-in — nothing in the repo yet)
-- Dashboard, Profile, Our Team detail pages beyond what's in `app/`
-- Video lessons gated access (currently a teaser only)
+- Full registration + payment flow (Figma shows Stripe + PayPal; repo is lead-capture-only today)
+- Authentication (Auth.js v5 + Neon Postgres + Prisma — planned, not started)
+- Dashboard, Profile, Our Team detail pages
+- Video lessons gated access (currently a clean "coming soon" teaser)
 - Maps embedded on locations page
-- SEO: Open Graph, sitemap, robots.txt
 - Analytics (GA4 / Plausible / etc.)
-- Newsletter backend (email capture on homepage needs a destination)
+- Decide font strategy (Geist via `next/font`, Poppins, or custom)
 
 **Design edits owner flagged**
 - Figma itself needs heavy editing — specific priority screens TBD with owner.
 
 ## Local setup checklist
 
-On a fresh machine, inside `site/`:
+On a fresh machine, from `C:\Users\farib\tennisbootcamp\`:
 
 ```powershell
 npm install
@@ -206,20 +215,21 @@ If OneDrive gets signed into this machine later, exclude `node_modules` and `.ne
 
 ## Automation and tooling preferences
 
-- All engineering via Claude Code CLI from `site/` (it picks up this CLAUDE.md and the in-repo briefs)
+- All engineering via Claude Code CLI from `C:\Users\farib\tennisbootcamp\` (picks up this CLAUDE.md and in-repo briefs)
+- Claude Code handles commits and pushes directly (no Co-Authored-By)
 - `npm run agent:run -- "..."` is the owner's preferred way to run planned, reviewed changes
-- Cowork is used for planning, doc updates, design review, and non-code tasks
+- Cowork is used for browser-driven tasks only (Vercel UI, Figma reference, design review) — Claude Code for all code work
+- GitHub Actions CI runs lint + typecheck on every push — don't skip it
 - Keep this `CLAUDE.md` as the single source of truth for project context across sessions
 
 ## Open questions (confirm when re-visiting)
 
-1. Is the live site deployed on Vercel, or elsewhere?
-2. Do we want to introduce Stripe + PayPal + accounts now, or keep the lead-capture model for the current season?
-3. Which Figma screens are priority for the "heavy edits" pass?
-4. Real second coach name, bio, photo?
-5. Real social media URLs?
-6. Preferred font family (Geist? Poppins? Custom?)
-7. Which newsletter / CRM tool should EmailCapture submit to?
+1. Do we want to introduce Stripe + PayPal + accounts now, or keep the lead-capture model for the current season?
+2. Which Figma screens are priority for the "heavy edits" pass?
+3. Real second coach name, bio, photo?
+4. Real social media URLs?
+5. Preferred font family (Geist? Poppins? Custom?)
+6. Analytics provider — GA4, Plausible, or none for now?
 
 ## How to use this file
 
