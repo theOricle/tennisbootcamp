@@ -23,14 +23,6 @@ export async function POST(req: NextRequest) {
       .replace(/\r/g, "")
       .trim();
 
-    console.log("[intake] private key debug:", {
-      length: privateKey.length,
-      hasBeginHeader: privateKey.includes("-----BEGIN PRIVATE KEY-----"),
-      hasEndFooter: privateKey.includes("-----END PRIVATE KEY-----"),
-      first25: privateKey.slice(0, 25),
-      last25: privateKey.slice(-25),
-    });
-
     if (!privateKey.includes("-----BEGIN")) {
       throw new Error("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY does not appear to be a valid PEM key.");
     }
