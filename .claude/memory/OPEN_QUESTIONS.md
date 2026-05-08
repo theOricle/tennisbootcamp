@@ -57,10 +57,8 @@ _Unresolved questions that need answers before proceeding with certain work. Clo
 **Blocking**: Any member portal or booking-behind-login feature.
 **Raised**: 2026-04-19
 
-### Intake API debug log
-**Question**: Can we remove the `console.log` block in `src/app/api/intake/route.ts` (lines 26–33)? It was added to debug private key parsing and leaks key metadata to server logs.
-**Blocking**: Safe production deployment of the intake route.
-**Raised**: 2026-04-19
+### Intake API debug log — RESOLVED
+Removed 2026-05-07. Console.log block deleted from route.ts.
 
 ### Real event dates needed throughout site
 **Question**: What are the actual event dates, titles, and details for upcoming Tennis Bootcamp sessions? The single entry in `src/content/events.ts` is a placeholder with an impossible date (2/22/2026 – 2/30/2026 — February 30 does not exist).

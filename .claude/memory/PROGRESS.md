@@ -87,9 +87,21 @@ _Update this at the start or end of each working session._
 - [ ] .env.local credentials in Vercel env vars (waiting on transfer from other computer)
 - [ ] Custom domain tennisbootcamp.ca added to Vercel
 - [ ] Layer 2 automation: slash commands, GitHub Actions, pre-commit hooks
-- [ ] SEO basics: robots.txt, sitemap.ts, per-page metadata, OG images
 - [ ] EmailCapture wired to a real backend (newsletter or 2nd Google Sheet tab)
-- [ ] Real event dates in events.ts
+- [ ] Real event dates in events.ts (placeholder hidden until real dates land)
 - [ ] Calendly URL for bookingHref
 - [ ] Full Programs/Coaches/Registration polish to match Figma
 - [ ] Eventually: full Auth.js v5 + Neon Postgres + Prisma + Stripe Checkout build
+
+### Session Log
+
+### 2026-05-05
+- Added TrustBar section (3 trust signals between Hero and EmailCapture)
+- EmailCapture: brand lime button, updated copy, submitted confirmation state
+
+### 2026-05-07
+- SEO: robots.ts, sitemap.ts, opengraph-image.tsx, metadataBase + title template in layout, per-page metadata on all 7 routes, intake/layout.tsx for client page
+- Removed private key debug console.log from /api/intake (security — leaked key material to server logs)
+
+### 2026-05-08
+- EventsList: added `placeholder` flag to Event type; marked current entry placeholder; renders clean empty state instead of impossible Feb 30 date

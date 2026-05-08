@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -24,7 +25,7 @@ export function Navbar() {
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-3">
-          <img src="/images/brand/logo.svg" alt="Tennis Bootcamp" className="h-10 w-auto" />
+          <Image src="/images/brand/logo.svg" alt="Tennis Bootcamp" width={192} height={52} className="h-10 w-auto" priority />
         </Link>
 
         <div className="flex items-center gap-3">

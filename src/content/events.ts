@@ -8,5 +8,6 @@ export const events: Event[] = [
     address: "510 King St E #809, Toronto, ON M5A 0E5, Canada",
     ctaText: "Learn more",
     ctaHref: "/events",
+    placeholder: true,
   },
 ];

@@ -5,4 +5,5 @@ export type Event = {
   address: string;
   ctaText?: string;
   ctaHref?: string;
+  placeholder?: boolean;
 };
