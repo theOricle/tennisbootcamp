@@ -42,10 +42,8 @@ _Unresolved questions that need answers before proceeding with certain work. Clo
 **Blocking**: Footer social links (all currently `"#"` in `src/content/site.ts`).
 **Raised**: 2026-04-19
 
-### EmailCapture provider
-**Question**: Which email marketing provider should EmailCapture integrate with — Mailchimp, ConvertKit, Tally, or something else?
-**Blocking**: Removing the `alert()` stub in `src/components/sections/EmailCapture.tsx`.
-**Raised**: 2026-04-19
+### EmailCapture provider — RESOLVED
+**Resolution**: Writing to "newsletter" tab in existing Google Sheet via same service account. Columns: timestamp, email, source. Shipped 2026-05-08.
 
 ### Calendly / booking integration
 **Question**: What is the Calendly (or equivalent) URL for booking sessions?

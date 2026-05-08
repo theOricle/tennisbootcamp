@@ -3,7 +3,23 @@
 import { useState } from "react";
 
 export function EmailCapture() {
-  const [submitted, setSubmitted] = useState(false);
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus("loading");
+    try {
+      const res = await fetch("/api/newsletter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, source: "homepage_email_capture" }),
+      });
+      setStatus(res.ok ? "done" : "error");
+    } catch {
+      setStatus("error");
+    }
+  }
 
   return (
     <section className="mx-auto max-w-6xl px-6 py-10">
@@ -17,30 +33,38 @@ export function EmailCapture() {
           </p>
         </div>
 
-        {submitted ? (
+        {status === "done" ? (
           <p className="mt-4 text-sm font-semibold text-[#B4E655] md:mt-0 md:shrink-0">
             Got it — we&apos;ll be in touch.
           </p>
         ) : (
           <form
-            className="mt-4 flex w-full gap-3 md:mt-0 md:w-auto"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setSubmitted(true);
-            }}
+            className="mt-4 flex w-full flex-col gap-2 md:mt-0 md:w-auto"
+            onSubmit={handleSubmit}
           >
-            <input
-              className="w-full rounded-xl border border-white/10 bg-[#061427] px-4 py-3 text-sm text-white placeholder:text-white/40 md:w-72"
-              type="email"
-              required
-              placeholder="Your email"
-            />
-            <button
-              className="rounded-xl bg-[#B4E655] px-5 py-3 text-sm font-semibold text-[#061427] hover:brightness-110"
-              type="submit"
-            >
-              Notify me
-            </button>
+            <div className="flex gap-3">
+              <input
+                className="w-full rounded-xl border border-white/10 bg-[#061427] px-4 py-3 text-sm text-white placeholder:text-white/40 md:w-72"
+                type="email"
+                required
+                placeholder="Your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={status === "loading"}
+              />
+              <button
+                className="rounded-xl bg-[#B4E655] px-5 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:opacity-50"
+                type="submit"
+                disabled={status === "loading"}
+              >
+                {status === "loading" ? "…" : "Notify me"}
+              </button>
+            </div>
+            {status === "error" && (
+              <p className="text-xs text-red-400">
+                Something went wrong — try again or email us at info@tennisbootcamp.ca
+              </p>
+            )}
           </form>
         )}
       </div>

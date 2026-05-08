@@ -105,3 +105,7 @@ _Update this at the start or end of each working session._
 
 ### 2026-05-08
 - EventsList: added `placeholder` flag to Event type; marked current entry placeholder; renders clean empty state instead of impossible Feb 30 date
+- Navbar: replaced `<img>` with `<Image />` (next/image) for logo — fixes LCP warning, zero visual change
+- GitHub Actions CI: `.github/workflows/ci.yml` — runs lint + typecheck on every push/PR to main
+- EmailCapture: wired to `/api/newsletter` → writes timestamp, email, source to "newsletter" tab in existing Google Sheet; loading + error states handled; works in dev, awaiting Vercel env vars for production
+- VideoLessonsTeaser: removed 6 identical fake placeholder tiles; clean "coming soon" copy remains
