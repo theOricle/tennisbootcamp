@@ -23,7 +23,7 @@ export function Coaches({ coaches, title = "Meet the Coaches" }: CoachesProps) {
 
                 {c.website ? (
                   <a
-                    className="mt-3 inline-block text-sm text-emerald-300 hover:underline"
+                    className="mt-3 inline-block text-sm text-[#B4E655] hover:underline"
                     href={c.website}
                     target="_blank"
                     rel="noreferrer"

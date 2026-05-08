@@ -54,7 +54,7 @@ export function ProgramsGrid({ programs, title = "Our Programs" }: ProgramsGridP
             {/* TIGHTER body */}
             <div className="px-4 py-3">
               <p className="text-sm text-white/70 line-clamp-2">{p.description}</p>
-              <div className="mt-3 text-sm font-semibold text-emerald-300 group-hover:underline">
+              <div className="mt-3 text-sm font-semibold text-[#B4E655] group-hover:underline">
                 Learn more →
               </div>
             </div>
