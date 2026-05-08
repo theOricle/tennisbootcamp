@@ -19,10 +19,10 @@ export function LocationsGrid({ locations, title = "Our Locations" }: LocationsG
               <div className="mt-2 text-sm text-white/70">{l.address}</div>
 
               <div className="mt-4 flex flex-wrap gap-3 text-sm text-white/70">
-                {l.phone ? <span>📞 {l.phone}</span> : null}
+                {l.phone ? <span>{l.phone}</span> : null}
                 {l.website ? (
                   <a
-                    className="text-emerald-300 hover:underline"
+                    className="text-[#B4E655] hover:underline"
                     href={l.website.startsWith("http") ? l.website : `https://${l.website}`}
                     target="_blank"
                     rel="noreferrer"
@@ -31,6 +31,14 @@ export function LocationsGrid({ locations, title = "Our Locations" }: LocationsG
                   </a>
                 ) : null}
               </div>
+              <a
+                className="mt-4 inline-block text-sm text-white/50 hover:text-white/80"
+                href={`https://maps.google.com/?q=${encodeURIComponent(l.address)}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Get directions →
+              </a>
             </div>
           </Card>
         ))}

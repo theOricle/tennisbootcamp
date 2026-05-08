@@ -109,3 +109,5 @@ _Update this at the start or end of each working session._
 - GitHub Actions CI: `.github/workflows/ci.yml` — runs lint + typecheck on every push/PR to main
 - EmailCapture: wired to `/api/newsletter` → writes timestamp, email, source to "newsletter" tab in existing Google Sheet; loading + error states handled; works in dev, awaiting Vercel env vars for production
 - VideoLessonsTeaser: removed 6 identical fake placeholder tiles; clean "coming soon" copy remains
+- CLAUDE.md: updated paths, deployment, CI, newsletter, outstanding work, open questions — now accurate as of 2026-05-08
+- LocationsGrid: added "Get directions →" Google Maps links from address; swapped emoji phone for plain text; website links now brand lime
