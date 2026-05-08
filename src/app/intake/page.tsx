@@ -194,6 +194,7 @@ export default function IntakePage() {
   const [stepIndex, setStepIndex] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
   const [form, setForm] = useState<FormState>({
     goals: [],
@@ -259,6 +260,7 @@ export default function IntakePage() {
 
   async function onSubmit() {
     setSubmitting(true);
+    setSubmitError(false);
     try {
       const res = await fetch("/api/intake", {
         method: "POST",
@@ -269,7 +271,7 @@ export default function IntakePage() {
       setSubmitted(true);
     } catch (err) {
       console.error("Intake submission error:", err);
-      alert("Something went wrong. Please try again.");
+      setSubmitError(true);
     } finally {
       setSubmitting(false);
     }
@@ -431,7 +433,12 @@ export default function IntakePage() {
           </div>
 
           {/* Footer */}
-          <div className="mt-8 flex items-center justify-between gap-3">
+          {submitError && (
+            <p className="mt-6 text-sm text-red-400">
+              Something went wrong — please try again or email us at info@tennisbootcamp.ca
+            </p>
+          )}
+          <div className="mt-4 flex items-center justify-between gap-3">
             <button
               type="button"
               onClick={back}

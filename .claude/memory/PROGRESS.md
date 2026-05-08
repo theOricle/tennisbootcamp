@@ -112,3 +112,4 @@ _Update this at the start or end of each working session._
 - CLAUDE.md: updated paths, deployment, CI, newsletter, outstanding work, open questions — now accurate as of 2026-05-08
 - LocationsGrid: added "Get directions →" Google Maps links from address; swapped emoji phone for plain text; website links now brand lime
 - Brand color consistency: Button.tsx primary → #B4E655 (was emerald-300); ProgramsGrid + Coaches link text aligned to brand lime; Navbar CTA now correct color on every page
+- Intake page: replaced alert() error handler with inline error message; added submitError state
