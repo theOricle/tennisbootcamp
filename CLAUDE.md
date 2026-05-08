@@ -46,6 +46,10 @@ Project was moved out of OneDrive on 2026-05-04 to eliminate file-truncation bug
 
 ## Environment variables required
 
+### GA4
+- `NEXT_PUBLIC_GA_ID` — Google Analytics 4 measurement ID (format: `G-XXXXXXXXXX`). Get from analytics.google.com → Admin → Data Streams → Web stream → Measurement ID. When set in Vercel, the `GoogleAnalytics` component in `layout.tsx` activates automatically. Leave unset in `.env.local` during dev to suppress tracking.
+
+### Google Sheets (intake + newsletter)
 Both `/api/intake` and `/api/newsletter` share the same credentials:
 
 - `GOOGLE_SHEETS_SPREADSHEET_ID` — target Google Sheet
@@ -195,8 +199,8 @@ The code has been partially populated with real info — Figma still shows old p
 - Dashboard, Profile, Our Team detail pages
 - Video lessons gated access (currently a clean "coming soon" teaser)
 - Maps embedded on locations page
-- Analytics (GA4 / Plausible / etc.)
-- Decide font strategy (Geist via `next/font`, Poppins, or custom)
+- Analytics: GA4 wired via `@next/third-parties/google` — fires when `NEXT_PUBLIC_GA_ID` is set in Vercel
+- Font: Geist via `next/font/google` — shipped, no further action needed
 
 **Design edits owner flagged**
 - Figma itself needs heavy editing — specific priority screens TBD with owner.
@@ -228,8 +232,7 @@ If OneDrive gets signed into this machine later, exclude `node_modules` and `.ne
 2. Which Figma screens are priority for the "heavy edits" pass?
 3. Real second coach name, bio, photo?
 4. Real social media URLs?
-5. Preferred font family (Geist? Poppins? Custom?)
-6. Analytics provider — GA4, Plausible, or none for now?
+5. Real second coach name, bio, photo?
 
 ## How to use this file
 

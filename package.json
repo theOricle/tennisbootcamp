@@ -10,6 +10,7 @@
     "agent:run": "node ops/controller/run-task.mjs"
   },
   "dependencies": {
+    "@next/third-parties": "^16.2.6",
     "googleapis": "^171.4.0",
     "next": "16.1.1",
     "react": "19.2.3",

@@ -113,3 +113,5 @@ _Update this at the start or end of each working session._
 - LocationsGrid: added "Get directions →" Google Maps links from address; swapped emoji phone for plain text; website links now brand lime
 - Brand color consistency: Button.tsx primary → #B4E655 (was emerald-300); ProgramsGrid + Coaches link text aligned to brand lime; Navbar CTA now correct color on every page
 - Intake page: replaced alert() error handler with inline error message; added submitError state
+- Geist font: loaded via next/font/google, CSS variable --font-geist-sans applied to <html>; globals.css + tailwind.config.js updated; system-ui fallback retained
+- GA4: @next/third-parties installed; GoogleAnalytics renders in layout when NEXT_PUBLIC_GA_ID env var is set; silent no-op in dev until real ID added to Vercel

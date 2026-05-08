@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
+import { Geist } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 
 // Update metadataBase when tennisbootcamp.ca is live in Vercel
 export const metadata: Metadata = {
@@ -24,13 +28,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={geist.variable}>
       <body>
         <Navbar />
         {children}
         <Footer />
       </body>
+      {process.env.NEXT_PUBLIC_GA_ID && (
+        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+      )}
     </html>
   );
 }
-
