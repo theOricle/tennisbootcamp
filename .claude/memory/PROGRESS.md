@@ -74,24 +74,34 @@ _Update this at the start or end of each working session._
 - Workflow decision: Claude Code for code-only work, Cowork for design/browser tasks only
 - Created automation Layer 2 plan (slash commands /ship /audit /checkpoint, GitHub Actions CI, pre-commit hooks) — to be set up via Claude Code
 
-## Updated Current State (2026-05-04)
+## Updated Current State (2026-05-08)
 
 ### Shipped & Live
-- [x] Hero with particle-wave background, brand-correct copy/CTAs, deployed to Vercel
-- [x] All previous homepage sections (ProgramsGrid, Coaches, EventsList, LocationsGrid, EmailCapture)
-- [x] /api/intake → Google Sheets (working in dev; production needs .env.local from other computer)
-- [x] Static sub-pages: Programs, Events, Locations, Video Lessons, About
-- [x] Vercel auto-deploy on main push
+- [x] Hero: particle-wave background, Spring Intake badge, brand copy, single CTA
+- [x] TrustBar, EmailCapture → /api/newsletter → Google Sheets "newsletter" tab
+- [x] ProgramsGrid, Coaches (Sina only), EventsList (empty state), LocationsGrid (Maps links)
+- [x] /api/intake → Google Sheets (dev works; production awaiting Vercel env vars)
+- [x] Sub-pages: Programs, Events, Locations, Video Lessons (clean coming-soon), About
+- [x] SEO: robots.ts, sitemap.ts, opengraph-image.tsx, per-page metadata on all routes
+- [x] Geist font (next/font/google), GA4 via @next/third-parties (fires when NEXT_PUBLIC_GA_ID set)
+- [x] GitHub Actions CI (lint + typecheck on push)
+- [x] Brand color consistency (#B4E655 throughout), inline error states, no alert() stubs
+- [x] Vercel auto-deploy on push to main
 
-### Not Yet Started / Next Up
-- [ ] .env.local credentials in Vercel env vars (waiting on transfer from other computer)
-- [ ] Custom domain tennisbootcamp.ca added to Vercel
-- [ ] Layer 2 automation: slash commands, GitHub Actions, pre-commit hooks
-- [ ] EmailCapture wired to a real backend (newsletter or 2nd Google Sheet tab)
-- [ ] Real event dates in events.ts (placeholder hidden until real dates land)
-- [ ] Calendly URL for bookingHref
-- [ ] Full Programs/Coaches/Registration polish to match Figma
-- [ ] Eventually: full Auth.js v5 + Neon Postgres + Prisma + Stripe Checkout build
+### Waiting on Owner
+- [ ] Vercel env vars from other computer (blocks production intake + newsletter)
+- [ ] NEXT_PUBLIC_GA_ID from analytics.google.com (blocks GA4 tracking)
+- [ ] Custom domain tennisbootcamp.ca in Vercel (also update BASE_URL in robots.ts + sitemap.ts)
+- [ ] Real social media URLs → src/content/site.ts
+- [ ] Calendly URL → bookingHref in src/content/site.ts
+- [ ] Real second coach → src/content/coaches.ts
+- [ ] Real event dates → src/content/events.ts (remove placeholder:true, fill real data)
+
+### Not Yet Built
+- [ ] Full registration + payment (Stripe/PayPal) — lead-capture only today
+- [ ] Auth.js v5 + Neon Postgres + Prisma — planned, not started
+- [ ] Dashboard, Profile, Our Team pages
+- [ ] Video lessons content + gated access
 
 ### Session Log
 
