@@ -2,7 +2,9 @@
 
 Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or Claude Code) should start by reading this.
 
-Last updated: 2026-05-08
+**Before doing anything else, also read** `.claude/memory/DECISIONS.md`, `.claude/memory/PROGRESS.md`, and `.claude/memory/OPEN_QUESTIONS.md`. They contain settled decisions, current progress, and open questions that this CLAUDE.md alone does not capture. Cowork does not auto-load them — you must read them explicitly.
+
+Last updated: 2026-05-10
 
 ---
 
