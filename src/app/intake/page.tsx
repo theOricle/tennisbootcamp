@@ -319,12 +319,12 @@ export default function IntakePage() {
               >
                 Back to Home
               </Link>
-              <a
+              <Link
                 href="/programs"
                 className="rounded-full bg-emerald-300 px-5 py-2 text-sm font-semibold text-[#061427] hover:bg-emerald-200"
               >
                 View Programs
-              </a>
+              </Link>
             </div>
           </div>
         </div>
