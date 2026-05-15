@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 type StepType = "single" | "multi" | "text" | "contact";
 
@@ -85,7 +86,19 @@ function OptionCard({
   );
 }
 
-export default function IntakePage() {
+function IntakePageInner() {
+  const searchParams = useSearchParams();
+  const programParam = searchParams.get("program");
+
+  const slugToOptionId: Record<string, string> = {
+    "bootcamps": "bootcamp",
+    "kids-summer-camp": "camp",
+    "group-lessons": "group",
+  };
+  const preselectedProgram = programParam && slugToOptionId[programParam]
+    ? [slugToOptionId[programParam]]
+    : [];
+
   const steps: Step[] = useMemo(
     () => [
       {
@@ -198,7 +211,7 @@ export default function IntakePage() {
 
   const [form, setForm] = useState<FormState>({
     goals: [],
-    programs: [],
+    programs: preselectedProgram,
     newsletter: false,
   });
 
@@ -474,5 +487,13 @@ export default function IntakePage() {
                </p>
       </div>
     </main>
+  );
+}
+
+export default function IntakePage() {
+  return (
+    <Suspense>
+      <IntakePageInner />
+    </Suspense>
   );
 }
