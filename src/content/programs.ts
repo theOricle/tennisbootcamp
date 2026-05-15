@@ -5,17 +5,16 @@ export const programs: Program[] = [
     id: "bootcamps",
     slug: "bootcamps",
     title: "Bootcamps",
-    description: "High-intensity group training for measurable improvement.",
+    description: "High-intensity group training for athletes who compete or want to.",
     longDescription:
-      "Six-week competitive bootcamps for serious players. Two on-court sessions plus one fitness session weekly. " +
-      "Stroke mechanics, point construction, mental toughness, and match-play scenarios — assessed against measurable benchmarks. " +
-      "Sina Kassaian leads each cohort.",
+      "If you're serious about competing, this is where you belong. Each six-week cohort runs two on-court sessions plus one fitness session every week — structured reps, live-ball patterns, and real match-play pressure. " +
+      "Sina leads every session and tracks your progress against actual benchmarks, so you finish each cohort knowing exactly what improved and what to sharpen next. Not a drop-in class. Not casual hitting. A real training block.",
     type: "Bootcamp",
     comingSoon: false,
     ctaText: "Get Priority Placement",
     ctaHref: "/intake?program=bootcamps",
     imageSrc: "/images/programs/bootcamps.png",
-    schedule: "Six-week cohorts, two on-court + one fitness session per week",
+    schedule: "Six-week cohorts · two on-court + one fitness session per week",
     currency: "CAD",
     ageGroup: "Ages 14+",
     locationId: "balliol",
@@ -24,11 +23,11 @@ export const programs: Program[] = [
     id: "kids-summer-camp",
     slug: "kids-summer-camp",
     title: "Kid's Summer Camp",
-    description: "Fun, structured training for juniors with fundamentals and confidence.",
+    description: "A full-day tennis experience your kid will actually want to come back to.",
     longDescription:
-      "Full-day junior tennis camp running through July and August. Stroke fundamentals, match play, " +
-      "physical literacy games, and team challenges. Lunch and snacks included. " +
-      "Open to all skill levels; juniors are placed in matched groups.",
+      "Running through July and August, every day is a mix of stroke fundamentals, match play, physical literacy games, and team challenges. " +
+      "Kids are grouped by ability so everyone gets the right level of challenge — whether it's their first time on a court or they've been playing for a few years. " +
+      "All skill levels welcome. Lunch and snacks included.",
     type: "Summer Camp",
     comingSoon: true,
     ctaText: "Notify Me When Open",
@@ -42,10 +41,11 @@ export const programs: Program[] = [
     id: "group-lessons",
     slug: "group-lessons",
     title: "Group Lessons",
-    description: "Adult group lessons with clear progressions and lots of reps.",
+    description: "Adult group lessons that actually move the needle.",
     longDescription:
-      "Weekly group lessons for adults — 90 minutes, max 6 players per court. Progressions across forehand, " +
-      "backhand, serve, return, volleys, and live-ball patterns. Designed for steady improvement, not warm-ups and rallies.",
+      "Each 90-minute session is capped at 6 players per court — more reps, more feedback, less waiting around. " +
+      "You'll work through structured progressions across your forehand, backhand, serve, return, volleys, and live-ball patterns. " +
+      "No filler drills. No endless warm-up rallies. Every week builds on the last, and you'll feel the difference.",
     type: "Group Lessons",
     comingSoon: true,
     ctaText: "Notify Me When Open",
