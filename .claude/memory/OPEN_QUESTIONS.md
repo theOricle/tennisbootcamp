@@ -86,3 +86,13 @@ Removed 2026-05-07. Console.log block deleted from route.ts.
 **Question**: When to switch the primary domain from tennisbootcamp-seven.vercel.app to tennisbootcamp.ca? Requires DNS access.
 **Blocking**: Branded shareable URL; SEO under the real domain.
 **Raised**: 2026-05-04
+
+### GA4 measurement ID
+**Question**: When will the GA4 property be created at analytics.google.com and the measurement ID (`G-XXXXXXX`) added to Vercel env vars? Code scaffolding is already in place via `NEXT_PUBLIC_GA_ID`.
+**Blocking**: Real analytics on the live site. Site is deployed but tracks nothing right now.
+**Raised**: 2026-05-04
+
+### program_interest Google Sheet tab
+**Question**: Has the `program_interest` tab been manually created in the Google Sheet?
+**Blocking**: First production submission to `/api/program-interest` will fail if the tab doesn't exist. The API writes the header row automatically but cannot create the tab itself.
+**Raised**: 2026-05-15
