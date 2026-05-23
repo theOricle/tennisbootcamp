@@ -5,6 +5,12 @@ import Link from "next/link";
 import { programs } from "@/content/programs";
 import { locations } from "@/content/locations";
 import { ProgramInterestForm } from "@/components/sections/ProgramInterestForm";
+import {
+  cohortsForProgram,
+  formatDateRange,
+  formatDaysTimes,
+  formatCohortPrice,
+} from "@/lib/cohorts";
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -30,6 +36,22 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const location = program.locationId
     ? locations.find((l) => l.id === program.locationId)
     : undefined;
+
+  const cohorts = cohortsForProgram(program.id);
+  const openCohorts = cohorts.filter(
+    (c) => c.status === "open" || c.status === "upcoming"
+  );
+
+  // Group cohorts by locationId so we can render one section per venue
+  const cohortsByLocation = openCohorts.reduce<Record<string, typeof openCohorts>>(
+    (acc, c) => {
+      (acc[c.locationId] ??= []).push(c);
+      return acc;
+    },
+    {}
+  );
+
+  const hasOpenCohorts = openCohorts.length > 0;
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -91,8 +113,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               {program.longDescription}
             </p>
 
-            {/* Location */}
-            {location && (
+            {/* Location (fallback for programs without cohorts at multiple venues) */}
+            {location && cohorts.length === 0 && (
               <div className="mt-6">
                 <h3 className="text-base font-semibold text-[#B4E655]">{location.name}</h3>
                 <div className="mt-1 flex items-start gap-2 text-sm text-white/55">
@@ -116,57 +138,134 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           </div>
         </div>
 
+        {/* What's included */}
+        {program.includes && program.includes.length > 0 && (
+          <>
+            <div className="mt-12 border-t border-white/10" />
+            <div className="mt-10">
+              <h2 className="text-xl font-semibold text-white">What&apos;s included</h2>
+              <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                {program.includes.map((item) => (
+                  <li key={item} className="flex items-start gap-2.5 text-sm text-white/80">
+                    <svg
+                      className="mt-0.5 h-4 w-4 shrink-0 text-[#B4E655]"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
+
         {/* Divider */}
         <div className="mt-12 border-t border-white/10" />
 
-        {/* CTA section */}
+        {/* Cohort cards or coming-soon */}
         <div className="mt-10">
-          {!program.comingSoon ? (
-            /* Available: schedule details + enroll CTA */
+          {!program.comingSoon && hasOpenCohorts ? (
+            /* Available: cohort cards grouped by location */
             <div>
-              {program.schedule && (
-                <div className="mb-8 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-white/10 bg-white/5 px-5 py-4">
-                    <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/40">
+              <h2 className="mb-6 text-xl font-semibold text-white">Upcoming cohorts</h2>
+              {Object.entries(cohortsByLocation).map(([locationId, locationCohorts]) => {
+                const loc = locations.find((l) => l.id === locationId);
+                return (
+                  <div key={locationId} className="mb-8">
+                    {/* Location header */}
+                    <div className="mb-3 flex items-center gap-2">
                       <svg
-                        className="h-3.5 w-3.5"
+                        className="h-4 w-4 shrink-0 text-[#B4E655]"
                         fill="none"
                         stroke="currentColor"
-                        strokeWidth={2}
+                        strokeWidth={1.8}
                         viewBox="0 0 24 24"
                       >
-                        <rect x="3" y="4" width="18" height="18" rx="2" />
-                        <path d="M16 2v4M8 2v4M3 10h18" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
+                        />
                       </svg>
-                      Schedule
+                      <span className="text-sm font-semibold text-[#B4E655]">
+                        {loc ? loc.name : locationId}
+                      </span>
+                      {loc && (
+                        <span className="text-sm text-white/40">{loc.address}</span>
+                      )}
                     </div>
-                    <p className="text-sm text-[#B4E655]">{program.schedule}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 px-5 py-4">
-                    <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/40">
-                      <svg
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        viewBox="0 0 24 24"
-                      >
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 6v6l4 2" />
-                      </svg>
-                      Duration
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {locationCohorts.map((cohort) => (
+                        <div
+                          key={cohort.id}
+                          className="rounded-xl border border-white/10 bg-white/5 px-5 py-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-white">{cohort.label}</p>
+                              <p className="mt-1 text-sm text-[#B4E655]">
+                                {formatDateRange(cohort)}
+                              </p>
+                              <p className="mt-0.5 text-sm text-white/60">
+                                {formatDaysTimes(cohort)}
+                              </p>
+                              <p className="mt-0.5 text-sm text-white/50">
+                                {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className="text-sm font-semibold text-white">
+                                {formatCohortPrice(cohort)}
+                              </p>
+                              <span
+                                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                  cohort.status === "open"
+                                    ? "bg-[#B4E655]/15 text-[#B4E655]"
+                                    : cohort.status === "waitlist"
+                                    ? "bg-yellow-400/10 text-yellow-200"
+                                    : "bg-white/10 text-white/50"
+                                }`}
+                              >
+                                {cohort.status === "open"
+                                  ? "Spots open"
+                                  : cohort.status === "waitlist"
+                                  ? "Waitlist"
+                                  : cohort.status === "upcoming"
+                                  ? "Coming soon"
+                                  : "Full"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            <Link
+                              href={`/enroll/${cohort.id}`}
+                              className="block w-full rounded-lg bg-[#B4E655] py-2 text-center text-sm font-semibold text-[#061427] hover:brightness-110 transition"
+                            >
+                              Enroll →
+                            </Link>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <p className="text-sm text-[#B4E655]">Six-week cohort</p>
                   </div>
-                </div>
-              )}
-              <Link
-                href={program.ctaHref}
-                className="inline-block rounded-xl bg-[#B4E655] px-8 py-4 text-base font-semibold text-[#061427] hover:brightness-110 transition"
-              >
-                {program.ctaText}
-              </Link>
+                );
+              })}
             </div>
+          ) : !program.comingSoon ? (
+            /* Available but no open cohorts yet — fall back to intake CTA */
+            <Link
+              href={program.ctaHref}
+              className="inline-block rounded-xl bg-[#B4E655] px-8 py-4 text-base font-semibold text-[#061427] hover:brightness-110 transition"
+            >
+              {program.ctaText}
+            </Link>
           ) : (
             /* Coming soon: registration alert + email capture */
             <div className="rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-6 py-6 md:px-8 md:py-7">
