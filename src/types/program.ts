@@ -17,4 +17,5 @@ export type Program = {
   currency?: "CAD" | "USD";
   ageGroup?: string;
   locationId?: string;
+  includes?: string[];
 };

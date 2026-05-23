@@ -18,6 +18,15 @@ export const programs: Program[] = [
     currency: "CAD",
     ageGroup: "Ages 14+",
     locationId: "balliol",
+    includes: [
+      "Live-ball pattern play (cross-court, inside-out, serve+1)",
+      "Explosive first-step & change-of-direction footwork",
+      "Second-serve reliability under pressure",
+      "Point construction & shot tolerance",
+      "Match-play simulation with score pressure",
+      "Dedicated strength & conditioning block",
+      "Benchmarked progress each cohort",
+    ],
   },
   {
     id: "kids-summer-camp",
@@ -36,6 +45,15 @@ export const programs: Program[] = [
     schedule: "Weeks running July–August (dates TBA)",
     ageGroup: "Ages 7–13",
     currency: "CAD",
+    includes: [
+      "Stroke fundamentals (forehand, backhand, serve, volley)",
+      "Physical-literacy & agility games",
+      "Daily match play grouped by ability",
+      "Hand-eye & movement drills",
+      "Teamwork challenges and on-court games",
+      "Daily skill tracking",
+      "Lunch & snacks included",
+    ],
   },
   {
     id: "group-lessons",
@@ -54,5 +72,12 @@ export const programs: Program[] = [
     schedule: "Weekly evening + weekend slots (schedule TBA)",
     ageGroup: "Adults 18+",
     currency: "CAD",
+    includes: [
+      "Capped at 6 per court — more reps, less standing around",
+      "Structured progressions across every stroke",
+      "Live-ball rally tolerance",
+      "Tactical patterns (serve / return / approach / net)",
+      "Real-time correction every session",
+    ],
   },
 ];

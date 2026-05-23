@@ -4,7 +4,9 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Before doing anything else, also read** `.claude/memory/DECISIONS.md`, `.claude/memory/PROGRESS.md`, and `.claude/memory/OPEN_QUESTIONS.md`. They contain settled decisions, current progress, and open questions that this CLAUDE.md alone does not capture. Cowork does not auto-load them — you must read them explicitly.
 
-Last updated: 2026-05-10
+**Active build plan:** `ops/plans/enrollment-and-accounts.md` — execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive.
+
+Last updated: 2026-05-22
 
 ---
 
