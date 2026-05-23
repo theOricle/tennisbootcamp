@@ -116,3 +116,43 @@ _Record architectural, design, and product decisions here. Include context and t
 **Decision**: Code-only work (components, animations, fixes, refactors) is done via Claude Code in the terminal. Cowork is used only for browser-driven workflows (Vercel UI, Figma reference, design review).
 **Why**: Cowork's browser control and file-mount overhead burns ~10–50× more tokens per turn than Claude Code for equivalent code work.
 **Alternatives considered**: All-Cowork — repeatedly hit usage limits.
+
+### 2026-05-04 — Analytics: GA4 (not Plausible)
+**Decision**: Wire GA4 via `next/third-parties` GoogleAnalytics component. `NEXT_PUBLIC_GA_ID` env var holds the measurement ID.
+**Why**: Owner is planning Google Ads — GA4 connects natively for conversion tracking, audiences, and quality scoring. Plausible's privacy/UX wins don't matter for a small Toronto business running paid traffic.
+**Alternatives considered**: Plausible — better DX but no Google Ads integration; nothing — wastes existing traffic.
+
+### 2026-05-04 — Font: Geist via next/font
+**Decision**: Geist is the default body font, applied via `next/font/google` (or local — whichever Next 16 ships) overriding Tailwind's `font-sans`.
+**Why**: Bundled with Next.js, zero extra setup or load-time cost, premium-clean feel that matches brand voice better than system-ui.
+**Alternatives considered**: system-ui (too generic for premium positioning), Poppins/Inter (fine but adds a font request, no real upside over Geist).
+
+### 2026-05-04 — Guest checkout enrollment model (no required account)
+**Decision**: Anyone can enroll in a program without creating an account. Email is the unique identifier on the Enrollment row. Auth becomes opt-in for users who want a dashboard.
+**Why**: Lower drop-off at the conversion step. Forced signup at checkout kills conversion across e-commerce.
+**Alternatives considered**: Required account before enrollment — rejected for conversion reasons.
+
+### 2026-05-04 — Auto-provision account + claim flow
+**Decision**: After successful Stripe payment, the webhook auto-creates a User row from the enrollment data (passwordHash null, emailVerified null). User receives an email: "You're enrolled — click to set your password and access your dashboard." Clicking the one-time-token link lets them set a password and log in. Returning customers (existing User with passwordHash) get a normal confirmation email.
+**Why**: Smoothest possible UX — guest checkout up front, account is just there waiting for them to claim it. Common pattern (Eventbrite, etc.). Email is the unique key — no duplicate accounts.
+**Alternatives considered**: Magic-link only (no password) — simpler but less control for users who want regular logins. Strict signup at checkout — rejected.
+
+### 2026-05-04 — Program detail pages built BEFORE auth/payment system
+**Decision**: Build individual `/programs/[slug]` pages first, then the enrollment flow, then auth/payments. "Coming soon" programs get email-capture into a `program_interest` Google Sheet tab. The enrolled-in-now ("Bootcamps") gets an Enroll CTA pointed at `/intake?program=bootcamps` until the real enrollment flow ships.
+**Why**: Logical dependency order. Can't build enrollment without something to enroll into. Also lets Bootcamps capture the next ~6 weeks of leads via the existing intake form while the full payment system gets built.
+**Alternatives considered**: Auth-first then pages — premature; users can't engage with empty program pages.
+
+### 2026-05-04 — Realistic enrollment build estimate (~7–10 hours, not 42)
+**Decision**: With Claude Code driving, the full enrollment + auth + payments build is realistically 7–10 hours of owner wall-clock time across 3–4 sessions, not the 42-hour estimate from the original plan (that was based on a human dev working solo).
+**Why**: Owner approves+tests, Claude Code writes. Real bottlenecks are Neon + Resend + Stripe account setup and the few times Auth.js v5 beta or Stripe webhooks need debugging.
+**Alternatives considered**: N/A — this is a re-estimate, not a fork in the road.
+
+### 2026-05-23 — /api/intake column contract frozen at 14 + 3 additive (cols 1–17)
+**Decision**: The 14 original Google Sheets columns (`timestamp … follow_up_status`) are permanently frozen — never reorder, rename, or remove them. Phase 2 appended 3 new columns at the end: `preferred_locations` (col 15), `availability` (col 16), `recommended_program` (col 17). Append range widened from `A:N` to `A:Q`. Any future extension must append after col 17.
+**Why**: The sheet may already have rows written under the 14-column layout; reordering would silently corrupt historical data. Additive-only is the only safe migration pattern for a live spreadsheet.
+**Alternatives considered**: Folding `preferredLocationIds` into the existing `area` column only — rejected because it loses the structured array; maintaining two representations (area + preferred_locations) adds redundancy but preserves backward compat for any consumer reading col 9.
+
+### 2026-05-23 — Enroll CTA points to /programs/[slug] until Phase 4
+**Decision**: Recommendation cards (and cohort cards on the detail page) link to `/programs/[slug]` for now. The `/enroll/[cohortId]` route does not exist until Phase 4. A `// TODO: link to /enroll/[cohortId] in Phase 4` comment marks every such link.
+**Why**: The recommendation UI needs a working CTA today; Phase 4 hasn't been built yet. Sending users to the program detail page is a valid fallback — they see the cohort cards and can submit intent.
+**Alternatives considered**: Disable the Enroll button until Phase 4 — rejected; a dead button harms conversion and user trust.
