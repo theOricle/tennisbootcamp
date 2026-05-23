@@ -36,10 +36,13 @@ export async function POST(req: NextRequest) {
     const sheets = google.sheets({ version: "v4", auth });
 
     // Ensure header row exists and is complete before appending data
+    // Columns 1–14 are frozen (never reorder or remove).
+    // Columns 15–17 were added 2026-05-23 (additive only).
     const HEADERS = [
       "timestamp", "name", "email", "phone", "who", "level",
       "goals", "programs", "area", "notes", "newsletter",
       "priority_score", "lead_type", "follow_up_status",
+      "preferred_locations", "availability", "recommended_program",
     ];
 
     const headerRes = await sheets.spreadsheets.values.get({
@@ -59,6 +62,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // col 9 (area): accept new preferredLocationIds array or legacy area string
+    const areaValue = body.area
+      ? String(body.area)
+      : Array.isArray(body.preferredLocationIds)
+      ? body.preferredLocationIds.join(", ")
+      : "";
+
     const row = [
       new Date().toISOString(),
       body.name ?? "",
@@ -68,7 +78,7 @@ export async function POST(req: NextRequest) {
       body.level ?? "",
       Array.isArray(body.goals) ? body.goals.join(", ") : "",
       Array.isArray(body.programs) ? body.programs.join(", ") : "",
-      body.area ?? "",
+      areaValue,
       body.notes ?? "",
       body.newsletter === true ? "yes" : body.newsletter === false ? "no" : "",
       // priority_score
@@ -81,11 +91,15 @@ export async function POST(req: NextRequest) {
         : "standard",
       // follow_up_status
       "new",
+      // cols 15–17 (additive 2026-05-23)
+      Array.isArray(body.preferredLocationIds) ? body.preferredLocationIds.join(", ") : "",
+      Array.isArray(body.availability) ? body.availability.join(", ") : "",
+      body.recommendedProgram ?? "",
     ];
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${tabName}!A:N`,
+      range: `${tabName}!A:Q`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] },
     });
