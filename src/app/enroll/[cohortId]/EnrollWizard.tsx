@@ -114,10 +114,12 @@ function OrderSummary({
   cohort,
   program,
   location,
+  seatsRemaining,
 }: {
   cohort: Cohort;
   program: Program | undefined;
   location: Location | undefined;
+  seatsRemaining: number | null;
 }) {
   const price = formatCohortPrice(cohort);
   return (
@@ -178,7 +180,7 @@ function OrderSummary({
         </div>
       </div>
 
-      {/* Price */}
+      {/* Price + availability */}
       <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
         <div className="flex items-center justify-between">
           <p className="text-sm text-white/60">Total</p>
@@ -187,6 +189,11 @@ function OrderSummary({
         {cohort.priceCents === 0 && (
           <p className="mt-1 text-xs text-white/40">
             Price will be confirmed before payment is collected.
+          </p>
+        )}
+        {seatsRemaining !== null && seatsRemaining <= 3 && (
+          <p className="mt-2 text-xs font-medium text-yellow-200">
+            Only {seatsRemaining} spot{seatsRemaining === 1 ? "" : "s"} left
           </p>
         )}
       </div>
@@ -302,8 +309,8 @@ function ConsentStep({
     <div className="space-y-6">
       <div>
         <p className="text-sm text-white/70 leading-relaxed">
-          Before we can confirm your enrollment, {isMinor ? "the guardian" : "you"} must
-          read and agree to the Terms &amp; Liability Waiver.
+          Before we can process payment, {isMinor ? "the guardian" : "you"} must read and
+          agree to the Terms &amp; Liability Waiver and Refund Policy.
         </p>
       </div>
 
@@ -331,6 +338,15 @@ function ConsentStep({
             className="text-[#B4E655] underline-offset-2 hover:underline"
           >
             Terms &amp; Liability Waiver
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/legal/refund-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#B4E655] underline-offset-2 hover:underline"
+          >
+            Refund Policy
           </Link>
           {isMinor && (
             <span className="ml-1 text-white/50">
@@ -341,9 +357,7 @@ function ConsentStep({
       </label>
 
       {/* Typed-name signature */}
-      <FieldGroup
-        label={`Type your full name to sign (${signerLabel})`}
-      >
+      <FieldGroup label={`Type your full name to sign (${signerLabel})`}>
         <TextInput
           value={form.consentSignedName}
           onChange={(v) => setForm((s) => ({ ...s, consentSignedName: v }))}
@@ -354,78 +368,6 @@ function ConsentStep({
         </p>
       </FieldGroup>
     </div>
-  );
-}
-
-// ─── Confirmation screen ──────────────────────────────────────────────────────
-
-function ConfirmationScreen({
-  cohort,
-  program,
-  location,
-}: {
-  cohort: Cohort;
-  program: Program | undefined;
-  location: Location | undefined;
-}) {
-  return (
-    <main className="min-h-screen bg-[#061427] text-white">
-      <div className="mx-auto max-w-2xl px-6 py-16">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20">
-              <svg
-                className="h-4 w-4 text-[#B4E655]"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.5}
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <span className="text-sm font-semibold text-[#B4E655]">Enrollment Received</span>
-          </div>
-
-          <h1 className="mt-3 text-2xl font-semibold md:text-3xl">
-            Your spot is being held.
-          </h1>
-          <p className="mt-2 text-sm text-white/65 leading-relaxed">
-            We&apos;ve received your enrollment for{" "}
-            <strong className="text-white">{program?.title ?? cohort.programId}</strong>
-            {location && (
-              <>
-                {" "}at{" "}
-                <strong className="text-white">{location.name}</strong>
-              </>
-            )}
-            {" "}({formatDateRange(cohort)}). We&apos;ll be in touch with payment details shortly
-            — your place is reserved until then.
-          </p>
-
-          <div className="mt-6 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
-            <span className="font-semibold text-white">Next step: </span>
-            Payment is processed in a separate step. We&apos;ll send you an email with
-            instructions once the payment system is ready.
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/"
-              className="rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
-            >
-              Back to Home
-            </Link>
-            <Link
-              href={`/programs/${program?.slug ?? cohort.programId}`}
-              className="rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] hover:brightness-110 transition"
-            >
-              View Program
-            </Link>
-          </div>
-        </div>
-      </div>
-    </main>
   );
 }
 
@@ -447,16 +389,17 @@ export function EnrollWizard({
   cohort,
   program,
   location,
+  seatsRemaining,
 }: {
   cohort: Cohort;
   program: Program | undefined;
   location: Location | undefined;
+  seatsRemaining: number | null;
 }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const age = computeAge(form.participantDob);
   const isMinor = age !== null && age < 18;
@@ -486,9 +429,10 @@ export function EnrollWizard({
 
   async function submit() {
     setSubmitting(true);
-    setSubmitError(false);
+    setSubmitError(null);
     try {
-      const res = await fetch("/api/enroll", {
+      // Step 1: save enrollment to Google Sheets
+      const enrollRes = await fetch("/api/enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -508,12 +452,40 @@ export function EnrollWizard({
           waiverVersion: WAIVER_VERSION,
         }),
       });
-      if (!res.ok) throw new Error("Submission failed");
-      setSubmitted(true);
+
+      if (!enrollRes.ok) throw new Error("enrollment");
+
+      const enrollData = await enrollRes.json();
+
+      // Step 2: create checkout session (real Stripe or mock redirect)
+      const checkoutRes = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cohortId: cohort.id,
+          programTitle: program?.title ?? cohort.programId,
+          priceCents: cohort.priceCents,
+          enrollmentRowNumber: enrollData.rowNumber,
+        }),
+      });
+
+      if (!checkoutRes.ok) throw new Error("checkout");
+
+      const { sessionUrl } = await checkoutRes.json();
+
+      // Redirect to Stripe Checkout or confirmed page (mock)
+      window.location.href = sessionUrl;
     } catch (err) {
-      console.error("Enroll error:", err);
-      setSubmitError(true);
-    } finally {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "checkout") {
+        setSubmitError(
+          "Your enrollment was saved but we couldn't start checkout. Email info@tennisbootcamp.ca and we'll sort it out."
+        );
+      } else {
+        setSubmitError(
+          "Something went wrong — please try again or email us at info@tennisbootcamp.ca"
+        );
+      }
       setSubmitting(false);
     }
   }
@@ -529,12 +501,6 @@ export function EnrollWizard({
 
   function back() {
     setStep((s) => Math.max(s - 1, 0));
-  }
-
-  if (submitted) {
-    return (
-      <ConfirmationScreen cohort={cohort} program={program} location={location} />
-    );
   }
 
   const isLastStep = step === TOTAL_STEPS - 1;
@@ -574,7 +540,12 @@ export function EnrollWizard({
 
           {/* Step content */}
           {step === 0 && (
-            <OrderSummary cohort={cohort} program={program} location={location} />
+            <OrderSummary
+              cohort={cohort}
+              program={program}
+              location={location}
+              seatsRemaining={seatsRemaining}
+            />
           )}
           {step === 1 && (
             <RegistrantStep form={form} setForm={setForm} isMinor={isMinor} />
@@ -585,9 +556,7 @@ export function EnrollWizard({
 
           {/* Error */}
           {submitError && (
-            <p className="mt-4 text-sm text-red-400">
-              Something went wrong — please try again or email us at info@tennisbootcamp.ca
-            </p>
+            <p className="mt-4 text-sm text-red-400">{submitError}</p>
           )}
 
           {/* Navigation */}
@@ -618,8 +587,8 @@ export function EnrollWizard({
             >
               {isLastStep
                 ? submitting
-                  ? "Submitting…"
-                  : "Submit Enrollment"
+                  ? "Redirecting…"
+                  : "Continue to Payment →"
                 : "Continue →"}
             </button>
           </div>

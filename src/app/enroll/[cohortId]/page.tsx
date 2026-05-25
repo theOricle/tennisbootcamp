@@ -3,7 +3,10 @@ import type { Metadata } from "next";
 import { cohorts } from "@/content/cohorts";
 import { programs } from "@/content/programs";
 import { locations } from "@/content/locations";
+import { getSeatsRemaining } from "@/lib/seatCount";
 import { EnrollWizard } from "./EnrollWizard";
+
+export const dynamic = "force-dynamic";
 
 type PageProps = { params: Promise<{ cohortId: string }> };
 
@@ -24,8 +27,18 @@ export default async function EnrollPage({ params }: PageProps) {
   const cohort = cohorts.find((c) => c.id === cohortId);
   if (!cohort || cohort.status === "full") notFound();
 
+  const seatsRemaining = await getSeatsRemaining(cohort.id, cohort.capacityMax);
+  if (seatsRemaining !== null && seatsRemaining <= 0) notFound();
+
   const program = programs.find((p) => p.id === cohort.programId);
   const location = locations.find((l) => l.id === cohort.locationId);
 
-  return <EnrollWizard cohort={cohort} program={program} location={location} />;
+  return (
+    <EnrollWizard
+      cohort={cohort}
+      program={program}
+      location={location}
+      seatsRemaining={seatsRemaining}
+    />
+  );
 }
