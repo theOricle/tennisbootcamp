@@ -147,6 +147,12 @@ _Record architectural, design, and product decisions here. Include context and t
 **Why**: Owner approves+tests, Claude Code writes. Real bottlenecks are Neon + Resend + Stripe account setup and the few times Auth.js v5 beta or Stripe webhooks need debugging.
 **Alternatives considered**: N/A — this is a re-estimate, not a fork in the road.
 
+### 2026-05-24 — Primary CTA label changed to "Find My Program"
+**Decision**: The top-level marketing CTA (Hero button, Navbar primary button) is now "Find My Program" → `/intake`. The secondary hero CTA "Browse Programs" → `/programs` is added as an outline button at lower visual weight.
+**Why**: "Find My Program" better describes the intake-as-recommendation-engine flow built in Phase 2. "Get Priority Placement" was the right label when intake was purely a waitlist; now the intake actively recommends a cohort, so the label should match the outcome.
+**Alternatives considered**: Keep "Get Priority Placement" (brand.md default) — rejected because the CTA's promise no longer matches the experience; users now get a matched program recommendation, not just a spot on a list.
+**Scope**: Change applies to Hero and Navbar only. All copy INSIDE the intake flow ("PRIORITY PLACEMENT INTAKE" heading, "You're on the Priority Placement List" success copy) is untouched — that language is correct in context and should stay.
+
 ### 2026-05-23 — /api/intake column contract frozen at 14 + 3 additive (cols 1–17)
 **Decision**: The 14 original Google Sheets columns (`timestamp … follow_up_status`) are permanently frozen — never reorder, rename, or remove them. Phase 2 appended 3 new columns at the end: `preferred_locations` (col 15), `availability` (col 16), `recommended_program` (col 17). Append range widened from `A:N` to `A:Q`. Any future extension must append after col 17.
 **Why**: The sheet may already have rows written under the 14-column layout; reordering would silently corrupt historical data. Additive-only is the only safe migration pattern for a live spreadsheet.
