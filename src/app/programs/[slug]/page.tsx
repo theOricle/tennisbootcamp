@@ -11,12 +11,11 @@ import {
   formatDaysTimes,
   formatCohortPrice,
 } from "@/lib/cohorts";
+import { getSeatsRemaining } from "@/lib/seatCount";
+
+export const dynamic = "force-dynamic";
 
 type PageProps = { params: Promise<{ slug: string }> };
-
-export async function generateStaticParams() {
-  return programs.map((p) => ({ slug: p.slug }));
-}
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
@@ -41,6 +40,12 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const openCohorts = cohorts.filter(
     (c) => c.status === "open" || c.status === "upcoming"
   );
+
+  // Fetch live seat counts for all cohorts in parallel (null = credentials not set)
+  const seatCountEntries = await Promise.all(
+    openCohorts.map(async (c) => [c.id, await getSeatsRemaining(c.id, c.capacityMax)] as const)
+  );
+  const seatCounts: Record<string, number | null> = Object.fromEntries(seatCountEntries);
 
   // Group cohorts by locationId so we can render one section per venue
   const cohortsByLocation = openCohorts.reduce<Record<string, typeof openCohorts>>(
@@ -201,58 +206,75 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {locationCohorts.map((cohort) => (
-                        <div
-                          key={cohort.id}
-                          className="rounded-xl border border-white/10 bg-white/5 px-5 py-4"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-white">{cohort.label}</p>
-                              <p className="mt-1 text-sm text-[#B4E655]">
-                                {formatDateRange(cohort)}
-                              </p>
-                              <p className="mt-0.5 text-sm text-white/60">
-                                {formatDaysTimes(cohort)}
-                              </p>
-                              <p className="mt-0.5 text-sm text-white/50">
-                                {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
-                              </p>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <p className="text-sm font-semibold text-white">
-                                {formatCohortPrice(cohort)}
-                              </p>
-                              <span
-                                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                  cohort.status === "open"
-                                    ? "bg-[#B4E655]/15 text-[#B4E655]"
+                      {locationCohorts.map((cohort) => {
+                        const seats = seatCounts[cohort.id] ?? null;
+                        const isFull = seats !== null && seats <= 0;
+                        const isLowStock = seats !== null && seats > 0 && seats <= 3;
+                        return (
+                          <div
+                            key={cohort.id}
+                            className="rounded-xl border border-white/10 bg-white/5 px-5 py-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-white">{cohort.label}</p>
+                                <p className="mt-1 text-sm text-[#B4E655]">
+                                  {formatDateRange(cohort)}
+                                </p>
+                                <p className="mt-0.5 text-sm text-white/60">
+                                  {formatDaysTimes(cohort)}
+                                </p>
+                                <p className="mt-0.5 text-sm text-white/50">
+                                  {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className="text-sm font-semibold text-white">
+                                  {formatCohortPrice(cohort)}
+                                </p>
+                                <span
+                                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                    isFull
+                                      ? "bg-white/10 text-white/40"
+                                      : cohort.status === "open"
+                                      ? "bg-[#B4E655]/15 text-[#B4E655]"
+                                      : cohort.status === "waitlist"
+                                      ? "bg-yellow-400/10 text-yellow-200"
+                                      : "bg-white/10 text-white/50"
+                                  }`}
+                                >
+                                  {isFull
+                                    ? "Full"
+                                    : isLowStock
+                                    ? `${seats} spot${seats === 1 ? "" : "s"} left`
+                                    : cohort.status === "open"
+                                    ? "Spots open"
                                     : cohort.status === "waitlist"
-                                    ? "bg-yellow-400/10 text-yellow-200"
-                                    : "bg-white/10 text-white/50"
-                                }`}
-                              >
-                                {cohort.status === "open"
-                                  ? "Spots open"
-                                  : cohort.status === "waitlist"
-                                  ? "Waitlist"
-                                  : cohort.status === "upcoming"
-                                  ? "Coming soon"
-                                  : "Full"}
-                              </span>
+                                    ? "Waitlist"
+                                    : cohort.status === "upcoming"
+                                    ? "Coming soon"
+                                    : "Full"}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="mt-4">
+                              {!isFull && cohort.status !== "upcoming" ? (
+                                <Link
+                                  href={`/enroll/${cohort.id}`}
+                                  className="block w-full rounded-lg bg-[#B4E655] py-2 text-center text-sm font-semibold text-[#061427] hover:brightness-110 transition"
+                                >
+                                  Enroll →
+                                </Link>
+                              ) : (
+                                <div className="block w-full rounded-lg bg-white/5 py-2 text-center text-sm font-semibold text-white/30">
+                                  {isFull ? "Cohort full" : "Registration opening soon"}
+                                </div>
+                              )}
                             </div>
                           </div>
-
-                          <div className="mt-4">
-                            <Link
-                              href={`/enroll/${cohort.id}`}
-                              className="block w-full rounded-lg bg-[#B4E655] py-2 text-center text-sm font-semibold text-[#061427] hover:brightness-110 transition"
-                            >
-                              Enroll →
-                            </Link>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 );

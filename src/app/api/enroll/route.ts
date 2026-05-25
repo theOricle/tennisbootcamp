@@ -89,14 +89,19 @@ export async function POST(req: NextRequest) {
       "pending",
     ];
 
-    await sheets.spreadsheets.values.append({
+    const appendRes = await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: `${TAB}!A:P`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] },
     });
 
-    return NextResponse.json({ ok: true });
+    // Parse the sheet row number from the updated range (e.g. "enrollments!A5:P5" → 5)
+    const updatedRange = appendRes.data.updates?.updatedRange ?? "";
+    const rowMatch = updatedRange.match(/:.*?(\d+)$/);
+    const rowNumber = rowMatch ? parseInt(rowMatch[1], 10) : null;
+
+    return NextResponse.json({ ok: true, rowNumber });
   } catch (err) {
     console.error("Enroll API error:", err);
     return NextResponse.json({ error: "Failed to save enrollment." }, { status: 500 });
