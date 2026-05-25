@@ -1,0 +1,630 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import type { Cohort } from "@/types/cohort";
+import type { Program } from "@/types/program";
+import type { Location } from "@/types/location";
+import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const WAIVER_VERSION = "v0-placeholder-2026-05-24";
+const TOTAL_STEPS = 3; // 0: summary  1: registrant  2: consent
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+function cn(...classes: Array<string | false | undefined | null>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function computeAge(dob: string): number | null {
+  if (!dob) return null;
+  const today = new Date();
+  const birth = new Date(dob + "T00:00:00");
+  if (isNaN(birth.getTime())) return null;
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function ProgressBar({ value }: { value: number }) {
+  return (
+    <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+      <div
+        className="h-full rounded-full bg-[#B4E655] transition-all"
+        style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+      />
+    </div>
+  );
+}
+
+function FieldGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <label className="text-sm text-white/70">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  required,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      required={required}
+      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
+    />
+  );
+}
+
+// ─── Form state ───────────────────────────────────────────────────────────────
+
+type FormState = {
+  participantName: string;
+  participantDob: string;
+  contactEmail: string;
+  contactPhone: string;
+  guardianName: string;
+  guardianEmail: string;
+  guardianPhone: string;
+  consentChecked: boolean;
+  consentSignedName: string;
+};
+
+const EMPTY_FORM: FormState = {
+  participantName: "",
+  participantDob: "",
+  contactEmail: "",
+  contactPhone: "",
+  guardianName: "",
+  guardianEmail: "",
+  guardianPhone: "",
+  consentChecked: false,
+  consentSignedName: "",
+};
+
+// ─── Step renderers ───────────────────────────────────────────────────────────
+
+function OrderSummary({
+  cohort,
+  program,
+  location,
+}: {
+  cohort: Cohort;
+  program: Program | undefined;
+  location: Location | undefined;
+}) {
+  const price = formatCohortPrice(cohort);
+  return (
+    <div className="space-y-5">
+      {/* Program */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
+          {program?.type ?? "Program"}
+        </p>
+        <p className="mt-0.5 text-xl font-semibold text-white">
+          {program?.title ?? cohort.programId}
+        </p>
+        {program?.ageGroup && (
+          <p className="mt-0.5 text-sm text-white/50">{program.ageGroup}</p>
+        )}
+      </div>
+
+      <div className="border-t border-white/10" />
+
+      {/* Location */}
+      <div className="flex items-start gap-2.5">
+        <svg
+          className="mt-0.5 h-4 w-4 shrink-0 text-[#B4E655]"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.8}
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
+          />
+        </svg>
+        <div>
+          <p className="text-sm font-semibold text-white">
+            {location?.name ?? cohort.locationId}
+          </p>
+          {location?.address && (
+            <p className="mt-0.5 text-sm text-white/50">{location.address}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Schedule */}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+          <p className="text-xs text-white/40 uppercase tracking-wide font-semibold">Dates</p>
+          <p className="mt-1 text-sm text-[#B4E655]">{formatDateRange(cohort)}</p>
+          <p className="mt-0.5 text-xs text-white/50">{cohort.weeks} weeks</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+          <p className="text-xs text-white/40 uppercase tracking-wide font-semibold">Sessions</p>
+          <p className="mt-1 text-sm text-[#B4E655]">{formatDaysTimes(cohort)}</p>
+          <p className="mt-0.5 text-xs text-white/50">
+            {cohort.capacityMin}–{cohort.capacityMax} players
+          </p>
+        </div>
+      </div>
+
+      {/* Price */}
+      <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-white/60">Total</p>
+          <p className="text-base font-semibold text-white">{price}</p>
+        </div>
+        {cohort.priceCents === 0 && (
+          <p className="mt-1 text-xs text-white/40">
+            Price will be confirmed before payment is collected.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RegistrantStep({
+  form,
+  setForm,
+  isMinor,
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  isMinor: boolean;
+}) {
+  return (
+    <div className="space-y-5">
+      {/* Participant */}
+      <div>
+        <p className="mb-3 text-sm font-semibold text-white">Participant</p>
+        <div className="space-y-3">
+          <FieldGroup label="Full name">
+            <TextInput
+              value={form.participantName}
+              onChange={(v) => setForm((s) => ({ ...s, participantName: v }))}
+              placeholder="Participant's full name"
+              required
+            />
+          </FieldGroup>
+          <FieldGroup label="Date of birth">
+            <TextInput
+              type="date"
+              value={form.participantDob}
+              onChange={(v) => setForm((s) => ({ ...s, participantDob: v }))}
+              required
+            />
+          </FieldGroup>
+          <FieldGroup label="Email">
+            <TextInput
+              type="email"
+              value={form.contactEmail}
+              onChange={(v) => setForm((s) => ({ ...s, contactEmail: v }))}
+              placeholder="email@example.com"
+              required
+            />
+          </FieldGroup>
+          <FieldGroup label="Phone">
+            <TextInput
+              type="tel"
+              value={form.contactPhone}
+              onChange={(v) => setForm((s) => ({ ...s, contactPhone: v }))}
+              placeholder="(647) 555-1234"
+              required
+            />
+          </FieldGroup>
+        </div>
+      </div>
+
+      {/* Guardian section — shown when participant is under 18 */}
+      {isMinor && (
+        <div className="rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-5 py-4">
+          <p className="mb-1 text-sm font-semibold text-[#B4E655]">Parent / Guardian</p>
+          <p className="mb-3 text-xs text-white/55">
+            The guardian is the account holder and will sign the waiver.
+          </p>
+          <div className="space-y-3">
+            <FieldGroup label="Full name">
+              <TextInput
+                value={form.guardianName}
+                onChange={(v) => setForm((s) => ({ ...s, guardianName: v }))}
+                placeholder="Guardian's full name"
+                required
+              />
+            </FieldGroup>
+            <FieldGroup label="Email">
+              <TextInput
+                type="email"
+                value={form.guardianEmail}
+                onChange={(v) => setForm((s) => ({ ...s, guardianEmail: v }))}
+                placeholder="guardian@example.com"
+                required
+              />
+            </FieldGroup>
+            <FieldGroup label="Phone">
+              <TextInput
+                type="tel"
+                value={form.guardianPhone}
+                onChange={(v) => setForm((s) => ({ ...s, guardianPhone: v }))}
+                placeholder="(647) 555-1234"
+                required
+              />
+            </FieldGroup>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConsentStep({
+  form,
+  setForm,
+  isMinor,
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  isMinor: boolean;
+}) {
+  const signerLabel = isMinor ? "guardian" : "participant";
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="text-sm text-white/70 leading-relaxed">
+          Before we can confirm your enrollment, {isMinor ? "the guardian" : "you"} must
+          read and agree to the Terms &amp; Liability Waiver.
+        </p>
+      </div>
+
+      {/* Checkbox */}
+      <label
+        className={cn(
+          "flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition",
+          form.consentChecked
+            ? "border-[#B4E655]/40 bg-[#B4E655]/5"
+            : "border-white/10 bg-white/5"
+        )}
+      >
+        <input
+          type="checkbox"
+          checked={form.consentChecked}
+          onChange={(e) => setForm((s) => ({ ...s, consentChecked: e.target.checked }))}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-[#B4E655]"
+        />
+        <span className="text-sm text-white/80">
+          I have read and agree to the{" "}
+          <Link
+            href="/legal/waiver"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#B4E655] underline-offset-2 hover:underline"
+          >
+            Terms &amp; Liability Waiver
+          </Link>
+          {isMinor && (
+            <span className="ml-1 text-white/50">
+              (guardian agrees on behalf of the minor participant)
+            </span>
+          )}
+        </span>
+      </label>
+
+      {/* Typed-name signature */}
+      <FieldGroup
+        label={`Type your full name to sign (${signerLabel})`}
+      >
+        <TextInput
+          value={form.consentSignedName}
+          onChange={(v) => setForm((s) => ({ ...s, consentSignedName: v }))}
+          placeholder={`${isMinor ? "Guardian's" : "Your"} full name`}
+        />
+        <p className="text-xs text-white/40">
+          By typing your name above you are providing an electronic signature.
+        </p>
+      </FieldGroup>
+    </div>
+  );
+}
+
+// ─── Confirmation screen ──────────────────────────────────────────────────────
+
+function ConfirmationScreen({
+  cohort,
+  program,
+  location,
+}: {
+  cohort: Cohort;
+  program: Program | undefined;
+  location: Location | undefined;
+}) {
+  return (
+    <main className="min-h-screen bg-[#061427] text-white">
+      <div className="mx-auto max-w-2xl px-6 py-16">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20">
+              <svg
+                className="h-4 w-4 text-[#B4E655]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <span className="text-sm font-semibold text-[#B4E655]">Enrollment Received</span>
+          </div>
+
+          <h1 className="mt-3 text-2xl font-semibold md:text-3xl">
+            Your spot is being held.
+          </h1>
+          <p className="mt-2 text-sm text-white/65 leading-relaxed">
+            We&apos;ve received your enrollment for{" "}
+            <strong className="text-white">{program?.title ?? cohort.programId}</strong>
+            {location && (
+              <>
+                {" "}at{" "}
+                <strong className="text-white">{location.name}</strong>
+              </>
+            )}
+            {" "}({formatDateRange(cohort)}). We&apos;ll be in touch with payment details shortly
+            — your place is reserved until then.
+          </p>
+
+          <div className="mt-6 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+            <span className="font-semibold text-white">Next step: </span>
+            Payment is processed in a separate step. We&apos;ll send you an email with
+            instructions once the payment system is ready.
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href="/"
+              className="rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
+            >
+              Back to Home
+            </Link>
+            <Link
+              href={`/programs/${program?.slug ?? cohort.programId}`}
+              className="rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] hover:brightness-110 transition"
+            >
+              View Program
+            </Link>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+// ─── Main wizard ──────────────────────────────────────────────────────────────
+
+const STEP_TITLES = [
+  "Review your enrollment",
+  "Registrant details",
+  "Terms & waiver",
+];
+
+const STEP_SUBTITLES = [
+  "Confirm what you're signing up for before we collect your details.",
+  "Tell us about the participant. If they're under 18, we'll also need a parent or guardian.",
+  "Read and agree to the waiver, then sign with your full name.",
+];
+
+export function EnrollWizard({
+  cohort,
+  program,
+  location,
+}: {
+  cohort: Cohort;
+  program: Program | undefined;
+  location: Location | undefined;
+}) {
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const age = computeAge(form.participantDob);
+  const isMinor = age !== null && age < 18;
+  const progress = Math.round(((step + 1) / TOTAL_STEPS) * 100);
+
+  function canContinue(): boolean {
+    if (step === 0) return true;
+    if (step === 1) {
+      const base =
+        form.participantName.trim().length > 0 &&
+        form.participantDob.length > 0 &&
+        age !== null &&
+        form.contactEmail.trim().length > 0 &&
+        form.contactPhone.trim().length > 0;
+      const guardian =
+        !isMinor ||
+        (form.guardianName.trim().length > 0 &&
+          form.guardianEmail.trim().length > 0 &&
+          form.guardianPhone.trim().length > 0);
+      return base && guardian;
+    }
+    if (step === 2) {
+      return form.consentChecked && form.consentSignedName.trim().length > 0;
+    }
+    return true;
+  }
+
+  async function submit() {
+    setSubmitting(true);
+    setSubmitError(false);
+    try {
+      const res = await fetch("/api/enroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cohortId: cohort.id,
+          program: program?.title ?? cohort.programId,
+          location: location?.name ?? cohort.locationId,
+          participantName: form.participantName,
+          participantDob: form.participantDob,
+          isMinor,
+          contactEmail: form.contactEmail,
+          contactPhone: form.contactPhone,
+          guardianName: isMinor ? form.guardianName : "",
+          guardianEmail: isMinor ? form.guardianEmail : "",
+          guardianPhone: isMinor ? form.guardianPhone : "",
+          consentSignedName: form.consentSignedName,
+          consentAgreedAt: new Date().toISOString(),
+          waiverVersion: WAIVER_VERSION,
+        }),
+      });
+      if (!res.ok) throw new Error("Submission failed");
+      setSubmitted(true);
+    } catch (err) {
+      console.error("Enroll error:", err);
+      setSubmitError(true);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function next() {
+    if (!canContinue()) return;
+    if (step < TOTAL_STEPS - 1) {
+      setStep((s) => s + 1);
+    } else {
+      void submit();
+    }
+  }
+
+  function back() {
+    setStep((s) => Math.max(s - 1, 0));
+  }
+
+  if (submitted) {
+    return (
+      <ConfirmationScreen cohort={cohort} program={program} location={location} />
+    );
+  }
+
+  const isLastStep = step === TOTAL_STEPS - 1;
+
+  return (
+    <main className="min-h-screen bg-[#061427] text-white">
+      <div className="mx-auto max-w-2xl px-6 py-10 md:py-14">
+        {/* Top bar */}
+        <div className="mb-8 flex items-center justify-between">
+          <Link
+            href={`/programs/${program?.slug ?? cohort.programId}`}
+            className="text-sm text-white/60 hover:text-white"
+          >
+            ← Back to program
+          </Link>
+          <div className="text-sm text-white/60">
+            Step {step + 1} of {TOTAL_STEPS}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
+          {/* Header */}
+          <div className="mb-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/90">
+              ENROLLMENT — {cohort.label}
+            </div>
+            <h1 className="mt-2 text-2xl font-semibold md:text-3xl">
+              {STEP_TITLES[step]}
+            </h1>
+            <p className="mt-2 text-sm text-white/70">{STEP_SUBTITLES[step]}</p>
+          </div>
+
+          {/* Progress */}
+          <div className="mb-6">
+            <ProgressBar value={progress} />
+          </div>
+
+          {/* Step content */}
+          {step === 0 && (
+            <OrderSummary cohort={cohort} program={program} location={location} />
+          )}
+          {step === 1 && (
+            <RegistrantStep form={form} setForm={setForm} isMinor={isMinor} />
+          )}
+          {step === 2 && (
+            <ConsentStep form={form} setForm={setForm} isMinor={isMinor} />
+          )}
+
+          {/* Error */}
+          {submitError && (
+            <p className="mt-4 text-sm text-red-400">
+              Something went wrong — please try again or email us at info@tennisbootcamp.ca
+            </p>
+          )}
+
+          {/* Navigation */}
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={back}
+              disabled={step === 0 || submitting}
+              className={cn(
+                "rounded-full px-5 py-2 text-sm font-semibold",
+                step === 0 || submitting
+                  ? "bg-white/5 text-white/30"
+                  : "bg-white/10 text-white hover:bg-white/15"
+              )}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={next}
+              disabled={!canContinue() || submitting}
+              className={cn(
+                "rounded-full px-6 py-2 text-sm font-semibold transition",
+                !canContinue() || submitting
+                  ? "bg-[#B4E655]/30 text-[#061427]/50"
+                  : "bg-[#B4E655] text-[#061427] hover:brightness-110"
+              )}
+            >
+              {isLastStep
+                ? submitting
+                  ? "Submitting…"
+                  : "Submit Enrollment"
+                : "Continue →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
