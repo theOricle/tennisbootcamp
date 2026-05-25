@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { CourtBackground } from "@/components/ui/CourtBackground";
 
 export function Hero() {
@@ -41,13 +42,21 @@ export function Hero() {
             Peak training for serious players.
           </p>
 
-          <div className="mt-8 flex flex-col items-start gap-2">
-            <a
-              href="/intake"
-              className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76]"
-            >
-              Get Priority Placement
-            </a>
+          <div className="mt-8 flex flex-col items-start gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href="/intake"
+                className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76]"
+              >
+                Find My Program
+              </a>
+              <Link
+                href="/programs"
+                className="inline-flex items-center justify-center rounded-full border border-white/25 px-7 py-3 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white"
+              >
+                Browse Programs
+              </Link>
+            </div>
             <p className="text-xs text-white/50">
               Priority placements go to athletes who complete the intake.
             </p>

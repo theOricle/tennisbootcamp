@@ -33,7 +33,7 @@ export function Navbar() {
             Our Programs
           </Button>
           <Button variant="primary" href="/intake" className="rounded-full px-5 py-2">
-            Get Priority Placement
+            Find My Program
           </Button>
 
           <button
