@@ -9,7 +9,7 @@ import { formatDateRange } from "@/lib/cohorts";
 type PageProps = { params: Promise<{ cohortId: string }> };
 
 export const metadata: Metadata = {
-  title: "Enrollment Confirmed — Tennis Bootcamp",
+  title: "Enrollment Confirmed",
   description: "Your Tennis Bootcamp enrollment has been confirmed.",
 };
 
