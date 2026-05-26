@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { RefundPolicyBackButton } from "./RefundPolicyBackButton";
 
 export const metadata: Metadata = {
-  title: "Refund Policy — Tennis Bootcamp",
+  title: "Refund Policy",
   description: "Tennis Bootcamp cancellation and refund policy.",
 };
 

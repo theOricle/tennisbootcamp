@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const program = programs.find((p) => p.slug === slug);
   if (!program) return {};
   return {
-    title: `${program.title} — Tennis Bootcamp`,
+    title: program.title,
     description: program.longDescription.slice(0, 160),
   };
 }

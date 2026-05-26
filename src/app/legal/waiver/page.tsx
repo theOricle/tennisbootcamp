@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { WaiverBackButton } from "./WaiverBackButton";
 
 export const metadata: Metadata = {
-  title: "Terms & Liability Waiver — Tennis Bootcamp",
+  title: "Terms & Liability Waiver",
   description: "Tennis Bootcamp participation agreement and liability waiver.",
 };
 
