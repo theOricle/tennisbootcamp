@@ -158,6 +158,17 @@ _Record architectural, design, and product decisions here. Include context and t
 **Why**: The sheet may already have rows written under the 14-column layout; reordering would silently corrupt historical data. Additive-only is the only safe migration pattern for a live spreadsheet.
 **Alternatives considered**: Folding `preferredLocationIds` into the existing `area` column only — rejected because it loses the structured array; maintaining two representations (area + preferred_locations) adds redundancy but preserves backward compat for any consumer reading col 9.
 
+### 2026-05-24 — Phase 6: Supabase Auth + Postgres supersedes Auth.js + Neon plan
+**Decision**: Accounts and dashboard (Phase 6) is built on Supabase Auth + Supabase Postgres, not Auth.js v5 + Neon + Prisma.
+**Why**: Supabase provides a unified auth + database surface, built-in RLS, and a managed invite/magic-link system that matches the enrollment flow exactly. Auth.js v5 was still beta with a more complex setup for the same outcome.
+**Alternatives considered**: Auth.js v5 + Neon + Prisma — planned originally; rejected in favour of Supabase's integrated stack. Auth.js would require a separate Neon connection, Prisma migrations, and an adapter, for no real gain at this stage.
+**Scope**: Does NOT change `/api/intake` or the Google Sheets dual-write for enrollments — those continue unchanged. Supabase is additive: it receives a Supabase-schema `enrollments` insert on checkout, and serves the `/dashboard` query. RLS: every table must have RLS enabled; service_role key must only live in server-only files (import 'server-only').
+
+### 2026-05-24 — Stub email with console.log (Resend in Phase 7)
+**Decision**: Activation emails (invite + magic link) are not sent through any SMTP in Phase 6. `issueActivationLink()` calls Supabase Admin's `generateLink` API to produce a signed one-time URL, then `console.log`s it with the prefix `[STUB EMAIL — Phase 7 will replace with Resend]`.
+**Why**: Supabase's built-in SMTP has limits and branding constraints. Resend is the planned email provider but not yet configured. A stub means the core auth flow is exercised end-to-end without email deliverability dependency during development.
+**Alternatives considered**: Using Supabase SMTP for now — rejected because it would send real emails to test users and we'd need to undo it later. Using Resend now — not yet configured; blocked on API key setup.
+
 ### 2026-05-23 — Enroll CTA points to /programs/[slug] until Phase 4
 **Decision**: Recommendation cards (and cohort cards on the detail page) link to `/programs/[slug]` for now. The `/enroll/[cohortId]` route does not exist until Phase 4. A `// TODO: link to /enroll/[cohortId] in Phase 4` comment marks every such link.
 **Why**: The recommendation UI needs a working CTA today; Phase 4 hasn't been built yet. Sending users to the program detail page is a valid fallback — they see the cohort cards and can submit intent.

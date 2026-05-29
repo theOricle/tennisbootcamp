@@ -20,6 +20,8 @@ export async function createCheckoutSession(params: {
   enrollmentRowNumber: number;
   successUrl: string;
   cancelUrl: string;
+  contactEmail?: string;
+  supabaseEnrollmentId?: string;
 }): Promise<{ sessionUrl: string }> {
   if (isMockMode) {
     return { sessionUrl: params.successUrl };
@@ -41,6 +43,8 @@ export async function createCheckoutSession(params: {
     metadata: {
       cohortId: params.cohortId,
       enrollmentRowNumber: String(params.enrollmentRowNumber),
+      contactEmail: params.contactEmail ?? "",
+      supabaseEnrollmentId: params.supabaseEnrollmentId ?? "",
     },
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,

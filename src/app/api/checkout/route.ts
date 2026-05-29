@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { isMockMode, createCheckoutSession } from "@/lib/payments";
+import {
+  saveEnrollmentToSupabase,
+  issueActivationLink,
+} from "@/lib/supabase/enrollmentActions";
 
 const TAB = "enrollments";
 // "status" is column P (index 15, 1-based col 16)
@@ -28,13 +32,43 @@ async function markEnrollmentStatus(rowNumber: number, status: string) {
   });
 }
 
+type EnrollmentMeta = {
+  contactEmail: string;
+  participantName?: string;
+  participantDob?: string;
+  isMinor?: boolean;
+  contactPhone?: string;
+  guardianName?: string;
+  guardianEmail?: string;
+  guardianPhone?: string;
+  consentSignedName?: string;
+  consentAgreedAt?: string;
+  waiverVersion?: string;
+  location?: string;
+};
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { cohortId, programTitle, priceCents, enrollmentRowNumber } = body;
+    const {
+      cohortId,
+      programTitle,
+      priceCents,
+      enrollmentRowNumber,
+      enrollmentMeta,
+    }: {
+      cohortId: string;
+      programTitle?: string;
+      priceCents?: number;
+      enrollmentRowNumber: number;
+      enrollmentMeta?: EnrollmentMeta;
+    } = body;
 
     if (!cohortId || enrollmentRowNumber == null) {
-      return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing required fields." },
+        { status: 400 }
+      );
     }
 
     const origin =
@@ -45,6 +79,28 @@ export async function POST(req: NextRequest) {
     const successUrl = `${origin}/enroll/${cohortId}/confirmed?row=${enrollmentRowNumber}`;
     const cancelUrl = `${origin}/enroll/${cohortId}`;
 
+    // Save to Supabase (fire-and-forget on error so it never breaks checkout)
+    let supabaseEnrollmentId: string | null = null;
+    if (enrollmentMeta?.contactEmail) {
+      supabaseEnrollmentId = await saveEnrollmentToSupabase({
+        cohortId,
+        program: programTitle,
+        location: enrollmentMeta.location,
+        participantName: enrollmentMeta.participantName,
+        participantDob: enrollmentMeta.participantDob,
+        isMinor: enrollmentMeta.isMinor,
+        contactEmail: enrollmentMeta.contactEmail,
+        contactPhone: enrollmentMeta.contactPhone,
+        guardianName: enrollmentMeta.guardianName,
+        guardianEmail: enrollmentMeta.guardianEmail,
+        guardianPhone: enrollmentMeta.guardianPhone,
+        consentSignedName: enrollmentMeta.consentSignedName,
+        consentAgreedAt: enrollmentMeta.consentAgreedAt,
+        waiverVersion: enrollmentMeta.waiverVersion,
+        status: isMockMode ? "test_paid" : "pending",
+      });
+    }
+
     const { sessionUrl } = await createCheckoutSession({
       cohortId,
       programTitle: programTitle ?? "Tennis Bootcamp",
@@ -52,11 +108,19 @@ export async function POST(req: NextRequest) {
       enrollmentRowNumber,
       successUrl,
       cancelUrl,
+      contactEmail: enrollmentMeta?.contactEmail,
+      supabaseEnrollmentId: supabaseEnrollmentId ?? undefined,
     });
 
     if (isMockMode) {
-      // No webhook in mock mode — mark paid immediately
+      // No webhook in mock mode — mark paid immediately in Sheets + issue invite
       await markEnrollmentStatus(enrollmentRowNumber, "test_paid");
+      if (enrollmentMeta?.contactEmail) {
+        await issueActivationLink(
+          enrollmentMeta.contactEmail,
+          supabaseEnrollmentId
+        );
+      }
     }
 
     return NextResponse.json({ sessionUrl });

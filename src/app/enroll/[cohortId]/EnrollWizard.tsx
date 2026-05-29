@@ -431,6 +431,8 @@ export function EnrollWizard({
     setSubmitting(true);
     setSubmitError(null);
     try {
+      const consentAgreedAt = new Date().toISOString();
+
       // Step 1: save enrollment to Google Sheets
       const enrollRes = await fetch("/api/enroll", {
         method: "POST",
@@ -448,7 +450,7 @@ export function EnrollWizard({
           guardianEmail: isMinor ? form.guardianEmail : "",
           guardianPhone: isMinor ? form.guardianPhone : "",
           consentSignedName: form.consentSignedName,
-          consentAgreedAt: new Date().toISOString(),
+          consentAgreedAt,
           waiverVersion: WAIVER_VERSION,
         }),
       });
@@ -466,6 +468,20 @@ export function EnrollWizard({
           programTitle: program?.title ?? cohort.programId,
           priceCents: cohort.priceCents,
           enrollmentRowNumber: enrollData.rowNumber,
+          enrollmentMeta: {
+            contactEmail: form.contactEmail,
+            participantName: form.participantName,
+            participantDob: form.participantDob,
+            isMinor,
+            contactPhone: form.contactPhone,
+            guardianName: isMinor ? form.guardianName : undefined,
+            guardianEmail: isMinor ? form.guardianEmail : undefined,
+            guardianPhone: isMinor ? form.guardianPhone : undefined,
+            consentSignedName: form.consentSignedName,
+            consentAgreedAt,
+            waiverVersion: WAIVER_VERSION,
+            location: location?.name ?? cohort.locationId,
+          },
         }),
       });
 

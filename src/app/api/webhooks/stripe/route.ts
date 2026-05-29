@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { google } from "googleapis";
+import {
+  saveEnrollmentToSupabase,
+  issueActivationLink,
+} from "@/lib/supabase/enrollmentActions";
 
 const TAB = "enrollments";
 const STATUS_COL = "P";
@@ -33,7 +37,10 @@ export async function POST(req: NextRequest) {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
 
   if (!webhookSecret || !stripeKey || !sig) {
-    return NextResponse.json({ error: "Webhook not configured." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Webhook not configured." },
+      { status: 400 }
+    );
   }
 
   let event: Stripe.Event;
@@ -49,9 +56,34 @@ export async function POST(req: NextRequest) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const rowNumber = Number(session.metadata?.enrollmentRowNumber);
+    const contactEmail = session.metadata?.contactEmail ?? "";
+    const supabaseEnrollmentId = session.metadata?.supabaseEnrollmentId ?? null;
+
     if (rowNumber) {
       await markEnrollmentPaid(rowNumber);
-      // TODO Phase 6: send confirmation email
+    }
+
+    // If the enrollment wasn't saved to Supabase during checkout creation
+    // (e.g. Supabase wasn't configured at checkout time), save it now.
+    if (contactEmail && !supabaseEnrollmentId) {
+      const cohortId = session.metadata?.cohortId ?? "";
+      const newId = await saveEnrollmentToSupabase({
+        cohortId,
+        contactEmail,
+        status: "paid",
+      });
+      if (newId) {
+        await issueActivationLink(contactEmail, newId);
+      }
+    } else if (supabaseEnrollmentId && contactEmail) {
+      // Update existing Supabase row to paid
+      const { createServiceClient } = await import("@/lib/supabase/service");
+      const supabase = createServiceClient();
+      await supabase
+        .from("enrollments")
+        .update({ status: "paid" })
+        .eq("id", supabaseEnrollmentId);
+      await issueActivationLink(contactEmail, supabaseEnrollmentId);
     }
   }
 
