@@ -86,9 +86,11 @@ export async function issueActivationLink(
       options: { redirectTo: `${siteUrl}/auth/callback?next=/set-password` },
     });
 
-  if (!inviteError && inviteData.properties?.action_link) {
+  if (!inviteError && inviteData.properties?.hashed_token) {
+    const activationUrl =
+      `${siteUrl}/auth/callback?token_hash=${inviteData.properties.hashed_token}&type=invite&next=/set-password`;
     console.log(
-      `[STUB EMAIL — Phase 7 will replace with Resend] Activation link for ${email}:\n${inviteData.properties.action_link}`
+      `[STUB EMAIL — Phase 7 will replace with Resend] Activation link for ${email}:\n${activationUrl}`
     );
 
     // Link newly-created user to the enrollment row.
@@ -109,9 +111,11 @@ export async function issueActivationLink(
       options: { redirectTo: `${siteUrl}/auth/callback?next=/set-password` },
     });
 
-  if (!magicError && magicData.properties?.action_link) {
+  if (!magicError && magicData.properties?.hashed_token) {
+    const magicUrl =
+      `${siteUrl}/auth/callback?token_hash=${magicData.properties.hashed_token}&type=magiclink&next=/set-password`;
     console.log(
-      `[STUB EMAIL — Phase 7 will replace with Resend] Sign-in link for returning user ${email}:\n${magicData.properties.action_link}`
+      `[STUB EMAIL — Phase 7 will replace with Resend] Sign-in link for returning user ${email}:\n${magicUrl}`
     );
     // TODO Phase 7: also update enrollment.user_id by looking up user by email.
   } else {
