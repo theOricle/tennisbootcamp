@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { createClient } from "@/lib/supabase/browser";
 
 const MOBILE_NAV_LINKS = [
   { href: "/programs", label: "Programs" },
@@ -16,6 +17,7 @@ const MOBILE_NAV_LINKS = [
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isSignedIn, setIsSignedIn] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -23,6 +25,19 @@ export function Navbar() {
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data }) => {
+      setIsSignedIn(!!data.session);
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsSignedIn(!!session);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   // Close drawer on outside tap
@@ -36,6 +51,12 @@ export function Navbar() {
     document.addEventListener("mousedown", onOutsideClick);
     return () => document.removeEventListener("mousedown", onOutsideClick);
   }, [menuOpen]);
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = "/";
+  }
 
   return (
     <header
@@ -60,12 +81,40 @@ export function Navbar() {
 
         {/* Desktop nav — hidden on mobile */}
         <div className="hidden items-center gap-3 md:flex">
-          <Button variant="secondary" href="/programs" className="rounded-full px-5 py-2">
-            Our Programs
-          </Button>
-          <Button variant="primary" href="/intake" className="rounded-full px-5 py-2">
-            Find My Program
-          </Button>
+          {isSignedIn ? (
+            <>
+              <Button
+                variant="secondary"
+                href="/dashboard"
+                className="rounded-full px-5 py-2"
+              >
+                Dashboard
+              </Button>
+              <button
+                onClick={() => void handleSignOut()}
+                className="rounded-full px-5 py-2 text-sm font-semibold text-white/70 hover:text-white"
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="secondary"
+                href="/programs"
+                className="rounded-full px-5 py-2"
+              >
+                Our Programs
+              </Button>
+              <Button
+                variant="primary"
+                href="/intake"
+                className="rounded-full px-5 py-2"
+              >
+                Find My Program
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Mobile hamburger — hidden on desktop */}
@@ -95,14 +144,35 @@ export function Navbar() {
             ))}
           </nav>
           <div className="mt-3 border-t border-white/10 pt-4">
-            <Button
-              variant="primary"
-              href="/intake"
-              onClick={() => setMenuOpen(false)}
-              className="w-full justify-center rounded-full py-3 text-sm"
-            >
-              Find My Program
-            </Button>
+            {isSignedIn ? (
+              <div className="flex flex-col gap-1">
+                <Link
+                  href="/dashboard"
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-xl px-4 py-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white"
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void handleSignOut();
+                  }}
+                  className="rounded-xl px-4 py-3 text-left text-sm text-white/60 hover:bg-white/5 hover:text-white"
+                >
+                  Sign out
+                </button>
+              </div>
+            ) : (
+              <Button
+                variant="primary"
+                href="/intake"
+                onClick={() => setMenuOpen(false)}
+                className="w-full justify-center rounded-full py-3 text-sm"
+              >
+                Find My Program
+              </Button>
+            )}
           </div>
         </div>
       )}
