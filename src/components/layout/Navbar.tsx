@@ -40,15 +40,16 @@ export function Navbar() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Close drawer on outside tap
   useEffect(() => {
     if (!menuOpen) return;
-    function onMouseDown(e: MouseEvent) {
+    function onOutsideClick(e: MouseEvent) {
       if (headerRef.current && !headerRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
     }
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
+    document.addEventListener("mousedown", onOutsideClick);
+    return () => document.removeEventListener("mousedown", onOutsideClick);
   }, [menuOpen]);
 
   async function handleSignOut() {
@@ -78,7 +79,7 @@ export function Navbar() {
           />
         </Link>
 
-        {/* Desktop nav */}
+        {/* Desktop nav — hidden on mobile */}
         <div className="hidden items-center gap-3 md:flex">
           {isSignedIn ? (
             <>
@@ -116,11 +117,12 @@ export function Navbar() {
           )}
         </div>
 
-        {/* Hamburger */}
+        {/* Mobile hamburger — hidden on desktop */}
         <button
           aria-label={menuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={menuOpen}
           onClick={() => setMenuOpen((o) => !o)}
-          className="ml-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 md:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 md:hidden"
         >
           {menuOpen ? "✕" : "☰"}
         </button>
@@ -128,25 +130,26 @@ export function Navbar() {
 
       {/* Mobile drawer */}
       {menuOpen && (
-        <div className="border-t border-white/10 bg-[#061427]/95 px-6 pb-6 backdrop-blur-sm md:hidden">
-          <nav className="flex flex-col gap-1 pt-4">
-            {MOBILE_NAV_LINKS.map((link) => (
+        <div className="border-t border-white/10 bg-[#061427] px-6 pb-6 pt-2 md:hidden">
+          <nav className="flex flex-col">
+            {MOBILE_NAV_LINKS.map(({ href, label }) => (
               <Link
-                key={link.href}
-                href={link.href}
+                key={href}
+                href={href}
                 onClick={() => setMenuOpen(false)}
-                className="rounded-xl px-4 py-3 text-sm text-white/80 hover:bg-white/5 hover:text-white"
+                className="rounded-xl px-4 py-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white"
               >
-                {link.label}
+                {label}
               </Link>
             ))}
-
+          </nav>
+          <div className="mt-3 border-t border-white/10 pt-4">
             {isSignedIn ? (
-              <>
+              <div className="flex flex-col gap-1">
                 <Link
                   href="/dashboard"
                   onClick={() => setMenuOpen(false)}
-                  className="rounded-xl px-4 py-3 text-sm text-white/80 hover:bg-white/5 hover:text-white"
+                  className="rounded-xl px-4 py-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white"
                 >
                   Dashboard
                 </Link>
@@ -155,21 +158,22 @@ export function Navbar() {
                     setMenuOpen(false);
                     void handleSignOut();
                   }}
-                  className="mt-1 rounded-xl px-4 py-3 text-left text-sm text-white/60 hover:bg-white/5 hover:text-white"
+                  className="rounded-xl px-4 py-3 text-left text-sm text-white/60 hover:bg-white/5 hover:text-white"
                 >
                   Sign out
                 </button>
-              </>
+              </div>
             ) : (
-              <Link
+              <Button
+                variant="primary"
                 href="/intake"
                 onClick={() => setMenuOpen(false)}
-                className="mt-3 block rounded-full bg-[#B4E655] px-5 py-2.5 text-center text-sm font-semibold text-[#061427]"
+                className="w-full justify-center rounded-full py-3 text-sm"
               >
                 Find My Program
-              </Link>
+              </Button>
             )}
-          </nav>
+          </div>
         </div>
       )}
     </header>

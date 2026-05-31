@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const program = cohort ? programs.find((p) => p.id === cohort.programId) : undefined;
   if (!cohort || !program) return {};
   return {
-    title: `Enroll — ${program.title} · ${cohort.label} | Tennis Bootcamp`,
+    title: `Enroll — ${program.title} · ${cohort.label}`,
     description: `Enroll in the ${cohort.label} cohort for ${program.title} at Tennis Bootcamp.`,
   };
 }
