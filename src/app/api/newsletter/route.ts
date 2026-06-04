@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
+import { subscribeToMailerLite } from "@/lib/mailerlite";
 
 const TAB = "newsletter";
 const HEADERS = ["timestamp", "email", "source"];
@@ -64,6 +65,8 @@ export async function POST(req: NextRequest) {
         ]],
       },
     });
+
+    await subscribeToMailerLite(body.email ?? "");
 
     return NextResponse.json({ ok: true });
   } catch (err) {
