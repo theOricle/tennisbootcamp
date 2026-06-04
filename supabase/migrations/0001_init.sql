@@ -83,3 +83,28 @@ do $$ begin
       for select using (auth.uid() = user_id);
   end if;
 end $$;
+
+-- ─── hardening (additive, idempotent) ────────────────────────────────────────
+
+-- Prevent direct invocation of the trigger function by non-superuser roles.
+-- The trigger itself is unaffected; only explicit EXECUTE calls are blocked.
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
+-- Rewrite RLS policies to use (select auth.uid()) — evaluated once per query
+-- instead of once per row, which prevents privilege-escalation via set-returning
+-- functions and matches the Supabase recommended pattern.
+begin;
+
+drop policy if exists "profiles_select_own" on profiles;
+create policy "profiles_select_own" on profiles
+  for select using ((select auth.uid()) = id);
+
+drop policy if exists "profiles_update_own" on profiles;
+create policy "profiles_update_own" on profiles
+  for update using ((select auth.uid()) = id);
+
+drop policy if exists "enrollments_select_own" on enrollments;
+create policy "enrollments_select_own" on enrollments
+  for select using ((select auth.uid()) = user_id);
+
+commit;
