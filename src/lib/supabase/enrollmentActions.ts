@@ -1,5 +1,24 @@
 import "server-only";
+import { Resend } from "resend";
 import { createServiceClient } from "./service";
+
+async function sendActivationEmail(to: string, link: string): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    console.log(
+      `[STUB EMAIL — set RESEND_API_KEY to send for real] Activation link for ${to}:\n${link}`
+    );
+    return;
+  }
+  const resend = new Resend(key);
+  await resend.emails.send({
+    from: "onboarding@resend.dev",
+    to,
+    subject: "Set your password for Tennis Bootcamp",
+    html: `<p>Welcome to Tennis Bootcamp! Click the link below to set your password:</p><p><a href="${link}">${link}</a></p><p>This link expires in 24 hours.</p>`,
+    text: `Welcome to Tennis Bootcamp!\n\nSet your password here:\n${link}\n\nThis link expires in 24 hours.`,
+  });
+}
 
 export type EnrollmentPayload = {
   cohortId: string;
@@ -66,10 +85,7 @@ export async function issueActivationLink(
   enrollmentId: string | null
 ): Promise<void> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.log(
-      "[STUB EMAIL — Phase 7 will replace with Resend] Supabase not configured — skipping invite for",
-      email
-    );
+    console.log("[issueActivationLink] Supabase not configured — skipping invite for", email);
     return;
   }
 
@@ -89,9 +105,7 @@ export async function issueActivationLink(
   if (!inviteError && inviteData.properties?.hashed_token) {
     const activationUrl =
       `${siteUrl}/auth/callback?token_hash=${inviteData.properties.hashed_token}&type=invite&next=/set-password`;
-    console.log(
-      `[STUB EMAIL — Phase 7 will replace with Resend] Activation link for ${email}:\n${activationUrl}`
-    );
+    await sendActivationEmail(email, activationUrl);
 
     // Link newly-created user to the enrollment row.
     if (enrollmentId && inviteData.user?.id) {
@@ -114,10 +128,7 @@ export async function issueActivationLink(
   if (!magicError && magicData.properties?.hashed_token) {
     const magicUrl =
       `${siteUrl}/auth/callback?token_hash=${magicData.properties.hashed_token}&type=magiclink&next=/set-password`;
-    console.log(
-      `[STUB EMAIL — Phase 7 will replace with Resend] Sign-in link for returning user ${email}:\n${magicUrl}`
-    );
-    // TODO Phase 7: also update enrollment.user_id by looking up user by email.
+    await sendActivationEmail(email, magicUrl);
   } else {
     console.error("Failed to generate activation link:", magicError?.message ?? inviteError?.message);
   }
