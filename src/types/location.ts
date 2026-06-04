@@ -4,4 +4,8 @@ export type Location = {
   address: string;
   phone?: string;
   website?: string;
+  courts?: number;
+  indoor?: boolean;
+  parking?: string;
+  notes?: string;
 };

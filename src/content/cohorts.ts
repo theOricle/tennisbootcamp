@@ -16,7 +16,7 @@ export const cohorts: Cohort[] = [
     ],
     capacityMin: 6,
     capacityMax: 8,
-    priceCents: 0, // PLACEHOLDER — real price TBA
+    priceCents: 64900,
     currency: "CAD",
     status: "open",
   },
@@ -34,7 +34,7 @@ export const cohorts: Cohort[] = [
     ],
     capacityMin: 6,
     capacityMax: 8,
-    priceCents: 0, // PLACEHOLDER — real price TBA
+    priceCents: 64900,
     currency: "CAD",
     status: "open",
   },
@@ -57,7 +57,7 @@ export const cohorts: Cohort[] = [
     ],
     capacityMin: 6,
     capacityMax: 12,
-    priceCents: 0, // PLACEHOLDER — real price TBA
+    priceCents: 49900,
     currency: "CAD",
     status: "upcoming",
   },
@@ -78,7 +78,7 @@ export const cohorts: Cohort[] = [
     ],
     capacityMin: 6,
     capacityMax: 12,
-    priceCents: 0, // PLACEHOLDER — real price TBA
+    priceCents: 49900,
     currency: "CAD",
     status: "upcoming",
   },
@@ -98,7 +98,7 @@ export const cohorts: Cohort[] = [
     ],
     capacityMin: 4,
     capacityMax: 6,
-    priceCents: 0, // PLACEHOLDER — real price TBA
+    priceCents: 59900,
     currency: "CAD",
     status: "upcoming",
   },
