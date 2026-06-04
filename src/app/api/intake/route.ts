@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
+import { subscribeToMailerLite } from "@/lib/mailerlite";
 
 export async function POST(req: NextRequest) {
   try {
@@ -103,6 +104,10 @@ export async function POST(req: NextRequest) {
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] },
     });
+
+    if (body.newsletter === true) {
+      await subscribeToMailerLite(body.email ?? "", body.name);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
