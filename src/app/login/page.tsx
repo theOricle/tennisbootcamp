@@ -85,6 +85,13 @@ export default function LoginPage() {
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
+
+          <p className="text-center text-sm text-white/50">
+            New here?{" "}
+            <Link href="/programs" className="text-[#B4E655] hover:underline">
+              Enroll in a program →
+            </Link>
+          </p>
         </form>
       </div>
     </main>
