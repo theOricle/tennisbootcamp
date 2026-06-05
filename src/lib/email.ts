@@ -16,7 +16,7 @@ export async function sendLinkEmail(
   }
   const resend = new Resend(key);
   await resend.emails.send({
-    from: "onboarding@resend.dev",
+    from: "Tennis Bootcamp <noreply@send.tennisbootcamp.ca>",
     to,
     subject,
     html: `<p>Click the link below to ${actionLabel}:</p><p><a href="${link}">${link}</a></p><p>This link expires in 24 hours.</p>`,
