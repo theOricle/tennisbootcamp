@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { trackEvent } from "@/lib/analytics";
 
 export function EmailCapture() {
   const [email, setEmail] = useState("");
@@ -15,7 +16,12 @@ export function EmailCapture() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, source: "homepage_email_capture" }),
       });
-      setStatus(res.ok ? "done" : "error");
+      if (res.ok) {
+        trackEvent("newsletter_signup", { source: "email_capture" });
+        setStatus("done");
+      } else {
+        setStatus("error");
+      }
     } catch {
       setStatus("error");
     }

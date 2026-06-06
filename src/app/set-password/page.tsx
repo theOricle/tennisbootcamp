@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/browser";
+import { trackEvent } from "@/lib/analytics";
 
 export default function SetPasswordPage() {
   const router = useRouter();
@@ -44,6 +45,7 @@ export default function SetPasswordPage() {
       }
     }
 
+    trackEvent("password_set_success");
     router.push("/dashboard");
     router.refresh();
   }

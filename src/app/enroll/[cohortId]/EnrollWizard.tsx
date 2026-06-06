@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import type { Program } from "@/types/program";
 import type { Location } from "@/types/location";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
+import { trackEvent } from "@/lib/analytics";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -403,6 +404,14 @@ export function EnrollWizard({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  useEffect(() => {
+    trackEvent("enroll_start", {
+      cohort_id: cohort.id,
+      program: program?.title ?? cohort.programId,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const age = computeAge(form.participantDob);
   const isMinor = age !== null && age < 18;
   const progress = Math.round(((step + 1) / TOTAL_STEPS) * 100);
@@ -432,6 +441,10 @@ export function EnrollWizard({
   async function submit() {
     setSubmitting(true);
     setSubmitError(null);
+    trackEvent("enroll_continue_to_payment", {
+      cohort_id: cohort.id,
+      program: program?.title ?? cohort.programId,
+    });
     try {
       const consentAgreedAt = new Date().toISOString();
 

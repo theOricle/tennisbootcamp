@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/browser";
+import { trackEvent } from "@/lib/analytics";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function LoginPage() {
       return;
     }
 
+    trackEvent("login_success");
     router.push("/dashboard");
     router.refresh();
   }
