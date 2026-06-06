@@ -5,6 +5,7 @@ import { cohorts } from "@/content/cohorts";
 import { programs } from "@/content/programs";
 import { locations } from "@/content/locations";
 import { formatDateRange } from "@/lib/cohorts";
+import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
 type PageProps = { params: Promise<{ cohortId: string }> };
 
@@ -26,6 +27,10 @@ export default async function EnrollConfirmedPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
+      <EnrollCompleteEvent
+        cohortId={cohortId}
+        program={program?.title ?? cohort.programId}
+      />
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
 

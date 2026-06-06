@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { trackEvent } from "@/lib/analytics";
 
 type Props = { programSlug: string; programTitle: string };
 
@@ -20,6 +21,7 @@ export function ProgramInterestForm({ programSlug, programTitle }: Props) {
         body: JSON.stringify({ email, program: programSlug }),
       });
       if (!res.ok) throw new Error("Failed to save");
+      trackEvent("program_interest_signup", { program: programSlug });
       setStatus("ok");
     } catch {
       setStatus("error");

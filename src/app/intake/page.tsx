@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useMemo, useState, Suspense } from "react";
+import React, { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { recommendPrograms, type Recommendation } from "@/lib/recommend";
 import { locations } from "@/content/locations";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
 import type { Cohort } from "@/types/cohort";
+import { trackEvent } from "@/lib/analytics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -414,6 +415,10 @@ function IntakePageInner() {
   const current = steps[stepIndex];
   const progress = Math.round(((stepIndex + 1) / steps.length) * 100);
 
+  useEffect(() => {
+    trackEvent("intake_start");
+  }, []);
+
   function isSelected(optionId: string): boolean {
     switch (current.id) {
       case "who":
@@ -512,6 +517,7 @@ function IntakePageInner() {
         }),
       });
       if (!res.ok) throw new Error("Submission failed");
+      trackEvent("intake_complete");
       setRecommendations(recs);
       setSubmitted(true);
     } catch (err) {
