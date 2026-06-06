@@ -26,7 +26,7 @@ export function TrustBar() {
               <span className="h-1.5 w-1.5 rounded-full bg-[#B4E655]" />
               <span className="text-sm font-semibold text-white">{s.label}</span>
             </div>
-            <p className="mt-2 text-sm text-white/60 leading-relaxed">{s.body}</p>
+            <p className="mt-2 text-sm text-white/75 leading-relaxed">{s.body}</p>
           </div>
         ))}
       </div>

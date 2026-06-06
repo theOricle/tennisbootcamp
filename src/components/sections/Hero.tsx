@@ -31,7 +31,7 @@ export function Hero() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#B4E655] opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-[#B4E655]" />
             </span>
-            Spring Intake is Live
+            Now Enrolling
           </div>
 
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white md:text-6xl">
@@ -39,20 +39,20 @@ export function Hero() {
           </h1>
 
           <p className="mt-5 max-w-xl text-base text-white/75 md:text-lg">
-            Peak training for serious players.
+            Structured six-week cohorts. Real reps. Real progress. Built for athletes who want to compete.
           </p>
 
           <div className="mt-8 flex flex-col items-start gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <a
                 href="/intake"
-                className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76]"
+                className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >
                 Find My Program
               </a>
               <Link
                 href="/programs"
-                className="inline-flex items-center justify-center rounded-full border border-white/25 px-7 py-3 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white"
+                className="inline-flex items-center justify-center rounded-full border border-white/25 px-7 py-3 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >
                 Browse Programs
               </Link>
@@ -66,7 +66,7 @@ export function Hero() {
         <div className="flex justify-center md:justify-start md:-ml-16 lg:-ml-24">
           <Image
             src="/images/hero/player.png"
-            alt="Tennis player"
+            alt="Tennis player mid-swing on court"
             width={720}
             height={720}
             priority

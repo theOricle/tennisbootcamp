@@ -43,8 +43,12 @@ export function EmailCapture() {
             onSubmit={handleSubmit}
           >
             <div className="flex gap-3">
+              <label htmlFor="email-capture" className="sr-only">
+                Email address
+              </label>
               <input
-                className="w-full rounded-xl border border-white/10 bg-[#061427] px-4 py-3 text-base text-white placeholder:text-white/40 md:w-72 md:text-sm"
+                id="email-capture"
+                className="w-full rounded-xl border border-white/10 bg-[#061427] px-4 py-3 text-base text-white placeholder:text-white/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:w-72 md:text-sm"
                 type="email"
                 required
                 placeholder="Your email"
@@ -53,7 +57,7 @@ export function EmailCapture() {
                 disabled={status === "loading"}
               />
               <button
-                className="rounded-xl bg-[#B4E655] px-5 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:opacity-50"
+                className="rounded-xl bg-[#B4E655] px-5 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
                 type="submit"
                 disabled={status === "loading"}
               >

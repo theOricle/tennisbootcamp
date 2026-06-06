@@ -15,6 +15,7 @@ import { locations } from "@/content/locations";
 
 
 
+import { Testimonials } from "@/components/sections/Testimonials";
 import { PageStack } from "@/components/layout/PageStack";
 
 export const metadata: Metadata = {
@@ -29,6 +30,8 @@ export default function HomePage() {
       <Hero />
 
       <TrustBar />
+
+      <Testimonials />
 
       <section className="mx-auto max-w-6xl px-6 -mt-10">
         <EmailCapture />

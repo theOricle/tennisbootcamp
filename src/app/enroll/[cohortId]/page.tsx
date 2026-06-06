@@ -14,10 +14,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { cohortId } = await params;
   const cohort = cohorts.find((c) => c.id === cohortId);
   const program = cohort ? programs.find((p) => p.id === cohort.programId) : undefined;
-  if (!cohort || !program) return {};
+  if (!cohort || !program) return { robots: { index: false, follow: false } };
   return {
     title: `Enroll — ${program.title} · ${cohort.label}`,
     description: `Enroll in the ${cohort.label} cohort for ${program.title} at Tennis Bootcamp.`,
+    robots: { index: false, follow: false },
   };
 }
 
