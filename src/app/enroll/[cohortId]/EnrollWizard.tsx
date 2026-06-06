@@ -50,10 +50,10 @@ function FieldGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-1.5">
-      <label className="text-sm text-white/70">{label}</label>
+    <label className="grid gap-1.5">
+      <span className="text-sm text-white/70">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }
 
@@ -77,7 +77,7 @@ function TextInput({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       required={required}
-      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
+      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
     />
   );
 }
@@ -142,6 +142,8 @@ function OrderSummary({
       {/* Location */}
       <div className="flex items-start gap-2.5">
         <svg
+          aria-hidden="true"
+          focusable="false"
           className="mt-0.5 h-4 w-4 shrink-0 text-[#B4E655]"
           fill="none"
           stroke="currentColor"
@@ -582,7 +584,7 @@ export function EnrollWizard({
               onClick={back}
               disabled={step === 0 || submitting}
               className={cn(
-                "rounded-full px-5 py-2 text-sm font-semibold",
+                "rounded-full px-5 py-2 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
                 step === 0 || submitting
                   ? "bg-white/5 text-white/30"
                   : "bg-white/10 text-white hover:bg-white/15"
@@ -595,7 +597,7 @@ export function EnrollWizard({
               onClick={next}
               disabled={!canContinue() || submitting}
               className={cn(
-                "rounded-full px-6 py-2 text-sm font-semibold transition",
+                "rounded-full px-6 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
                 !canContinue() || submitting
                   ? "bg-[#B4E655]/30 text-[#061427]/50"
                   : "bg-[#B4E655] text-[#061427] hover:brightness-110"

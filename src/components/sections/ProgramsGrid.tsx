@@ -13,7 +13,10 @@ export function ProgramsGrid({ programs, title = "Our Programs" }: ProgramsGridP
     <section>
       <div className="mb-6 flex items-end justify-between gap-4">
         <h2 className="text-2xl font-semibold text-white md:text-3xl">{title}</h2>
-        <Link className="text-sm text-white/60 hover:text-white" href="/programs">
+        <Link
+          className="rounded text-sm text-white/70 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+          href="/programs"
+        >
           View all →
         </Link>
       </div>
@@ -29,7 +32,7 @@ export function ProgramsGrid({ programs, title = "Our Programs" }: ProgramsGridP
               className="group overflow-hidden rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition flex flex-col"
             >
               {/* Image + title → detail page */}
-              <Link href={`/programs/${p.slug}`} className="block">
+              <Link href={`/programs/${p.slug}`} className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded-2xl">
                 <div className="relative h-40 w-full sm:h-44">
                   {p.imageSrc ? (
                     <Image
@@ -76,7 +79,7 @@ export function ProgramsGrid({ programs, title = "Our Programs" }: ProgramsGridP
               <div className="px-4 pb-4 pt-3 mt-auto">
                 <Link
                   href={p.ctaHref}
-                  className="block w-full rounded-xl border border-[#B4E655]/40 px-4 py-2 text-center text-sm font-semibold text-[#B4E655] hover:bg-[#B4E655]/10 transition"
+                  className="block w-full rounded-xl border border-[#B4E655]/40 px-4 py-2 text-center text-sm font-semibold text-[#B4E655] hover:bg-[#B4E655]/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
                 >
                   {p.ctaText}
                 </Link>

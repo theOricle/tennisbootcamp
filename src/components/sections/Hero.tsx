@@ -46,13 +46,13 @@ export function Hero() {
             <div className="flex flex-wrap items-center gap-3">
               <a
                 href="/intake"
-                className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76]"
+                className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >
                 Find My Program
               </a>
               <Link
                 href="/programs"
-                className="inline-flex items-center justify-center rounded-full border border-white/25 px-7 py-3 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white"
+                className="inline-flex items-center justify-center rounded-full border border-white/25 px-7 py-3 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >
                 Browse Programs
               </Link>
@@ -66,7 +66,7 @@ export function Hero() {
         <div className="flex justify-center md:justify-start md:-ml-16 lg:-ml-24">
           <Image
             src="/images/hero/player.png"
-            alt="Tennis player"
+            alt="Tennis player mid-swing on court"
             width={720}
             height={720}
             priority

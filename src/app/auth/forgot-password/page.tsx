@@ -49,27 +49,31 @@ export default function ForgotPasswordPage() {
             className="space-y-5 rounded-3xl border border-white/10 bg-white/5 p-8"
           >
             <div className="grid gap-1.5">
-              <label className="text-sm text-white/70">Email</label>
+              <label htmlFor="fp-email" className="text-sm text-white/70">Email</label>
               <input
+                id="fp-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:opacity-50"
+              className="w-full rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
             >
               {loading ? "Sending…" : "Send reset link"}
             </button>
 
-            <p className="text-center text-sm text-white/50">
-              <Link href="/login" className="text-[#B4E655] hover:underline">
+            <p className="text-center text-sm text-white/60">
+              <Link
+                href="/login"
+                className="text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
+              >
                 ← Back to sign in
               </Link>
             </p>
