@@ -31,7 +31,7 @@ export function Hero() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#B4E655] opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-[#B4E655]" />
             </span>
-            Spring Intake is Live
+            Now Enrolling
           </div>
 
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white md:text-6xl">
@@ -39,7 +39,7 @@ export function Hero() {
           </h1>
 
           <p className="mt-5 max-w-xl text-base text-white/75 md:text-lg">
-            Peak training for serious players.
+            Structured six-week cohorts. Real reps. Real progress. Built for athletes who want to compete.
           </p>
 
           <div className="mt-8 flex flex-col items-start gap-3">
