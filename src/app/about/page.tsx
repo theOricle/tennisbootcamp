@@ -146,7 +146,8 @@ export default function AboutPage() {
               actually show up in a match.
             </p>
 
-            {/* PLACEHOLDERS — owner to fill in */}
+            {/* PLACEHOLDERS — dev only, hidden in production */}
+            {process.env.NODE_ENV === "development" && (
             <div className="rounded-xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5 text-sm text-white/60">
               <p className="mb-3 font-semibold text-[#B4E655]/80">
                 ✏ Owner: fill in the following before publishing
@@ -171,6 +172,7 @@ export default function AboutPage() {
                 </li>
               </ul>
             </div>
+            )}
           </div>
         </div>
       </section>
