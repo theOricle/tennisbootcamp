@@ -2,7 +2,7 @@
 
 Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or Claude Code) should start by reading this.
 
-**Before doing anything else, also read** `.claude/memory/DECISIONS.md`, `.claude/memory/PROGRESS.md`, and `.claude/memory/OPEN_QUESTIONS.md`. They contain settled decisions, current progress, and open questions that this CLAUDE.md alone does not capture. Cowork does not auto-load them — you must read them explicitly.
+**Before doing anything else, also read** `.claude/memory/DECISIONS.md`, `.claude/memory/PROGRESS.md`, `.claude/memory/OPEN_QUESTIONS.md`, `ops/briefs/brand.md`, `ops/briefs/project.md`, `ops/briefs/competitors.md`, and `ops/briefs/design-system.md`. They contain settled decisions, current progress, open questions, brand voice, project goals, competitive context, and design tokens that this CLAUDE.md alone does not capture. Cowork does not auto-load them — you must read them explicitly.
 
 **Active build plan:** `ops/plans/enrollment-and-accounts.md` — execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive.
 
