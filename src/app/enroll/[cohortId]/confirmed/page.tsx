@@ -11,6 +11,7 @@ type PageProps = { params: Promise<{ cohortId: string }> };
 export const metadata: Metadata = {
   title: "Enrollment Confirmed",
   description: "Your Tennis Bootcamp enrollment has been confirmed.",
+  robots: { index: false, follow: false },
 };
 
 export default async function EnrollConfirmedPage({ params }: PageProps) {

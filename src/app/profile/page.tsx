@@ -5,7 +5,11 @@ import { programs } from "@/content/programs";
 import { cohorts } from "@/content/cohorts";
 import { ProfileForm } from "./ProfileForm";
 
-export const metadata: Metadata = { title: "Profile" };
+export const metadata: Metadata = {
+  title: "Profile",
+  description: "Manage your Tennis Bootcamp account details and enrollments.",
+  robots: { index: false, follow: false },
+};
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-CA", {
