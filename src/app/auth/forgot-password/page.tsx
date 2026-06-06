@@ -7,17 +7,25 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await fetch("/api/auth/reset-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    setSent(true);
-    setLoading(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) throw new Error();
+      setSent(true);
+    } catch {
+      setError("Something went wrong — please try again or email info@tennisbootcamp.ca");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -59,6 +67,8 @@ export default function ForgotPasswordPage() {
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
               />
             </div>
+
+            {error && <p className="text-sm text-red-400">{error}</p>}
 
             <button
               type="submit"

@@ -495,7 +495,7 @@ export function EnrollWizard({
       const msg = err instanceof Error ? err.message : "";
       if (msg === "checkout") {
         setSubmitError(
-          "Your enrollment was saved but we couldn't start checkout. Email info@tennisbootcamp.ca and we'll sort it out."
+          "Couldn't reach payment — please try again or email info@tennisbootcamp.ca"
         );
       } else {
         setSubmitError(
@@ -570,43 +570,51 @@ export function EnrollWizard({
             <ConsentStep form={form} setForm={setForm} isMinor={isMinor} />
           )}
 
-          {/* Error */}
-          {submitError && (
-            <p className="mt-4 text-sm text-red-400">{submitError}</p>
-          )}
-
           {/* Navigation */}
-          <div className="mt-6 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={back}
-              disabled={step === 0 || submitting}
-              className={cn(
-                "rounded-full px-5 py-2 text-sm font-semibold",
-                step === 0 || submitting
-                  ? "bg-white/5 text-white/30"
-                  : "bg-white/10 text-white hover:bg-white/15"
-              )}
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={next}
-              disabled={!canContinue() || submitting}
-              className={cn(
-                "rounded-full px-6 py-2 text-sm font-semibold transition",
-                !canContinue() || submitting
-                  ? "bg-[#B4E655]/30 text-[#061427]/50"
-                  : "bg-[#B4E655] text-[#061427] hover:brightness-110"
-              )}
-            >
-              {isLastStep
-                ? submitting
-                  ? "Redirecting…"
-                  : "Continue to Payment →"
-                : "Continue →"}
-            </button>
+          <div className="mt-6 flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={back}
+                disabled={step === 0 || submitting}
+                className={cn(
+                  "rounded-full px-5 py-2 text-sm font-semibold",
+                  step === 0 || submitting
+                    ? "bg-white/5 text-white/30"
+                    : "bg-white/10 text-white hover:bg-white/15"
+                )}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={next}
+                disabled={!canContinue() || submitting}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full px-6 py-2 text-sm font-semibold transition",
+                  !canContinue() && !submitting
+                    ? "bg-[#B4E655]/30 text-[#061427]/50"
+                    : submitting
+                    ? "cursor-wait bg-[#B4E655] text-[#061427]"
+                    : "bg-[#B4E655] text-[#061427] hover:brightness-110"
+                )}
+              >
+                {submitting && (
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                )}
+                {isLastStep
+                  ? submitting
+                    ? "Redirecting…"
+                    : "Continue to Payment →"
+                  : "Continue →"}
+              </button>
+            </div>
+            {submitError && (
+              <p className="text-right text-sm text-red-400">{submitError}</p>
+            )}
           </div>
         </div>
       </div>
