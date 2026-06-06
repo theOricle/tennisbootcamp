@@ -20,9 +20,10 @@ export default function VideoLessonsPage() {
         <div className="mx-auto max-w-6xl px-6 py-14">
           <h1 className="text-3xl font-semibold text-white">Video Lessons</h1>
           <p className="mt-3 max-w-2xl text-white/70">
-            A members-only library of structured drills, technique breakdowns, and
-            on-court patterns — so you can keep improving between sessions from
-            anywhere.
+            A structured video library built for athletes already in our cohorts
+            — drills, technique breakdowns, and on-court patterns to reinforce
+            what you&apos;re working on between sessions. A public preview
+            library is coming later this season.
           </p>
         </div>
       </div>
@@ -56,8 +57,9 @@ export default function VideoLessonsPage() {
         </div>
 
         <p className="mt-8 text-sm text-white/40">
-          Lessons are being recorded for the upcoming season. Enroll to get early
-          access when they drop.
+          Full library unlocks with cohort enrollment. A free preview selection
+          will be available to everyone later this season — drop your email
+          below to be first.
         </p>
       </section>
 

@@ -22,14 +22,15 @@ export default function EventsPage() {
       {/* Coming-soon block */}
       <section className="mx-auto max-w-6xl px-6 py-20 text-center">
         <p className="text-sm font-semibold uppercase tracking-widest text-[#B4E655]">
-          Coming up
+          Season schedule
         </p>
         <h2 className="mt-3 text-3xl font-semibold text-white">
-          Next events drop this summer
+          Next batch being finalized now
         </h2>
-        <p className="mx-auto mt-4 max-w-md text-white/60">
-          We&apos;re finalising the schedule for our summer bootcamps and camps.
-          Drop your email and we&apos;ll notify you the moment spots open.
+        <p className="mx-auto mt-4 max-w-lg text-white/60">
+          Bootcamps and clinics are scheduled by season. The next batch is being
+          finalized now — drop your email and we&apos;ll send you the lineup
+          before public registration opens.
         </p>
       </section>
 
