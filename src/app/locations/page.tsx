@@ -27,13 +27,16 @@ export default function LocationsPage() {
               className="overflow-hidden rounded-2xl border border-white/10 bg-white/5"
             >
               {/* Google Maps embed */}
-              <div className="relative h-56 w-full">
+              <div className="h-[280px] w-full">
                 <iframe
-                  src={`https://maps.google.com/maps?q=${encodeURIComponent(loc.address)}&output=embed&hl=en`}
-                  className="h-full w-full border-0"
+                  src={`https://www.google.com/maps?q=${encodeURIComponent(loc.address)}&output=embed`}
+                  width="100%"
+                  height="280"
+                  style={{ border: 0 }}
                   loading="lazy"
+                  allowFullScreen
                   referrerPolicy="no-referrer-when-downgrade"
-                  title={`Map — ${loc.name}`}
+                  title={`Map of ${loc.name}`}
                 />
               </div>
 

@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 
 const TAB = "enrollments";
-const PAID_STATUSES = new Set(["paid", "test_paid"]);
+const PAID_STATUSES = new Set(["paid"]);
 
 export async function getSeatsRemaining(
   cohortId: string,

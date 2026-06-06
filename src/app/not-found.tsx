@@ -27,7 +27,7 @@ export default function NotFound() {
             href="/intake"
             className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-semibold text-white transition hover:border-[#B4E655]/40 hover:bg-[#B4E655]/5 hover:text-[#B4E655]"
           >
-            Get Priority Placement
+            Find My Program
           </Link>
         </div>
       </div>

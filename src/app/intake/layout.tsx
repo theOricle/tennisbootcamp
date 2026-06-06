@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Get Priority Placement",
+  title: "Find My Program",
   description:
     "Secure your spot in Tennis Bootcamp's next training program. Complete the intake and we'll match you to the right program.",
   robots: { index: false, follow: false },
