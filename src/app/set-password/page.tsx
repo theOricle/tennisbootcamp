@@ -63,40 +63,43 @@ export default function SetPasswordPage() {
           className="space-y-5 rounded-3xl border border-white/10 bg-white/5 p-8"
         >
           <div className="grid gap-1.5">
-            <label className="text-sm text-white/70">
+            <label htmlFor="sp-fullname" className="text-sm text-white/70">
               Full name{" "}
               <span className="text-white/40">(optional)</span>
             </label>
             <input
+              id="sp-fullname"
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Your full name"
-              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
             />
           </div>
 
           <div className="grid gap-1.5">
-            <label className="text-sm text-white/70">Password</label>
+            <label htmlFor="sp-password" className="text-sm text-white/70">Password</label>
             <input
+              id="sp-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Min. 8 characters"
               required
-              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
             />
           </div>
 
           <div className="grid gap-1.5">
-            <label className="text-sm text-white/70">Confirm password</label>
+            <label htmlFor="sp-confirm" className="text-sm text-white/70">Confirm password</label>
             <input
+              id="sp-confirm"
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Repeat password"
               required
-              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
             />
           </div>
 
@@ -105,7 +108,7 @@ export default function SetPasswordPage() {
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:cursor-wait disabled:opacity-80"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:cursor-wait disabled:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
           >
             {loading && (
               <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
