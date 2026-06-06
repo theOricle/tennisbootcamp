@@ -70,7 +70,7 @@ export function Hero() {
             width={720}
             height={720}
             priority
-            className="h-auto w-[380px] md:w-[640px] lg:w-[720px]"
+            className="h-auto w-full max-w-[380px] md:w-[640px] lg:w-[720px]"
           />
         </div>
       </div>

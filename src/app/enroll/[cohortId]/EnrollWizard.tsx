@@ -77,7 +77,7 @@ function TextInput({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       required={required}
-      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
+      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30 md:text-sm"
     />
   );
 }
@@ -582,7 +582,7 @@ export function EnrollWizard({
               onClick={back}
               disabled={step === 0 || submitting}
               className={cn(
-                "rounded-full px-5 py-2 text-sm font-semibold",
+                "rounded-full px-5 py-3 text-sm font-semibold",
                 step === 0 || submitting
                   ? "bg-white/5 text-white/30"
                   : "bg-white/10 text-white hover:bg-white/15"
@@ -595,7 +595,7 @@ export function EnrollWizard({
               onClick={next}
               disabled={!canContinue() || submitting}
               className={cn(
-                "rounded-full px-6 py-2 text-sm font-semibold transition",
+                "rounded-full px-6 py-3 text-sm font-semibold transition",
                 !canContinue() || submitting
                   ? "bg-[#B4E655]/30 text-[#061427]/50"
                   : "bg-[#B4E655] text-[#061427] hover:brightness-110"

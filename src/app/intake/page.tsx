@@ -664,7 +664,7 @@ function IntakePageInner() {
                 onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
                 placeholder={current.placeholder}
                 rows={5}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-emerald-300/30"
+                className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-base text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-emerald-300/30 md:text-sm"
               />
             ) : null}
 
@@ -675,7 +675,7 @@ function IntakePageInner() {
                   <input
                     value={form.name ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/30"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/30 md:text-sm"
                     placeholder="Your name"
                   />
                 </div>
@@ -684,7 +684,7 @@ function IntakePageInner() {
                   <input
                     value={form.phone ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/30"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/30 md:text-sm"
                     placeholder="(647) 555-1234"
                   />
                 </div>
@@ -693,7 +693,7 @@ function IntakePageInner() {
                   <input
                     value={form.email ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/30"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/30 md:text-sm"
                     placeholder="you@email.com"
                   />
                 </div>
@@ -724,7 +724,7 @@ function IntakePageInner() {
               onClick={back}
               disabled={stepIndex === 0 || submitting}
               className={cn(
-                "rounded-full px-5 py-2 text-sm font-semibold",
+                "rounded-full px-5 py-3 text-sm font-semibold",
                 stepIndex === 0 || submitting
                   ? "bg-white/5 text-white/30"
                   : "bg-white/10 text-white hover:bg-white/15"
@@ -737,7 +737,7 @@ function IntakePageInner() {
               onClick={next}
               disabled={!canContinue() || submitting}
               className={cn(
-                "rounded-full px-6 py-2 text-sm font-semibold",
+                "rounded-full px-6 py-3 text-sm font-semibold",
                 !canContinue() || submitting
                   ? "bg-emerald-300/30 text-[#061427]/50"
                   : "bg-emerald-300 text-[#061427] hover:bg-emerald-200"

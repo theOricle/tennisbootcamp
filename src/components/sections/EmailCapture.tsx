@@ -44,7 +44,7 @@ export function EmailCapture() {
           >
             <div className="flex gap-3">
               <input
-                className="w-full rounded-xl border border-white/10 bg-[#061427] px-4 py-3 text-sm text-white placeholder:text-white/40 md:w-72"
+                className="w-full rounded-xl border border-white/10 bg-[#061427] px-4 py-3 text-base text-white placeholder:text-white/40 md:w-72 md:text-sm"
                 type="email"
                 required
                 placeholder="Your email"

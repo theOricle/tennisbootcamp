@@ -20,7 +20,7 @@ export function TrustBar() {
         {signals.map((s, i) => (
           <div
             key={s.label}
-            className={`py-8 pr-8 ${i !== 0 ? "md:border-l md:border-white/10 md:pl-8" : ""}`}
+            className={`py-6 md:py-8 md:pr-8 ${i !== 0 ? "border-t border-white/10 md:border-t-0 md:border-l md:border-white/10 md:pl-8" : ""}`}
           >
             <div className="flex items-center gap-2">
               <span className="h-1.5 w-1.5 rounded-full bg-[#B4E655]" />
