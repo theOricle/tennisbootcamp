@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { subscribeToMailerLite } from "@/lib/mailerlite";
+import { recommendPrograms } from "@/lib/recommend";
+import { sendRecommendationEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   try {
@@ -107,6 +109,23 @@ export async function POST(req: NextRequest) {
 
     if (body.newsletter === true) {
       await subscribeToMailerLite(body.email ?? "", body.name);
+    }
+
+    // Fire-and-forget recommendation email — never block the response.
+    if (process.env.RESEND_API_KEY && body.email) {
+      const recs = recommendPrograms({
+        who: body.who,
+        level: body.level,
+        goals: Array.isArray(body.goals) ? body.goals : [],
+        programs: Array.isArray(body.programs) ? body.programs : [],
+        preferredLocationIds: Array.isArray(body.preferredLocationIds) ? body.preferredLocationIds : [],
+        availability: Array.isArray(body.availability) ? body.availability : [],
+      });
+      if (recs.length > 0) {
+        sendRecommendationEmail(body.email, body.name ?? "", recs).catch((err) => {
+          console.error("Recommendation email failed (non-blocking):", err);
+        });
+      }
     }
 
     return NextResponse.json({ ok: true });

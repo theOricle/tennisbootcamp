@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { cohorts } from "@/content/cohorts";
 import { programs } from "@/content/programs";
 import { locations } from "@/content/locations";
-import { formatDateRange } from "@/lib/cohorts";
+import { formatDateRange, formatDaysTimes } from "@/lib/cohorts";
+import { createClient } from "@/lib/supabase/server";
 import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
 type PageProps = { params: Promise<{ cohortId: string }> };
@@ -22,8 +23,27 @@ export default async function EnrollConfirmedPage({ params }: PageProps) {
 
   const program = programs.find((p) => p.id === cohort.programId);
   const location = locations.find((l) => l.id === cohort.locationId);
-
   const isMock = !process.env.STRIPE_SECRET_KEY;
+
+  // Auth check — used for CTA and personalised greeting.
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Try to retrieve participant name from most recent enrollment.
+  let participantName: string | null = null;
+  if (user) {
+    const { data: enrollment } = await supabase
+      .from("enrollments")
+      .select("participant_name")
+      .eq("user_id", user.id)
+      .eq("cohort_id", cohortId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    participantName = enrollment?.participant_name ?? null;
+  }
+
+  const firstName = participantName?.trim().split(/\s+/)[0] ?? null;
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -52,85 +72,102 @@ export default async function EnrollConfirmedPage({ params }: PageProps) {
             </span>
           </div>
 
-          {/* Heading */}
+          {/* Greeting */}
           <h1 className="mt-4 text-2xl font-semibold md:text-3xl">
-            {isMock ? "You're enrolled (mock)." : "You're enrolled!"}
+            {firstName ? `${firstName}, you're enrolled!` : "You're enrolled!"}
           </h1>
-
-          {/* Summary */}
-          <p className="mt-2 text-sm text-white/65 leading-relaxed">
+          <p className="mt-2 text-sm leading-relaxed text-white/65">
             {isMock ? (
               <>
                 This is a <strong className="text-yellow-200">test enrollment</strong> — no real
-                payment was collected. It will appear in the Google Sheet with status{" "}
-                <code className="rounded bg-white/10 px-1 text-xs">test_paid</code>. Add{" "}
-                <code className="rounded bg-white/10 px-1 text-xs">STRIPE_SECRET_KEY</code> to
-                enable real Stripe Checkout.
+                payment was collected. It will appear in the database with status{" "}
+                <code className="rounded bg-white/10 px-1 text-xs">test_paid</code>.
               </>
             ) : (
               <>
-                We&apos;ve received your payment and confirmed your enrollment in{" "}
-                <strong className="text-white">{program?.title ?? cohort.programId}</strong>
-                {location && (
-                  <>
-                    {" "}at <strong className="text-white">{location.name}</strong>
-                  </>
-                )}
-                . Check your email for a receipt from Stripe.
+                Your payment is confirmed and your spot is reserved. Everything below is what you
+                signed up for — save this page or check your email for a receipt.
               </>
             )}
           </p>
 
           {/* Enrollment detail box */}
-          <div className="mt-6 rounded-xl border border-white/10 bg-white/5 px-4 py-4 space-y-2 text-sm">
-            <div className="flex justify-between gap-4">
+          <div className="mt-6 divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">
+            <div className="flex justify-between gap-4 px-4 py-3">
               <span className="text-white/50">Program</span>
-              <span className="text-right font-medium text-white">
-                {program?.title ?? cohort.programId}
-              </span>
+              <span className="text-right font-medium text-white">{program?.title ?? cohort.programId}</span>
             </div>
-            {location && (
-              <div className="flex justify-between gap-4">
-                <span className="text-white/50">Location</span>
-                <span className="text-right font-medium text-white">{location.name}</span>
-              </div>
-            )}
-            <div className="flex justify-between gap-4">
+            <div className="flex justify-between gap-4 px-4 py-3">
               <span className="text-white/50">Cohort</span>
               <span className="text-right font-medium text-white">{cohort.label}</span>
             </div>
-            <div className="flex justify-between gap-4">
+            <div className="flex justify-between gap-4 px-4 py-3">
               <span className="text-white/50">Dates</span>
-              <span className="text-right font-medium text-[#B4E655]">
-                {formatDateRange(cohort)}
-              </span>
+              <span className="text-right font-medium text-[#B4E655]">{formatDateRange(cohort)}</span>
+            </div>
+            <div className="flex justify-between gap-4 px-4 py-3">
+              <span className="text-white/50">Schedule</span>
+              <span className="text-right font-medium text-white">{formatDaysTimes(cohort)}</span>
+            </div>
+            {location && (
+              <div className="flex justify-between gap-4 px-4 py-3">
+                <span className="text-white/50">Location</span>
+                <div className="text-right">
+                  <p className="font-medium text-white">{location.name}</p>
+                  <p className="mt-0.5 text-xs text-white/50">{location.address}</p>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-between gap-4 px-4 py-3">
+              <span className="text-white/50">Duration</span>
+              <span className="text-right font-medium text-white">{cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players</span>
             </div>
           </div>
 
-          {/* Next step */}
-          {!isMock && (
-            <div className="mt-4 rounded-xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-4 py-3 text-sm text-white/75">
-              <span className="font-semibold text-white">What&apos;s next: </span>
-              We&apos;ll be in touch before the session starts with court details and
-              what to bring. See you on the court.
-            </div>
-          )}
+          {/* What happens next */}
+          <div className="mt-6 rounded-xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-5 py-5">
+            <p className="mb-3 text-sm font-semibold text-white">What happens next</p>
+            <ol className="space-y-2 text-sm text-white/70">
+              <li className="flex gap-3">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-[11px] font-bold text-[#B4E655]">1</span>
+                <span>Check your email — you&apos;ll receive an activation link to access your account.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-[11px] font-bold text-[#B4E655]">2</span>
+                <span>Set your password to unlock your training dashboard and enrollment history.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-[11px] font-bold text-[#B4E655]">3</span>
+                <span>We&apos;ll send reminders before your first session with court details and what to bring.</span>
+              </li>
+            </ol>
+          </div>
 
-          {/* Actions */}
+          {/* Primary CTA — auth-aware */}
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              href="/"
-              className="rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15 transition"
-            >
-              Back to Home
-            </Link>
+            {user ? (
+              <Link
+                href="/dashboard"
+                className="rounded-full bg-[#B4E655] px-6 py-2.5 text-sm font-semibold text-[#061427] transition hover:brightness-110"
+              >
+                Go to Dashboard →
+              </Link>
+            ) : (
+              <Link
+                href="/set-password"
+                className="rounded-full bg-[#B4E655] px-6 py-2.5 text-sm font-semibold text-[#061427] transition hover:brightness-110"
+              >
+                Set password from your email →
+              </Link>
+            )}
             <Link
               href={`/programs/${program?.slug ?? cohort.programId}`}
-              className="rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] hover:brightness-110 transition"
+              className="rounded-full bg-white/10 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
             >
               View Program
             </Link>
           </div>
+
         </div>
       </div>
     </main>
