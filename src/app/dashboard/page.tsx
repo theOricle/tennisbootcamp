@@ -6,7 +6,11 @@ import { programs } from "@/content/programs";
 import { cohorts } from "@/content/cohorts";
 import { locations } from "@/content/locations";
 
-export const metadata: Metadata = { title: "Dashboard" };
+export const metadata: Metadata = {
+  title: "Dashboard",
+  description: "Your Tennis Bootcamp training dashboard — enrollments and upcoming programs.",
+  robots: { index: false, follow: false },
+};
 
 const DAY_NAMES: Record<string, string> = {
   Mon: "Mondays",
