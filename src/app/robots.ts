@@ -5,7 +5,11 @@ const BASE_URL = "https://tennisbootcamp-seven.vercel.app";
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: { userAgent: "*", allow: "/" },
+    rules: {
+      userAgent: "*",
+      allow: "/",
+      disallow: ["/auth/", "/dashboard", "/profile", "/set-password", "/enroll/"],
+    },
     sitemap: `${BASE_URL}/sitemap.xml`,
   };
 }
