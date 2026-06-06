@@ -3,9 +3,9 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-const SEPARATION = 100;
-const AMOUNTX    = 100;
-const AMOUNTY    = 70;
+const SEPARATION = 120;
+const AMOUNTX    = 50;
+const AMOUNTY    = 35;
 
 export function CourtBackground() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -174,10 +174,20 @@ export function CourtBackground() {
 
     rafId = requestAnimationFrame(animate);
 
+    function onVisibilityChange() {
+      if (document.hidden) {
+        cancelAnimationFrame(rafId);
+      } else {
+        rafId = requestAnimationFrame(animate);
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       cancelAnimationFrame(rafId);
       ro.disconnect();
       window.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (renderer.domElement.parentNode) {
         renderer.domElement.parentNode.removeChild(renderer.domElement);
       }

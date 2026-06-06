@@ -1,6 +1,14 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
-import { CourtBackground } from "@/components/ui/CourtBackground";
+import dynamic from "next/dynamic";
+
+// Code-split Three.js out of the initial bundle; never SSR the WebGL canvas.
+const CourtBackground = dynamic(
+  () => import("@/components/ui/CourtBackground").then((m) => ({ default: m.CourtBackground })),
+  { ssr: false, loading: () => null }
+);
 
 export function Hero() {
   return (
@@ -70,6 +78,7 @@ export function Hero() {
             width={720}
             height={720}
             priority
+            sizes="(max-width: 768px) 380px, (max-width: 1024px) 640px, 720px"
             className="h-auto w-full max-w-[380px] md:w-[640px] lg:w-[720px]"
           />
         </div>
