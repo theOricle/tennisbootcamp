@@ -610,7 +610,7 @@ function IntakePageInner() {
                     id="intake-name"
                     value={form.name ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
                     placeholder="Your name"
                   />
                 </div>
@@ -620,7 +620,7 @@ function IntakePageInner() {
                     id="intake-phone"
                     value={form.phone ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
                     placeholder="(647) 555-1234"
                   />
                 </div>
@@ -630,7 +630,7 @@ function IntakePageInner() {
                     id="intake-email"
                     value={form.email ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
                     placeholder="you@email.com"
                   />
                 </div>
@@ -661,7 +661,7 @@ function IntakePageInner() {
               onClick={back}
               disabled={stepIndex === 0 || submitting}
               className={cn(
-                "rounded-full px-5 py-2 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                "rounded-full px-5 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
                 stepIndex === 0 || submitting
                   ? "bg-white/5 text-white/30"
                   : "bg-white/10 text-white hover:bg-white/15"
@@ -674,7 +674,7 @@ function IntakePageInner() {
               onClick={next}
               disabled={!canContinue() || submitting}
               className={cn(
-                "inline-flex items-center gap-2 rounded-full px-6 py-2 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                "inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
                 !canContinue() && !submitting
                   ? "bg-emerald-300/30 text-[#061427]/50"
                   : submitting
