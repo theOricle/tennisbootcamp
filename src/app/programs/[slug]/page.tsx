@@ -12,6 +12,13 @@ import {
   formatCohortPrice,
 } from "@/lib/cohorts";
 import { getSeatsRemaining } from "@/lib/seatCount";
+import { StickyEnrollBar } from "./StickyEnrollBar";
+
+function fmtStartDate(iso: string): string {
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const [, m, d] = iso.split("-");
+  return `${months[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +64,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   );
 
   const hasOpenCohorts = openCohorts.length > 0;
+  // First truly-enrollable cohort (status === "open", not just upcoming)
+  const nextOpenCohort = openCohorts.find((c) => c.status === "open") ?? null;
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -118,6 +127,46 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               {program.longDescription}
             </p>
 
+            {/* ── Hero CTA ───────────────────────────────────────────────── */}
+            {nextOpenCohort && !program.comingSoon ? (
+              <div id="hero-cta" className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
+                <p className="text-sm font-semibold text-[#B4E655]">
+                  Next cohort starts {fmtStartDate(nextOpenCohort.startDate)}
+                </p>
+                <Link
+                  href={`/enroll/${nextOpenCohort.id}`}
+                  className="mt-3 block w-full rounded-xl bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
+                >
+                  Enroll now →
+                </Link>
+                <a
+                  href="#cohorts"
+                  className="mt-2 block text-center text-xs text-white/50 transition hover:text-white/80"
+                >
+                  Or see all upcoming cohorts ↓
+                </a>
+              </div>
+            ) : program.comingSoon ? (
+              <div className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
+                <p className="text-sm font-semibold text-white">Registration coming soon</p>
+                <p className="mt-1 text-xs text-white/60">
+                  Enter your email to be notified when spots open.
+                </p>
+                <div className="mt-3">
+                  <ProgramInterestForm programSlug={program.slug} programTitle={program.title} />
+                </div>
+              </div>
+            ) : !hasOpenCohorts ? (
+              <div className="mt-6">
+                <Link
+                  href={program.ctaHref}
+                  className="block w-full rounded-xl bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
+                >
+                  {program.ctaText}
+                </Link>
+              </div>
+            ) : null}
+
             {/* Location (fallback for programs without cohorts at multiple venues) */}
             {location && cohorts.length === 0 && (
               <div className="mt-6">
@@ -177,7 +226,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           {!program.comingSoon && hasOpenCohorts ? (
             /* Available: cohort cards grouped by location */
             <div>
-              <h2 className="mb-6 text-xl font-semibold text-white">Upcoming cohorts</h2>
+              <h2 id="cohorts" className="mb-6 text-xl font-semibold text-white">Upcoming cohorts</h2>
               {Object.entries(cohortsByLocation).map(([locationId, locationCohorts]) => {
                 const loc = locations.find((l) => l.id === locationId);
                 return (
@@ -328,6 +377,15 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           </Link>
         </div>
       </div>
+
+      {/* Sticky bottom bar — mobile only, appears after hero CTA scrolls out of view */}
+      {nextOpenCohort && !program.comingSoon && (
+        <StickyEnrollBar
+          cohortId={nextOpenCohort.id}
+          price={formatCohortPrice(nextOpenCohort)}
+          programTitle={program.title}
+        />
+      )}
     </main>
   );
 }
