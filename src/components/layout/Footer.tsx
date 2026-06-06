@@ -10,7 +10,7 @@ export function Footer() {
             <div className="text-white/60">{site.email}</div>
           </div>
 
-          <div className="text-white/50">
+          <div className="text-white/60">
             © {new Date().getFullYear()} TENNISBOOTCAMP.CA. All Rights Reserved
           </div>
         </div>
@@ -25,7 +25,8 @@ export function Footer() {
                   href={s.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-white/50 hover:text-white/80 transition-colors"
+                  aria-label={`${site.name} on ${s.label} (opens in new tab)`}
+                  className="text-xs text-white/70 hover:text-white/90 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
                 >
                   {s.label}
                 </a>

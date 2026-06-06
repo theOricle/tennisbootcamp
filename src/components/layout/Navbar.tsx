@@ -80,7 +80,7 @@ export function Navbar() {
         </Link>
 
         {/* Desktop nav — hidden on mobile */}
-        <div className="hidden items-center gap-3 md:flex">
+        <nav aria-label="Main navigation" className="hidden items-center gap-3 md:flex">
           {isSignedIn ? (
             <>
               <Button
@@ -92,7 +92,7 @@ export function Navbar() {
               </Button>
               <button
                 onClick={() => void handleSignOut()}
-                className="rounded-full px-5 py-2 text-sm font-semibold text-white/70 hover:text-white"
+                className="rounded-full px-5 py-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >
                 Sign out
               </button>
@@ -115,14 +115,15 @@ export function Navbar() {
               </Button>
             </>
           )}
-        </div>
+        </nav>
 
         {/* Mobile hamburger — hidden on desktop */}
         <button
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           aria-expanded={menuOpen}
+          aria-controls="mobile-menu"
           onClick={() => setMenuOpen((o) => !o)}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 md:hidden"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:hidden"
         >
           {menuOpen ? "✕" : "☰"}
         </button>
@@ -130,14 +131,14 @@ export function Navbar() {
 
       {/* Mobile drawer */}
       {menuOpen && (
-        <div className="border-t border-white/10 bg-[#061427] px-6 pb-6 pt-2 md:hidden">
-          <nav className="flex flex-col">
+        <div id="mobile-menu" className="border-t border-white/10 bg-[#061427] px-6 pb-6 pt-2 md:hidden">
+          <nav aria-label="Mobile navigation" className="flex flex-col">
             {MOBILE_NAV_LINKS.map(({ href, label }) => (
               <Link
                 key={href}
                 href={href}
                 onClick={() => setMenuOpen(false)}
-                className="rounded-xl px-4 py-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white"
+                className="rounded-xl px-4 py-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >
                 {label}
               </Link>
@@ -149,7 +150,7 @@ export function Navbar() {
                 <Link
                   href="/dashboard"
                   onClick={() => setMenuOpen(false)}
-                  className="rounded-xl px-4 py-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white"
+                  className="rounded-xl px-4 py-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
                 >
                   Dashboard
                 </Link>
@@ -158,7 +159,7 @@ export function Navbar() {
                     setMenuOpen(false);
                     void handleSignOut();
                   }}
-                  className="rounded-xl px-4 py-3 text-left text-sm text-white/60 hover:bg-white/5 hover:text-white"
+                  className="rounded-xl px-4 py-3 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
                 >
                   Sign out
                 </button>

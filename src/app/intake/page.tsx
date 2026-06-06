@@ -10,7 +10,7 @@ import type { Cohort } from "@/types/cohort";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type StepType = "single" | "multi" | "text" | "contact";
+type StepType = "single" | "multi" | "contact";
 
 type Option = {
   id: string;
@@ -24,7 +24,6 @@ type Step = {
   subtitle?: string;
   type: StepType;
   options?: Option[];
-  placeholder?: string;
 };
 
 type FormState = {
@@ -32,7 +31,7 @@ type FormState = {
   level?: "new" | "rally" | "competitive" | "elite";
   goals: string[];
   programs: string[];
-  preferredLocationIds: string[]; // replaces legacy "area"
+  preferredLocationIds: string[];
   availability: string[];
   notes?: string;
   name?: string;
@@ -78,6 +77,7 @@ function OptionCard({
       className={cn(
         "w-full rounded-2xl border p-4 text-left transition",
         "bg-white/5 hover:bg-white/10",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
         selected ? "border-emerald-300/60 ring-1 ring-emerald-300/30" : "border-white/10"
       )}
     >
@@ -323,6 +323,7 @@ function IntakePageInner() {
   const searchParams = useSearchParams();
   const programParam = searchParams.get("program");
 
+  // Keep pre-selection so ?program=bootcamps still seeds the recommendation engine
   const slugToOptionId: Record<string, string> = {
     bootcamps: "bootcamp",
     "kids-summer-camp": "camp",
@@ -340,13 +341,15 @@ function IntakePageInner() {
           "This short intake helps us place you correctly. Athletes who complete it receive priority placement as programs open.",
         type: "single",
         options: [
-          { id: "adult", label: "Myself (Adult)" },
-          { id: "youth", label: "My child (Youth)" },
+          { id: "adult", label: "Myself — Adult (18+)" },
+          { id: "kid-7-13", label: "My child — Junior (7–13)", desc: "Youth development track" },
+          { id: "kid-14-17", label: "My child — Teen (14–17)", desc: "Competitive foundations" },
+          { id: "elite-14plus", label: "Elite track (14+)", desc: "High-performance program for tournament-level players" },
         ],
       },
       {
         id: "level",
-        title: "Where are you in your tennis journey right now?",
+        title: "Where are you in your tennis journey?",
         subtitle: "There's no right or wrong answer — this helps us place you correctly.",
         type: "single",
         options: [
@@ -357,88 +360,27 @@ function IntakePageInner() {
         ],
       },
       {
-        id: "goals",
-        title: "What do you want to improve?",
+        id: "location",
+        title: "Which Toronto location works best?",
         subtitle: "Select all that apply.",
         type: "multi",
         options: [
-          { id: "consistency", label: "Consistency (reduce errors)" },
-          { id: "technique", label: "Technique (strokes, serve, footwork)" },
-          { id: "tactics", label: "Tactics + strategy (patterns, decisions)" },
-          { id: "match", label: "Match performance (mental, routines)" },
-          { id: "competition", label: "Competition prep / tryouts" },
-        ],
-      },
-      {
-        id: "programs",
-        title: "Programs you're interested in",
-        subtitle: "Optional — skip if you want us to recommend.",
-        type: "multi",
-        options: [
-          {
-            id: "bootcamp",
-            label: "Bootcamps",
-            desc: "High-intensity sessions focused on technique, patterns, and match reps.",
-          },
-          {
-            id: "camp",
-            label: "Summer Camp",
-            desc: "Full-day tennis experience for youth with fundamentals and match play.",
-          },
-          {
-            id: "group",
-            label: "Group Lessons",
-            desc: "Structured group training capped at 6 — more reps, live feedback.",
-          },
-          {
-            id: "not-sure",
-            label: "Not sure — recommend for me",
-            desc: "We'll match you to the best fit based on your level and goals.",
-          },
-        ],
-      },
-      {
-        id: "location",
-        title: "Which location works best for you?",
-        subtitle: "This helps us form groups that make sense logistically.",
-        type: "single",
-        options: [
-          {
-            id: "balliol",
-            label: "Toronto Tennis City",
-            desc: "185 Balliol St, Toronto",
-          },
-          {
-            id: "king",
-            label: "Tennis Lessons Toronto",
-            desc: "510 King St E, Toronto",
-          },
-          {
-            id: "flexible",
-            label: "Either / Flexible",
-            desc: "I can train at either location.",
-          },
+          { id: "balliol", label: "Balliol St — Toronto Tennis City", desc: "185 Balliol St, Toronto" },
+          { id: "king", label: "King St E — Tennis Lessons Toronto", desc: "510 King St E, Toronto" },
+          { id: "flexible", label: "Either / Flexible", desc: "I can train at either location." },
         ],
       },
       {
         id: "availability",
-        title: "When are you generally available?",
+        title: "When can you train?",
         subtitle: "Select all that apply — helps us match you to the right cohort times.",
         type: "multi",
         options: [
-          { id: "weekday-evening", label: "Weekday evenings (after 5pm)" },
+          { id: "weekday-evening", label: "Weekday evenings (after 5 pm)" },
           { id: "weekday-daytime", label: "Weekday daytime" },
           { id: "weekend-morning", label: "Weekend mornings" },
           { id: "weekend-afternoon", label: "Weekend afternoons" },
         ],
-      },
-      {
-        id: "notes",
-        title: "Anything we should know about your goals or schedule?",
-        subtitle: "Optional — keep it short if you add anything.",
-        type: "text",
-        placeholder:
-          "e.g., aiming for a league season, returning from injury, best times (optional)…",
       },
       {
         id: "contact",
@@ -457,6 +399,10 @@ function IntakePageInner() {
   const [submitError, setSubmitError] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
 
+  // Tracks the raw option ID for the "who" step so we can show the correct
+  // selection highlight even though two options map to who="adult".
+  const [whoOptionId, setWhoOptionId] = useState<string | null>(null);
+
   const [form, setForm] = useState<FormState>({
     goals: [],
     programs: preselectedProgram,
@@ -471,16 +417,16 @@ function IntakePageInner() {
   function isSelected(optionId: string): boolean {
     switch (current.id) {
       case "who":
-        return form.who === optionId;
+        return whoOptionId === optionId;
       case "level":
         return form.level === optionId;
-      case "goals":
-        return form.goals.includes(optionId);
-      case "programs":
-        return form.programs.includes(optionId);
       case "location":
-        if (optionId === "flexible") return form.preferredLocationIds.length === 2;
-        return form.preferredLocationIds.length === 1 && form.preferredLocationIds.includes(optionId);
+        if (optionId === "flexible")
+          return (
+            form.preferredLocationIds.includes("balliol") &&
+            form.preferredLocationIds.includes("king")
+          );
+        return form.preferredLocationIds.includes(optionId);
       case "availability":
         return form.availability.includes(optionId);
       default:
@@ -490,32 +436,32 @@ function IntakePageInner() {
 
   function toggleOption(optionId: string) {
     if (current.type === "single") {
-      if (current.id === "who")
-        setForm((s) => ({ ...s, who: optionId as FormState["who"] }));
-      else if (current.id === "level")
+      if (current.id === "who") {
+        const mappedWho: FormState["who"] =
+          optionId === "kid-7-13" || optionId === "kid-14-17" ? "youth" : "adult";
+        setWhoOptionId(optionId);
+        setForm((s) => ({ ...s, who: mappedWho }));
+      } else if (current.id === "level") {
         setForm((s) => ({ ...s, level: optionId as FormState["level"] }));
-      else if (current.id === "location") {
-        if (optionId === "flexible") {
-          setForm((s) => ({ ...s, preferredLocationIds: ["balliol", "king"] }));
-        } else {
-          setForm((s) => ({ ...s, preferredLocationIds: [optionId] }));
-        }
       }
     } else if (current.type === "multi") {
-      if (current.id === "goals") {
-        setForm((s) => ({
-          ...s,
-          goals: s.goals.includes(optionId)
-            ? s.goals.filter((x) => x !== optionId)
-            : [...s.goals, optionId],
-        }));
-      } else if (current.id === "programs") {
-        setForm((s) => ({
-          ...s,
-          programs: s.programs.includes(optionId)
-            ? s.programs.filter((x) => x !== optionId)
-            : [...s.programs, optionId],
-        }));
+      if (current.id === "location") {
+        if (optionId === "flexible") {
+          const bothSelected =
+            form.preferredLocationIds.includes("balliol") &&
+            form.preferredLocationIds.includes("king");
+          setForm((s) => ({
+            ...s,
+            preferredLocationIds: bothSelected ? [] : ["balliol", "king"],
+          }));
+        } else {
+          setForm((s) => ({
+            ...s,
+            preferredLocationIds: s.preferredLocationIds.includes(optionId)
+              ? s.preferredLocationIds.filter((x) => x !== optionId)
+              : [...s.preferredLocationIds, optionId],
+          }));
+        }
       } else if (current.id === "availability") {
         setForm((s) => ({
           ...s,
@@ -530,18 +476,12 @@ function IntakePageInner() {
   function canContinue(): boolean {
     switch (current.id) {
       case "who":
-        return !!form.who;
+        return whoOptionId !== null;
       case "level":
         return !!form.level;
-      case "goals":
-        return form.goals.length > 0;
-      case "programs":
-        return true; // optional
       case "location":
         return form.preferredLocationIds.length > 0;
       case "availability":
-        return true; // optional ranking signal
-      case "notes":
         return true;
       case "contact":
         return !!form.name?.trim() && !!form.email?.trim() && !!form.phone?.trim();
@@ -562,6 +502,10 @@ function IntakePageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          // goals, programs, notes not collected in wizard — send empty defaults
+          goals: form.goals,
+          programs: form.programs,
+          notes: form.notes ?? "",
           // backward-compat: col 9 (area) populated with preferredLocationIds
           area: form.preferredLocationIds.join(", "),
           recommendedProgram: topProgram,
@@ -658,42 +602,35 @@ function IntakePageInner() {
               </div>
             ) : null}
 
-            {current.type === "text" ? (
-              <textarea
-                value={form.notes ?? ""}
-                onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
-                placeholder={current.placeholder}
-                rows={5}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-emerald-300/30"
-              />
-            ) : null}
-
             {current.type === "contact" ? (
               <div className="grid gap-3">
                 <div className="grid gap-2">
-                  <label className="text-sm text-white/70">Full name</label>
+                  <label htmlFor="intake-name" className="text-sm text-white/70">Full name</label>
                   <input
+                    id="intake-name"
                     value={form.name ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/30"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
                     placeholder="Your name"
                   />
                 </div>
                 <div className="grid gap-2">
-                  <label className="text-sm text-white/70">Phone number</label>
+                  <label htmlFor="intake-phone" className="text-sm text-white/70">Phone number</label>
                   <input
+                    id="intake-phone"
                     value={form.phone ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/30"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
                     placeholder="(647) 555-1234"
                   />
                 </div>
                 <div className="grid gap-2">
-                  <label className="text-sm text-white/70">Email</label>
+                  <label htmlFor="intake-email" className="text-sm text-white/70">Email</label>
                   <input
+                    id="intake-email"
                     value={form.email ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/30"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
                     placeholder="you@email.com"
                   />
                 </div>
@@ -724,7 +661,7 @@ function IntakePageInner() {
               onClick={back}
               disabled={stepIndex === 0 || submitting}
               className={cn(
-                "rounded-full px-5 py-2 text-sm font-semibold",
+                "rounded-full px-5 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
                 stepIndex === 0 || submitting
                   ? "bg-white/5 text-white/30"
                   : "bg-white/10 text-white hover:bg-white/15"
@@ -737,13 +674,21 @@ function IntakePageInner() {
               onClick={next}
               disabled={!canContinue() || submitting}
               className={cn(
-                "rounded-full px-6 py-2 text-sm font-semibold",
-                !canContinue() || submitting
+                "inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                !canContinue() && !submitting
                   ? "bg-emerald-300/30 text-[#061427]/50"
+                  : submitting
+                  ? "cursor-wait bg-emerald-300 text-[#061427]"
                   : "bg-emerald-300 text-[#061427] hover:bg-emerald-200"
               )}
             >
-              {stepIndex === steps.length - 1 ? (submitting ? "Submitting..." : "Submit") : "Next"}
+              {submitting && (
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              )}
+              {stepIndex === steps.length - 1 ? (submitting ? "Submitting…" : "Submit") : "Next"}
             </button>
           </div>
         </div>

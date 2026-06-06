@@ -35,7 +35,7 @@ export function ProfileForm({ userId, email, initialFullName, initialPhone }: Pr
         <input
           readOnly
           value={email}
-          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/50 focus:outline-none"
+          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white/50 focus:outline-none md:text-sm"
         />
       </div>
 
@@ -46,7 +46,7 @@ export function ProfileForm({ userId, email, initialFullName, initialPhone }: Pr
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="Your full name"
-          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
+          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30 md:text-sm"
         />
       </div>
 
@@ -57,7 +57,7 @@ export function ProfileForm({ userId, email, initialFullName, initialPhone }: Pr
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="+1 416 000 0000"
-          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30"
+          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30 md:text-sm"
         />
       </div>
 
@@ -65,7 +65,7 @@ export function ProfileForm({ userId, email, initialFullName, initialPhone }: Pr
         <button
           type="submit"
           disabled={status === "saving"}
-          className="rounded-full bg-[#B4E655] px-6 py-2.5 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:opacity-50"
+          className="rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:opacity-50"
         >
           {status === "saving" ? "Saving…" : "Save changes"}
         </button>
