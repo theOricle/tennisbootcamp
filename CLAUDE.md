@@ -6,7 +6,7 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Active build plan:** `ops/plans/enrollment-and-accounts.md` — execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive.
 
-Last updated: 2026-05-22
+Last updated: 2026-06-07
 
 ---
 
@@ -16,6 +16,38 @@ Last updated: 2026-05-22
 - **Repo:** https://github.com/theOricle/tennisbootcamp (public)
 - **Owner:** Sina (sina2666@gmail.com). Works with the Claude + AI stack end-to-end across design, code, ads, and ops.
 - **Workflow preference:** Automate everything possible. Claude Code in the terminal is the main engineering tool; Cowork is used for planning, docs, and non-code work.
+
+## Current state (locked decisions)
+
+These are settled — do not re-open without explicit owner instruction.
+
+- **Auth:** Supabase Auth (NOT Auth.js — pivoted from original plan)
+- **Primary CTA label:** "Find My Program" (NOT "Get Priority Placement" — updated site-wide)
+- **Pricing (CAD):** Bootcamps $649 · Kids Camp $499/week · Group Lessons $599
+- **Refund policy:** 7-day full refund window; 50% refund or full credit for 3–6 days; $25 admin fee
+- **Sending domain:** `send.tennisbootcamp.ca` (Resend-verified, GoDaddy DNS records set)
+- **Sender FROM:** `Tennis Bootcamp <noreply@send.tennisbootcamp.ca>`
+- **Email accounts:** `info@tennisbootcamp.ca` for business APIs (Stripe, Resend, MailerLite, GA4); `sina2666@gmail.com` for dev accounts (Supabase, Vercel, GitHub)
+- **Preview mode:** `NEXT_PUBLIC_PREVIEW_MODE=true` must be set in Vercel until real launch — shows preview banner site-wide via `PreviewBanner` component in root layout
+
+## Phases shipped
+
+All phases are merged to main as of 2026-06-07.
+
+- **Phases 0–6** — Supabase Auth, enrollment wizard, Stripe checkout (test mode), dashboard, profile page, password-reset via Resend
+- **Hardening pass** — RLS policies tightened, SECURITY DEFINER revokes baked into migration
+- **Dashboard** — rebuilt to 3-column Figma layout
+- **Testimonials** — placeholder content, flagged as pre-launch
+- **5-step intake** — trimmed from 7 steps; dropped goals/programs/notes collection steps (sent as empty defaults)
+- **SEO** — per-page metadata, per-page OG images, sitemap, robots.ts with targeted disallow
+- **Loading + error states** — Suspense skeletons on dashboard/profile, global-error, page-level error boundary, branded 404
+- **Accessibility pass** — focus rings, skip link, semantic nav landmarks, label associations, aria-hidden decoratives, contrast bump
+- **Mobile responsive sweep** — hero image overflow fixed, 44px touch targets, 16px input font-size (iOS zoom prevention), TrustBar mobile padding
+- **Performance** — Three.js dynamically imported (code-split), particles reduced 7k→1,750, tab-visibility pause, hero image `sizes` prop
+- **GA4 conversion events** — `intake_start`, `intake_complete`, `enroll_start`, `enroll_continue_to_payment`, `enroll_complete`, `newsletter_signup`, `program_interest_signup`, `login_success`, `password_set_success`
+- **Program detail CTA** — hero CTA block with next cohort date + Enroll button; sticky mobile bottom bar via IntersectionObserver
+- **Email** — branded HTML templates (lime stripe, navy card, lime buttons, sign-off from Sina); recommendation email fired after intake; confirmation page personalised with participant name + numbered next-steps
+- **Audit fixes** — seat count ignores `test_paid`; About placeholder hidden in prod (`NODE_ENV === "development"`); `PreviewBanner` component; Maps iframe URL fixed (`www.google.com`); TrustBar copy ("Midtown and Downtown"); CTA label consistency; 404 link text
 
 ## Folder layout (this project folder)
 
@@ -38,7 +70,13 @@ Project was moved out of OneDrive on 2026-05-04 to eliminate file-truncation bug
 - **Styling:** Tailwind CSS **3.4.19** + PostCSS + Autoprefixer
 - **Language:** TypeScript 5
 - **Lint:** ESLint 9 with `eslint-config-next`
-- **Runtime integrations:** `googleapis` (v171) — Google Sheets API via service account, used by `/api/intake` and `/api/newsletter`; `three` — particle-wave hero background (CourtBackground)
+- **Runtime integrations:**
+  - `googleapis` (v171) — Google Sheets API via service account, used by `/api/intake` and `/api/newsletter`
+  - `three` — particle-wave hero background (CourtBackground, dynamically imported)
+  - `stripe` — Stripe checkout; currently **test-mode only** (`STRIPE_SECRET_KEY` = `sk_test_...`). Live keys not yet set.
+  - `resend` — transactional email via verified subdomain `send.tennisbootcamp.ca`. Used for password-set/reset links and intake recommendation email.
+  - `mailerlite-universal` — newsletter subscriber sync on intake opt-in
+  - `@next/third-parties/google` — GA4 via `GoogleAnalytics` + `sendGAEvent`; fires when `NEXT_PUBLIC_GA_ID` is set
 - **Dev scripts** (from `package.json`):
   - `npm run dev` — start Next dev server
   - `npm run build` — production build
@@ -103,9 +141,9 @@ Homepage (`src/app/page.tsx`) composes: Hero → TrustBar → EmailCapture → P
 
 ## Primary conversion flow
 
-Per `site/ops/briefs/project.md`:
+Per `ops/briefs/project.md`:
 
-1. **Get Priority Placement** (primary CTA) → `/intake`
+1. **Find My Program** (primary CTA) → `/intake`
 2. **View Programs** (secondary) → `/programs`
 3. **Newsletter signup** (tertiary)
 
@@ -187,27 +225,28 @@ The code has been partially populated with real info — Figma still shows old p
 - "Critical Reserve" program card
 - Payment flow with Stripe/PayPal — NOT YET in code. Current site is lead-capture only.
 
-## Outstanding work / gaps
+## Outstanding (owner inputs needed)
 
-**Waiting on owner input**
-- Real social media URLs → `src/content/site.ts` (Footer auto-shows them when set)
-- Calendly (or equivalent) booking URL → `bookingHref` in `src/content/site.ts`
-- Real second coach name, bio, photo → `src/content/coaches.ts`
-- Real event dates → `src/content/events.ts` (remove `placeholder: true`, fill real data)
-- Vercel env vars transfer from other computer (blocks production intake + newsletter)
-- Custom domain `tennisbootcamp.ca` → connect in Vercel dashboard (also update `BASE_URL` in `src/app/robots.ts` and `src/app/sitemap.ts`)
+These are blockers or content gaps — nothing code can fill without real data from Sina.
 
-**Not yet built (Figma shows, code doesn't have)**
-- Full registration + payment flow (Figma shows Stripe + PayPal; repo is lead-capture-only today)
-- Authentication (Auth.js v5 + Neon Postgres + Prisma — planned, not started)
-- Dashboard, Profile, Our Team detail pages
-- Video lessons gated access (currently a clean "coming soon" teaser)
-- Maps embedded on locations page
-- Analytics: GA4 wired via `@next/third-parties/google` — fires when `NEXT_PUBLIC_GA_ID` is set in Vercel
-- Font: Geist via `next/font/google` — shipped, no further action needed
+- **Sina's real bio** — years coaching, playing background, certifications, notable achievements. Placeholder is in `src/app/about/page.tsx`, hidden in production (`NODE_ENV === "development"`) but needs real content before the banner is removed.
+- **Real venue partnerships** — `src/content/locations.ts` lists Toronto Tennis City (Balliol) and Tennis Lessons Toronto (King St E) as placeholders. These are not confirmed training partners yet. Flagged in `ops/briefs/competitors.md`. Do not present them as confirmed venues in copy until partnerships are signed.
+- **Real cohort dates and capacities** — `src/content/cohorts.ts` has placeholder/sample dates and seat counts. Update before any live enrollment opens.
+- **Photos** — coach headshot (Sina), court/training photos for program pages, athlete testimonial photos (currently placeholder silhouettes).
+- **Real social URLs** — all `site.socials` hrefs are `"#"`. Footer already filters them out; update `src/content/site.ts` when accounts are live.
+- **Second coach** — either add a real second coach to `src/content/coaches.ts`, or change the section heading to "More coaches joining soon" treatment.
+- **Lawyer-reviewed waiver** — current waiver at `src/app/legal/waiver/page.tsx` is a placeholder with a visible "not reviewed by legal counsel" banner. Must be replaced before live payments are collected.
+- **Real event dates** — `src/content/events.ts` has a `placeholder: true` entry; EventsList hides it and shows "sessions being scheduled" copy. Replace when real dates are confirmed.
 
-**Design edits owner flagged**
-- Figma itself needs heavy editing — specific priority screens TBD with owner.
+## What's left to launch
+
+In priority order:
+
+1. **Source owner content above** — bio, cohort dates, photos, venue confirmation, waiver
+2. **Switch Stripe to live keys** — replace `sk_test_...` with `sk_live_...` in Vercel env vars; test the full checkout flow end-to-end before flipping
+3. **Remove preview banner** — delete `NEXT_PUBLIC_PREVIEW_MODE` from Vercel env vars (or set it to anything other than `"true"`)
+4. **Connect tennisbootcamp.ca domain** — at GoDaddy → Vercel; then update `Supabase Auth URL allowlist` and `NEXT_PUBLIC_SITE_URL`; confirm email links resolve to the real domain
+5. **Update BASE_URL** — change `tennisbootcamp-seven.vercel.app` to `tennisbootcamp.ca` in `src/app/sitemap.ts` and `src/app/robots.ts`
 
 ## Local setup checklist
 
@@ -229,14 +268,6 @@ If OneDrive gets signed into this machine later, exclude `node_modules` and `.ne
 - Cowork is used for browser-driven tasks only (Vercel UI, Figma reference, design review) — Claude Code for all code work
 - GitHub Actions CI runs lint + typecheck on every push — don't skip it
 - Keep this `CLAUDE.md` as the single source of truth for project context across sessions
-
-## Open questions (confirm when re-visiting)
-
-1. Do we want to introduce Stripe + PayPal + accounts now, or keep the lead-capture model for the current season?
-2. Which Figma screens are priority for the "heavy edits" pass?
-3. Real second coach name, bio, photo?
-4. Real social media URLs?
-5. Real second coach name, bio, photo?
 
 ## How to use this file
 
