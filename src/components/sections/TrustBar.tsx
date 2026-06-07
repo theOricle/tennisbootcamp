@@ -5,7 +5,7 @@ const signals = [
   },
   {
     label: "Two Toronto Locations",
-    body: "North York and Downtown. Find the session closest to you.",
+    body: "Midtown and Downtown. Find the session closest to you.",
   },
   {
     label: "Priority Placement",
