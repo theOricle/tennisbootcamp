@@ -47,13 +47,17 @@ function cn(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
 }
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ProgressBar({ value }: { value: number }) {
   return (
     <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
       <div
-        className="h-full rounded-full bg-emerald-300 transition-all"
+        className="h-full rounded-full bg-[#B4E655] transition-all"
         style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
       />
     </div>
@@ -65,11 +69,13 @@ function OptionCard({
   desc,
   selected,
   onClick,
+  multi = false,
 }: {
   label: string;
   desc?: string;
   selected: boolean;
   onClick: () => void;
+  multi?: boolean;
 }) {
   return (
     <button
@@ -79,7 +85,7 @@ function OptionCard({
         "w-full rounded-2xl border p-4 text-left transition",
         "bg-white/5 hover:bg-white/10",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-        selected ? "border-emerald-300/60 ring-1 ring-emerald-300/30" : "border-white/10"
+        selected ? "border-[#B4E655]/60 ring-1 ring-[#B4E655]/30" : "border-white/10"
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -89,8 +95,9 @@ function OptionCard({
         </div>
         <div
           className={cn(
-            "mt-1 h-5 w-5 shrink-0 rounded-full border",
-            selected ? "border-emerald-300 bg-emerald-300/30" : "border-white/20"
+            "mt-1 h-5 w-5 shrink-0 border",
+            multi ? "rounded-sm" : "rounded-full",
+            selected ? "border-[#B4E655] bg-[#B4E655]/30" : "border-white/20"
           )}
         />
       </div>
@@ -261,7 +268,7 @@ function RecommendationScreen({
             </Link>
             <Link
               href="/programs"
-              className="rounded-full bg-emerald-300 px-5 py-2 text-sm font-semibold text-[#061427] hover:bg-emerald-200"
+              className="rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] hover:brightness-110 transition"
             >
               Browse All Programs
             </Link>
@@ -283,7 +290,7 @@ function FallbackScreen({
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
-          <div className="text-sm text-emerald-200/90">Priority Placement</div>
+          <div className="text-sm font-semibold text-[#B4E655]">Priority Placement</div>
           <h1 className="mt-2 text-3xl font-semibold">You&apos;re on the Priority Placement List</h1>
           <p className="mt-3 text-white/70">
             We place athletes who complete the intake first as programs begin forming. We&apos;ll
@@ -307,7 +314,7 @@ function FallbackScreen({
             </Link>
             <Link
               href="/programs"
-              className="rounded-full bg-emerald-300 px-5 py-2 text-sm font-semibold text-[#061427] hover:bg-emerald-200"
+              className="rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] hover:brightness-110 transition"
             >
               View Programs
             </Link>
@@ -488,8 +495,12 @@ function IntakePageInner() {
         return form.preferredLocationIds.length > 0;
       case "availability":
         return true;
-      case "contact":
-        return !!form.name?.trim() && !!form.email?.trim() && !!form.phone?.trim();
+      case "contact": {
+        const nameOk = !!form.name?.trim();
+        const phoneOk = (form.phone ?? "").replace(/\D/g, "").length >= 7;
+        const emailOk = !!form.email && isValidEmail(form.email);
+        return nameOk && phoneOk && emailOk;
+      }
       default:
         return true;
     }
@@ -576,7 +587,7 @@ function IntakePageInner() {
 
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
           <div className="mb-4">
-            <div className="text-xs font-semibold tracking-wide text-emerald-200/90">
+            <div className="text-xs font-semibold tracking-wide text-[#B4E655]/80">
               PRIORITY PLACEMENT INTAKE
             </div>
             <h1 className="mt-2 text-2xl font-semibold md:text-3xl">{current.title}</h1>
@@ -603,6 +614,7 @@ function IntakePageInner() {
                     desc={o.desc}
                     selected={isSelected(o.id)}
                     onClick={() => toggleOption(o.id)}
+                    multi={current.type === "multi"}
                   />
                 ))}
               </div>
@@ -614,6 +626,8 @@ function IntakePageInner() {
                   <label htmlFor="intake-name" className="text-sm text-white/70">Full name</label>
                   <input
                     id="intake-name"
+                    type="text"
+                    autoComplete="name"
                     value={form.name ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
@@ -624,6 +638,9 @@ function IntakePageInner() {
                   <label htmlFor="intake-phone" className="text-sm text-white/70">Phone number</label>
                   <input
                     id="intake-phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
                     value={form.phone ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
@@ -634,11 +651,17 @@ function IntakePageInner() {
                   <label htmlFor="intake-email" className="text-sm text-white/70">Email</label>
                   <input
                     id="intake-email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
                     value={form.email ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
                     placeholder="you@email.com"
                   />
+                  {form.email && !isValidEmail(form.email) && (
+                    <p className="mt-1 text-xs text-red-400">Please enter a valid email address.</p>
+                  )}
                 </div>
                 <label className="mt-1 flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
                   <input
@@ -682,10 +705,10 @@ function IntakePageInner() {
               className={cn(
                 "inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
                 !canContinue() && !submitting
-                  ? "bg-emerald-300/30 text-[#061427]/50"
+                  ? "bg-[#B4E655]/30 text-[#061427]/50"
                   : submitting
-                  ? "cursor-wait bg-emerald-300 text-[#061427]"
-                  : "bg-emerald-300 text-[#061427] hover:bg-emerald-200"
+                  ? "cursor-wait bg-[#B4E655] text-[#061427]"
+                  : "bg-[#B4E655] text-[#061427] hover:brightness-110"
               )}
             >
               {submitting && (
