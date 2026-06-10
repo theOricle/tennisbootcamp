@@ -135,7 +135,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 </p>
                 <Link
                   href={`/enroll/${nextOpenCohort.id}`}
-                  className="mt-3 block w-full rounded-xl bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
+                  className="mt-3 block w-full rounded-full bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
                 >
                   Enroll now →
                 </Link>
@@ -160,7 +160,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               <div className="mt-6">
                 <Link
                   href={program.ctaHref}
-                  className="block w-full rounded-xl bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
+                  className="block w-full rounded-full bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
                 >
                   {program.ctaText}
                 </Link>
@@ -311,12 +311,12 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                               {!isFull && cohort.status !== "upcoming" ? (
                                 <Link
                                   href={`/enroll/${cohort.id}`}
-                                  className="block w-full rounded-lg bg-[#B4E655] py-2 text-center text-sm font-semibold text-[#061427] hover:brightness-110 transition"
+                                  className="block w-full rounded-full bg-[#B4E655] py-2 text-center text-sm font-semibold text-[#061427] hover:brightness-110 transition"
                                 >
                                   Enroll →
                                 </Link>
                               ) : (
-                                <div className="block w-full rounded-lg bg-white/5 py-2 text-center text-sm font-semibold text-white/30">
+                                <div className="block w-full rounded-full bg-white/5 py-2 text-center text-sm font-semibold text-white/30">
                                   {isFull ? "Cohort full" : "Registration opening soon"}
                                 </div>
                               )}
@@ -333,7 +333,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
             /* Available but no open cohorts yet — fall back to intake CTA */
             <Link
               href={program.ctaHref}
-              className="inline-block rounded-xl bg-[#B4E655] px-8 py-4 text-base font-semibold text-[#061427] hover:brightness-110 transition"
+              className="inline-block rounded-full bg-[#B4E655] px-8 py-4 text-base font-semibold text-[#061427] hover:brightness-110 transition"
             >
               {program.ctaText}
             </Link>

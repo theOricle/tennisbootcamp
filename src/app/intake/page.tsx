@@ -703,25 +703,27 @@ function IntakePageInner() {
             </p>
           )}
           <div className="mt-6 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={back}
-              disabled={stepIndex === 0 || submitting}
-              className={cn(
-                "rounded-full px-5 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-                stepIndex === 0 || submitting
-                  ? "bg-white/5 text-white/30"
-                  : "bg-white/10 text-white hover:bg-white/15"
-              )}
-            >
-              Back
-            </button>
+            {stepIndex > 0 && (
+              <button
+                type="button"
+                onClick={back}
+                disabled={submitting}
+                className={cn(
+                  "rounded-full px-5 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                  submitting
+                    ? "bg-white/5 text-white/30"
+                    : "bg-white/10 text-white hover:bg-white/15"
+                )}
+              >
+                Back
+              </button>
+            )}
             <button
               type="button"
               onClick={next}
               disabled={!canContinue() || submitting}
               className={cn(
-                "inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                "ml-auto inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
                 !canContinue() && !submitting
                   ? "bg-[#B4E655]/30 text-[#061427]/50"
                   : submitting

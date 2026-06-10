@@ -8,12 +8,13 @@ type ButtonProps = ComponentProps<typeof Link> & {
 };
 
 const base =
-  "inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm font-semibold transition " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/60";
+  "inline-flex items-center justify-center rounded-full px-6 py-3 text-sm font-semibold transition " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 " +
+  "focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
 
 const variants: Record<ButtonVariant, string> = {
   primary: "bg-[#B4E655] text-[#061427] hover:brightness-110",
-  secondary: "bg-white/10 text-white hover:bg-white/15 border border-white/10",
+  secondary: "border border-white/25 bg-transparent text-white/80 hover:border-white/45 hover:text-white",
   ghost: "text-white/80 hover:text-white hover:bg-white/5",
 };
 
