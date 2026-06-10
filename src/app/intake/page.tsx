@@ -109,28 +109,44 @@ function OptionCard({
 
 function CohortRow({ cohort }: { cohort: Cohort }) {
   const loc = locations.find((l) => l.id === cohort.locationId);
+  const isOpen = cohort.status === "open";
+
+  const inner = (
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <p className="text-xs font-semibold text-[#B4E655]">{loc?.name ?? cohort.locationId}</p>
+        <p className="mt-0.5 text-sm text-white/80">{formatDateRange(cohort)}</p>
+        <p className="mt-0.5 text-xs text-white/55">{formatDaysTimes(cohort)}</p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-sm font-semibold text-white">{formatCohortPrice(cohort)}</p>
+        {isOpen ? (
+          <span className="mt-1 inline-block rounded-full bg-[#B4E655] px-3 py-1 text-[11px] font-semibold text-[#061427]">
+            Enroll →
+          </span>
+        ) : (
+          <span className="mt-1 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white/50">
+            Coming soon
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
+  if (isOpen) {
+    return (
+      <Link
+        href={`/enroll/${cohort.id}`}
+        className="block rounded-lg border border-[#B4E655]/20 bg-white/5 px-4 py-3 transition hover:border-[#B4E655]/40 hover:bg-[#B4E655]/5"
+      >
+        {inner}
+      </Link>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-[#B4E655]">{loc?.name ?? cohort.locationId}</p>
-          <p className="mt-0.5 text-sm text-white/80">{formatDateRange(cohort)}</p>
-          <p className="mt-0.5 text-xs text-white/55">{formatDaysTimes(cohort)}</p>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-sm font-semibold text-white">{formatCohortPrice(cohort)}</p>
-          <span
-            className={cn(
-              "mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium",
-              cohort.status === "open"
-                ? "bg-[#B4E655]/15 text-[#B4E655]"
-                : "bg-white/10 text-white/50"
-            )}
-          >
-            {cohort.status === "open" ? "Spots open" : "Coming soon"}
-          </span>
-        </div>
-      </div>
+      {inner}
     </div>
   );
 }
@@ -144,6 +160,7 @@ function RecommendationCard({
 }) {
   const isTop = rank === 0;
   const displayCohorts = rec.cohorts.slice(0, 2);
+  const hasOpenCohort = rec.cohorts.some((c) => c.status === "open");
 
   return (
     <div
@@ -186,17 +203,18 @@ function RecommendationCard({
       )}
 
       <div className="mt-4">
-        {/* TODO: link to /enroll/[cohortId] in Phase 4 */}
         <Link
           href={`/programs/${rec.program.slug}`}
           className={cn(
             "block w-full rounded-xl py-2.5 text-center text-sm font-semibold transition",
-            isTop
+            hasOpenCohort
+              ? "border border-white/15 text-white/55 hover:border-white/30 hover:text-white/80"
+              : isTop
               ? "bg-[#B4E655] text-[#061427] hover:brightness-110"
               : "border border-[#B4E655]/40 text-[#B4E655] hover:bg-[#B4E655]/10"
           )}
         >
-          {isTop ? "View Program →" : "View Program"}
+          {hasOpenCohort ? "See full program details →" : isTop ? "View Program →" : "View Program"}
         </Link>
       </div>
     </div>
