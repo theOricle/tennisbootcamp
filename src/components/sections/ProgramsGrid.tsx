@@ -79,7 +79,7 @@ export function ProgramsGrid({ programs, title = "Our Programs" }: ProgramsGridP
               <div className="px-4 pb-4 pt-3 mt-auto">
                 <Link
                   href={p.ctaHref}
-                  className="block w-full rounded-xl border border-[#B4E655]/40 px-4 py-2 text-center text-sm font-semibold text-[#B4E655] hover:bg-[#B4E655]/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+                  className="block w-full rounded-full border border-[#B4E655]/40 px-4 py-2 text-center text-sm font-semibold text-[#B4E655] hover:bg-[#B4E655]/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
                 >
                   {p.ctaText}
                 </Link>

@@ -86,7 +86,7 @@ export function Navbar() {
               <Button
                 variant="secondary"
                 href="/dashboard"
-                className="rounded-full px-5 py-2"
+                className="px-5 py-2"
               >
                 Dashboard
               </Button>
@@ -102,14 +102,14 @@ export function Navbar() {
               <Button
                 variant="secondary"
                 href="/programs"
-                className="rounded-full px-5 py-2"
+                className="px-5 py-2"
               >
                 Our Programs
               </Button>
               <Button
                 variant="primary"
                 href="/intake"
-                className="rounded-full px-5 py-2"
+                className="px-5 py-2"
               >
                 Find My Program
               </Button>
@@ -169,7 +169,7 @@ export function Navbar() {
                 variant="primary"
                 href="/intake"
                 onClick={() => setMenuOpen(false)}
-                className="w-full justify-center rounded-full py-3 text-sm"
+                className="w-full justify-center py-3 text-sm"
               >
                 Find My Program
               </Button>
