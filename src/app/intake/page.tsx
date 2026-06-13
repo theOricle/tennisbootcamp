@@ -616,9 +616,6 @@ function IntakePageInner() {
 
           <div className="mb-6">
             <ProgressBar value={progress} />
-            <div className="mt-2 text-xs text-white/50">
-              Priority placements are given to athletes who complete this intake.
-            </div>
           </div>
 
           {/* Step content */}
@@ -639,7 +636,13 @@ function IntakePageInner() {
             ) : null}
 
             {current.type === "contact" ? (
-              <div className="grid gap-3">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (canContinue() && !submitting) next();
+                }}
+                className="grid gap-3"
+              >
                 <div className="grid gap-2">
                   <label htmlFor="intake-name" className="text-sm text-white/70">Full name</label>
                   <input
@@ -692,7 +695,11 @@ function IntakePageInner() {
                     Also keep me updated by email (newsletter)
                   </span>
                 </label>
-              </div>
+                {/* Enables Enter-to-advance from any field; the visible CTA lives in the footer */}
+                <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
+                  Continue
+                </button>
+              </form>
             ) : null}
           </div>
 
@@ -741,10 +748,6 @@ function IntakePageInner() {
             </button>
           </div>
         </div>
-
-        <p className="mt-6 text-center text-xs text-white/45">
-          Welcoming at any level — built for athletes who want consistent, structured improvement.
-        </p>
       </div>
     </main>
   );
