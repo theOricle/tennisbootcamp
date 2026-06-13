@@ -84,7 +84,17 @@ export function Hero() {
         </div>
       </div>
 
-      <div className="relative z-30 mt-6 flex justify-center text-white/60">↓</div>
+      <div className="relative z-30 mt-6 flex justify-center" aria-hidden="true">
+        <svg
+          className="h-5 w-5 animate-bounce text-white/50"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
     </section>
   );
 }

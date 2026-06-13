@@ -221,13 +221,21 @@ function RegistrantStep({
   form,
   setForm,
   isMinor,
+  onEnterSubmit,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   isMinor: boolean;
+  onEnterSubmit: () => void;
 }) {
   return (
-    <div className="space-y-5">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onEnterSubmit();
+      }}
+      className="space-y-5"
+    >
       {/* Participant */}
       <div>
         <p className="mb-3 text-sm font-semibold text-white">Participant</p>
@@ -306,7 +314,11 @@ function RegistrantStep({
           </div>
         </div>
       )}
-    </div>
+      {/* Enables Enter-to-advance from any field; the visible CTA lives in the footer */}
+      <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
+        Continue
+      </button>
+    </form>
   );
 }
 
@@ -592,7 +604,14 @@ export function EnrollWizard({
             />
           )}
           {step === 1 && (
-            <RegistrantStep form={form} setForm={setForm} isMinor={isMinor} />
+            <RegistrantStep
+              form={form}
+              setForm={setForm}
+              isMinor={isMinor}
+              onEnterSubmit={() => {
+                if (canContinue() && !submitting) next();
+              }}
+            />
           )}
           {step === 2 && (
             <ConsentStep form={form} setForm={setForm} isMinor={isMinor} />
