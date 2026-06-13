@@ -200,6 +200,19 @@ function OrderSummary({
           </p>
         )}
       </div>
+
+      {/* Refund reassurance */}
+      <p className="text-xs text-white/50">
+        7-day full-refund window — cancel up to 7 days before the start date.{" "}
+        <Link
+          href="/legal/refund-policy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#B4E655] underline-offset-2 hover:underline"
+        >
+          Refund Policy
+        </Link>
+      </p>
     </div>
   );
 }
@@ -629,6 +642,19 @@ export function EnrollWizard({
                   : "Continue →"}
               </button>
             </div>
+            {isLastStep && (
+              <p className="text-right text-xs text-white/50">
+                7-day full-refund window — cancel up to 7 days before the start date.{" "}
+                <Link
+                  href="/legal/refund-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#B4E655] underline-offset-2 hover:underline"
+                >
+                  Refund Policy
+                </Link>
+              </p>
+            )}
             {submitError && (
               <p className="text-right text-sm text-red-400">{submitError}</p>
             )}
