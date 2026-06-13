@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { site } from "@/content/site";
 
 export function Footer() {
@@ -8,6 +9,12 @@ export function Footer() {
           <div>
             <div className="font-semibold text-white">{site.name}</div>
             <div className="text-white/60">{site.email}</div>
+            <Link
+              href="/login"
+              className="mt-2 inline-block rounded text-white/60 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+            >
+              Log in
+            </Link>
           </div>
 
           <div className="text-white/60">

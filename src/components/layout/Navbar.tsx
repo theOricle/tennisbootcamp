@@ -99,6 +99,12 @@ export function Navbar() {
             </>
           ) : (
             <>
+              <Link
+                href="/login"
+                className="rounded-full px-5 py-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+              >
+                Log in
+              </Link>
               <Button
                 variant="secondary"
                 href="/programs"
@@ -165,14 +171,23 @@ export function Navbar() {
                 </button>
               </div>
             ) : (
-              <Button
-                variant="primary"
-                href="/intake"
-                onClick={() => setMenuOpen(false)}
-                className="w-full justify-center py-3 text-sm"
-              >
-                Find My Program
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Link
+                  href="/login"
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-xl px-4 py-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+                >
+                  Log in
+                </Link>
+                <Button
+                  variant="primary"
+                  href="/intake"
+                  onClick={() => setMenuOpen(false)}
+                  className="w-full justify-center py-3 text-sm"
+                >
+                  Find My Program
+                </Button>
+              </div>
             )}
           </div>
         </div>
