@@ -146,7 +146,15 @@ async function ProfileContent({
         <div className="border-b border-white/10 mb-6" />
 
         {!enrollments || enrollments.length === 0 ? (
-          <p className="text-sm text-white/50">No enrollments yet.</p>
+          <div className="space-y-4">
+            <p className="text-sm text-white/60">No enrollments yet.</p>
+            <Link
+              href="/programs"
+              className="inline-block rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] hover:brightness-110 transition-filter"
+            >
+              Browse Programs
+            </Link>
+          </div>
         ) : (
           <ul className="space-y-4">
             {enrollments.map((e) => {

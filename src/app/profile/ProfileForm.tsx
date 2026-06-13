@@ -43,10 +43,11 @@ export function ProfileForm({ userId, email, initialFullName, initialPhone }: Pr
         <label className="text-sm text-white/70">Full name</label>
         <input
           type="text"
+          autoComplete="name"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="Your full name"
-          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30 md:text-sm"
+          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
         />
       </div>
 
@@ -54,10 +55,12 @@ export function ProfileForm({ userId, email, initialFullName, initialPhone }: Pr
         <label className="text-sm text-white/70">Phone</label>
         <input
           type="tel"
+          inputMode="tel"
+          autoComplete="tel"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="+1 416 000 0000"
-          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30 md:text-sm"
+          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
         />
       </div>
 

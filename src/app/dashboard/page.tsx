@@ -39,12 +39,13 @@ function ageLabel(ageGroup: string): string {
 function DashboardSkeleton() {
   return (
     <div className="animate-pulse">
-      {/* User header ghost */}
-      <div className="mb-12 flex justify-end">
-        <div className="space-y-1.5 text-right">
-          <div className="ml-auto h-4 w-28 rounded bg-white/10" />
-          <div className="ml-auto h-3 w-14 rounded bg-white/5" />
+      {/* Page header ghost — mirrors the top-left welcome header */}
+      <div className="mb-12 flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-2">
+          <div className="h-8 w-56 rounded bg-white/10" />
+          <div className="h-3 w-44 rounded bg-white/5" />
         </div>
+        <div className="h-4 w-20 rounded bg-white/5" />
       </div>
 
       <div className="grid grid-cols-1 gap-12 md:grid-cols-3">
@@ -160,7 +161,7 @@ async function DashboardContent({
     return <DashboardErrorState />;
   }
 
-  const displayName = profile?.full_name || userEmail;
+  const firstName = profile?.full_name?.trim().split(/\s+/)[0] || userEmail || "";
 
   const enrolledProgramIds = new Set(
     (enrollments ?? []).map((e) => {
@@ -172,14 +173,22 @@ async function DashboardContent({
 
   return (
     <>
-      {/* User name */}
-      <div className="mb-12 flex justify-end">
-        <div className="text-right">
-          <p className="font-semibold text-white">{displayName}</p>
-          <Link href="/profile" className="text-sm text-[#B4E655] hover:underline">
-            / profile
-          </Link>
+      {/* Page header */}
+      <div className="mb-12 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-white md:text-3xl">
+            Welcome back{firstName ? `, ${firstName}` : ""}
+          </h1>
+          <p className="mt-1 text-sm text-white/60">
+            Your enrollments and upcoming programs.
+          </p>
         </div>
+        <Link
+          href="/profile"
+          className="rounded-full text-sm font-semibold text-white/70 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+        >
+          Edit profile
+        </Link>
       </div>
 
       {/* Three-column grid */}
@@ -219,7 +228,7 @@ async function DashboardContent({
                     <div className="mt-2 flex items-start justify-between gap-4">
                       <div className="space-y-0.5 text-sm text-white/70">
                         {enrollment.participant_name && (
-                          <p>Name of Student: {enrollment.participant_name}</p>
+                          <p>Student: {enrollment.participant_name}</p>
                         )}
                         {cohort?.sessions.map((s) => (
                           <p key={s.day}>
@@ -228,10 +237,8 @@ async function DashboardContent({
                         ))}
                       </div>
                       {program?.ageGroup && (
-                        <span className="shrink-0 rounded-lg bg-[#B4E655]/10 px-2.5 py-1.5 text-center text-xs font-semibold leading-snug text-[#B4E655]">
-                          Age Group
-                          <br />
-                          {ageLabel(program.ageGroup)}
+                        <span className="shrink-0 self-start rounded-full bg-[#B4E655]/10 px-3 py-1 text-xs font-semibold text-[#B4E655]">
+                          Age {ageLabel(program.ageGroup)}
                         </span>
                       )}
                     </div>
