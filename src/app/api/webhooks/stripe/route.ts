@@ -55,6 +55,20 @@ export async function POST(req: NextRequest) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+
+    // ── Assessment bookings (Phase 1) — additive branch ──────────────────────
+    // Distinguished by metadata.kind; enrollment logic below is untouched.
+    if (session.metadata?.kind === "assessment") {
+      const bookingId = session.metadata?.bookingId ?? "";
+      if (bookingId) {
+        const { confirmBooking } = await import("@/lib/assessments");
+        // Marks booked + paid, dual-writes the assessments Sheet tab, sends the
+        // booking confirmation email.
+        await confirmBooking(bookingId, { stripeSessionId: session.id });
+      }
+      return NextResponse.json({ received: true });
+    }
+
     const rowNumber = Number(session.metadata?.enrollmentRowNumber);
     const contactEmail = session.metadata?.contactEmail ?? "";
     const supabaseEnrollmentId = session.metadata?.supabaseEnrollmentId ?? null;
