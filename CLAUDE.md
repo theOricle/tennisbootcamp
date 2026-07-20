@@ -4,15 +4,15 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Before doing anything else, also read** `.claude/memory/DECISIONS.md`, `.claude/memory/PROGRESS.md`, `.claude/memory/OPEN_QUESTIONS.md`, `ops/briefs/brand.md`, `ops/briefs/project.md`, `ops/briefs/competitors.md`, and `ops/briefs/design-system.md`. They contain settled decisions, current progress, open questions, brand voice, project goals, competitive context, and design tokens that this CLAUDE.md alone does not capture. Cowork does not auto-load them — you must read them explicitly.
 
-**Active build plan:** `ops/plans/enrollment-and-accounts.md` — execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive.
+**Active build plan:** `ops/plans/assessment-restructure.md` — assessment-first pivot (2026-07-18); execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive. (Previous plan `ops/plans/enrollment-and-accounts.md` fully shipped 2026-06-07.)
 
-Last updated: 2026-06-07
+Last updated: 2026-07-18
 
 ---
 
 ## Project snapshot
 
-- **Product:** tennisbootcamp.ca — a premium tennis training site with intake-driven lead capture. Primary conversion is the intake form, not e-commerce.
+- **Product:** tennisbootcamp.ca — a premium tennis training site. Primary conversion (2026-07-18 pivot): the $20 on-court assessment booking; intake feeds the assessment, and paid programs are admin-built private cohorts matched by level + availability.
 - **Repo:** https://github.com/theOricle/tennisbootcamp (public)
 - **Owner:** Sina (sina2666@gmail.com). Works with the Claude + AI stack end-to-end across design, code, ads, and ops.
 - **Workflow preference:** Automate everything possible. Claude Code in the terminal is the main engineering tool; Cowork is used for planning, docs, and non-code work.
@@ -22,13 +22,16 @@ Last updated: 2026-06-07
 These are settled — do not re-open without explicit owner instruction.
 
 - **Auth:** Supabase Auth (NOT Auth.js — pivoted from original plan)
-- **Primary CTA label:** "Find My Program" (NOT "Get Priority Placement" — updated site-wide)
+- **Primary CTA label:** "Book Your Assessment" (2026-07-18 pivot; code still shows "Find My Program" until restructure Phase 2 ships)
 - **Pricing (CAD):** Bootcamps $649 · Kids Camp $499/week · Group Lessons $599
 - **Refund policy:** 7-day full refund window; 50% refund or full credit for 3–6 days; $25 admin fee
 - **Sending domain:** `send.tennisbootcamp.ca` (Resend-verified, GoDaddy DNS records set)
 - **Sender FROM:** `Tennis Bootcamp <noreply@send.tennisbootcamp.ca>`
 - **Email accounts:** `info@tennisbootcamp.ca` for business APIs (Stripe, Resend, MailerLite, GA4); `sina2666@gmail.com` for dev accounts (Supabase, Vercel, GitHub)
 - **Preview mode:** `NEXT_PUBLIC_PREVIEW_MODE=true` must be set in Vercel until real launch — shows preview banner site-wide via `PreviewBanner` component in root layout
+- **Assessment product (2026-07-18):** 20-minute on-court assessment · $20 CAD · auto-credited to first program · self-serve slots; the coach-assigned level is the placement source of truth
+- **Group model (2026-07-18):** admin-created private cohorts (Supabase-backed) matched by level + availability grids; email invites with 48h hold; minimum-to-run; cancelled sessions become make-ups appended after the final week (cap 2 weeks, then credit)
+- **Club membership (2026-07-18):** venue is a government-owned non-profit community club — $100/season (to ~November), paid by players directly to the club, never through our Stripe; assessment guest provision TBD
 
 ## Phases shipped
 
@@ -143,7 +146,7 @@ Homepage (`src/app/page.tsx`) composes: Hero → TrustBar → EmailCapture → P
 
 Per `ops/briefs/project.md`:
 
-1. **Find My Program** (primary CTA) → `/intake`
+1. **Book Your Assessment** (primary CTA) → `/intake` wizard → tentative match → `/assessment/book` (per `ops/plans/assessment-restructure.md`; label flips in restructure Phase 2)
 2. **View Programs** (secondary) → `/programs`
 3. **Newsletter signup** (tertiary)
 

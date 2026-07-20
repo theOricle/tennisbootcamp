@@ -1,0 +1,25 @@
+name = "tb-voice-bridge"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare Workers AI binding — used for Whisper (voice-memo transcription).
+# No extra account or API key required; lives on the same Worker plan.
+[ai]
+binding = "AI"
+
+# Set these via `wrangler secret put <NAME>` after `wrangler login`.
+# DO NOT commit values here.
+#
+# Required secrets:
+#   TELEGRAM_BOT_TOKEN        - from @BotFather
+#   TELEGRAM_ALLOWED_CHAT_ID  - your numeric Telegram user id (find via /getUpdates)
+#   GITHUB_PAT                - fine-grained PAT, scoped to theOricle/tennisbootcamp
+#                                permissions: contents:write, pull-requests:write, actions:write
+#   ANTHROPIC_API_KEY         - from console.anthropic.com
+#   CALLBACK_SECRET           - any random 32-char string; gates /github/done and /vercel/deploy
+#
+# Non-secret config (set as plain vars):
+[vars]
+GITHUB_REPO = "theOricle/tennisbootcamp"
+WORKER_BASE_URL = "https://tb-voice-bridge.YOUR-SUBDOMAIN.workers.dev"

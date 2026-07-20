@@ -4,124 +4,91 @@ _Update this at the start or end of each working session._
 
 ---
 
-## Current State (2026-04-19)
+## Current State (2026-05-31)
 
-### What Exists
-- [x] Homepage with Hero, ProgramsGrid (3 programs), Coaches (2), EventsList, LocationsGrid (2), EmailCapture
-- [x] Intake wizard — 7 steps, full form state, POST to `/api/intake`
-- [x] `/api/intake` route → Google Sheets via service account JWT (auto-headers, priority scoring)
-- [x] Static sub-pages: Programs, Events, Locations, Video Lessons, About (shells only)
-- [x] Navbar (sticky, logo, 3 CTAs + hamburger icon) + Footer
-- [x] `Button` UI primitive — 3 variants (primary / secondary / ghost), extends `Link`
-- [x] `Card` UI primitive
-- [x] `CourtBackground` SVG/canvas component for Hero
-- [x] Dark theme: navy `#061427`, emerald accents, `.tb-gradient` global class
-- [x] `site.ts` config: name, tagline, email, socials (placeholder), bookingHref (placeholder)
-- [x] `.claude/` structure: memory + agents + sessions dirs
-- [x] CLAUDE.md at repo root (updated 2026-04-19)
-- [x] `agent:run` npm script wired to `ops/controller/run-task.mjs`
+### Shipped & Merged to Main
 
-### In Progress
-- [ ] Figma MCP / design pipeline evaluation
+- [x] Hero: particle-wave Three.js background, Spring Intake badge, brand copy, "Find My Program" + "Browse Programs" CTAs
+- [x] TrustBar, EmailCapture → `/api/newsletter` → Google Sheets "newsletter" tab
+- [x] ProgramsGrid, Coaches (Sina only), EventsList (empty state), LocationsGrid (Maps links)
+- [x] `/api/intake` → Google Sheets, 17 cols, priority scoring, lead_type, recommended_program
+- [x] Sub-pages: Programs, Events, Locations, Video Lessons (clean coming-soon), About
+- [x] SEO: robots.ts, sitemap.ts, opengraph-image.tsx, per-page metadata on all routes
+- [x] Geist font, GA4 via @next/third-parties, GitHub Actions CI
+- [x] **Phase 0+1 (PR #2):** Cohort data model, `/programs/[slug]` detail pages, cohort cards, grid schedule reveal
+- [x] **Phase 2 (PR #3):** Intake recommendation engine — 6-step wizard, rule-based program scoring, `/api/program-interest`
+- [x] **Phase 3 (PR #4):** "Find My Program" primary CTA + "Browse Programs" secondary on home + Navbar
+- [x] **Phase 4 (PR #5):** `/enroll/[cohortId]` 3-step wizard (summary → registrant → consent), `/api/enroll` → Google Sheets
+- [x] **Phase 5 (PR #6):** Stripe Checkout (keys-optional mock mode), `/api/checkout`, `/api/webhooks/stripe`, seat counting, `/legal/waiver`, `/legal/refund-policy`, `/enroll/[cohortId]/confirmed`
+- [x] **fix/seatcount-failsafe (PR #7):** `getSeatsRemaining` wrapped in try/catch, returns null on any error
+- [x] **fix/hardening-and-nav (PR #8):** Mobile nav drawer wired (hamburger + outside-click close), SEO title dedup on 5 pages
 
-### Not Started
-- [ ] Figma design file
-- [ ] Design token extraction (`src/tokens.ts`)
-- [ ] Testing infrastructure (Vitest + React Testing Library + Playwright)
-- [ ] Social media links (YouTube, TikTok, Instagram — all `#` in site.ts)
-- [ ] Calendly booking integration (bookingHref currently `/programs`)
-- [ ] EmailCapture wired to Mailchimp/ConvertKit/Tally (currently alert() stub)
-- [ ] Video lessons content
-- [ ] Blog / articles section
-- [ ] Login/Register flow (Navbar has button but no route)
-- [ ] Remove debug `console.log` from `src/app/api/intake/route.ts` (lines 26–33)
-- [ ] Head Coach profile filled in (name, bio, website in coaches.ts)
-- [ ] Real event data in events.ts (current entry is placeholder)
+### Open PRs (not yet merged)
+
+- [ ] **PR #9** — `feat/supabase-accounts-dashboard` — Phase 6: Supabase Auth + dashboard (conflict-resolved, includes main)
+- [ ] **PR #10** — `fix/auth-callback-token-hash` — Fixes activation link to use `token_hash` + `verifyOtp` instead of legacy `action_link` hash flow
+
+### Phase 6 — What Was Built (PRs #9 + #10)
+
+- `src/lib/supabase/` — `server.ts`, `browser.ts`, `service.ts` (import 'server-only'), `enrollmentActions.ts`
+- `src/middleware.ts` — session refresh on every request
+- `supabase/migrations/0001_init.sql` — profiles + enrollments + RLS policies + handle_new_user trigger (run manually in Supabase SQL editor)
+- Auth UI: `/login`, `/auth/callback`, `/auth/forgot-password`, `/set-password`
+- `/dashboard` — server component, redirects to /login if no session, shows enrollments
+- Navbar — auth-aware: Dashboard + Sign-out when signed in; hamburger drawer wired
+- `/api/checkout` — dual-writes Sheets + Supabase; stubs invite in mock mode
+- `/api/webhooks/stripe` — updates Supabase status to paid + issues activation link
+- Activation link stub: `console.log` with `[STUB EMAIL — Phase 7 will replace with Resend]` prefix
+- `token_hash` + `verifyOtp` pattern in `/auth/callback` (PR #10 fix)
+
+### Waiting on Owner (to activate Phase 6)
+
+- [ ] Add to Vercel env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL`
+- [ ] Run `supabase/migrations/0001_init.sql` in Supabase SQL editor
+- [ ] Merge PR #9 then PR #10
+
+### Still Waiting on Owner (general)
+
+- [ ] Real social media URLs → `src/content/site.ts`
+- [ ] Calendly URL → `bookingHref` in `src/content/site.ts`
+- [ ] Real second coach → `src/content/coaches.ts`
+- [ ] Real event dates → `src/content/events.ts` (remove `placeholder: true`)
+- [ ] Custom domain `tennisbootcamp.ca` → Vercel dashboard; update `BASE_URL` in `robots.ts` + `sitemap.ts`
+- [ ] GA4 measurement ID → `NEXT_PUBLIC_GA_ID` in Vercel
+- [ ] `program_interest` tab created manually in Google Sheet
+
+### Not Yet Built
+
+- [ ] **Phase 7:** Resend transactional email — replace `console.log` stubs in `issueActivationLink()`
+- [ ] Real second coach, real social URLs, real event data
+- [ ] Video lessons content + gated access
+- [ ] Maps embedded on locations page
+- [ ] Testing infrastructure
 
 ---
 
 ## Session Log
 
-### 2026-04-19 (session 2)
-- Re-inspected full codebase: confirmed Next.js version is 16.1.1 (not 15 as previously noted)
-- Found `console.log` debug block in intake API route (lines 26–33) — flagged as known debt
-- Found `EmailCapture` form uses `alert()` stub — flagged as not started
-- Rewrote CLAUDE.md with accurate versions, known tech debt, full intake form description
-- Updated PROJECT.md with real intake priority scoring logic and location details
-- Updated all memory + agent files with real codebase observations
+### 2026-04-19 to 2026-05-08 (sessions 1–4)
+See archived entries in git history. Summary: full site scaffold, hero, intake, SEO, GA4, CI, brand colors, Geist font, newsletter API, EventsList empty state, LocationsGrid Maps links.
 
-### 2026-04-19 (session 1)
-- Installed MCP servers: chrome-devtools, playwright, github (all pre-existing in user config)
-- Created `.claude/agents/` and `.claude/memory/sessions/` folders
-- Generated initial CLAUDE.md, PROJECT.md, PROGRESS.md, DECISIONS.md, OPEN_QUESTIONS.md
-- Generated agent prompts: session-keeper, component-builder, design-reviewer
+### 2026-05-22 to 2026-05-24 (Phase 5 session)
+- Phase 0–4 already complete (PRs #2–#5)
+- Phase 5 built: Stripe Checkout keys-optional mock, seat counting, payment flow, legal pages
+- fix/seatcount-failsafe (PR #7) and fix/hardening-and-nav (PR #8) shipped
+- PR #8 includes wired hamburger mobile drawer + SEO title dedup
 
-### 2026-04-25 (session 3 — hero rebuild + Vercel deploy)
-- Hero rewritten end-to-end: new copy, lime accent on "Evolve!", subtitle, Spring Intake pulsing badge
-- CourtBackground.tsx replaced with faithful Three.js particle-wave port (deathfang/WxNVoq)
-- Camera elevated y=350, vertical lock, half-strength horizontal follow, per-particle cursor bounce
-- Player image enlarged + pulled toward page center
-- Removed /login Navbar button (no auth page exists)
-- Footer filters "#" social URLs
-- Removed placeholder "Head Coach" coach #2
-- Project deployed to Vercel: tennisbootcamp-seven.vercel.app
-- Vercel build issues fixed: added `three` runtime dep + src/types/three.d.ts fallback; replaced THREE.BufferAttribute type casts with structural casts; rebased CLAUDE.md commit onto origin/main
+### 2026-05-29 to 2026-05-31 (Phase 6 session)
+- Phase 6 built on `feat/supabase-accounts-dashboard` (PR #9)
+- Auth pivot: Supabase Auth + Postgres replaces Auth.js + Neon plan (see DECISIONS.md)
+- Phase 6 conflict-resolved with main (merge commit ce47134)
+- PR #10 (`fix/auth-callback-token-hash`) — token_hash + verifyOtp pattern
+- Both PRs open, awaiting Sina's merge + Supabase env var setup
 
-### 2026-05-04 (session 4 — workflow cleanup)
-- Project moved out of OneDrive to `C:\Users\farib\tennisbootcamp\` (eliminated truncation bugs)
-- Comprehensive CLAUDE.md from OneDrive copied to repo root + committed
-- Memory enabled in Cowork settings
-- Workflow decision: Claude Code for code-only work, Cowork for design/browser tasks only
-- Created automation Layer 2 plan (slash commands /ship /audit /checkpoint, GitHub Actions CI, pre-commit hooks) — to be set up via Claude Code
+### 2026-07-18 (Cowork planning session — product pivot)
 
-## Updated Current State (2026-05-08)
-
-### Shipped & Live
-- [x] Hero: particle-wave background, Spring Intake badge, brand copy, single CTA
-- [x] TrustBar, EmailCapture → /api/newsletter → Google Sheets "newsletter" tab
-- [x] ProgramsGrid, Coaches (Sina only), EventsList (empty state), LocationsGrid (Maps links)
-- [x] /api/intake → Google Sheets (dev works; production awaiting Vercel env vars)
-- [x] Sub-pages: Programs, Events, Locations, Video Lessons (clean coming-soon), About
-- [x] SEO: robots.ts, sitemap.ts, opengraph-image.tsx, per-page metadata on all routes
-- [x] Geist font (next/font/google), GA4 via @next/third-parties (fires when NEXT_PUBLIC_GA_ID set)
-- [x] GitHub Actions CI (lint + typecheck on push)
-- [x] Brand color consistency (#B4E655 throughout), inline error states, no alert() stubs
-- [x] Vercel auto-deploy on push to main
-
-### Waiting on Owner
-- [ ] Vercel env vars from other computer (blocks production intake + newsletter)
-- [ ] NEXT_PUBLIC_GA_ID from analytics.google.com (blocks GA4 tracking)
-- [ ] Custom domain tennisbootcamp.ca in Vercel (also update BASE_URL in robots.ts + sitemap.ts)
-- [ ] Real social media URLs → src/content/site.ts
-- [ ] Calendly URL → bookingHref in src/content/site.ts
-- [ ] Real second coach → src/content/coaches.ts
-- [ ] Real event dates → src/content/events.ts (remove placeholder:true, fill real data)
-
-### Not Yet Built
-- [ ] Full registration + payment (Stripe/PayPal) — lead-capture only today
-- [ ] Auth.js v5 + Neon Postgres + Prisma — planned, not started
-- [ ] Dashboard, Profile, Our Team pages
-- [ ] Video lessons content + gated access
-
-### Session Log
-
-### 2026-05-05
-- Added TrustBar section (3 trust signals between Hero and EmailCapture)
-- EmailCapture: brand lime button, updated copy, submitted confirmation state
-
-### 2026-05-07
-- SEO: robots.ts, sitemap.ts, opengraph-image.tsx, metadataBase + title template in layout, per-page metadata on all 7 routes, intake/layout.tsx for client page
-- Removed private key debug console.log from /api/intake (security — leaked key material to server logs)
-
-### 2026-05-08
-- EventsList: added `placeholder` flag to Event type; marked current entry placeholder; renders clean empty state instead of impossible Feb 30 date
-- Navbar: replaced `<img>` with `<Image />` (next/image) for logo — fixes LCP warning, zero visual change
-- GitHub Actions CI: `.github/workflows/ci.yml` — runs lint + typecheck on every push/PR to main
-- EmailCapture: wired to `/api/newsletter` → writes timestamp, email, source to "newsletter" tab in existing Google Sheet; loading + error states handled; works in dev, awaiting Vercel env vars for production
-- VideoLessonsTeaser: removed 6 identical fake placeholder tiles; clean "coming soon" copy remains
-- CLAUDE.md: updated paths, deployment, CI, newsletter, outstanding work, open questions — now accurate as of 2026-05-08
-- LocationsGrid: added "Get directions →" Google Maps links from address; swapped emoji phone for plain text; website links now brand lime
-- Brand color consistency: Button.tsx primary → #B4E655 (was emerald-300); ProgramsGrid + Coaches link text aligned to brand lime; Navbar CTA now correct color on every page
-- Intake page: replaced alert() error handler with inline error message; added submitError state
-- Geist font: loaded via next/font/google, CSS variable --font-geist-sans applied to <html>; globals.css + tailwind.config.js updated; system-ui fallback retained
-- GA4: @next/third-parties installed; GoogleAnalytics renders in layout when NEXT_PUBLIC_GA_ID env var is set; silent no-op in dev until real ID added to Vercel
+- **Assessment-first restructure decided and spec'd.** Funnel: "Book Your Assessment" ($20, 20 min, credited to first program) → coach-assigned level + structured availability grid → admin-built private cohorts (invites, 48h hold, minimum-to-run) → attendance & make-up terms at checkout. Four new DECISIONS.md entries (2026-07-18).
+- **New active build plan: `ops/plans/assessment-restructure.md`** (5 phases, one PR each) — supersedes `enrollment-and-accounts.md`, whose phases had all shipped by 2026-06-07 per root CLAUDE.md. (Note: the "Current State" section at the top of this file predates that and is stale.)
+- Club facts confirmed: government-owned non-profit community club; $100/season membership valid to ~November; pass-through — players pay the club directly. Assessment guest provision pending Sina's check (new OPEN_QUESTIONS entry).
+- Root CLAUDE.md updated: active-plan pointer, pivot in locked decisions, club facts.
+- **Next:** owner skims the spec (especially Appendix B policy text + Appendix C inputs), then execute Phase 1 via Claude Code: `npm run agent:run -- "Execute Phase 1 of ops/plans/assessment-restructure.md"`.

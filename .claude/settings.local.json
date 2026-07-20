@@ -3,7 +3,25 @@
     "allow": [
       "WebFetch(domain:cdpn.io)",
       "WebFetch(domain:codepen.io)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(git push *)",
+      "Bash(git stash *)",
+      "Bash(git checkout *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(gh pr *)",
+      "Bash(npm install *)",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\farib\\\\tennisbootcamp\\\\supabase\\\\migrations\")",
+      "Bash(Out-Null)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(New-Item -ItemType Directory -Force \"src\\\\app\\\\api\\\\auth\\\\reset-password\")",
+      "Bash(Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue)",
+      "Bash(git pull *)",
+      "Bash(claude mcp *)",
+      "Bash(git *)"
     ]
   }
 }

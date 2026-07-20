@@ -50,10 +50,8 @@ _Unresolved questions that need answers before proceeding with certain work. Clo
 **Blocking**: Setting `bookingHref` in `src/content/site.ts` to a real URL.
 **Raised**: 2026-04-19
 
-### Login/Register flow
-**Question**: Is there a planned auth system (Clerk, NextAuth, custom)? The Navbar links to `/login` which has no route yet.
-**Blocking**: Any member portal or booking-behind-login feature.
-**Raised**: 2026-04-19
+### Login/Register flow — RESOLVED
+**Resolution**: Supabase Auth + Supabase Postgres (pivot from Auth.js + Neon). Built in Phase 6 (PR #9). `/login`, `/dashboard`, `/set-password`, `/auth/callback`, `/auth/forgot-password` all shipped. Awaiting Sina's merge + Vercel env var setup. See DECISIONS.md 2026-05-24.
 
 ### Intake API debug log — RESOLVED
 Removed 2026-05-07. Console.log block deleted from route.ts.
@@ -62,6 +60,26 @@ Removed 2026-05-07. Console.log block deleted from route.ts.
 **Question**: What are the actual event dates, titles, and details for upcoming Tennis Bootcamp sessions? The single entry in `src/content/events.ts` is a placeholder with an impossible date (2/22/2026 – 2/30/2026 — February 30 does not exist).
 **Blocking**: Publishing accurate event information; the impossible date is a trust/credibility issue if seen by visitors.
 **Raised**: 2026-04-19
+
+### Club guest provision for 20-minute assessments
+**Question**: Will the club allow assessment players on court under existing guest provisions, or is the $100 season membership required before any time on court? Sina is asking the club.
+**Blocking**: Final membership copy on `/assessment`, the booking email, and program pages (ships behind the `NEXT_PUBLIC_CLUB_GUEST_OK` toggle with a neutral line until answered).
+**Raised**: 2026-07-18
+
+### Winter plan after the outdoor season
+**Question**: Does coaching stop in November or move to an indoor venue? Affects whether cohorts stay season-scoped or need venue/season modeling.
+**Blocking**: Nothing in the current plan (explicitly out of scope); revisit before November.
+**Raised**: 2026-07-18
+
+### Restructure config confirmations
+**Question**: Confirm the spec defaults: $20 assessment · 6-month credit window · 48h invite hold · 2-week make-up cap · 2h cancellation notice · Nov 30 season end · NTRP-halves level scale.
+**Blocking**: Phase 5 final policy copy (build proceeds on the bracketed defaults).
+**Raised**: 2026-07-18
+
+### Assessment block schedule
+**Question**: Which weekly blocks will Sina hold for assessments (e.g. Sun 4–6pm at which court)? Needed to open real bookings once Phase 1 ships.
+**Blocking**: First production bookings, not the build.
+**Raised**: 2026-07-18
 
 ---
 
