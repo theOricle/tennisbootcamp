@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/browser";
+import { trackAssessmentCtaClick } from "@/lib/analytics";
 
 const MOBILE_NAV_LINKS = [
   { href: "/programs", label: "Programs" },
@@ -115,9 +116,10 @@ export function Navbar() {
               <Button
                 variant="primary"
                 href="/intake"
+                onClick={() => trackAssessmentCtaClick("navbar")}
                 className="px-5 py-2"
               >
-                Find My Program
+                Book Your Assessment
               </Button>
             </>
           )}
@@ -182,10 +184,13 @@ export function Navbar() {
                 <Button
                   variant="primary"
                   href="/intake"
-                  onClick={() => setMenuOpen(false)}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    trackAssessmentCtaClick("navbar");
+                  }}
                   className="w-full justify-center py-3 text-sm"
                 >
-                  Find My Program
+                  Book Your Assessment
                 </Button>
               </div>
             )}

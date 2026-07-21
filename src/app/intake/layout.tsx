@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Find My Program",
+  title: "Book Your Assessment",
   description:
-    "Secure your spot in Tennis Bootcamp's next training program. Complete the intake and we'll match you to the right program.",
+    "Answer a few quick questions to see your tentative match, then book a 20-minute on-court assessment — $20, credited to your first program — so the coach can place you at the right level.",
+  openGraph: {
+    title: "Book Your Assessment | Tennis Bootcamp",
+    description:
+      "A few quick questions, then a 20-minute on-court assessment with the coach. $20, credited to your first program.",
+  },
   robots: { index: false, follow: false },
 };
 

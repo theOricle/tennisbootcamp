@@ -86,3 +86,43 @@ export function availabilityChips(input: unknown): string[] {
     (d) => `${DAY_LABELS[d]} ${(days[d] as Band[]).join("/")}`
   );
 }
+
+/**
+ * Compact, self-identifying string for the intake Google Sheet (col 16).
+ * Format: `v1:mon:eve;wed:mor,eve;sat:aft` — the `v1:` prefix keeps it
+ * unambiguous next to the legacy comma-joined slot list and parseable later.
+ * Returns "" when nothing is selected (keeps the row shape identical to before).
+ */
+export function availabilityToCompactString(input: unknown): string {
+  const { days } = parseAvailability(input);
+  const parts = DAYS.filter((d) => days[d]?.length).map(
+    (d) => `${d}:${(days[d] as Band[]).join(",")}`
+  );
+  return parts.length ? `v1:${parts.join(";")}` : "";
+}
+
+/**
+ * Derive the legacy intake availability slots from the grid so the existing
+ * rule-based recommendation engine keeps working unchanged.
+ * Legacy slots: weekday-evening, weekday-daytime, weekend-morning, weekend-afternoon.
+ */
+export function availabilityToLegacySlots(input: unknown): string[] {
+  const { days } = parseAvailability(input);
+  const slots = new Set<string>();
+  const weekdays: Day[] = ["mon", "tue", "wed", "thu", "fri"];
+  const weekend: Day[] = ["sat", "sun"];
+
+  for (const d of weekdays) {
+    const bands = days[d];
+    if (!bands) continue;
+    if (bands.includes("eve")) slots.add("weekday-evening");
+    if (bands.includes("mor") || bands.includes("aft")) slots.add("weekday-daytime");
+  }
+  for (const d of weekend) {
+    const bands = days[d];
+    if (!bands) continue;
+    if (bands.includes("mor")) slots.add("weekend-morning");
+    if (bands.includes("aft") || bands.includes("eve")) slots.add("weekend-afternoon");
+  }
+  return [...slots];
+}

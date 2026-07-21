@@ -3,6 +3,11 @@ import { google } from "googleapis";
 import { subscribeToMailerLite } from "@/lib/mailerlite";
 import { recommendPrograms } from "@/lib/recommend";
 import { sendRecommendationEmail } from "@/lib/email";
+import {
+  availabilityToCompactString,
+  availabilityToLegacySlots,
+} from "@/lib/availability";
+import { tentativeLevelLabel } from "@/lib/level";
 
 export async function POST(req: NextRequest) {
   try {
@@ -72,6 +77,21 @@ export async function POST(req: NextRequest) {
       ? body.preferredLocationIds.join(", ")
       : "";
 
+    // col 16 (availability): the frozen column stays "availability"; only the
+    // cell format is upgraded. New clients send the structured grid object
+    // ({days,v:1}) → compact self-identifying string ("v1:mon:eve;wed:mor,eve").
+    // Legacy clients that sent a slot array still serialize the old way.
+    const availabilityValue = Array.isArray(body.availability)
+      ? body.availability.join(", ")
+      : body.availability
+      ? availabilityToCompactString(body.availability)
+      : "";
+
+    // Legacy slot list for the rule-based recommender (unchanged engine).
+    const availabilitySlots = Array.isArray(body.availability)
+      ? body.availability
+      : availabilityToLegacySlots(body.availability);
+
     const row = [
       new Date().toISOString(),
       body.name ?? "",
@@ -96,7 +116,7 @@ export async function POST(req: NextRequest) {
       "new",
       // cols 15–17 (additive 2026-05-23)
       Array.isArray(body.preferredLocationIds) ? body.preferredLocationIds.join(", ") : "",
-      Array.isArray(body.availability) ? body.availability.join(", ") : "",
+      availabilityValue,
       body.recommendedProgram ?? "",
     ];
 
@@ -119,12 +139,15 @@ export async function POST(req: NextRequest) {
         goals: Array.isArray(body.goals) ? body.goals : [],
         programs: Array.isArray(body.programs) ? body.programs : [],
         preferredLocationIds: Array.isArray(body.preferredLocationIds) ? body.preferredLocationIds : [],
-        availability: Array.isArray(body.availability) ? body.availability : [],
+        availability: availabilitySlots,
       });
       if (recs.length > 0) {
-        sendRecommendationEmail(body.email, body.name ?? "", recs).catch((err) => {
-          console.error("Recommendation email failed (non-blocking):", err);
-        });
+        const tentativeLevel = tentativeLevelLabel(body.level);
+        sendRecommendationEmail(body.email, body.name ?? "", recs, tentativeLevel).catch(
+          (err) => {
+            console.error("Recommendation email failed (non-blocking):", err);
+          }
+        );
       }
     }
 

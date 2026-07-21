@@ -29,3 +29,13 @@ export function trackAssessmentBookComplete() {
 export function trackAssessmentCompletedAdmin() {
   trackEvent("assessment_completed_admin");
 }
+
+// ─── Funnel-flip events (Phase 2) ─────────────────────────────────────────────
+
+/**
+ * A player taps a "Book Your Assessment" CTA. `source` distinguishes where:
+ * "hero" | "navbar" | "intake-result".
+ */
+export function trackAssessmentCtaClick(source: string) {
+  trackEvent("assessment_cta_click", { source });
+}
