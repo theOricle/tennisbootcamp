@@ -63,7 +63,7 @@ function runClaudeStdin(systemPrompt, userMessage, opts = {}) {
 
   const args = ['-p'];
   if (opts.skipPermissions) args.push('--dangerously-skip-permissions');
-  args.push('-');
+  // stdin is piped below; modern Claude Code reads it with -p and no explicit '-' arg
 
   const result = spawnSync('claude', args, {
     cwd: ROOT,
@@ -80,7 +80,7 @@ function runClaudeStdin(systemPrompt, userMessage, opts = {}) {
   }
   if (result.status !== 0) {
     throw new Error(
-      `claude exited with code ${result.status}\n${result.stderr || ''}`
+      `claude exited with code ${result.status}\nSTDERR:\n${result.stderr || '(empty)'}\nSTDOUT:\n${(result.stdout || '(empty)').slice(0, 2000)}`
     );
   }
 

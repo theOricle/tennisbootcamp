@@ -1,6 +1,7 @@
 import "server-only";
 import { Resend } from "resend";
 import type { Recommendation } from "@/lib/recommend";
+import { membershipNote } from "@/lib/membership";
 
 const FROM = "Tennis Bootcamp <noreply@send.tennisbootcamp.ca>";
 const BASE_URL = "https://tennisbootcamp.ca";
@@ -133,5 +134,135 @@ export async function sendRecommendationEmail(
     subject,
     html: emailLayout(bodyHtml),
     text: `Hi ${firstName},\n\nThanks for completing the intake. Here are your top program matches:\n\n${textRecs}\n\nWe'll be in touch when cohort spots open.\n\n— Sina Kassaian, Tennis Bootcamp\nhttps://tennisbootcamp.ca`,
+  });
+}
+
+// ─── sendBookingConfirmationEmail ─────────────────────────────────────────────
+
+export async function sendBookingConfirmationEmail(params: {
+  to: string;
+  name: string;
+  dateLabel: string;
+  timeLabel: string;
+  locationLabel?: string | null;
+}): Promise<void> {
+  const { to, name, dateLabel, timeLabel, locationLabel } = params;
+  const key = process.env.RESEND_API_KEY;
+  const subject = `You're booked: ${dateLabel} at ${timeLabel}`;
+
+  if (!key) {
+    console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}`);
+    return;
+  }
+
+  const firstName = name.trim().split(/\s+/)[0] || "Athlete";
+  const whereLine = locationLabel
+    ? locationLabel
+    : "We'll confirm the exact court with you before your slot.";
+  const membership = membershipNote();
+
+  const detailRow = (label: string, value: string) => `
+    <tr>
+      <td style="padding:6px 0;font-size:13px;color:rgba(255,255,255,0.45);width:96px;vertical-align:top;">${label}</td>
+      <td style="padding:6px 0;font-size:14px;color:#fff;font-weight:600;">${value}</td>
+    </tr>`;
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">You're on court, ${firstName}.</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      Your 20-minute player assessment is booked. Here's everything you need.
+    </p>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
+      ${detailRow("When", `${dateLabel}, ${timeLabel}`)}
+      ${detailRow("Where", whereLine)}
+      ${detailRow("Bring", "A racquet if you have one, water, and court shoes.")}
+    </table>
+    <p style="margin:20px 0 0;font-size:13px;color:rgba(255,255,255,0.60);">
+      Need to move it? One free reschedule with 24 hours' notice — just reply to this email.
+    </p>
+    ${smallText(membership)}
+    ${signOff()}
+  `;
+
+  const text = `You're booked, ${firstName}.
+
+Your 20-minute player assessment:
+  When:  ${dateLabel}, ${timeLabel}
+  Where: ${whereLine}
+  Bring: A racquet if you have one, water, and court shoes.
+
+Need to move it? One free reschedule with 24 hours' notice — just reply to this email.
+
+${membership}
+
+— Sina Kassaian, Tennis Bootcamp`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject,
+    html: emailLayout(bodyHtml),
+    text,
+  });
+}
+
+// ─── sendAssessmentCompleteEmail ──────────────────────────────────────────────
+
+export async function sendAssessmentCompleteEmail(params: {
+  to: string;
+  name: string;
+  levelLabel: string;
+  coachNote: string;
+}): Promise<void> {
+  const { to, name, levelLabel, coachNote } = params;
+  const key = process.env.RESEND_API_KEY;
+  const subject = `Your level: ${levelLabel} — here's your next step`;
+
+  if (!key) {
+    console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}`);
+    return;
+  }
+
+  const firstName = name.trim().split(/\s+/)[0] || "Athlete";
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Nice work out there, ${firstName}.</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      Here's your read from the court.
+    </p>
+    <div style="margin:8px 0 4px;">
+      <span style="font-size:13px;color:rgba(255,255,255,0.45);">Your level</span><br/>
+      <span style="font-size:28px;font-weight:700;color:#B4E655;">${levelLabel}</span>
+    </div>
+    <p style="margin:16px 0 0;font-size:14px;color:rgba(255,255,255,0.85);font-style:italic;border-left:2px solid #B4E655;padding-left:14px;">
+      ${coachNote}
+    </p>
+    <p style="margin:20px 0 0;font-size:14px;color:rgba(255,255,255,0.70);">
+      We're forming your ${levelLabel} group around everyone's availability — invitations go out by email. Want to move sooner?
+    </p>
+    ${limeButton(`${BASE_URL}/programs`, "Browse programs →")}
+    ${signOff()}
+  `;
+
+  const text = `Nice work out there, ${firstName}.
+
+Your level: ${levelLabel}
+
+${coachNote}
+
+We're forming your ${levelLabel} group around everyone's availability — invitations go out by email. Want to move sooner? Just reply.
+
+Browse programs: ${BASE_URL}/programs
+
+— Sina Kassaian, Tennis Bootcamp`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject,
+    html: emailLayout(bodyHtml),
+    text,
   });
 }

@@ -1,0 +1,17 @@
+{
+  "name": "tb-voice-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker bridging Telegram voice memos to GitHub Actions for tennisbootcamp.ca.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.91.0"
+  }
+}

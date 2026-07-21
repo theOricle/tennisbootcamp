@@ -7,6 +7,7 @@ const BASE_URL = "https://tennisbootcamp-seven.vercel.app";
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: BASE_URL, lastModified: new Date(), changeFrequency: "weekly", priority: 1 },
+    { url: `${BASE_URL}/assessment`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.9 },
     { url: `${BASE_URL}/programs`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.9 },
     ...programs.map((p) => ({
       url: `${BASE_URL}/programs/${p.slug}`,
