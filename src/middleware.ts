@@ -35,8 +35,22 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh the session — do not remove this call.
-  await supabase.auth.getUser();
+  // Refresh the session, but never let a slow/paused Supabase take the site
+  // down: MIDDLEWARE_INVOCATION_TIMEOUT 504s every page when this hangs.
+  // Fail open — worst case a stale session refreshes on the next request.
+  try {
+    await Promise.race([
+      supabase.auth.getUser(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("supabase auth timeout")), 3000)
+      ),
+    ]);
+  } catch (err) {
+    console.warn(
+      "[middleware] session refresh skipped:",
+      err instanceof Error ? err.message : err
+    );
+  }
 
   return supabaseResponse;
 }
