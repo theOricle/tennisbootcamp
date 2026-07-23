@@ -54,7 +54,7 @@ export function Hero() {
           <div className="mt-8 flex flex-col items-start gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <a
-                href="/intake"
+                href="/assessment/book"
                 onClick={() => trackAssessmentCtaClick("hero")}
                 className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >

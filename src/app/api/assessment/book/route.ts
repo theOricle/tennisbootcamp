@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isMockMode, createAssessmentCheckoutSession } from "@/lib/payments";
 import {
   createPendingBooking,
+  createRequestedBooking,
   confirmBooking,
   SlotTakenError,
 } from "@/lib/assessments";
@@ -30,6 +31,26 @@ export async function POST(req: NextRequest) {
     const availability = body.availability
       ? parseAvailability(body.availability)
       : null;
+
+    // Request mode (Phase 2.6): no slot, no payment — the admin coordinates the
+    // time directly. Creates a `requested` booking and fires both emails.
+    if (body.mode === "request") {
+      if (!name || !isValidEmail(email)) {
+        return NextResponse.json(
+          { error: "Please provide your name and a valid email." },
+          { status: 400 }
+        );
+      }
+      await createRequestedBooking({
+        name,
+        email,
+        phone,
+        selfLevel,
+        availability,
+        requestNote: body.note ? String(body.note).trim().slice(0, 1000) : null,
+      });
+      return NextResponse.json({ requested: true });
+    }
 
     if (!blockId || !slotStart || !name || !isValidEmail(email)) {
       return NextResponse.json(

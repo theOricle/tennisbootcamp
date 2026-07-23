@@ -39,3 +39,13 @@ export function trackAssessmentCompletedAdmin() {
 export function trackAssessmentCtaClick(source: string) {
   trackEvent("assessment_cta_click", { source });
 }
+
+// ─── Friction-pass events (Phase 2.6) ─────────────────────────────────────────
+
+/**
+ * Player submits the request-a-time form. `source` distinguishes why:
+ * "no-slots" (grid was empty) | "prefer-direct" (secondary link).
+ */
+export function trackAssessmentRequestSubmit(source: string) {
+  trackEvent("assessment_request_submit", { source });
+}
