@@ -105,3 +105,13 @@ Executed **Phase 2** of `ops/plans/assessment-restructure.md` on branch `feat/as
 - **Recommendation email:** `sendRecommendationEmail` reframed to the same tentative-match copy with a primary button to `/assessment/book`.
 - **GA:** new `assessment_cta_click` event with a `source` param (`hero` / `navbar` / `intake-result`).
 - **Verified:** `tsc --noEmit`, `npm run lint`, and `npm run build` all clean; `/api/intake` column contract untouched (17 cols, additive cell-format change only).
+
+### 2026-07-23 (Claude Code — Phase 2.5: tier identity layer)
+
+Executed **Phase 2.5** of `ops/plans/assessment-restructure.md` (new section, spec'd + built this session) on branch `claude/tier-identity-layer-r51nx0`. A pure **display layer** over the numeric level — **zero contract changes**: no migration, no new columns, `/api/intake`/enrollment/cohort logic untouched.
+
+- **Spec:** appended **"Phase 2.5 — Tier identity layer"** after Phase 2 in the plan, and amended Phase 3 with the four tier-display bullets (cohort cards + invite emails show tier-range badges; dashboard "Open for your tier"; `/enroll` level-within-range for tier-gated cohorts alongside the token path; admin cohort form stays numeric).
+- **`src/lib/tiers.ts`:** the seven tiers (1 Love · 2 Rally · 3 Deuce · 4 Break · 5 Ace · 6 Match Point · 7 Grand Slam), each spanning one whole level. `tierForLevel` floors to the whole tier (2.5 → Rally) and clamps 1–7, returning `null` when unranked; `formatTierLevel` → `"Rally · 2.5"` so half steps read as progress within a tier. Pure, no JSX, no DB; coerces Postgres numeric strings.
+- **`src/components/tiers/`:** seven brand SVG badge components (`LoveBadge`…`GrandSlamBadge`) — one consistent hexagon field (`#061427`) ringed in lime (`#B4E655`) with white/lime motifs escalating up the ladder (ball → volleying arcs → balanced balls → broken line → star → crown → trophy+laurel); crisp at 20px and 64px; each `role="img"` + `aria-label`. Plus `TierBadge` (badge + name + numeric level), `UnrankedChip` (→ `/assessment/book`, 44px target), `TierStatus` (badge-or-chip header helper), `TierChip` (dense rows), and `TierLadder` (horizontal, all seven).
+- **Surfaces (display only):** profile page top-right + dashboard header both use `TierStatus` (badge when a level is set, "Unranked — book your assessment" chip otherwise; queries now select `level`); admin booking rows show a `TierChip` beside the numeric level; the assessment-complete email adds a *"You're a {Tier}"* line (HTML + text, renders only when a tier resolves); `/assessment` gains a compact ladder strip.
+- **Verified:** `npm run lint`, `tsc --noEmit`, and `npm run build` all clean; badges rendered + screenshotted at 20px/64px to confirm geometry; no data-contract touched.

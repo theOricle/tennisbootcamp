@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { programs } from "@/content/programs";
 import { cohorts } from "@/content/cohorts";
+import { TierStatus } from "@/components/tiers";
 import { ProfileForm } from "./ProfileForm";
 
 export const metadata: Metadata = {
@@ -109,7 +110,7 @@ async function ProfileContent({
 
   const [{ data: profile, error: profileError }, { data: enrollments, error: enrollError }] =
     await Promise.all([
-      supabase.from("profiles").select("full_name, phone").eq("id", userId).single(),
+      supabase.from("profiles").select("full_name, phone, level").eq("id", userId).single(),
       supabase
         .from("enrollments")
         .select("id, cohort_id, program, status, created_at")
@@ -126,8 +127,11 @@ async function ProfileContent({
     <>
       {/* Profile details */}
       <section className="mb-12">
-        <div className="mb-4 border-l-2 border-[#B4E655] pl-4">
-          <h1 className="text-xl font-semibold text-white">Profile</h1>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="border-l-2 border-[#B4E655] pl-4">
+            <h1 className="text-xl font-semibold text-white">Profile</h1>
+          </div>
+          <TierStatus level={profile?.level ?? null} />
         </div>
         <div className="border-b border-white/10 mb-6" />
         <ProfileForm

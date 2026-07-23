@@ -2,6 +2,7 @@ import "server-only";
 import { Resend } from "resend";
 import type { Recommendation } from "@/lib/recommend";
 import { membershipNote } from "@/lib/membership";
+import { tierForLevel } from "@/lib/tiers";
 
 const FROM = "Tennis Bootcamp <noreply@send.tennisbootcamp.ca>";
 const BASE_URL = "https://tennisbootcamp.ca";
@@ -219,6 +220,10 @@ export async function sendAssessmentCompleteEmail(params: {
   }
 
   const firstName = name.trim().split(/\s+/)[0] || "Athlete";
+  const tier = tierForLevel(levelLabel);
+  const tierLine = tier
+    ? `<p style="margin:12px 0 0;font-size:15px;color:rgba(255,255,255,0.85);">You're a <strong style="color:#B4E655;">${tier.name}</strong>.</p>`
+    : "";
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Nice work out there, ${firstName}.</p>
@@ -229,6 +234,7 @@ export async function sendAssessmentCompleteEmail(params: {
       <span style="font-size:13px;color:rgba(255,255,255,0.45);">Your level</span><br/>
       <span style="font-size:28px;font-weight:700;color:#B4E655;">${levelLabel}</span>
     </div>
+    ${tierLine}
     <p style="margin:16px 0 0;font-size:14px;color:rgba(255,255,255,0.85);font-style:italic;border-left:2px solid #B4E655;padding-left:14px;">
       ${coachNote}
     </p>
@@ -241,7 +247,7 @@ export async function sendAssessmentCompleteEmail(params: {
 
   const text = `Nice work out there, ${firstName}.
 
-Your level: ${levelLabel}
+Your level: ${levelLabel}${tier ? `\nYou're a ${tier.name}.` : ""}
 
 ${coachNote}
 
