@@ -2,16 +2,25 @@
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { recommendPrograms, type Recommendation } from "@/lib/recommend";
-import { locations } from "@/content/locations";
-import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
-import type { Cohort } from "@/types/cohort";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, trackAssessmentCtaClick } from "@/lib/analytics";
+import { tentativeLevelLabel } from "@/lib/level";
+import {
+  DAYS,
+  BANDS,
+  DAY_LABELS,
+  BAND_LABELS,
+  serializeAvailability,
+  availabilityToLegacySlots,
+  type Availability,
+  type Day,
+  type Band,
+} from "@/lib/availability";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type StepType = "single" | "multi" | "contact";
+type StepType = "single" | "multi" | "contact" | "availability";
 
 type Option = {
   id: string;
@@ -33,7 +42,7 @@ type FormState = {
   goals: string[];
   programs: string[];
   preferredLocationIds: string[];
-  availability: string[];
+  availability: Availability;
   notes?: string;
   name?: string;
   phone?: string;
@@ -105,164 +114,168 @@ function OptionCard({
   );
 }
 
-// ─── Recommendation success screen ────────────────────────────────────────────
+// ─── Availability grid (days × bands) ─────────────────────────────────────────
 
-function CohortRow({ cohort }: { cohort: Cohort }) {
-  const loc = locations.find((l) => l.id === cohort.locationId);
-  const isOpen = cohort.status === "open";
-
-  const inner = (
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="text-xs font-semibold text-[#B4E655]">{loc?.name ?? cohort.locationId}</p>
-        <p className="mt-0.5 text-sm text-white/80">{formatDateRange(cohort)}</p>
-        <p className="mt-0.5 text-xs text-white/55">{formatDaysTimes(cohort)}</p>
-      </div>
-      <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold text-white">{formatCohortPrice(cohort)}</p>
-        {isOpen ? (
-          <span className="mt-1 inline-block rounded-full bg-[#B4E655] px-3 py-1 text-[11px] font-semibold text-[#061427]">
-            Enroll →
-          </span>
-        ) : (
-          <span className="mt-1 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white/50">
-            Coming soon
-          </span>
-        )}
-      </div>
-    </div>
-  );
-
-  if (isOpen) {
-    return (
-      <Link
-        href={`/enroll/${cohort.id}`}
-        className="block rounded-lg border border-[#B4E655]/20 bg-white/5 px-4 py-3 transition hover:border-[#B4E655]/40 hover:bg-[#B4E655]/5"
-      >
-        {inner}
-      </Link>
-    );
+function AvailabilityGrid({
+  value,
+  onChange,
+}: {
+  value: Availability;
+  onChange: (next: Availability) => void;
+}) {
+  function toggle(day: Day, band: Band) {
+    const current = value.days[day] ?? [];
+    const nextBands = current.includes(band)
+      ? current.filter((b) => b !== band)
+      : [...current, band];
+    onChange(serializeAvailability({ ...value.days, [day]: nextBands }));
   }
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
-      {inner}
-    </div>
-  );
-}
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
+      {/* Band header — labels the three columns once */}
+      <div className="grid grid-cols-[2.5rem_repeat(3,1fr)] gap-2">
+        <span aria-hidden="true" />
+        {BANDS.map((b) => (
+          <span
+            key={b}
+            className="text-center text-[11px] font-semibold uppercase tracking-wide text-white/45"
+          >
+            {BAND_LABELS[b]}
+          </span>
+        ))}
+      </div>
 
-function RecommendationCard({
-  rec,
-  rank,
-}: {
-  rec: Recommendation;
-  rank: number;
-}) {
-  const isTop = rank === 0;
-  const displayCohorts = rec.cohorts.slice(0, 2);
-  const hasOpenCohort = rec.cohorts.some((c) => c.status === "open");
-
-  return (
-    <div
-      className={cn(
-        "rounded-2xl border p-5",
-        isTop
-          ? "border-[#B4E655]/30 bg-[#B4E655]/5"
-          : "border-white/10 bg-white/5"
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            {isTop && (
-              <span className="rounded-full bg-[#B4E655]/20 px-2 py-0.5 text-[10px] font-semibold text-[#B4E655]">
-                Top Match
-              </span>
-            )}
-            <span className="text-xs text-white/40">{rec.program.type}</span>
-            {rec.program.ageGroup && (
-              <span className="text-xs text-white/40">· {rec.program.ageGroup}</span>
-            )}
+      {/* One row per day; each cell is a tap-to-toggle band button */}
+      <div className="mt-2 space-y-2">
+        {DAYS.map((d) => (
+          <div key={d} className="grid grid-cols-[2.5rem_repeat(3,1fr)] items-center gap-2">
+            <span className="text-sm font-semibold text-white/80">{DAY_LABELS[d]}</span>
+            {BANDS.map((b) => {
+              const on = value.days[d]?.includes(b) ?? false;
+              return (
+                <button
+                  key={b}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  aria-label={`${DAY_LABELS[d]} ${BAND_LABELS[b]}`}
+                  onClick={() => toggle(d, b)}
+                  className={cn(
+                    "flex min-h-[44px] items-center justify-center rounded-xl border text-sm font-medium transition",
+                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                    on
+                      ? "border-[#B4E655] bg-[#B4E655] text-[#061427]"
+                      : "border-white/15 bg-white/5 text-white/60 hover:border-[#B4E655]/50 hover:text-white/80"
+                  )}
+                >
+                  {on ? "✓" : ""}
+                </button>
+              );
+            })}
           </div>
-          <h3 className="mt-1 text-lg font-semibold text-white">{rec.program.title}</h3>
-          <p className="mt-1 text-sm italic text-white/65">&ldquo;{rec.reason}&rdquo;</p>
-        </div>
-      </div>
-
-      {displayCohorts.length > 0 && (
-        <div className="mt-4 space-y-2">
-          {displayCohorts.map((c) => (
-            <CohortRow key={c.id} cohort={c} />
-          ))}
-          {rec.cohorts.length > 2 && (
-            <p className="text-xs text-white/40">
-              +{rec.cohorts.length - 2} more cohort{rec.cohorts.length - 2 > 1 ? "s" : ""} on the program page
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="mt-4">
-        <Link
-          href={`/programs/${rec.program.slug}`}
-          className={cn(
-            "block w-full rounded-xl py-2.5 text-center text-sm font-semibold transition",
-            hasOpenCohort
-              ? "border border-white/15 text-white/55 hover:border-white/30 hover:text-white/80"
-              : isTop
-              ? "bg-[#B4E655] text-[#061427] hover:brightness-110"
-              : "border border-[#B4E655]/40 text-[#B4E655] hover:bg-[#B4E655]/10"
-          )}
-        >
-          {hasOpenCohort ? "See full program details →" : isTop ? "View Program →" : "View Program"}
-        </Link>
+        ))}
       </div>
     </div>
   );
 }
 
-function RecommendationScreen({
+// ─── Tentative-match result screen (funnel flip) ──────────────────────────────
+
+function TentativeMatchScreen({
   recommendations,
+  form,
   newsletter,
   onNewsletterChange,
 }: {
   recommendations: Recommendation[];
+  form: FormState;
   newsletter: boolean;
   onNewsletterChange: (v: boolean) => void;
 }) {
+  const router = useRouter();
+  const top = recommendations[0];
+  const levelLabel = tentativeLevelLabel(form.level);
+
+  // Demoted direct-enroll target: the top program's first open cohort if one
+  // exists (keeps PR #33 direct-enroll alive), otherwise the program page.
+  const openCohort = top?.cohorts.find((c) => c.status === "open");
+  const directEnrollHref = openCohort
+    ? `/enroll/${openCohort.id}`
+    : top
+    ? `/programs/${top.program.slug}`
+    : "/programs";
+
+  function bookAssessment() {
+    try {
+      const selfLevel =
+        form.level && ["new", "rally", "competitive"].includes(form.level)
+          ? form.level
+          : undefined;
+      sessionStorage.setItem(
+        "assessmentPrefill",
+        JSON.stringify({
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
+          selfLevel,
+          availability: form.availability,
+        })
+      );
+    } catch {
+      // sessionStorage unavailable — booking form just starts empty.
+    }
+    trackAssessmentCtaClick("intake-result");
+    router.push("/assessment/book");
+  }
+
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
-          {/* Reassurance header */}
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20">
-              <svg
-                className="h-4 w-4 text-[#B4E655]"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.5}
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <span className="text-sm font-semibold text-[#B4E655]">Priority Placement</span>
-          </div>
+          <span className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/80">
+            Your tentative match
+          </span>
           <h1 className="mt-2 text-2xl font-semibold md:text-3xl">
-            You&apos;re on the Priority Placement List
+            You profile like a Level {levelLabel} player
           </h1>
-          <p className="mt-2 text-sm text-white/60">
-            We place athletes who complete the intake first as programs form. We&apos;ll reach
-            out when we have a spot that fits — and based on your profile, here&apos;s what
-            we&apos;d recommend:
+
+          {top && (
+            <div className="mt-5 rounded-2xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-5">
+              <span className="text-xs text-white/40">{top.program.type}</span>
+              <h2 className="mt-1 text-lg font-semibold text-white">{top.program.title}</h2>
+              <p className="mt-1 text-sm italic text-white/65">&ldquo;{top.reason}&rdquo;</p>
+            </div>
+          )}
+
+          <p className="mt-5 text-sm leading-relaxed text-white/70">
+            Based on your answers, {top ? top.program.title : "this program"} looks like your fit.
+            Every player here is placed by an on-court assessment — 20 minutes with the coach — so
+            the group you train with actually matches your level.
           </p>
 
-          {/* Ranked recommendation cards */}
-          <div className="mt-6 space-y-4">
-            {recommendations.map((rec, i) => (
-              <RecommendationCard key={rec.program.id} rec={rec} rank={i} />
-            ))}
+          {/* Assessment pitch + primary CTA */}
+          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <p className="text-sm font-semibold text-white">
+              Book your 20-minute assessment
+            </p>
+            <p className="mt-1 text-sm text-white/60">
+              $20 · fully credited to your first program. You leave with a real level, a written
+              read on your game, and a group matched to your level and schedule.
+            </p>
+            <button
+              type="button"
+              onClick={bookAssessment}
+              className="mt-4 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+            >
+              Book my 20-minute assessment
+            </button>
+            <Link
+              href={directEnrollHref}
+              className="mt-3 block text-center text-sm text-white/50 underline-offset-2 transition hover:text-white/80 hover:underline"
+            >
+              Know what you want? Enroll directly →
+            </Link>
           </div>
 
           {/* Newsletter opt-in */}
@@ -276,7 +289,6 @@ function RecommendationScreen({
             <span className="text-sm text-white/75">Also keep me updated by email (newsletter)</span>
           </label>
 
-          {/* Navigation */}
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
               href="/"
@@ -286,9 +298,9 @@ function RecommendationScreen({
             </Link>
             <Link
               href="/programs"
-              className="rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] hover:brightness-110 transition"
+              className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white/70 transition hover:border-white/30 hover:text-white"
             >
-              Browse All Programs
+              Browse Programs
             </Link>
           </div>
         </div>
@@ -298,22 +310,59 @@ function RecommendationScreen({
 }
 
 function FallbackScreen({
+  form,
   newsletter,
   onNewsletterChange,
 }: {
+  form: FormState;
   newsletter: boolean;
   onNewsletterChange: (v: boolean) => void;
 }) {
+  const router = useRouter();
+
+  function bookAssessment() {
+    try {
+      const selfLevel =
+        form.level && ["new", "rally", "competitive"].includes(form.level)
+          ? form.level
+          : undefined;
+      sessionStorage.setItem(
+        "assessmentPrefill",
+        JSON.stringify({
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
+          selfLevel,
+          availability: form.availability,
+        })
+      );
+    } catch {
+      // sessionStorage unavailable — booking form just starts empty.
+    }
+    trackAssessmentCtaClick("intake-result");
+    router.push("/assessment/book");
+  }
+
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
-          <div className="text-sm font-semibold text-[#B4E655]">Priority Placement</div>
-          <h1 className="mt-2 text-3xl font-semibold">You&apos;re on the Priority Placement List</h1>
+          <span className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/80">
+            Your next step
+          </span>
+          <h1 className="mt-2 text-3xl font-semibold">Every player starts on court</h1>
           <p className="mt-3 text-white/70">
-            We place athletes who complete the intake first as programs begin forming. We&apos;ll
-            reach out when we have a matched option that fits your level and goals.
+            The best next step is a 20-minute on-court assessment — 20 minutes with the coach. You
+            leave with a real level, a written read on your game, and a group matched to your level
+            and schedule. $20, fully credited to your first program.
           </p>
+          <button
+            type="button"
+            onClick={bookAssessment}
+            className="mt-6 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+          >
+            Book my 20-minute assessment
+          </button>
           <label className="mt-6 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
             <input
               type="checkbox"
@@ -332,9 +381,9 @@ function FallbackScreen({
             </Link>
             <Link
               href="/programs"
-              className="rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] hover:brightness-110 transition"
+              className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white/70 transition hover:border-white/30 hover:text-white"
             >
-              View Programs
+              Browse Programs
             </Link>
           </div>
         </div>
@@ -399,14 +448,9 @@ function IntakePageInner() {
       {
         id: "availability",
         title: "When can you train?",
-        subtitle: "Select all that apply — helps us match you to the right cohort times.",
-        type: "multi",
-        options: [
-          { id: "weekday-evening", label: "Weekday evenings (after 5 pm)" },
-          { id: "weekday-daytime", label: "Weekday daytime" },
-          { id: "weekend-morning", label: "Weekend mornings" },
-          { id: "weekend-afternoon", label: "Weekend afternoons" },
-        ],
+        subtitle:
+          "Tap every slot that works. This is what we group around — the more you tap, the more group times fit you.",
+        type: "availability",
       },
       {
         id: "contact",
@@ -433,7 +477,7 @@ function IntakePageInner() {
     goals: [],
     programs: preselectedProgram,
     preferredLocationIds: [],
-    availability: [],
+    availability: { days: {}, v: 1 },
     newsletter: false,
   });
 
@@ -457,8 +501,6 @@ function IntakePageInner() {
             form.preferredLocationIds.includes("king")
           );
         return form.preferredLocationIds.includes(optionId);
-      case "availability":
-        return form.availability.includes(optionId);
       default:
         return false;
     }
@@ -492,13 +534,6 @@ function IntakePageInner() {
               : [...s.preferredLocationIds, optionId],
           }));
         }
-      } else if (current.id === "availability") {
-        setForm((s) => ({
-          ...s,
-          availability: s.availability.includes(optionId)
-            ? s.availability.filter((x) => x !== optionId)
-            : [...s.availability, optionId],
-        }));
       }
     }
   }
@@ -528,7 +563,12 @@ function IntakePageInner() {
     setSubmitting(true);
     setSubmitError(false);
     try {
-      const recs = recommendPrograms(form);
+      // The rule-based recommender still consumes the legacy slot list; derive
+      // it from the grid so the engine is unchanged.
+      const recs = recommendPrograms({
+        ...form,
+        availability: availabilityToLegacySlots(form.availability),
+      });
       const topProgram = recs[0]?.program.slug ?? "";
 
       const res = await fetch("/api/intake", {
@@ -542,6 +582,8 @@ function IntakePageInner() {
           notes: form.notes ?? "",
           // backward-compat: col 9 (area) populated with preferredLocationIds
           area: form.preferredLocationIds.join(", "),
+          // col 16: structured availability grid; API serializes to compact string
+          availability: form.availability,
           recommendedProgram: topProgram,
         }),
       });
@@ -575,14 +617,16 @@ function IntakePageInner() {
     if (recommendations.length === 0) {
       return (
         <FallbackScreen
+          form={form}
           newsletter={!!form.newsletter}
           onNewsletterChange={(v) => setForm((s) => ({ ...s, newsletter: v }))}
         />
       );
     }
     return (
-      <RecommendationScreen
+      <TentativeMatchScreen
         recommendations={recommendations}
+        form={form}
         newsletter={!!form.newsletter}
         onNewsletterChange={(v) => setForm((s) => ({ ...s, newsletter: v }))}
       />
@@ -633,6 +677,13 @@ function IntakePageInner() {
                   />
                 ))}
               </div>
+            ) : null}
+
+            {current.type === "availability" ? (
+              <AvailabilityGrid
+                value={form.availability}
+                onChange={(next) => setForm((s) => ({ ...s, availability: next }))}
+              />
             ) : null}
 
             {current.type === "contact" ? (

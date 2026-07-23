@@ -87,7 +87,8 @@ export async function sendLinkEmail(
 export async function sendRecommendationEmail(
   to: string,
   name: string,
-  recommendations: Recommendation[]
+  recommendations: Recommendation[],
+  tentativeLevel?: string
 ): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
@@ -96,36 +97,29 @@ export async function sendRecommendationEmail(
   }
 
   const firstName = name.trim().split(/\s+/)[0] || "Athlete";
-  const subject = `Your Tennis Bootcamp program matches — ${firstName}`;
-
-  const recCards = recommendations
-    .slice(0, 3)
-    .map(
-      (r) => `
-      <div style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.10);padding-top:20px;">
-        <p style="margin:0;font-size:15px;font-weight:700;color:#B4E655;">${r.program.title}</p>
-        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.70);font-style:italic;">&ldquo;${r.reason}&rdquo;</p>
-        <a href="${BASE_URL}/programs/${r.program.slug}" style="display:inline-block;margin-top:12px;font-size:13px;color:#B4E655;text-decoration:none;font-weight:600;">Learn more &rarr;</a>
-      </div>`
-    )
-    .join("");
+  const top = recommendations[0];
+  const programTitle = top?.program.title ?? "one of our programs";
+  const levelLine = tentativeLevel
+    ? `You profile like a <strong style="color:#fff;">Level ${tentativeLevel}</strong> player`
+    : `You've got a strong profile`;
+  const subject = tentativeLevel
+    ? `You profile like a Level ${tentativeLevel} player — here's your next step`
+    : `Your Tennis Bootcamp next step — ${firstName}`;
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Hi ${firstName},</p>
     <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
-      Thanks for completing the intake. Based on what you told us, here are the programs that fit best — we&rsquo;ll be in touch when cohort spots open.
+      ${levelLine}. Based on your answers, <strong style="color:#B4E655;">${programTitle}</strong> looks like your fit.
     </p>
-    ${recCards}
-    <div style="margin-top:24px;">
-      ${limeButton(`${BASE_URL}/intake`, "Review your results online →")}
+    <p style="margin:0 0 4px;font-size:14px;color:rgba(255,255,255,0.70);">
+      Every player here is placed by an on-court assessment — 20 minutes with the coach — so the group you train with actually matches your level. It&rsquo;s $20, and it&rsquo;s fully credited to your first program.
+    </p>
+    <div style="margin-top:8px;">
+      ${limeButton(`${BASE_URL}/assessment/book`, "Book my 20-minute assessment →")}
     </div>
+    ${smallText("Know what you want already? You can still enrol directly from any program page.")}
     ${signOff()}
   `;
-
-  const textRecs = recommendations
-    .slice(0, 3)
-    .map((r) => `• ${r.program.title}\n  ${r.reason}\n  ${BASE_URL}/programs/${r.program.slug}`)
-    .join("\n\n");
 
   const resend = new Resend(key);
   await resend.emails.send({
@@ -133,7 +127,7 @@ export async function sendRecommendationEmail(
     to,
     subject,
     html: emailLayout(bodyHtml),
-    text: `Hi ${firstName},\n\nThanks for completing the intake. Here are your top program matches:\n\n${textRecs}\n\nWe'll be in touch when cohort spots open.\n\n— Sina Kassaian, Tennis Bootcamp\nhttps://tennisbootcamp.ca`,
+    text: `Hi ${firstName},\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "You've got a strong profile."} Based on your answers, ${programTitle} looks like your fit.\n\nEvery player here is placed by an on-court assessment — 20 minutes with the coach — so the group you train with actually matches your level. It's $20, and it's fully credited to your first program.\n\nBook my 20-minute assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enrol directly from any program page.\n\n— Sina Kassaian, Tennis Bootcamp\nhttps://tennisbootcamp.ca`,
   });
 }
 

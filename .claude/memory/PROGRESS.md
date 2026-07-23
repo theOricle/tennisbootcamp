@@ -92,3 +92,16 @@ See archived entries in git history. Summary: full site scaffold, hero, intake, 
 - Club facts confirmed: government-owned non-profit community club; $100/season membership valid to ~November; pass-through — players pay the club directly. Assessment guest provision pending Sina's check (new OPEN_QUESTIONS entry).
 - Root CLAUDE.md updated: active-plan pointer, pivot in locked decisions, club facts.
 - **Next:** owner skims the spec (especially Appendix B policy text + Appendix C inputs), then execute Phase 1 via Claude Code: `npm run agent:run -- "Execute Phase 1 of ops/plans/assessment-restructure.md"`.
+
+### 2026-07-21 (Claude Code — Phase 2: funnel flip)
+
+Executed **Phase 2** of `ops/plans/assessment-restructure.md` on branch `feat/assessment-phase-2` (Phase 1 / PR #38 already merged). The funnel now leads with the assessment.
+
+- **CTA swap (5 sites):** "Find My Program" → **"Book Your Assessment"** in Hero, Navbar (desktop + mobile), 404, and the intake `<layout>` metadata title (+ OG title/description). All still link to `/intake` — the wizard is the entry point and its result screen routes on to `/assessment/book`.
+- **Hero:** eyebrow badge "Now Enrolling" → **"Assessments Now Open"**; sub-CTA microcopy → *"20 minutes on court · $20, credited to your first program."*
+- **Availability step upgrade:** replaced the 4-checkbox availability question with a structured **days × bands grid** (7 days × Morning/Afternoon/Evening, tap-to-toggle, one row per day, 44px targets, 390px-safe), backed by Phase 1's `Availability` (`{days,v:1}`) model.
+- **`/api/intake` col-16 (frozen contract respected):** the `availability` column stays column 16; only the **cell format** is upgraded. New clients send the structured grid object; the API serializes it to a compact, self-identifying string `v1:mon:eve;wed:mor,eve;sat:aft` (`availabilityToCompactString`). Legacy array submissions still serialize the old comma-joined way. Cols 1–17 unchanged, range still `A:Q`. The rule-based recommender is untouched — it consumes legacy slots derived from the grid via `availabilityToLegacySlots` (new pure helpers in `src/lib/availability.ts`).
+- **Result screen reframe:** `TentativeMatchScreen` replaces the old "Priority Placement List" — headline *"You profile like a Level {band} player"* (deterministic band from `src/lib/level.ts`), a program card with the "why this fits" reason, the assessment pitch block, and the primary CTA **"Book my 20-minute assessment"** which writes the `assessmentPrefill` sessionStorage handoff (name/email/phone/selfLevel/availability) and routes to `/assessment/book`. Direct enrollment is demoted to a text link *"Know what you want? Enroll directly →"* (top open cohort, else program page). The empty-recommendation fallback also leads with the assessment.
+- **Recommendation email:** `sendRecommendationEmail` reframed to the same tentative-match copy with a primary button to `/assessment/book`.
+- **GA:** new `assessment_cta_click` event with a `source` param (`hero` / `navbar` / `intake-result`).
+- **Verified:** `tsc --noEmit`, `npm run lint`, and `npm run build` all clean; `/api/intake` column contract untouched (17 cols, additive cell-format change only).

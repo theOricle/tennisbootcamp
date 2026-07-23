@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { trackAssessmentCtaClick } from "@/lib/analytics";
 
 // Code-split Three.js out of the initial bundle; never SSR the WebGL canvas.
 const CourtBackground = dynamic(
@@ -39,7 +40,7 @@ export function Hero() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#B4E655] opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-[#B4E655]" />
             </span>
-            Now Enrolling
+            Assessments Now Open
           </div>
 
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white md:text-6xl">
@@ -54,9 +55,10 @@ export function Hero() {
             <div className="flex flex-wrap items-center gap-3">
               <a
                 href="/intake"
+                onClick={() => trackAssessmentCtaClick("hero")}
                 className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >
-                Find My Program
+                Book Your Assessment
               </a>
               <Link
                 href="/programs"
@@ -66,7 +68,7 @@ export function Hero() {
               </Link>
             </div>
             <p className="text-xs text-white/50">
-              Priority placements go to athletes who complete the intake.
+              20 minutes on court · $20, credited to your first program.
             </p>
           </div>
         </div>
