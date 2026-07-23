@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { programs } from "@/content/programs";
 import { cohorts } from "@/content/cohorts";
 import { locations } from "@/content/locations";
+import { TierStatus } from "@/components/tiers";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -147,7 +148,7 @@ async function DashboardContent({
 
   const [{ data: profile, error: profileError }, { data: enrollments, error: enrollError }] =
     await Promise.all([
-      supabase.from("profiles").select("full_name").eq("id", userId).single(),
+      supabase.from("profiles").select("full_name, level").eq("id", userId).single(),
       supabase
         .from("enrollments")
         .select("id, cohort_id, program, participant_name, status, created_at")
@@ -183,12 +184,15 @@ async function DashboardContent({
             Your enrollments and upcoming programs.
           </p>
         </div>
-        <Link
-          href="/profile"
-          className="rounded-full text-sm font-semibold text-white/70 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-        >
-          Edit profile
-        </Link>
+        <div className="flex flex-wrap items-center gap-4">
+          <TierStatus level={profile?.level ?? null} />
+          <Link
+            href="/profile"
+            className="rounded-full text-sm font-semibold text-white/70 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+          >
+            Edit profile
+          </Link>
+        </div>
       </div>
 
       {/* Three-column grid */}

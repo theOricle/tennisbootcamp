@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { membershipNote } from "@/lib/membership";
+import { TierLadder } from "@/components/tiers";
 
 const LEAVE_WITH = [
   "Your level, assigned by the coach",
@@ -93,6 +94,21 @@ export default function AssessmentLandingPage() {
               </li>
             ))}
           </ul>
+        </section>
+
+        {/* The ladder */}
+        <section className="mt-14">
+          <h2 className="text-xl font-semibold text-white sm:text-2xl">
+            The ladder you&apos;re climbing
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed text-white/65 sm:text-base">
+            Your level places you on a seven-rung ladder. Every player starts
+            somewhere real and climbs from there — the assessment tells you which
+            rung you&apos;re on.
+          </p>
+          <div className="mt-6">
+            <TierLadder />
+          </div>
         </section>
 
         {/* FAQ */}

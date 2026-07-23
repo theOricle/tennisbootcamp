@@ -218,6 +218,41 @@ Everything ships **unlinked** from the main funnel (reachable by URL only) so it
 
 ---
 
+## Phase 2.5 — Tier identity layer
+
+A pure **display layer** over the existing numeric level. It gives players a named identity to climb toward without touching a single row of data: the coach still assigns a numeric `profiles.level` / `assessment_bookings.level_result` (1.0–7.0 half steps), and the tier is derived from that number at render time. **Zero contract changes** — no migration, no new columns, no change to `/api/intake`, enrollment, or cohort logic. The purpose is motivation and legibility: "Rally · 2.5" reads as *progress within a tier*, so a player sees both where they stand and what they're chasing.
+
+**The seven tiers** (each tier spans one whole level; a half step is progress inside it):
+
+| Tier | Name | Level band | Motif |
+|---|---|---|---|
+| 1 | Love | 1.0–1.5 | a single ball dot |
+| 2 | Rally | 2.0–2.5 | two volleying arcs |
+| 3 | Deuce | 3.0–3.5 | two balanced balls |
+| 4 | Break | 4.0–4.5 | a broken line |
+| 5 | Ace | 5.0–5.5 | a star |
+| 6 | Match Point | 6.0–6.5 | a crown |
+| 7 | Grand Slam | 7.0 | a trophy with laurel |
+
+`tierForLevel` **floors to the whole tier** (2.5 → Rally, because `floor(2.5) = 2`); a formatter renders `Rally · 2.5` so half steps read as progress within a tier. Unranked (no level yet) is a first-class state, not an error.
+
+**Build:**
+
+1. `src/lib/tiers.ts` — the seven tiers as data, `tierForLevel(level)` (floor + clamp 1–7, returns `null` when unranked), and `formatTierLevel(level)` → `"Rally · 2.5"`. Pure, deterministic, no JSX, no DB.
+2. `src/components/tiers/` — **seven brand SVG badge components** (`LoveBadge` … `GrandSlamBadge`), one consistent geometric badge system: `#061427` field, `#B4E655` lime accent, white strokes; escalating motifs per the table above; crisp at both 20px and 64px; `role="img"` + `aria-label` included on each. Plus `TierBadge` (badge + tier name + numeric level), an `UnrankedChip` (links to `/assessment/book`), and a `TierLadder` strip.
+3. **Surfaces (display only):**
+   - **Profile page** — top-right shows the `TierBadge` with tier name + numeric level when a level is set; otherwise a subtle *"Unranked — book your assessment"* chip linking to `/assessment/book`.
+   - **Dashboard header** — the same treatment.
+   - **Admin assessment booking rows** — a small tier chip next to the numeric level.
+   - **Assessment-complete email** — adds a `You're a {Tier}` line.
+   - **`/assessment` landing page** — a compact ladder strip showing all seven tiers with mini badges, so prospects see the progression they're joining.
+
+**Hard constraints:** do not touch `/api/intake`, enrollment logic, or cohort logic (Phase 3 owns those); brand voice per `ops/briefs/brand.md`; mobile-first at 390px with 44px touch targets; no new palette.
+
+**Acceptance:** build + lint + typecheck green; profile and dashboard render the badge for a leveled user and the unranked chip otherwise; the complete email renders with and without a tier; the ladder strip renders on `/assessment`; zero contract changes.
+
+---
+
 ## Phase 3 (PR) — Admin core + private cohorts + invites
 
 **Build:**
@@ -232,6 +267,13 @@ Everything ships **unlinked** from the main funnel (reachable by URL only) so it
 8. **Session cancellation + make-ups:** `/admin/cohorts/[id]` shows the session list; cancelling one (reason picker: weather / court / coach / other) appends the make-up row per the Appendix B rules (`src/lib/makeup.ts`, pure + unit-testable logic) and sends the cancellation/make-up email to all members. Over-cap cancellations mark the session `cancelled` with no make-up row and flag the cohort for credit follow-up (admin banner).
 9. **Student dashboard:** enrolled cohort card gains the full session list including make-ups (make-ups badged "Make-up · replaces Jul 30").
 10. GA events: `cohort_invite_sent`, `cohort_invite_paid`, `cohort_confirmed`.
+
+**Tier display (extends the Phase 2.5 identity layer into cohorts):**
+
+- Cohort cards and invite emails display the cohort's tier range as badges (derived from `level_min`/`level_max` via `tierForLevel`) — a player sees at a glance which tier band a group is for.
+- The player dashboard lists open cohorts matching their tier under an *"Open for your tier"* heading (their `profiles.level` tier ∈ the cohort's tier band).
+- `/enroll/[cohortId]` enforces level-within-range for tier-gated cohorts alongside the invite-token path: a private, tier-gated cohort admits either a valid unexpired invite token **or** a signed-in player whose level falls inside `[level_min, level_max]`.
+- The admin cohort form stays **numeric** min/max (tiers are a display derivation, never the stored value) — no tier picker, no data change.
 
 **Acceptance:** create private cohort → invite two test emails → pay both in test mode ($20 credit applied to one with a completed assessment) → cohort auto-confirms → sessions generated → cancel one session → make-up appended + emails sent → dashboard shows it; expired token blocks enrollment; public cohort flow unchanged; RLS verified (student cannot read another student's rows, non-admin cannot reach `/admin`); CI green.
 

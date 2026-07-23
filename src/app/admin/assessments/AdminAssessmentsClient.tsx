@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { trackAssessmentCompletedAdmin } from "@/lib/analytics";
+import { TierChip } from "@/components/tiers";
 
 // ─── Types (mirror the admin API payloads) ────────────────────────────────────
 
@@ -295,9 +296,12 @@ function BookingCard({
 
       {booking.status === "completed" && (
         <div className="mt-3 rounded-lg bg-white/[0.03] p-3">
-          <p className="text-sm font-semibold text-[#B4E655]">
-            Level {booking.level_result?.toFixed(1)}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-[#B4E655]">
+              Level {booking.level_result?.toFixed(1)}
+            </p>
+            <TierChip level={booking.level_result} />
+          </div>
           {booking.coach_notes && (
             <p className="mt-1 text-sm text-white/70">{booking.coach_notes}</p>
           )}
