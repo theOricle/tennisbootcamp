@@ -188,8 +188,9 @@ function TentativeMatchScreen({
               Book your 20-minute assessment
             </p>
             <p className="mt-1 text-sm text-white/60">
-              $20 · fully credited to your first program. You leave with a real level, a written
-              read on your game, and a group matched to your level and schedule.
+              The assessment is $20 — enroll in a program afterward and that $20 comes off the
+              price. You leave with a real level, a written read on your game, and a group
+              matched to your level and schedule.
             </p>
             <button
               type="button"
@@ -282,7 +283,8 @@ function FallbackScreen({
           <p className="mt-3 text-white/70">
             The best next step is a 20-minute on-court assessment — 20 minutes with the coach. You
             leave with a real level, a written read on your game, and a group matched to your level
-            and schedule. $20, fully credited to your first program.
+            and schedule. It&apos;s $20 — and if you enroll in a program afterward, that $20 comes
+            off the price.
           </p>
           <button
             type="button"

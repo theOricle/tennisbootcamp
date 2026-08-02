@@ -68,10 +68,11 @@ export default function AssessmentLandingPage() {
         {/* Price block */}
         <section className="mt-10 rounded-2xl border border-[#B4E655]/25 bg-[#B4E655]/[0.06] p-6 sm:p-8">
           <p className="text-2xl font-bold text-white sm:text-3xl">
-            $20 <span className="text-[#B4E655]">· fully credited to your first program</span>
+            $20 <span className="text-[#B4E655]">— comes off the price when you enroll</span>
           </p>
           <p className="mt-2 text-sm text-white/60 sm:text-base">
-            Book, play, and if you join a program the assessment was free.
+            The assessment costs $20. Join a program or lesson afterward and
+            that $20 is applied to it — so the assessment ends up free.
           </p>
           <Link
             href="/assessment/book"

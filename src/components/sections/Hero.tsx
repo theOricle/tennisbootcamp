@@ -48,7 +48,7 @@ export function Hero() {
           </h1>
 
           <p className="mt-5 max-w-xl text-base text-white/75 md:text-lg">
-            Structured six-week cohorts. Real reps. Real progress. Built for athletes who want to compete.
+            Structured six-week cohorts. A system that makes progress inevitable. Built for athletes who want to compete.
           </p>
 
           <div className="mt-8 flex flex-col items-start gap-3">
@@ -68,7 +68,7 @@ export function Hero() {
               </Link>
             </div>
             <p className="text-xs text-white/50">
-              20 minutes on court · $20, credited to your first program.
+              20 minutes on court · $20 — join a program after and it comes off the price.
             </p>
           </div>
         </div>

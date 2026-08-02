@@ -307,8 +307,9 @@ export default function BookAssessmentPage() {
             Book your 20-minute assessment
           </h1>
           <p className="mt-2 text-sm text-white/60">
-            $20 · fully credited to your first program. Pick a time that works,
-            then a couple of details.
+            The assessment is $20 — enroll in a program afterward and that $20
+            comes off the price. Pick a time that works, then a couple of
+            details.
           </p>
           <p className="mt-3 text-sm text-white/45">
             Not sure where you stand?{" "}
@@ -332,8 +333,9 @@ export default function BookAssessmentPage() {
               availability you gave us. Watch your inbox.
             </p>
             <p className="mt-3 text-sm text-white/60">
-              No payment now — we&apos;ll confirm your time first. The $20 is
-              still credited to your first program.
+              No payment now — we&apos;ll confirm your time first. The
+              assessment is $20, and if you enroll in a program afterward that
+              $20 comes off the price.
             </p>
             <Link
               href="/"
@@ -448,8 +450,9 @@ export default function BookAssessmentPage() {
               {submitting ? "Sending…" : "Request a time"}
             </button>
             <p className="text-center text-xs text-white/40">
-              No payment now — we&apos;ll confirm your time first. The $20 is
-              still credited to your first program.
+              No payment now — we&apos;ll confirm your time first. The
+              assessment is $20, and if you enroll in a program afterward that
+              $20 comes off the price.
             </p>
           </form>
         ) : (
