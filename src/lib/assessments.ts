@@ -7,7 +7,10 @@ import {
 import {
   sendBookingConfirmationEmail,
   sendAssessmentCompleteEmail,
+  sendAssessmentRequestReceivedEmail,
+  sendAssessmentRequestAdminEmail,
 } from "@/lib/email";
+import { availabilityChips } from "@/lib/availability";
 
 // How far ahead the booking page shows open slots.
 const LOOKAHEAD_DAYS = 21;
@@ -15,6 +18,10 @@ const LOOKAHEAD_DAYS = 21;
 export const PENDING_TTL_MS = 15 * 60 * 1000;
 
 const HOLD_STATES = ["pending", "booked"] as const;
+
+// Marker on internal one-slot blocks created when a requested booking is
+// manually coordinated — these never appear on the public slot grid.
+export const COORDINATED_NOTE = "coordinated-direct";
 
 // ─── Row shapes ───────────────────────────────────────────────────────────────
 
@@ -31,19 +38,21 @@ export type BlockRow = {
 
 export type BookingRow = {
   id: string;
-  block_id: string;
-  slot_start: string;
+  block_id: string | null;   // null only while status = 'requested'
+  slot_start: string | null; // null only while status = 'requested'
   name: string;
   email: string;
   phone: string | null;
   user_id: string | null;
   self_level: string | null;
+  availability: unknown;
   status: string;
   stripe_session_id: string | null;
   paid: boolean;
   level_result: number | null;
   coach_notes: string | null;
   credit_status: string;
+  request_note: string | null;
   created_at: string;
   expires_at: string | null;
 };
@@ -162,7 +171,14 @@ export async function getUpcomingSlots(): Promise<PublicBlock[]> {
 
   if (error || !blocks || blocks.length === 0) return [];
 
-  const blockIds = (blocks as BlockRow[]).map((b) => b.id);
+  // Internal coordinated-direct blocks (manually scheduled requests) are not
+  // public inventory.
+  const visibleBlocks = (blocks as BlockRow[]).filter(
+    (b) => b.notes !== COORDINATED_NOTE
+  );
+  if (visibleBlocks.length === 0) return [];
+
+  const blockIds = visibleBlocks.map((b) => b.id);
   const { data: held } = await supabase
     .from("assessment_bookings")
     .select("block_id, slot_start, status")
@@ -178,7 +194,7 @@ export async function getUpcomingSlots(): Promise<PublicBlock[]> {
     return now.getUTCHours() * 60 + now.getUTCMinutes();
   })();
 
-  return (blocks as BlockRow[]).map((b) => {
+  return visibleBlocks.map((b) => {
     const isToday = b.block_date === today;
     const slots = computeSlots(b.start_time, b.end_time, b.slot_minutes)
       .filter((s) => {
@@ -266,11 +282,11 @@ async function getBookingWithBlock(
     .select("*")
     .eq("id", bookingId)
     .single();
-  if (!booking) return null;
+  if (!booking || !(booking as BookingRow).block_id) return null;
   const { data: block } = await supabase
     .from("assessment_blocks")
     .select("*")
-    .eq("id", (booking as BookingRow).block_id)
+    .eq("id", (booking as BookingRow).block_id as string)
     .single();
   if (!block) return null;
   return { booking: booking as BookingRow, block: block as BlockRow };
@@ -315,7 +331,7 @@ export async function confirmBooking(
     email: booking.email,
     phone: booking.phone,
     slotDate: block.block_date,
-    slotStart: normTime(booking.slot_start),
+    slotStart: normTime(booking.slot_start ?? ""),
     status: "booked",
     paid: true,
     creditStatus: booking.credit_status,
@@ -325,7 +341,7 @@ export async function confirmBooking(
     to: booking.email,
     name: booking.name,
     dateLabel: formatBlockDate(block.block_date),
-    timeLabel: formatSlotTime(booking.slot_start),
+    timeLabel: formatSlotTime(booking.slot_start ?? ""),
     locationLabel: block.location_label,
   }).catch((err) =>
     console.error("Booking confirmation email failed (non-blocking):", err)
@@ -391,7 +407,7 @@ export async function completeBooking(
   await updateAssessmentRow({
     email: booking.email,
     slotDate: block.block_date,
-    slotStart: normTime(booking.slot_start),
+    slotStart: normTime(booking.slot_start ?? ""),
     status: "completed",
     levelResult: levelLabel(input.level),
     coachNotes: input.coachNotes,
@@ -427,7 +443,7 @@ export async function markNoShow(
   await updateAssessmentRow({
     email: booking.email,
     slotDate: block.block_date,
-    slotStart: normTime(booking.slot_start),
+    slotStart: normTime(booking.slot_start ?? ""),
     status: "no_show",
     creditStatus: booking.credit_status,
   });
@@ -526,7 +542,7 @@ export async function listBookings(opts: { date?: string } = {}): Promise<
     .order("created_at", { ascending: false });
 
   return ((data as BookingRow[]) ?? []).map((b) => {
-    const block = byId.get(b.block_id);
+    const block = byId.get(b.block_id ?? "");
     return {
       ...b,
       block_date: block?.block_date ?? "",
@@ -534,4 +550,225 @@ export async function listBookings(opts: { date?: string } = {}): Promise<
       location_label: block?.location_label ?? null,
     };
   });
+}
+
+// ─── Request-a-time path (Phase 2.6) ──────────────────────────────────────────
+
+/** "18:00" + 20 → "18:20" (capped at 23:59 so a late block can't wrap midnight). */
+function addMinutesToTime(t: string, minutes: number): string {
+  const [h, m] = normTime(t).split(":").map(Number);
+  const total = Math.min(h * 60 + m + minutes, 23 * 60 + 59);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
+    total % 60
+  ).padStart(2, "0")}`;
+}
+
+/**
+ * Create a slotless `requested` booking — the coordinate-directly path when no
+ * open slots suit (or exist). No payment is taken; the admin sets the time and
+ * collects the $20 at court or by e-transfer. Sends the request-received email
+ * to the prospect and a notification to the inbox, both non-blocking.
+ */
+export async function createRequestedBooking(input: {
+  name: string;
+  email: string;
+  phone?: string | null;
+  selfLevel?: string | null;
+  availability?: unknown;
+  requestNote?: string | null;
+}): Promise<BookingRow> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("assessment_bookings")
+    .insert({
+      block_id: null,
+      slot_start: null,
+      name: input.name,
+      email: input.email,
+      phone: input.phone ?? null,
+      self_level: input.selfLevel ?? null,
+      availability: input.availability ?? null,
+      request_note: input.requestNote ?? null,
+      status: "requested",
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(`Failed to create request: ${error.message}`);
+  const booking = data as BookingRow;
+
+  await sendAssessmentRequestReceivedEmail({
+    to: booking.email,
+    name: booking.name,
+  }).catch((err) =>
+    console.error("Request-received email failed (non-blocking):", err)
+  );
+  await sendAssessmentRequestAdminEmail({
+    name: booking.name,
+    email: booking.email,
+    phone: booking.phone,
+    selfLevel: booking.self_level,
+    preferredTimes: availabilityChips(booking.availability),
+    note: booking.request_note,
+  }).catch((err) =>
+    console.error("Request admin notification failed (non-blocking):", err)
+  );
+
+  return booking;
+}
+
+/** Open requests, oldest first — the admin works the queue top-down. */
+export async function listRequestedBookings(): Promise<BookingRow[]> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("assessment_bookings")
+    .select("*")
+    .eq("status", "requested")
+    .order("created_at", { ascending: true });
+  return (data as BookingRow[]) ?? [];
+}
+
+/**
+ * Shared tail of both request-resolution paths: the row just flipped
+ * requested → booked with a concrete block + slot, so it joins the normal
+ * rails — Sheet row appended and the confirmation email sent. Payment is NOT
+ * touched: the mark-paid toggle records at-court / e-transfer money.
+ */
+async function finalizeScheduledRequest(bookingId: string): Promise<void> {
+  const withBlock = await getBookingWithBlock(bookingId);
+  if (!withBlock) return;
+  const { booking, block } = withBlock;
+
+  await appendAssessmentRow({
+    name: booking.name,
+    email: booking.email,
+    phone: booking.phone,
+    slotDate: block.block_date,
+    slotStart: normTime(booking.slot_start ?? ""),
+    status: "booked",
+    paid: booking.paid,
+    creditStatus: booking.credit_status,
+  });
+
+  await sendBookingConfirmationEmail({
+    to: booking.email,
+    name: booking.name,
+    dateLabel: formatBlockDate(block.block_date),
+    timeLabel: formatSlotTime(booking.slot_start ?? ""),
+    locationLabel: block.location_label,
+  }).catch((err) =>
+    console.error("Booking confirmation email failed (non-blocking):", err)
+  );
+}
+
+/**
+ * Assign an open slot to a requested booking — flips it into the normal
+ * confirmed path. The active-slot unique index still guards the slot: a
+ * conflicting hold makes the update fail with 23505.
+ */
+export async function assignRequestedBooking(
+  bookingId: string,
+  input: { blockId: string; slotStart: string }
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = createServiceClient();
+  const { data: updated, error } = await supabase
+    .from("assessment_bookings")
+    .update({
+      block_id: input.blockId,
+      slot_start: normTime(input.slotStart),
+      status: "booked",
+    })
+    .eq("id", bookingId)
+    .eq("status", "requested")
+    .select("id")
+    .maybeSingle();
+
+  if (error?.code === "23505") {
+    return { ok: false, error: "That slot was just taken. Pick another." };
+  }
+  if (error) return { ok: false, error: error.message };
+  if (!updated) return { ok: false, error: "Request not found (or already handled)." };
+
+  await finalizeScheduledRequest(bookingId);
+  return { ok: true };
+}
+
+/**
+ * Record a manually coordinated date + time for a requested booking. Creates an
+ * internal one-slot block (marked COORDINATED_NOTE, hidden from the public
+ * grid) so the booking stays on the normal rails — the existing
+ * complete-with-level flow applies from here.
+ */
+export async function scheduleRequestedBooking(
+  bookingId: string,
+  input: { date: string; time: string }
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = createServiceClient();
+  const start = normTime(input.time);
+
+  const { data: block, error: blockErr } = await supabase
+    .from("assessment_blocks")
+    .insert({
+      block_date: input.date,
+      start_time: start,
+      end_time: addMinutesToTime(start, 20),
+      slot_minutes: 20,
+      notes: COORDINATED_NOTE,
+    })
+    .select("id")
+    .single();
+  if (blockErr || !block) {
+    return { ok: false, error: blockErr?.message ?? "Could not record the time." };
+  }
+
+  const { data: updated, error } = await supabase
+    .from("assessment_bookings")
+    .update({
+      block_id: (block as { id: string }).id,
+      slot_start: start,
+      status: "booked",
+    })
+    .eq("id", bookingId)
+    .eq("status", "requested")
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!updated) return { ok: false, error: "Request not found (or already handled)." };
+
+  await finalizeScheduledRequest(bookingId);
+  return { ok: true };
+}
+
+/**
+ * Mark a booking paid (or unpaid) — at-court cash or e-transfer collected
+ * outside Stripe. Mirrors to the Sheet row when the booking has a slot.
+ */
+export async function setBookingPaid(
+  bookingId: string,
+  paid: boolean
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = createServiceClient();
+  const { data: booking, error } = await supabase
+    .from("assessment_bookings")
+    .update({ paid })
+    .eq("id", bookingId)
+    .select("*")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!booking) return { ok: false, error: "Booking not found." };
+
+  const row = booking as BookingRow;
+  if (row.block_id) {
+    const withBlock = await getBookingWithBlock(bookingId);
+    if (withBlock) {
+      await updateAssessmentRow({
+        email: row.email,
+        slotDate: withBlock.block.block_date,
+        slotStart: normTime(row.slot_start ?? ""),
+        status: row.status,
+        paid,
+        creditStatus: row.credit_status,
+      });
+    }
+  }
+  return { ok: true };
 }

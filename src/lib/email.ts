@@ -6,6 +6,7 @@ import { tierForLevel } from "@/lib/tiers";
 
 const FROM = "Tennis Bootcamp <noreply@send.tennisbootcamp.ca>";
 const BASE_URL = "https://tennisbootcamp.ca";
+const INBOX = "info@tennisbootcamp.ca";
 
 // ─── Shared branded wrapper ───────────────────────────────────────────────────
 
@@ -196,6 +197,118 @@ ${membership}
   await resend.emails.send({
     from: FROM,
     to,
+    subject,
+    html: emailLayout(bodyHtml),
+    text,
+  });
+}
+
+// ─── sendAssessmentRequestReceivedEmail ───────────────────────────────────────
+
+export async function sendAssessmentRequestReceivedEmail(params: {
+  to: string;
+  name: string;
+}): Promise<void> {
+  const { to, name } = params;
+  const key = process.env.RESEND_API_KEY;
+  const subject = "Your assessment request is in — we'll set your time";
+
+  if (!key) {
+    console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}`);
+    return;
+  }
+
+  const firstName = name.trim().split(/\s+/)[0] || "Athlete";
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Got it, ${firstName}.</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      Your 20-minute assessment request is in. We'll reach out within a day to set a time that fits the availability you gave us.
+    </p>
+    <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.70);">
+      No payment now — we'll confirm your time first. The $20 is still credited to your first program.
+    </p>
+    ${smallText("Anything change on your end? Just reply to this email.")}
+    ${signOff()}
+  `;
+
+  const text = `Got it, ${firstName}.
+
+Your 20-minute assessment request is in. We'll reach out within a day to set a time that fits the availability you gave us.
+
+No payment now — we'll confirm your time first. The $20 is still credited to your first program.
+
+Anything change on your end? Just reply to this email.
+
+— Sina Kassaian, Tennis Bootcamp`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject,
+    html: emailLayout(bodyHtml),
+    text,
+  });
+}
+
+// ─── sendAssessmentRequestAdminEmail ──────────────────────────────────────────
+
+/** Internal notification to the inbox when a prospect requests a time. */
+export async function sendAssessmentRequestAdminEmail(params: {
+  name: string;
+  email: string;
+  phone?: string | null;
+  selfLevel?: string | null;
+  preferredTimes: string[];
+  note?: string | null;
+}): Promise<void> {
+  const { name, email, phone, selfLevel, preferredTimes, note } = params;
+  const key = process.env.RESEND_API_KEY;
+  const subject = `New assessment request: ${name}`;
+
+  if (!key) {
+    console.log(
+      `[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${INBOX} — ` +
+        `${email} · ${preferredTimes.join(", ") || "no times given"}`
+    );
+    return;
+  }
+
+  const detailRow = (label: string, value: string) => `
+    <tr>
+      <td style="padding:6px 0;font-size:13px;color:rgba(255,255,255,0.45);width:110px;vertical-align:top;">${label}</td>
+      <td style="padding:6px 0;font-size:14px;color:#fff;font-weight:600;">${value}</td>
+    </tr>`;
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">New assessment request</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      They're waiting on a time — the site told them we'd reach out within a day.
+    </p>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
+      ${detailRow("Name", name)}
+      ${detailRow("Email", email)}
+      ${phone ? detailRow("Phone", phone) : ""}
+      ${selfLevel ? detailRow("Self level", selfLevel) : ""}
+      ${detailRow("Preferred", preferredTimes.length ? preferredTimes.join(" · ") : "No times given")}
+      ${note ? detailRow("Note", note) : ""}
+    </table>
+    ${limeButton(`${BASE_URL}/admin/assessments`, "Open requests →")}
+  `;
+
+  const text = `New assessment request
+
+Name:      ${name}
+Email:     ${email}${phone ? `\nPhone:     ${phone}` : ""}${selfLevel ? `\nSelf level: ${selfLevel}` : ""}
+Preferred: ${preferredTimes.length ? preferredTimes.join(", ") : "No times given"}${note ? `\nNote:      ${note}` : ""}
+
+Assign a slot or record a time: ${BASE_URL}/admin/assessments`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({
+    from: FROM,
+    to: INBOX,
     subject,
     html: emailLayout(bodyHtml),
     text,

@@ -112,6 +112,7 @@ export async function updateAssessmentRow(match: {
   slotDate: string;
   slotStart: string;
   status: string;
+  paid?: boolean;
   levelResult?: string | number | null;
   coachNotes?: string | null;
   creditStatus?: string;
@@ -147,6 +148,7 @@ export async function updateAssessmentRow(match: {
     const existing = rows[target];
     const updated = [...existing];
     updated[6] = match.status;
+    if (match.paid != null) updated[7] = match.paid ? "yes" : "no";
     if (match.levelResult != null) updated[8] = String(match.levelResult);
     if (match.coachNotes != null) updated[9] = match.coachNotes;
     if (match.creditStatus != null) updated[10] = match.creditStatus;

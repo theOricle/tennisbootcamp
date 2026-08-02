@@ -7,16 +7,10 @@ import { recommendPrograms, type Recommendation } from "@/lib/recommend";
 import { trackEvent, trackAssessmentCtaClick } from "@/lib/analytics";
 import { tentativeLevelLabel } from "@/lib/level";
 import {
-  DAYS,
-  BANDS,
-  DAY_LABELS,
-  BAND_LABELS,
-  serializeAvailability,
   availabilityToLegacySlots,
   type Availability,
-  type Day,
-  type Band,
 } from "@/lib/availability";
+import { AvailabilityGrid } from "@/components/ui/AvailabilityGrid";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -111,72 +105,6 @@ function OptionCard({
         />
       </div>
     </button>
-  );
-}
-
-// ─── Availability grid (days × bands) ─────────────────────────────────────────
-
-function AvailabilityGrid({
-  value,
-  onChange,
-}: {
-  value: Availability;
-  onChange: (next: Availability) => void;
-}) {
-  function toggle(day: Day, band: Band) {
-    const current = value.days[day] ?? [];
-    const nextBands = current.includes(band)
-      ? current.filter((b) => b !== band)
-      : [...current, band];
-    onChange(serializeAvailability({ ...value.days, [day]: nextBands }));
-  }
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
-      {/* Band header — labels the three columns once */}
-      <div className="grid grid-cols-[2.5rem_repeat(3,1fr)] gap-2">
-        <span aria-hidden="true" />
-        {BANDS.map((b) => (
-          <span
-            key={b}
-            className="text-center text-[11px] font-semibold uppercase tracking-wide text-white/45"
-          >
-            {BAND_LABELS[b]}
-          </span>
-        ))}
-      </div>
-
-      {/* One row per day; each cell is a tap-to-toggle band button */}
-      <div className="mt-2 space-y-2">
-        {DAYS.map((d) => (
-          <div key={d} className="grid grid-cols-[2.5rem_repeat(3,1fr)] items-center gap-2">
-            <span className="text-sm font-semibold text-white/80">{DAY_LABELS[d]}</span>
-            {BANDS.map((b) => {
-              const on = value.days[d]?.includes(b) ?? false;
-              return (
-                <button
-                  key={b}
-                  type="button"
-                  role="checkbox"
-                  aria-checked={on}
-                  aria-label={`${DAY_LABELS[d]} ${BAND_LABELS[b]}`}
-                  onClick={() => toggle(d, b)}
-                  className={cn(
-                    "flex min-h-[44px] items-center justify-center rounded-xl border text-sm font-medium transition",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-                    on
-                      ? "border-[#B4E655] bg-[#B4E655] text-[#061427]"
-                      : "border-white/15 bg-white/5 text-white/60 hover:border-[#B4E655]/50 hover:text-white/80"
-                  )}
-                >
-                  {on ? "✓" : ""}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -464,6 +392,14 @@ function IntakePageInner() {
   );
 
   const [stepIndex, setStepIndex] = useState(0);
+  // Pending auto-advance on single-choice steps: the tap flashes the selected
+  // state for a beat, then the step advances on its own — no Next button.
+  const advanceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+    };
+  }, []);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(false);
@@ -506,6 +442,17 @@ function IntakePageInner() {
     }
   }
 
+  // Single-choice steps are never the last step (contact is), so advancing
+  // never needs to submit. Re-tapping (including after Back) re-schedules.
+  const AUTO_ADVANCE_MS = 180;
+  function scheduleAutoAdvance() {
+    if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+    advanceTimerRef.current = setTimeout(() => {
+      advanceTimerRef.current = null;
+      setStepIndex((i) => Math.min(i + 1, steps.length - 1));
+    }, AUTO_ADVANCE_MS);
+  }
+
   function toggleOption(optionId: string) {
     if (current.type === "single") {
       if (current.id === "who") {
@@ -516,6 +463,7 @@ function IntakePageInner() {
       } else if (current.id === "level") {
         setForm((s) => ({ ...s, level: optionId as FormState["level"] }));
       }
+      scheduleAutoAdvance();
     } else if (current.type === "multi") {
       if (current.id === "location") {
         if (optionId === "flexible") {
@@ -609,6 +557,11 @@ function IntakePageInner() {
   }
 
   function back() {
+    // A pending auto-advance must not fire after the user steps back.
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
@@ -760,44 +713,49 @@ function IntakePageInner() {
               Something went wrong — please try again or email us at info@tennisbootcamp.ca
             </p>
           )}
-          <div className="mt-6 flex items-center justify-between gap-3">
-            {stepIndex > 0 && (
-              <button
-                type="button"
-                onClick={back}
-                disabled={submitting}
-                className={cn(
-                  "rounded-full px-5 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-                  submitting
-                    ? "bg-white/5 text-white/30"
-                    : "bg-white/10 text-white hover:bg-white/15"
-                )}
-              >
-                Back
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={next}
-              disabled={!canContinue() || submitting}
-              className={cn(
-                "ml-auto inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-                !canContinue() && !submitting
-                  ? "bg-[#B4E655]/30 text-[#061427]/50"
-                  : submitting
-                  ? "cursor-wait bg-[#B4E655] text-[#061427]"
-                  : "bg-[#B4E655] text-[#061427] hover:brightness-110"
+          {/* Single-choice steps auto-advance on tap — Back is their only control. */}
+          {(stepIndex > 0 || current.type !== "single") && (
+            <div className="mt-6 flex items-center justify-between gap-3">
+              {stepIndex > 0 && (
+                <button
+                  type="button"
+                  onClick={back}
+                  disabled={submitting}
+                  className={cn(
+                    "min-h-[44px] rounded-full px-5 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                    submitting
+                      ? "bg-white/5 text-white/30"
+                      : "bg-white/10 text-white hover:bg-white/15"
+                  )}
+                >
+                  Back
+                </button>
               )}
-            >
-              {submitting && (
-                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
+              {current.type !== "single" && (
+                <button
+                  type="button"
+                  onClick={next}
+                  disabled={!canContinue() || submitting}
+                  className={cn(
+                    "ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                    !canContinue() && !submitting
+                      ? "bg-[#B4E655]/30 text-[#061427]/50"
+                      : submitting
+                      ? "cursor-wait bg-[#B4E655] text-[#061427]"
+                      : "bg-[#B4E655] text-[#061427] hover:brightness-110"
+                  )}
+                >
+                  {submitting && (
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  )}
+                  {stepIndex === steps.length - 1 ? (submitting ? "Submitting…" : "Submit") : "Next"}
+                </button>
               )}
-              {stepIndex === steps.length - 1 ? (submitting ? "Submitting…" : "Submit") : "Next"}
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </main>

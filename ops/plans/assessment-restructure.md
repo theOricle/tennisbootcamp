@@ -253,6 +253,22 @@ A pure **display layer** over the existing numeric level. It gives players a nam
 
 ---
 
+## Phase 2.6 — Friction pass: direct booking + request-a-time
+
+Goal: remove friction between landing and booking. The primary CTAs stop routing through the quiz and point straight at `/assessment/book`; the intake quiz stays exactly as-is as an optional level-finder and lead-capture path (its result screen already hands off to booking). And booking stops being slot-gated: with zero open slots the page offers a coordinate-directly request form instead of a dead end.
+
+**Build:**
+
+1. **Direct booking CTAs.** `src/components/sections/Hero.tsx` and both Navbar CTAs (desktop + mobile) change `href` from `/intake` to `/assessment/book`, keeping labels and GA tracking; same for the 404 CTA. On `/assessment/book`, a low-key line under the heading — *"Not sure where you stand? Take the 2-minute quiz first"* — links to `/intake`. Zero changes to `/api/intake` or the 17-column sheet contract.
+2. **Request-a-time path.** Next-numbered migration under `supabase/migrations` touching only assessment tables: add a `requested` value to the `assessment_bookings` status enum, allow null `block_id`/`slot_start` for requested rows (a check keeps them required for every other status), add a `request_note` column; RLS unchanged. On `/assessment/book`: when no open slots exist, render a request form (name, email, phone, self level select, the shared `AvailabilityGrid` for preferred times, optional note) instead of a dead end; when slots do exist, offer the same form behind a secondary link below the grid — *"Prefer to coordinate directly? Request a time instead"*. Submitting posts a `request` mode to the booking API, creating a `requested` booking with availability snapshot, no slot, no payment (copy: *"No payment now — we'll confirm your time first. The $20 is still credited to your first program."*). Two emails on the existing branded system: request-received to the prospect (we'll reach out within a day to set their time) and a notification to info@tennisbootcamp.ca with the prospect's details and preferred times.
+3. **Admin.** `/admin/assessments` gains a **Requests** section listing `requested` bookings (contact, self level, availability chips, note) with two actions — **assign an open slot** (flips it into the normal `booked` path: sheet row + confirmation email) or **record a manually coordinated date + time** and mark it scheduled (an internal one-slot "coordinated" block is created so the booking stays on the normal rails; these blocks never appear on the public slot grid) — plus a **mark-paid toggle** for at-court or e-transfer payment. The existing complete-with-level flow then applies.
+
+**Hard constraints:** zero changes to `/api/intake`, enrollment, or cohort logic; the existing self-serve slot flow is unchanged when slots exist; brand voice per `ops/briefs/brand.md`; mobile-first 390px with 44px targets; no new palette.
+
+**Acceptance:** lint, typecheck, and build green; booking page renders the request form with zero blocks, and the slot grid plus secondary request link when blocks exist; a request creates the row and fires both emails (log-only acceptable in dev); admin can assign or schedule a request end to end in test mode.
+
+---
+
 ## Phase 3 (PR) — Admin core + private cohorts + invites
 
 **Build:**

@@ -115,7 +115,7 @@ export function Navbar() {
               </Button>
               <Button
                 variant="primary"
-                href="/intake"
+                href="/assessment/book"
                 onClick={() => trackAssessmentCtaClick("navbar")}
                 className="px-5 py-2"
               >
@@ -183,7 +183,7 @@ export function Navbar() {
                 </Link>
                 <Button
                   variant="primary"
-                  href="/intake"
+                  href="/assessment/book"
                   onClick={() => {
                     setMenuOpen(false);
                     trackAssessmentCtaClick("navbar");
