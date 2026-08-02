@@ -114,7 +114,7 @@ export async function sendRecommendationEmail(
       ${levelLine}. Based on your answers, <strong style="color:#B4E655;">${programTitle}</strong> looks like your fit.
     </p>
     <p style="margin:0 0 4px;font-size:14px;color:rgba(255,255,255,0.70);">
-      Every player here is placed by an on-court assessment — 20 minutes with the coach — so the group you train with actually matches your level. It&rsquo;s $20, and it&rsquo;s fully credited to your first program.
+      Every player here is placed by an on-court assessment — 20 minutes with the coach — so the group you train with actually matches your level. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.
     </p>
     <div style="margin-top:8px;">
       ${limeButton(`${BASE_URL}/assessment/book`, "Book my 20-minute assessment →")}
@@ -129,7 +129,7 @@ export async function sendRecommendationEmail(
     to,
     subject,
     html: emailLayout(bodyHtml),
-    text: `Hi ${firstName},\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "You've got a strong profile."} Based on your answers, ${programTitle} looks like your fit.\n\nEvery player here is placed by an on-court assessment — 20 minutes with the coach — so the group you train with actually matches your level. It's $20, and it's fully credited to your first program.\n\nBook my 20-minute assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enrol directly from any program page.\n\n— Sina Kassaian, Tennis Bootcamp\nhttps://tennisbootcamp.ca`,
+    text: `Hi ${firstName},\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "You've got a strong profile."} Based on your answers, ${programTitle} looks like your fit.\n\nEvery player here is placed by an on-court assessment — 20 minutes with the coach — so the group you train with actually matches your level. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.\n\nBook my 20-minute assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enrol directly from any program page.\n\n— Sina Kassaian, Tennis Bootcamp\nhttps://tennisbootcamp.ca`,
   });
 }
 
@@ -226,7 +226,7 @@ export async function sendAssessmentRequestReceivedEmail(params: {
       Your 20-minute assessment request is in. We'll reach out within a day to set a time that fits the availability you gave us.
     </p>
     <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.70);">
-      No payment now — we'll confirm your time first. The $20 is still credited to your first program.
+      No payment now — we'll confirm your time first. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.
     </p>
     ${smallText("Anything change on your end? Just reply to this email.")}
     ${signOff()}
@@ -236,7 +236,7 @@ export async function sendAssessmentRequestReceivedEmail(params: {
 
 Your 20-minute assessment request is in. We'll reach out within a day to set a time that fits the availability you gave us.
 
-No payment now — we'll confirm your time first. The $20 is still credited to your first program.
+No payment now — we'll confirm your time first. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.
 
 Anything change on your end? Just reply to this email.
 

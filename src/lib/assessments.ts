@@ -11,6 +11,7 @@ import {
   sendAssessmentRequestAdminEmail,
 } from "@/lib/email";
 import { availabilityChips } from "@/lib/availability";
+import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
 
 // How far ahead the booking page shows open slots.
 const LOOKAHEAD_DAYS = 21;
@@ -347,6 +348,12 @@ export async function confirmBooking(
     console.error("Booking confirmation email failed (non-blocking):", err)
   );
 
+  // Same set-password account email enrollees get. Fires only on the
+  // pending → booked transition above, so a duplicate webhook can't re-send it.
+  await issueActivationLink(booking.email, null).catch((err) =>
+    console.error("Activation link failed (non-blocking):", err)
+  );
+
   return booking;
 }
 
@@ -611,6 +618,13 @@ export async function createRequestedBooking(input: {
     note: booking.request_note,
   }).catch((err) =>
     console.error("Request admin notification failed (non-blocking):", err)
+  );
+
+  // Set-password account email, sent once here at request time. The admin
+  // assign/schedule path (finalizeScheduledRequest) deliberately does not send
+  // it again, and confirmBooking only fires it on pending rows — never these.
+  await issueActivationLink(booking.email, null).catch((err) =>
+    console.error("Activation link failed (non-blocking):", err)
   );
 
   return booking;
