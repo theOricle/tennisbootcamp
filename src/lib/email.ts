@@ -67,7 +67,7 @@ export async function sendLinkEmail(
   }
 
   const bodyHtml = `
-    <p style="margin:0 0 8px;font-size:16px;font-weight:600;color:#fff;">Action required</p>
+    <p style="margin:0 0 8px;font-size:16px;font-weight:600;color:#fff;">One quick step</p>
     <p style="margin:0 0 4px;font-size:14px;color:rgba(255,255,255,0.70);">Click the button below to ${actionLabel}:</p>
     ${limeButton(link, `${actionLabel.charAt(0).toUpperCase()}${actionLabel.slice(1)} →`)}
     ${smallText("This link expires in 24 hours. If you didn't request this, you can safely ignore it.")}
@@ -103,7 +103,7 @@ export async function sendRecommendationEmail(
   const programTitle = top?.program.title ?? "one of our programs";
   const levelLine = tentativeLevel
     ? `You profile like a <strong style="color:#fff;">Level ${tentativeLevel}</strong> player`
-    : `You've got a strong profile`;
+    : `Thanks for telling us about your game`;
   const subject = tentativeLevel
     ? `You profile like a Level ${tentativeLevel} player — here's your next step`
     : `Your Tennis Bootcamp next step — ${firstName}`;
@@ -119,7 +119,7 @@ export async function sendRecommendationEmail(
     <div style="margin-top:8px;">
       ${limeButton(`${BASE_URL}/assessment/book`, "Book my 20-minute assessment →")}
     </div>
-    ${smallText("Know what you want already? You can still enrol directly from any program page.")}
+    ${smallText("Know what you want already? You can still enroll directly from any program page.")}
     ${signOff()}
   `;
 
@@ -129,7 +129,7 @@ export async function sendRecommendationEmail(
     to,
     subject,
     html: emailLayout(bodyHtml),
-    text: `Hi ${firstName},\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "You've got a strong profile."} Based on your answers, ${programTitle} looks like your fit.\n\nEvery player here is placed by an on-court assessment — 20 minutes with the coach — so the group you train with actually matches your level. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.\n\nBook my 20-minute assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enrol directly from any program page.\n\n— Sina Kassaian, Tennis Bootcamp\nhttps://tennisbootcamp.ca`,
+    text: `Hi ${firstName},\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "Thanks for telling us about your game."} Based on your answers, ${programTitle} looks like your fit.\n\nEvery player here is placed by an on-court assessment — 20 minutes with the coach — so the group you train with actually matches your level. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.\n\nBook my 20-minute assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enroll directly from any program page.\n\n— Sina Kassaian, Tennis Bootcamp\nhttps://tennisbootcamp.ca`,
   });
 }
 

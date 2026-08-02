@@ -384,9 +384,8 @@ export default function BookAssessmentPage() {
                 </>
               ) : (
                 <p>
-                  No open times are posted right now — but that doesn&apos;t
-                  stop you. Tell us when you play and we&apos;ll coordinate your
-                  time directly.
+                  No open times are posted right now. Tell us when you play and
+                  we&apos;ll coordinate your time directly.
                 </p>
               )}
             </div>

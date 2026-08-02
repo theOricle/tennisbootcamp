@@ -215,7 +215,7 @@ function TentativeMatchScreen({
               onChange={(e) => onNewsletterChange(e.target.checked)}
               className="h-4 w-4"
             />
-            <span className="text-sm text-white/75">Also keep me updated by email (newsletter)</span>
+            <span className="text-sm text-white/75">Also email me when new programs and dates open</span>
           </label>
 
           <div className="mt-6 flex flex-wrap gap-3">
@@ -300,7 +300,7 @@ function FallbackScreen({
               onChange={(e) => onNewsletterChange(e.target.checked)}
               className="h-4 w-4"
             />
-            <span className="text-sm text-white/75">Also keep me updated by email (newsletter)</span>
+            <span className="text-sm text-white/75">Also email me when new programs and dates open</span>
           </label>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
@@ -343,7 +343,7 @@ function IntakePageInner() {
         id: "who",
         title: "Who is training?",
         subtitle:
-          "This short intake helps us place you correctly. Athletes who complete it receive priority placement as programs open.",
+          "A few quick questions so we can place you correctly. It takes about two minutes.",
         type: "single",
         options: [
           { id: "adult", label: "Myself — Adult (18+)" },
@@ -354,7 +354,7 @@ function IntakePageInner() {
       },
       {
         id: "level",
-        title: "Where are you in your tennis journey?",
+        title: "Where's your game right now?",
         subtitle: "There's no right or wrong answer — this helps us place you correctly.",
         type: "single",
         options: [
@@ -379,7 +379,7 @@ function IntakePageInner() {
         id: "availability",
         title: "When can you train?",
         subtitle:
-          "Tap every slot that works. This is what we group around — the more you tap, the more group times fit you.",
+          "Tap every slot that works. Groups form around shared availability — the more times you give us, the more groups fit you.",
         type: "availability",
       },
       {
@@ -605,7 +605,7 @@ function IntakePageInner() {
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
           <div className="mb-4">
             <div className="text-xs font-semibold tracking-wide text-[#B4E655]/80">
-              PRIORITY PLACEMENT INTAKE
+              THE 2-MINUTE QUIZ
             </div>
             <h1 className="mt-2 text-2xl font-semibold md:text-3xl">{current.title}</h1>
             {current.subtitle ? (
@@ -698,7 +698,7 @@ function IntakePageInner() {
                     className="h-4 w-4"
                   />
                   <span className="text-sm text-white/75">
-                    Also keep me updated by email (newsletter)
+                    Also email me when new programs and dates open
                   </span>
                 </label>
                 {/* Enables Enter-to-advance from any field; the visible CTA lives in the footer */}

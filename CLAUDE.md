@@ -277,3 +277,15 @@ If OneDrive gets signed into this machine later, exclude `node_modules` and `.ne
 - Treat as authoritative. When in doubt, re-read first.
 - When facts change (new stack choice, new program, shipped feature), edit the relevant section and bump "Last updated."
 - Cross-reference `site/ops/briefs/brand.md` and `site/ops/briefs/project.md` before making creative or structural decisions — they're the owner's non-negotiables.
+
+## Model assignments (2026-08-02)
+
+Which Claude model handles which kind of work on this project:
+
+- **Brand/voice copy and emails** → **Fable 5**, with `ops/briefs/voice.md` loaded
+- **Production bulk copy variants** (ad variants, A/B headlines, batch rewrites) → **Sonnet 5**
+- **Code and system builds** → **Fable 5**
+- **Strategy / planning** → **Opus 4.8**
+- **Trivial mechanical chores** (renames, data entry, formatting) → **Sonnet 5 or Haiku 4.5**
+
+Every writing task must load `ops/briefs/voice.md` regardless of model — the voice profile beats model choice.

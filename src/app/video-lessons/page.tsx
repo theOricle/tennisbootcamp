@@ -57,9 +57,9 @@ export default function VideoLessonsPage() {
         </div>
 
         <p className="mt-8 text-sm text-white/40">
-          Full library unlocks with cohort enrollment. A free preview selection
-          will be available to everyone later this season — drop your email
-          below to be first.
+          The full library opens with cohort enrollment. A free preview
+          selection arrives later this season — leave your email below and
+          we&apos;ll tell you when it&apos;s live.
         </p>
       </section>
 

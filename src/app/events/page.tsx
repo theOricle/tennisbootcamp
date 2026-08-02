@@ -25,12 +25,11 @@ export default function EventsPage() {
           Season schedule
         </p>
         <h2 className="mt-3 text-3xl font-semibold text-white">
-          Next batch being finalized now
+          The next season&apos;s schedule is being finalized
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-white/60">
-          Bootcamps and clinics are scheduled by season. The next batch is being
-          finalized now — drop your email and we&apos;ll send you the lineup
-          before public registration opens.
+          Bootcamps and clinics are scheduled by season. Leave your email and
+          we&apos;ll send you the schedule before registration opens.
         </p>
       </section>
 

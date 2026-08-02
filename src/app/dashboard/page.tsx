@@ -88,7 +88,7 @@ function DashboardSkeleton() {
         {/* Locations — static, rendered immediately below */}
         <section>
           <div className="border-l-2 border-[#B4E655] pl-4">
-            <h2 className="text-lg font-semibold text-white">Camps near you</h2>
+            <h2 className="text-lg font-semibold text-white">Where we train</h2>
           </div>
           <div className="mb-6 mt-2 border-b border-white/10" />
           <ul className="space-y-5">
@@ -262,7 +262,7 @@ async function DashboardContent({
 
           {suggestedPrograms.length === 0 ? (
             <p className="text-sm text-white/60">
-              You&apos;re enrolled in all available programs!
+              You&apos;re enrolled in every available program.
             </p>
           ) : (
             <ul className="space-y-3">
@@ -283,7 +283,7 @@ async function DashboardContent({
         {/* Camps near you */}
         <section>
           <div className="border-l-2 border-[#B4E655] pl-4">
-            <h2 className="text-lg font-semibold text-white">Camps near you</h2>
+            <h2 className="text-lg font-semibold text-white">Where we train</h2>
           </div>
           <div className="mb-6 mt-2 border-b border-white/10" />
 

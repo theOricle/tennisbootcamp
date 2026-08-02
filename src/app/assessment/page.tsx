@@ -15,7 +15,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What if it rains?",
-    a: "If weather cancels your slot, you rebook free — no charge lost.",
+    a: "If weather cancels your slot, you rebook free — your $20 stays with your booking.",
   },
   {
     q: "Can my kid do this?",
