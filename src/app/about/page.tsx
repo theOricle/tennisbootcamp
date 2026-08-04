@@ -5,7 +5,7 @@ import { coaches } from "@/content/coaches";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Tennis Bootcamp is a structured, high-performance training program for competitive players in Toronto — not drop-in clinics, not casual hitting sessions.",
+    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Every player starts with a 20-minute on-court assessment; Bootcamps is the competitive tier.",
 };
 
 export default function AboutPage() {
@@ -19,9 +19,11 @@ export default function AboutPage() {
           </h1>
           <p className="mt-5 max-w-2xl text-lg text-white/70">
             Tennis Bootcamp is not a club program or a drop-in clinic. It&apos;s a
-            structured, cohort-based training model built for players who want to
-            compete — and win. Every block is designed to move specific benchmarks:
-            technique, tactics, physical conditioning, and the mental game.
+            structured, cohort-based training model — a cohort is a fixed group
+            that trains together for six weeks. The training is serious at every
+            level, from your first rally to tournament play, and every block is
+            built to move specific, measurable parts of your game: technique,
+            tactics, physical conditioning, and the mental game.
           </p>
         </div>
       </div>
@@ -53,15 +55,15 @@ export default function AboutPage() {
               {
                 label: "Two on-court sessions per week",
                 detail:
-                  "Live-ball patterns, point-play pressure, and stroke-specific work in every session.",
+                  "Realistic rally play, point-play pressure, and stroke-specific work in every session.",
               },
               {
-                label: "One dedicated S&C block per week",
+                label: "One strength-and-conditioning session per week",
                 detail:
                   "First-step quickness, change-of-direction, and tennis-specific conditioning — not general fitness.",
               },
               {
-                label: "Benchmarked at start and end",
+                label: "Measured at the start and end",
                 detail:
                   "You finish every cohort knowing exactly what improved and what the next block should target.",
               },
@@ -103,9 +105,9 @@ export default function AboutPage() {
                   "Recreational programs keep you comfortable. This program keeps you challenged. Each six-week block has defined objectives — at the end you move to a harder block, not the same one again.",
               },
               {
-                heading: "High-performance, not recreational",
+                heading: "Serious at every level",
                 body:
-                  "The training methods here come from competitive player development, not club instruction. If you&apos;re not preparing to compete, there are better programs out there. If you are, this is where you belong.",
+                  "The training methods come from competitive player development, applied at every rung of the ladder — Love through Grand Slam. Everyone starts with the same $20 on-court assessment, and every group trains with structure and intent. Bootcamps is the explicitly competitive tier; the rest of the ladder builds your game seriously from wherever you start.",
               },
             ].map(({ heading, body }) => (
               <div
@@ -140,10 +142,10 @@ export default function AboutPage() {
               unfocused, too comfortable. The bootcamp model exists to close that gap.
             </p>
             <p>
-              His coaching is built around four pillars — technique, strategy,
-              physical conditioning, and mental toughness — and every session
-              addresses all four, not in rotation but in combination, the way they
-              actually show up in a match.
+              His coaching is built around four pillars: technique, strategy,
+              physical conditioning, and mental toughness. Every session
+              addresses all four — in combination, the way they show up in a
+              match.
             </p>
 
             {/* PLACEHOLDERS — dev only, hidden in production */}

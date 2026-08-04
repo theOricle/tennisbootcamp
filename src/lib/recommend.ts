@@ -86,11 +86,11 @@ function buildReason(program: Program, form: IntakeFormSnapshot): string {
     if (level === "new")
       return "The best place to start — structured progressions with real-time feedback in a small group capped at 6.";
     if (level === "rally")
-      return "Small groups that move fast — more reps, live-ball patterns, and corrections every session.";
+      return "Small groups that move fast — more reps, realistic rally play, and corrections every session.";
     if (goals.includes("technique"))
       return "Focused progressions across every stroke with real-time correction and no filler drills.";
     if (goals.includes("consistency"))
-      return "Weekly structured progressions that build on each other — you'll feel the difference.";
+      return "Structured progressions that build on each other, week over week.";
     return "Adult group lessons capped at 6 — more reps, more feedback, less standing around.";
   }
 
