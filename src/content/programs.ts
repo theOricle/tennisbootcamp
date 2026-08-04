@@ -59,7 +59,7 @@ export const programs: Program[] = [
     id: "group-lessons",
     slug: "group-lessons",
     title: "Group Lessons",
-    description: "Adult group lessons that actually move the needle.",
+    description: "Adult lessons capped at six per court — more reps, more feedback, week-over-week progression.",
     longDescription:
       "Each 90-minute session is capped at 6 players per court — more reps, more feedback, less waiting around. " +
       "You'll work through structured progressions across your forehand, backhand, serve, return, volleys, and live-ball patterns. " +

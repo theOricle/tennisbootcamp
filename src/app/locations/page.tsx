@@ -4,7 +4,7 @@ import { locations } from "@/content/locations";
 export const metadata: Metadata = {
   title: "Locations",
   description:
-    "Tennis Bootcamp trains at two Toronto locations: Toronto Tennis City in North York and Tennis Lessons Toronto downtown.",
+    "Tennis Bootcamp trains at two Toronto locations: Toronto Tennis City in Midtown and Tennis Lessons Toronto downtown.",
 };
 
 export default function LocationsPage() {

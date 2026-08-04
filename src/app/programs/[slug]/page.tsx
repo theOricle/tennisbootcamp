@@ -357,7 +357,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-white">Registrations coming soon</p>
                   <p className="mt-0.5 text-sm text-white/60">
-                    Enter your email to be updated when {program.title} is available.
+                    Leave your email and we&apos;ll tell you when {program.title} opens.
                   </p>
                   <div className="mt-4">
                     <ProgramInterestForm

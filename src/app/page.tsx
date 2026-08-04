@@ -21,7 +21,7 @@ import { PageStack } from "@/components/layout/PageStack";
 export const metadata: Metadata = {
   title: { absolute: "Tennis Bootcamp — Where Athletes Evolve!" },
   description:
-    "Elite tennis coaching for competitive players in Toronto. Complete our intake form to secure priority placement in our next program.",
+    "Structured six-week tennis cohorts in Toronto. Start with a 20-minute on-court assessment — $20, and it comes off the price when you enroll in a program.",
 };
 
 export default function HomePage() {

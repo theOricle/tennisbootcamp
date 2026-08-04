@@ -8,8 +8,8 @@ const signals = [
     body: "Midtown and Downtown. Find the session closest to you.",
   },
   {
-    label: "Priority Placement",
-    body: "Athletes who complete the intake are placed first as programs form.",
+    label: "Placed by Assessment",
+    body: "Every player hits with the coach before joining a group — levels are assigned on court, not self-reported.",
   },
 ];
 

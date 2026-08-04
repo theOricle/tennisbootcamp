@@ -111,7 +111,7 @@ export function Navbar() {
                 href="/programs"
                 className="px-5 py-2"
               >
-                Our Programs
+                Browse Programs
               </Button>
               <Button
                 variant="primary"

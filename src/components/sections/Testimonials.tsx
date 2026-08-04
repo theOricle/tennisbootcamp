@@ -27,7 +27,7 @@ export function Testimonials() {
         ))}
       </div>
       <p className="mt-6 text-center text-xs text-white/35">
-        Real reviews from real athletes — names changed during pre-launch.
+        Names changed during pre-launch.
       </p>
     </section>
   );

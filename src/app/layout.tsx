@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     template: "%s | Tennis Bootcamp",
   },
   description:
-    "Elite tennis coaching for competitive players in Toronto. Two locations — North York and Downtown. Limited spots — complete the intake to get priority placement.",
+    "Tennis training in Toronto for players who want to compete — Midtown and Downtown. Every player is placed by a 20-minute on-court assessment: $20, and it comes off the price when you enroll in a program.",
   openGraph: {
     siteName: "Tennis Bootcamp",
     locale: "en_CA",
