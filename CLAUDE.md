@@ -6,7 +6,7 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Active build plan:** `ops/plans/assessment-restructure.md` — assessment-first pivot (2026-07-18); execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive. (Previous plan `ops/plans/enrollment-and-accounts.md` fully shipped 2026-06-07.)
 
-Last updated: 2026-07-18
+Last updated: 2026-08-06
 
 ---
 
@@ -271,6 +271,13 @@ If OneDrive gets signed into this machine later, exclude `node_modules` and `.ne
 - Cowork is used for browser-driven tasks only (Vercel UI, Figma reference, design review) — Claude Code for all code work
 - GitHub Actions CI runs lint + typecheck on every push — don't skip it
 - Keep this `CLAUDE.md` as the single source of truth for project context across sessions
+
+### Workflow rules (2026-08-06)
+
+1. **Local on-computer sessions pull first.** Run `git pull origin main` before any read or edit — never work on a stale main.
+2. **Cloud build sessions branch fresh.** Every cloud/build session starts its work branch fresh from the latest `origin/main`.
+3. **Build sessions don't schedule reminders or self-check-ins.** PR monitoring is handled externally — no timers, no scheduled wake-ups from build sessions.
+4. **Migrations stay manual.** Migrations are applied by hand in the Supabase SQL editor (there is no runner), and every PR that adds a migration includes its full SQL in the PR description.
 
 ## How to use this file
 
