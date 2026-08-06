@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cohorts } from "@/content/cohorts";
 import { programs } from "@/content/programs";
 import { locations } from "@/content/locations";
 import { formatDateRange, formatDaysTimes } from "@/lib/cohorts";
+import { getCohortById } from "@/lib/cohortsDb";
 import { createClient } from "@/lib/supabase/server";
 import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
-type PageProps = { params: Promise<{ cohortId: string }> };
+type PageProps = {
+  params: Promise<{ cohortId: string }>;
+  searchParams: Promise<{ invite?: string | string[] }>;
+};
 
 export const metadata: Metadata = {
   title: "Enrollment Confirmed",
@@ -16,9 +19,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function EnrollConfirmedPage({ params }: PageProps) {
+export default async function EnrollConfirmedPage({ params, searchParams }: PageProps) {
   const { cohortId } = await params;
-  const cohort = cohorts.find((c) => c.id === cohortId);
+  const sp = await searchParams;
+  const viaInvite = sp.invite === "1";
+  const cohort = await getCohortById(cohortId);
   if (!cohort) notFound();
 
   const program = programs.find((p) => p.id === cohort.programId);
@@ -50,6 +55,8 @@ export default async function EnrollConfirmedPage({ params }: PageProps) {
       <EnrollCompleteEvent
         cohortId={cohortId}
         program={program?.title ?? cohort.programId}
+        viaInvite={viaInvite}
+        cohortConfirmed={cohort.dbStatus === "confirmed"}
       />
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">

@@ -359,7 +359,7 @@ export async function confirmBooking(
 
 // ─── Completion (admin) ───────────────────────────────────────────────────────
 
-async function findUserIdByEmail(email: string): Promise<string | null> {
+export async function findUserIdByEmail(email: string): Promise<string | null> {
   const supabase = createServiceClient();
   const target = email.trim().toLowerCase();
   // Small project — a single page of users is plenty.

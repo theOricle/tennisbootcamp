@@ -5,6 +5,10 @@ import {
   saveEnrollmentToSupabase,
   issueActivationLink,
 } from "@/lib/supabase/enrollmentActions";
+import { getCohortById } from "@/lib/cohortsDb";
+import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
+import { setEnrollmentCredit } from "@/lib/enrollmentSheet";
+import { markInvitePaidAndMaybeConfirm } from "@/lib/cohortActions";
 
 const TAB = "enrollments";
 // "status" is column P (index 15, 1-based col 16)
@@ -54,12 +58,14 @@ export async function POST(req: NextRequest) {
       cohortId,
       programTitle,
       priceCents,
+      inviteToken,
       enrollmentRowNumber,
       enrollmentMeta,
     }: {
       cohortId: string;
       programTitle?: string;
       priceCents?: number;
+      inviteToken?: string;
       enrollmentRowNumber: number;
       enrollmentMeta?: EnrollmentMeta;
     } = body;
@@ -71,13 +77,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // The server's price wins over whatever the client sent.
+    const cohort = await getCohortById(cohortId);
+    const chargeCents = cohort?.priceCents ?? priceCents ?? 0;
+
+    // $20 assessment credit: completed + paid + unused, looked up by enrollee
+    // email. Applied as a Stripe Checkout discount (subtracted in mock mode).
+    const credit = enrollmentMeta?.contactEmail
+      ? await findUnusedCredit(enrollmentMeta.contactEmail)
+      : null;
+    const discountCents = credit ? Math.min(credit.creditCents, chargeCents) : 0;
+
     const origin =
       req.headers.get("origin") ??
       process.env.NEXT_PUBLIC_SITE_URL ??
       "http://localhost:3000";
 
-    const successUrl = `${origin}/enroll/${cohortId}/confirmed?row=${enrollmentRowNumber}`;
-    const cancelUrl = `${origin}/enroll/${cohortId}`;
+    const successUrl =
+      `${origin}/enroll/${cohortId}/confirmed?row=${enrollmentRowNumber}` +
+      (inviteToken ? "&invite=1" : "");
+    const cancelUrl = `${origin}/enroll/${cohortId}${inviteToken ? `?invite=${inviteToken}` : ""}`;
 
     // Save to Supabase (fire-and-forget on error so it never breaks checkout)
     let supabaseEnrollmentId: string | null = null;
@@ -104,12 +123,15 @@ export async function POST(req: NextRequest) {
     const { sessionUrl } = await createCheckoutSession({
       cohortId,
       programTitle: programTitle ?? "Tennis Bootcamp",
-      priceCents: priceCents ?? 0,
+      priceCents: chargeCents,
       enrollmentRowNumber,
       successUrl,
       cancelUrl,
       contactEmail: enrollmentMeta?.contactEmail,
       supabaseEnrollmentId: supabaseEnrollmentId ?? undefined,
+      discountCents,
+      assessmentBookingId: credit?.bookingId,
+      inviteToken,
     });
 
     if (isMockMode) {
@@ -119,6 +141,24 @@ export async function POST(req: NextRequest) {
         await issueActivationLink(
           enrollmentMeta.contactEmail,
           supabaseEnrollmentId
+        );
+      }
+      // Mirror the webhook's Phase 3 tail: credit applied + invite paid +
+      // minimum-to-run confirmation.
+      if (credit && discountCents > 0) {
+        await markCreditApplied(credit.bookingId);
+        await setEnrollmentCredit(
+          enrollmentRowNumber,
+          (discountCents / 100).toFixed(2)
+        );
+      }
+      if (inviteToken || enrollmentMeta?.contactEmail) {
+        await markInvitePaidAndMaybeConfirm({
+          cohortId,
+          email: enrollmentMeta?.contactEmail,
+          inviteToken,
+        }).catch((err) =>
+          console.error("Invite confirmation failed (non-blocking):", err)
         );
       }
     }

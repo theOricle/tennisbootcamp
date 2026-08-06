@@ -123,3 +123,70 @@ export function formatTierLevel(
 export function hasLevel(level: number | string | null | undefined): boolean {
   return toLevelNumber(level) !== null;
 }
+
+// ─── Cohort level bands (Phase 3) ─────────────────────────────────────────────
+// A cohort stores a numeric [level_min, level_max] band; tiers stay a display
+// derivation over it. Both helpers treat a missing bound as open-ended and
+// return null/false when the cohort isn't tier-gated at all (both bounds null).
+
+/**
+ * The tier range a cohort's numeric band covers, or `null` when the cohort has
+ * no level band. A single-tier band returns min === max.
+ */
+export function tierRangeForLevels(
+  levelMin: number | string | null | undefined,
+  levelMax: number | string | null | undefined
+): { min: Tier; max: Tier } | null {
+  const minTier = tierForLevel(levelMin ?? levelMax);
+  const maxTier = tierForLevel(levelMax ?? levelMin);
+  if (!minTier || !maxTier) return null;
+  return minTier.id <= maxTier.id
+    ? { min: minTier, max: maxTier }
+    : { min: maxTier, max: minTier };
+}
+
+/** "Deuce" for a single-tier band, "Deuce – Break" for a spread. */
+export function formatTierRange(
+  levelMin: number | string | null | undefined,
+  levelMax: number | string | null | undefined
+): string {
+  const range = tierRangeForLevels(levelMin, levelMax);
+  if (!range) return "";
+  return range.min.id === range.max.id
+    ? range.min.name
+    : `${range.min.name} – ${range.max.name}`;
+}
+
+/**
+ * Numeric gate for /enroll: is this player's coach-assigned level inside the
+ * cohort's [level_min, level_max] band (inclusive, missing bound = open)?
+ * False when the player is unranked or the cohort has no band.
+ */
+export function levelWithinRange(
+  level: number | string | null | undefined,
+  levelMin: number | string | null | undefined,
+  levelMax: number | string | null | undefined
+): boolean {
+  const n = toLevelNumber(level);
+  const min = toLevelNumber(levelMin);
+  const max = toLevelNumber(levelMax);
+  if (n === null || (min === null && max === null)) return false;
+  if (min !== null && n < min) return false;
+  if (max !== null && n > max) return false;
+  return true;
+}
+
+/**
+ * Tier gate for the dashboard "Open for your tier" list: does the player's
+ * tier fall inside the cohort's tier band?
+ */
+export function tierInCohortRange(
+  level: number | string | null | undefined,
+  levelMin: number | string | null | undefined,
+  levelMax: number | string | null | undefined
+): boolean {
+  const tier = tierForLevel(level);
+  const range = tierRangeForLevels(levelMin, levelMax);
+  if (!tier || !range) return false;
+  return tier.id >= range.min.id && tier.id <= range.max.id;
+}

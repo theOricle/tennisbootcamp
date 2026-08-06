@@ -126,7 +126,11 @@ create table public.assessment_bookings (
 
 **RLS intent:** players select/update only rows matching their `auth.uid()` (or none — bookings are written server-side); admin (profiles.role = 'admin', checked via a `security definer` helper function `public.is_admin()`) gets full read/write; inserts from API routes use the service-role client in `server-only` modules, same as enrollments today.
 
-### Migration `0003_cohorts_admin.sql` (Phase 3)
+### Migration `0004_cohorts_admin.sql` (Phase 3)
+
+> Numbering note (2026-08-06): this migration was originally spec'd as `0003`,
+> but Phase 2.6 consumed `0003` with `0003_assessment_requests.sql` — the
+> cohorts/admin migration therefore ships as `0004_cohorts_admin.sql`.
 
 ```sql
 create table public.cohorts (
@@ -273,7 +277,7 @@ Goal: remove friction between landing and booking. The primary CTAs stop routing
 
 **Build:**
 
-1. Migration `0003_cohorts_admin.sql` (above) + seed from `src/content/cohorts.ts` + `src/lib/cohorts.ts` reads Supabase (static fallback at build time).
+1. Migration `0004_cohorts_admin.sql` (above; originally numbered 0003 — see the numbering note) + seed from `src/content/cohorts.ts` + `src/lib/cohorts.ts` reads Supabase (static fallback at build time).
 2. `/admin` home — three cards: Assessments (Phase 1 page), Players, Cohorts.
 3. `/admin/players` — assessed-player pool: filter by level band, sort by assessed date; each row shows level, availability chips (Mon-eve style), contact; tap into detail (edit level/notes/availability — coach corrections happen).
 4. `/admin/cohorts` — list + create/edit. Create form: program, label, level band, weekday+time session slots, start date, weeks, price, capacity min/max, visibility (default `private`), hold hours, makeup cap. **Season-end guard:** warn (not block) when `end date + makeup_max_weeks` passes `SEASON_END_DATE` (env, default `2026-11-30`): *"Make-ups could run past the outdoor season — consider an earlier start."*
