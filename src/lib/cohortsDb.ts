@@ -155,6 +155,38 @@ export async function getPublicCohorts(): Promise<Cohort[]> {
   );
 }
 
+export type CohortSessionRow = {
+  id: string;
+  cohort_id: string;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  status: "scheduled" | "completed" | "cancelled";
+  cancellation_reason: string | null;
+  makeup_for: string | null;
+};
+
+/** Dated session rows for a set of cohorts (dashboard session lists). */
+export async function getSessionsForCohorts(
+  cohortIds: string[]
+): Promise<CohortSessionRow[]> {
+  if (!supabaseConfigured() || cohortIds.length === 0) return [];
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("cohort_sessions")
+      .select("*")
+      .in("cohort_id", cohortIds)
+      .order("session_date", { ascending: true })
+      .order("start_time", { ascending: true });
+    if (error || !data) return [];
+    return data as CohortSessionRow[];
+  } catch (err) {
+    console.error("getSessionsForCohorts failed:", err);
+    return [];
+  }
+}
+
 /**
  * Open cohorts matching a player's tier — the dashboard "Open for your tier"
  * list. Includes private tier-gated cohorts: a signed-in player whose level

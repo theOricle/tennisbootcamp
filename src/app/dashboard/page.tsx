@@ -4,9 +4,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { programs } from "@/content/programs";
-import { cohorts } from "@/content/cohorts";
 import { locations } from "@/content/locations";
-import { TierStatus } from "@/components/tiers";
+import {
+  getAllCohorts,
+  getOpenCohortsForLevel,
+  getSessionsForCohorts,
+  type CohortSessionRow,
+} from "@/lib/cohortsDb";
+import { dayNameForDate } from "@/lib/makeup";
+import { TierStatus, TierRangeBadges } from "@/components/tiers";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -33,6 +39,47 @@ function fmt12h(time: string): string {
 
 function ageLabel(ageGroup: string): string {
   return ageGroup.replace(/^Ages?\s*/i, "").replace(/^Adults?\s*/i, "");
+}
+
+function fmtSessionDate(iso: string): string {
+  const [y, mo, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, mo - 1, d)).toLocaleDateString("en-CA", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
+ * Full dated session list for an enrolled cohort, make-ups badged with the
+ * session they replace. Falls back to null when the cohort has no generated
+ * rows yet (unconfirmed, or static-fallback data) — callers then render the
+ * weekly-slots summary instead.
+ */
+function SessionList({ sessions }: { sessions: CohortSessionRow[] }) {
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  const visible = sessions.filter((s) => s.status !== "cancelled");
+  if (visible.length === 0) return null;
+  return (
+    <ul className="mt-2 space-y-1 text-sm text-white/70">
+      {visible.map((s) => {
+        const replaces = s.makeup_for ? byId.get(s.makeup_for) : undefined;
+        return (
+          <li key={s.id} className="flex flex-wrap items-center gap-2">
+            <span>
+              {dayNameForDate(s.session_date)} {fmtSessionDate(s.session_date)} ·{" "}
+              {fmt12h(s.start_time.slice(0, 5))}–{fmt12h(s.end_time.slice(0, 5))}
+            </span>
+            {s.makeup_for && (
+              <span className="rounded-full bg-sky-400/15 px-2 py-0.5 text-[11px] font-semibold text-sky-200">
+                Make-up{replaces ? ` · replaces ${fmtSessionDate(replaces.session_date)}` : ""}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
@@ -164,6 +211,25 @@ async function DashboardContent({
 
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] || userEmail || "";
 
+  const cohorts = await getAllCohorts();
+  const enrolledCohortIds = [
+    ...new Set((enrollments ?? []).map((e) => e.cohort_id).filter(Boolean)),
+  ];
+  const [cohortSessions, tierCohorts] = await Promise.all([
+    getSessionsForCohorts(enrolledCohortIds),
+    getOpenCohortsForLevel(profile?.level ?? null),
+  ]);
+  const sessionsByCohort = new Map<string, CohortSessionRow[]>();
+  for (const s of cohortSessions) {
+    const list = sessionsByCohort.get(s.cohort_id) ?? [];
+    list.push(s);
+    sessionsByCohort.set(s.cohort_id, list);
+  }
+  // A cohort you're already enrolled in isn't an "open for your tier" pitch.
+  const openForTier = tierCohorts.filter(
+    (c) => !enrolledCohortIds.includes(c.id)
+  );
+
   const enrolledProgramIds = new Set(
     (enrollments ?? []).map((e) => {
       const cohort = cohorts.find((c) => c.id === e.cohort_id);
@@ -224,21 +290,28 @@ async function DashboardContent({
                 const program = programs.find(
                   (p) => p.id === (cohort?.programId ?? enrollment.program)
                 );
+                const dated = sessionsByCohort.get(enrollment.cohort_id) ?? [];
+                const hasDated =
+                  dated.filter((s) => s.status !== "cancelled").length > 0;
                 return (
                   <div key={enrollment.id}>
                     <p className="font-bold text-[#B4E655]">
                       {program?.title ?? enrollment.program ?? enrollment.cohort_id}
                     </p>
                     <div className="mt-2 flex items-start justify-between gap-4">
-                      <div className="space-y-0.5 text-sm text-white/70">
+                      <div className="min-w-0 space-y-0.5 text-sm text-white/70">
                         {enrollment.participant_name && (
                           <p>Student: {enrollment.participant_name}</p>
                         )}
-                        {cohort?.sessions.map((s) => (
-                          <p key={s.day}>
-                            {DAY_NAMES[s.day] ?? s.day} {fmt12h(s.start)}–{fmt12h(s.end)}
-                          </p>
-                        ))}
+                        {hasDated ? (
+                          <SessionList sessions={dated} />
+                        ) : (
+                          cohort?.sessions.map((s) => (
+                            <p key={s.day}>
+                              {DAY_NAMES[s.day] ?? s.day} {fmt12h(s.start)}–{fmt12h(s.end)}
+                            </p>
+                          ))
+                        )}
                       </div>
                       {program?.ageGroup && (
                         <span className="shrink-0 self-start rounded-full bg-[#B4E655]/10 px-3 py-1 text-xs font-semibold text-[#B4E655]">
@@ -249,6 +322,54 @@ async function DashboardContent({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Open cohorts matching the player's tier */}
+          {openForTier.length > 0 && (
+            <div className="mt-10">
+              <div className="border-l-2 border-[#B4E655] pl-4">
+                <h2 className="text-lg font-semibold text-white">
+                  Open for your tier
+                </h2>
+              </div>
+              <div className="mb-6 mt-2 border-b border-white/10" />
+              <div className="space-y-4">
+                {openForTier.map((c) => {
+                  const program = programs.find((p) => p.id === c.programId);
+                  return (
+                    <div
+                      key={c.id}
+                      className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+                    >
+                      <p className="font-semibold text-white">
+                        {program?.title ?? c.programId} · {c.label}
+                      </p>
+                      <TierRangeBadges
+                        levelMin={c.levelMin}
+                        levelMax={c.levelMax}
+                        className="mt-1.5"
+                      />
+                      <p className="mt-1.5 text-sm text-white/60">
+                        Starts {fmtSessionDate(c.startDate)} · {c.weeks} week
+                        {c.weeks === 1 ? "" : "s"} ·{" "}
+                        {c.sessions
+                          .map(
+                            (s) =>
+                              `${DAY_NAMES[s.day] ?? s.day} ${fmt12h(s.start)}–${fmt12h(s.end)}`
+                          )
+                          .join(", ")}
+                      </p>
+                      <Link
+                        href={`/enroll/${c.id}`}
+                        className="mt-3 inline-flex min-h-[44px] items-center rounded-full bg-[#B4E655] px-5 text-sm font-semibold text-[#061427] transition hover:brightness-110"
+                      >
+                        Enroll →
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </section>
