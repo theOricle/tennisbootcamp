@@ -2,7 +2,7 @@
 
 Operational voice guide for every word a visitor, player, or parent reads: page copy, button labels, form helper text, validation messages, emails, and metadata. Distilled from `ops/briefs/brand.md` plus the owner's editorial corrections of 2026-08-02. Load this file before writing or rewriting any user-facing string, in any tool, with any model.
 
-Last updated: 2026-08-02
+Last updated: 2026-08-04
 
 ---
 
@@ -70,6 +70,26 @@ Every pair below is an actual string from the codebase; the "after" is the shipp
 | 12 | Camps near you (dashboard column of training venues) | Where we train | The column lists venues, not camps — the label was making a claim the content doesn't. |
 | 13 | You're enrolled in all available programs! (dashboard empty state) | You're enrolled in every available program. | Exclamation-mark hype on a plain fact; the period is the premium version. |
 | 14 | No open times are posted right now — but that doesn't stop you. (booking empty state) | No open times are posted right now. Tell us when you play and we'll coordinate your time directly. | "Doesn't stop you" is pep-talk filler; the rewrite is the actual next step. |
+
+## Positioning ruling: all levels welcome (2026-08-04)
+
+The brand welcomes every level. The training is serious from the Love tier to Grand Slam; everyone starts with the same $20 on-court assessment; **Bootcamps is the explicitly competitive tier** and may keep its competitive framing. Never tell a beginner to go elsewhere — the old About line "If you're not preparing to compete, there are better programs out there" is the banned pattern. The locked hero sentence "Built for athletes who want to compete." stands unchanged; it states ambition, not a gate. Sentence fragments as a style device are owner-approved — keep them.
+
+## Jargon budget (2026-08-04)
+
+Tournament dialect is allowed **only on Bootcamps-specific surfaces** (the Bootcamps card, its detail page content, and Bootcamps-targeted recommendation reasons). On all-levels surfaces (Group Lessons, Kids' Camp, About, intake, assessment pages) translate insider terms to plain language:
+
+| Insider term | Plain replacement |
+|---|---|
+| live-ball patterns | realistic rally play |
+| serve+1 | serve plus the next shot |
+| shot tolerance | staying steady through long points |
+| point construction | building points on purpose |
+| S&C block | strength-and-conditioning session |
+| physical-literacy & agility games | movement and agility games |
+| benchmarked | measured at the start and end |
+
+"Cohort" is locked vocabulary and stays everywhere — but where it first appears on an all-levels page, add a one-line plain definition: *a fixed group that trains together for six weeks* (canonical placement: the About hero).
 
 ## Checklist before shipping any string
 

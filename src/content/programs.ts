@@ -31,10 +31,10 @@ export const programs: Program[] = [
   {
     id: "kids-summer-camp",
     slug: "kids-summer-camp",
-    title: "Kid's Summer Camp",
+    title: "Kids' Summer Camp",
     description: "A full-day tennis experience your kid will actually want to come back to.",
     longDescription:
-      "Running through July and August, every day is a mix of stroke fundamentals, match play, physical literacy games, and team challenges. " +
+      "Running through July and August, every day is a mix of stroke fundamentals, match play, movement games, and team challenges. " +
       "Kids are grouped by ability so everyone gets the right level of challenge — whether it's their first time on a court or they've been playing for a few years. " +
       "All skill levels welcome. Lunch and snacks included.",
     type: "Summer Camp",
@@ -47,7 +47,7 @@ export const programs: Program[] = [
     currency: "CAD",
     includes: [
       "Stroke fundamentals (forehand, backhand, serve, volley)",
-      "Physical-literacy & agility games",
+      "Movement and agility games",
       "Daily match play grouped by ability",
       "Hand-eye & movement drills",
       "Teamwork challenges and on-court games",
@@ -62,8 +62,8 @@ export const programs: Program[] = [
     description: "Adult lessons capped at six per court — more reps, more feedback, week-over-week progression.",
     longDescription:
       "Each 90-minute session is capped at 6 players per court — more reps, more feedback, less waiting around. " +
-      "You'll work through structured progressions across your forehand, backhand, serve, return, volleys, and live-ball patterns. " +
-      "No filler drills. No endless warm-up rallies. Every week builds on the last, and you'll feel the difference.",
+      "You'll work through structured progressions across your forehand, backhand, serve, return, volleys, and realistic rally play. " +
+      "No filler drills. No endless warm-up rallies. Every week builds on the last.",
     type: "Group Lessons",
     comingSoon: true,
     ctaText: "Notify Me When Open",
@@ -75,7 +75,7 @@ export const programs: Program[] = [
     includes: [
       "Capped at 6 per court — more reps, less standing around",
       "Structured progressions across every stroke",
-      "Live-ball rally tolerance",
+      "Staying steady through long points",
       "Tactical patterns (serve / return / approach / net)",
       "Real-time correction every session",
     ],

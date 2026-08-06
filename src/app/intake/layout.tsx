@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Book Your Assessment",
   description:
-    "Answer a few quick questions to see your tentative match, then book a 20-minute on-court assessment — $20, which comes off the price when you enroll in a program — so the coach can place you at the right level.",
+    "Answer a few quick questions to see your tentative match, then book a 20-minute on-court assessment so the coach can place you at the right level. It's $20, and it comes off the price when you enroll in a program.",
   openGraph: {
     title: "Book Your Assessment | Tennis Bootcamp",
     description:

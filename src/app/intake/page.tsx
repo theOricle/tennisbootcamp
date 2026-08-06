@@ -178,8 +178,8 @@ function TentativeMatchScreen({
 
           <p className="mt-5 text-sm leading-relaxed text-white/70">
             Based on your answers, {top ? top.program.title : "this program"} looks like your fit.
-            Every player here is placed by an on-court assessment — 20 minutes with the coach — so
-            the group you train with actually matches your level.
+            Every player here is placed by a 20-minute on-court assessment with the coach, so the
+            group you train with matches your level.
           </p>
 
           {/* Assessment pitch + primary CTA */}
@@ -281,9 +281,9 @@ function FallbackScreen({
           </span>
           <h1 className="mt-2 text-3xl font-semibold">Every player starts on court</h1>
           <p className="mt-3 text-white/70">
-            The best next step is a 20-minute on-court assessment — 20 minutes with the coach. You
-            leave with a real level, a written read on your game, and a group matched to your level
-            and schedule. It&apos;s $20 — and if you enroll in a program afterward, that $20 comes
+            The best next step is a 20-minute on-court assessment with the coach. You leave with a
+            real level, a written read on your game, and a group matched to your level and
+            schedule. It&apos;s $20 — and if you enroll in a program afterward, that $20 comes
             off the price.
           </p>
           <button

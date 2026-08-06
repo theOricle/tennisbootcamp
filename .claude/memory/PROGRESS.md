@@ -147,3 +147,14 @@ Copy-only editorial engagement on branch `claude/tennis-bootcamp-voice-pass-fr1d
 - **CLAUDE.md:** appended "Model assignments (2026-08-02)" section.
 - **Kept verbatim:** all prices, the explicit $20-comes-off-the-price mechanic + enrollment condition, refund numbers, "Built for athletes who want to compete.", preview-banner text, legal/waiver text, membership.ts club copy.
 - **Verified:** lint + typecheck + build green.
+
+### 2026-08-04 (Claude Code — language audit fixes)
+
+Follow-up editorial pass on branch `claude/tennis-bootcamp-voice-pass-fr1dnn` (restarted from main after #43 merged). PR: `copy(site): language audit fixes — all-levels About, jargon budget, Kids' apostrophe`. String literals only; `/api/intake` and all behavior untouched. Owner rulings applied:
+
+- **Grammar:** "Kid's Summer Camp" → **"Kids' Summer Camp"** (programs.ts title + cohorts.ts section comment; all other surfaces render the title dynamically).
+- **All-levels positioning (About):** hero paragraph reframed from competitive-only to serious-at-every-level (with the first-use cohort definition — *a fixed group that trains together for six weeks*); the "High-performance, not recreational" card became **"Serious at every level"** — Love through Grand Slam, everyone starts with the $20 assessment, Bootcamps stays the explicitly competitive tier — and the "there are better programs out there" send-away line is gone; About metadata updated to match. Fragments kept (owner ruling).
+- **Jargon budget:** Bootcamps keeps tournament dialect; all-levels surfaces translated — live-ball → realistic rally play (About, Group Lessons ×2, recommend.ts reason), "Live-ball rally tolerance" → "Staying steady through long points", "S&C block" → "strength-and-conditioning session", "Benchmarked" → "Measured at the start and end", "physical(-)literacy" → "movement" (×2).
+- **Light pass:** thinned every user-facing two-em-dash sentence (About founder pillars, intake tentative-match + fallback screens, assessment + intake layout meta descriptions, recommendation email HTML + text — also dropping an "actually" filler); dropped "you'll feel the difference" closers (programs.ts, recommend.ts).
+- **voice.md:** appended "Positioning ruling: all levels welcome (2026-08-04)" and "Jargon budget (2026-08-04)" sections; bumped Last updated.
+- **Verified:** lint + typecheck + build green.

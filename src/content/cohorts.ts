@@ -39,7 +39,7 @@ export const cohorts: Cohort[] = [
     status: "open",
   },
 
-  // ─── Kid's Summer Camp ────────────────────────────────────────────────────
+  // ─── Kids' Summer Camp ────────────────────────────────────────────────────
   {
     id: "kids-summer-camp-balliol-week1-2026",
     programId: "kids-summer-camp",
