@@ -175,3 +175,11 @@ Executed **Phase 3** of `ops/plans/assessment-restructure.md` end to end on bran
 - **Student dashboard:** enrolled cards show the full dated session list once generated (make-ups badged "Make-up · replaces {date}"), weekly-slots summary as fallback.
 - **GA:** `cohort_invite_sent` (admin client), `cohort_invite_paid` + `cohort_confirmed` (confirmed page, invite flow).
 - **Verified:** `tsc --noEmit`, `npm run lint`, `npm run build` all clean; make-up script test green; built-app smoke test — public pages 200 on static fallback, `/admin*` 307 → `/login` unauthenticated; `/api/intake` zero diff. Full DB round-trip (invite → pay ×2 → auto-confirm → cancel → make-up) needs migration 0004 applied — test in Supabase test mode after merge.
+- **Merged** as PR #45 (owner-merged 2026-08-06). Migration 0004 still needs to be run in the Supabase SQL editor before the new flows are exercised; then the test-mode acceptance pass.
+
+### 2026-08-06 (Claude Code — docs: session workflow rules)
+
+Documentation-only follow-up on a fresh branch off latest main (PR: `docs(workflow): session workflow rules`). No code changes.
+
+- **CLAUDE.md:** added a "Workflow rules (2026-08-06)" subsection under "Automation and tooling preferences" with four owner rules — local sessions `git pull origin main` before any read/edit (never a stale main); cloud build sessions always branch fresh from `origin/main`; build sessions never schedule reminders or self-check-ins (PR monitoring is handled externally); migrations stay manual via the Supabase SQL editor and every migration-adding PR carries its full SQL in the description. Bumped "Last updated" to 2026-08-06.
+- Recorded PR #45's merge in the Phase 3 entry above.
