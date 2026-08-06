@@ -315,6 +315,221 @@ Assign a slot or record a time: ${BASE_URL}/admin/assessments`;
   });
 }
 
+// ─── Cohort emails (Phase 3) ──────────────────────────────────────────────────
+
+function moneyCAD(cents: number): string {
+  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+}
+
+function tierChip(name: string): string {
+  return `<span style="display:inline-block;padding:3px 10px;border:1px solid rgba(180,230,85,0.4);border-radius:100px;font-size:12px;font-weight:700;color:#B4E655;">${name}</span>`;
+}
+
+/**
+ * Personal cohort invitation with the 48-hour hold and the enroll link.
+ * `tierNames` carries the cohort's tier band (derived from level_min/level_max)
+ * so the invitee sees which tier band the group is for.
+ */
+export async function sendCohortInviteEmail(params: {
+  to: string;
+  levelLabel: string | null; // "3.0" or "3.0–3.5"; null when not tier-gated
+  tierNames: string[];       // ["Deuce"] or ["Deuce","Break"]; [] when not tier-gated
+  programTitle: string;
+  cohortLabel: string;
+  dayTimeLabel: string;      // "Tuesdays 6–7pm"
+  startDateLabel: string;    // "Sep 8"
+  weeks: number;
+  priceCents: number;
+  creditCents: number;       // 0 when the invitee has no unused assessment credit
+  holdHours: number;
+  enrollUrl: string;
+}): Promise<void> {
+  const {
+    to, levelLabel, tierNames, programTitle, cohortLabel, dayTimeLabel,
+    startDateLabel, weeks, priceCents, creditCents, holdHours, enrollUrl,
+  } = params;
+  const key = process.env.RESEND_API_KEY;
+
+  const groupName = levelLabel ? `Your Level ${levelLabel} group` : `Your ${programTitle} group`;
+  const subject = `${groupName} is forming — ${dayTimeLabel}, starts ${startDateLabel}`;
+
+  if (!key) {
+    console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}:\n${enrollUrl}`);
+    return;
+  }
+
+  const priceMath =
+    creditCents > 0
+      ? `${moneyCAD(priceCents)} − ${moneyCAD(creditCents)} assessment credit = <strong style="color:#fff;">${moneyCAD(priceCents - creditCents)}</strong>`
+      : `<strong style="color:#fff;">${moneyCAD(priceCents)}</strong>`;
+  const priceMathText =
+    creditCents > 0
+      ? `${moneyCAD(priceCents)} − ${moneyCAD(creditCents)} assessment credit = ${moneyCAD(priceCents - creditCents)}`
+      : moneyCAD(priceCents);
+
+  const tierLine = tierNames.length
+    ? `<p style="margin:0 0 12px;">${tierNames.map(tierChip).join('<span style="color:rgba(255,255,255,0.4);margin:0 6px;">–</span>')}</p>`
+    : "";
+
+  const detailRow = (label: string, value: string) => `
+    <tr>
+      <td style="padding:6px 0;font-size:13px;color:rgba(255,255,255,0.45);width:96px;vertical-align:top;">${label}</td>
+      <td style="padding:6px 0;font-size:14px;color:#fff;font-weight:600;">${value}</td>
+    </tr>`;
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${groupName} is forming.</p>
+    ${tierLine}
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      We've built a ${programTitle} group around your level and the availability you gave us. Here's the schedule.
+    </p>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
+      ${detailRow("Group", `${cohortLabel}`)}
+      ${detailRow("Schedule", `${dayTimeLabel} · ${weeks} week${weeks === 1 ? "" : "s"}`)}
+      ${detailRow("Starts", startDateLabel)}
+      ${detailRow("Where", "Court details are confirmed in your enrollment email.")}
+      ${detailRow("Price", priceMath)}
+    </table>
+    <p style="margin:20px 0 0;font-size:14px;color:rgba(255,255,255,0.85);">
+      Your spot is held for ${holdHours} hours.
+    </p>
+    ${limeButton(enrollUrl, "Claim my spot →")}
+    ${smallText(`The link is personal to you. Terms: <a href="${BASE_URL}/legal/refund-policy" style="color:rgba(255,255,255,0.45);">program policies</a>.`)}
+    ${signOff()}
+  `;
+
+  const text = `${groupName} is forming.
+
+We've built a ${programTitle} group around your level and the availability you gave us.
+
+  Group:    ${cohortLabel}
+  Schedule: ${dayTimeLabel} · ${weeks} week${weeks === 1 ? "" : "s"}
+  Starts:   ${startDateLabel}
+  Where:    Court details are confirmed in your enrollment email.
+  Price:    ${priceMathText}
+
+Your spot is held for ${holdHours} hours.
+
+Claim my spot: ${enrollUrl}
+
+The link is personal to you. Terms: ${BASE_URL}/legal/refund-policy
+
+— Sina Kassaian, Tennis Bootcamp`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+}
+
+/** Cohort reached minimum — everyone paid gets the schedule. */
+export async function sendCohortConfirmedEmail(params: {
+  to: string;
+  cohortLabel: string;
+  programTitle: string;
+  startDateLabel: string;
+  sessionLines: string[]; // "Tue Sep 8 · 6–7pm"
+}): Promise<void> {
+  const { to, cohortLabel, programTitle, startDateLabel, sessionLines } = params;
+  const key = process.env.RESEND_API_KEY;
+  const subject = `You're in: ${cohortLabel} starts ${startDateLabel}`;
+
+  if (!key) {
+    console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}`);
+    return;
+  }
+
+  const sessionsHtml = sessionLines
+    .map(
+      (l) =>
+        `<li style="padding:5px 0;font-size:14px;color:#fff;border-bottom:1px solid rgba(255,255,255,0.06);">${l}</li>`
+    )
+    .join("");
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Your group is confirmed.</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      ${programTitle} — ${cohortLabel} reached its minimum and starts ${startDateLabel}. Every session, in order:
+    </p>
+    <ul style="margin:0;padding:0;list-style:none;border-top:1px solid rgba(255,255,255,0.10);">
+      ${sessionsHtml}
+    </ul>
+    <p style="margin:20px 0 0;font-size:14px;color:rgba(255,255,255,0.70);">
+      Bring a racquet if you have one, water, and court shoes. If we ever cancel a session, it becomes a make-up at the same day and time after the final week — the full rules are in the
+      <a href="${BASE_URL}/legal/refund-policy" style="color:#B4E655;">program policies</a>.
+    </p>
+    ${signOff()}
+  `;
+
+  const text = `Your group is confirmed.
+
+${programTitle} — ${cohortLabel} reached its minimum and starts ${startDateLabel}. Every session, in order:
+
+${sessionLines.map((l) => `  ${l}`).join("\n")}
+
+Bring a racquet if you have one, water, and court shoes. If we ever cancel a session, it becomes a make-up at the same day and time after the final week — full rules: ${BASE_URL}/legal/refund-policy
+
+— Sina Kassaian, Tennis Bootcamp`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+}
+
+/**
+ * A session was cancelled by us. With `makeup` set the make-up is booked; with
+ * `makeup: null` the cancellation passed the cap and converts to credit.
+ */
+export async function sendSessionCancelledEmail(params: {
+  to: string;
+  cohortLabel: string;
+  dateLabel: string;      // "Wednesday, July 30"
+  reasonLine: string;     // one plain sentence
+  makeup: { dateLabel: string; newEndDateLabel: string } | null;
+  makeupMaxWeeks: number;
+}): Promise<void> {
+  const { to, cohortLabel, dateLabel, reasonLine, makeup, makeupMaxWeeks } = params;
+  const key = process.env.RESEND_API_KEY;
+  const subject = makeup
+    ? `${dateLabel}'s session is cancelled — your make-up is set`
+    : `${dateLabel}'s session is cancelled — it converts to credit`;
+
+  if (!key) {
+    console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}`);
+    return;
+  }
+
+  const outcomeHtml = makeup
+    ? `<p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.85);">
+        Make-up: <strong style="color:#B4E655;">${makeup.dateLabel}</strong>, same time. Your cohort now ends ${makeup.newEndDateLabel}.
+      </p>`
+    : `<p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.85);">
+        Make-ups extend a cohort by at most ${makeupMaxWeeks} week${makeupMaxWeeks === 1 ? "" : "s"}, and this cancellation passes that cap — so this session converts to a credit toward your next program, prorated per session. We'll follow up by email with the amount.
+      </p>`;
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${dateLabel}'s ${cohortLabel} session is cancelled.</p>
+    <p style="margin:0 0 12px;font-size:14px;color:rgba(255,255,255,0.70);">${reasonLine}</p>
+    ${outcomeHtml}
+    ${smallText(`You don't lose a session you didn't miss — the full rules are in the <a href="${BASE_URL}/legal/refund-policy" style="color:rgba(255,255,255,0.45);">program policies</a>.`)}
+    ${signOff()}
+  `;
+
+  const text = `${dateLabel}'s ${cohortLabel} session is cancelled.
+
+${reasonLine}
+
+${
+  makeup
+    ? `Make-up: ${makeup.dateLabel}, same time. Your cohort now ends ${makeup.newEndDateLabel}.`
+    : `Make-ups extend a cohort by at most ${makeupMaxWeeks} week${makeupMaxWeeks === 1 ? "" : "s"}, and this cancellation passes that cap — so this session converts to a credit toward your next program, prorated per session. We'll follow up by email with the amount.`
+}
+
+Full rules: ${BASE_URL}/legal/refund-policy
+
+— Sina Kassaian, Tennis Bootcamp`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+}
+
 // ─── sendAssessmentCompleteEmail ──────────────────────────────────────────────
 
 export async function sendAssessmentCompleteEmail(params: {

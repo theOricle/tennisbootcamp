@@ -7,6 +7,7 @@ import type { Program } from "@/types/program";
 import type { Location } from "@/types/location";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
 import { trackEvent } from "@/lib/analytics";
+import { TierRangeBadges } from "@/components/tiers";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -136,6 +137,11 @@ function OrderSummary({
         {program?.ageGroup && (
           <p className="mt-0.5 text-sm text-white/50">{program.ageGroup}</p>
         )}
+        <TierRangeBadges
+          levelMin={cohort.levelMin}
+          levelMax={cohort.levelMax}
+          className="mt-2"
+        />
       </div>
 
       <div className="border-t border-white/10" />
@@ -192,6 +198,12 @@ function OrderSummary({
         {cohort.priceCents === 0 && (
           <p className="mt-1 text-xs text-white/40">
             Price will be confirmed before payment is collected.
+          </p>
+        )}
+        {cohort.priceCents > 0 && (
+          <p className="mt-1 text-xs text-white/40">
+            Completed your $20 assessment? It comes off this price automatically
+            at payment.
           </p>
         )}
         {seatsRemaining !== null && seatsRemaining <= 3 && (
@@ -418,14 +430,21 @@ export function EnrollWizard({
   program,
   location,
   seatsRemaining,
+  inviteToken = null,
+  initialEmail = null,
 }: {
   cohort: Cohort;
   program: Program | undefined;
   location: Location | undefined;
   seatsRemaining: number | null;
+  inviteToken?: string | null;
+  initialEmail?: string | null;
 }) {
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [form, setForm] = useState<FormState>({
+    ...EMPTY_FORM,
+    contactEmail: initialEmail ?? "",
+  });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -507,6 +526,7 @@ export function EnrollWizard({
           cohortId: cohort.id,
           programTitle: program?.title ?? cohort.programId,
           priceCents: cohort.priceCents,
+          inviteToken: inviteToken ?? undefined,
           enrollmentRowNumber: enrollData.rowNumber,
           enrollmentMeta: {
             contactEmail: form.contactEmail,

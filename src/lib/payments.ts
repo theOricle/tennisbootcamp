@@ -22,12 +22,34 @@ export async function createCheckoutSession(params: {
   cancelUrl: string;
   contactEmail?: string;
   supabaseEnrollmentId?: string;
+  // Phase 3: $20 assessment credit applied as a Checkout discount, and the
+  // invite token carried through so the webhook can mark the invite paid.
+  discountCents?: number;
+  assessmentBookingId?: string;
+  inviteToken?: string;
 }): Promise<{ sessionUrl: string }> {
   if (isMockMode) {
     return { sessionUrl: params.successUrl };
   }
 
-  const session = await getStripe().checkout.sessions.create({
+  const stripe = getStripe();
+  const discountCents = Math.min(
+    params.discountCents ?? 0,
+    params.priceCents > 0 ? params.priceCents : 0
+  );
+
+  let discounts: { coupon: string }[] | undefined;
+  if (discountCents > 0) {
+    const coupon = await stripe.coupons.create({
+      amount_off: discountCents,
+      currency: "cad",
+      duration: "once",
+      name: "Assessment credit",
+    });
+    discounts = [{ coupon: coupon.id }];
+  }
+
+  const session = await stripe.checkout.sessions.create({
     mode: "payment",
     line_items: [
       {
@@ -40,11 +62,15 @@ export async function createCheckoutSession(params: {
         quantity: 1,
       },
     ],
+    discounts,
     metadata: {
       cohortId: params.cohortId,
       enrollmentRowNumber: String(params.enrollmentRowNumber),
       contactEmail: params.contactEmail ?? "",
       supabaseEnrollmentId: params.supabaseEnrollmentId ?? "",
+      assessmentBookingId: params.assessmentBookingId ?? "",
+      assessmentCreditCents: discountCents > 0 ? String(discountCents) : "",
+      inviteToken: params.inviteToken ?? "",
     },
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,

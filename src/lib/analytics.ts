@@ -49,3 +49,23 @@ export function trackAssessmentCtaClick(source: string) {
 export function trackAssessmentRequestSubmit(source: string) {
   trackEvent("assessment_request_submit", { source });
 }
+
+// ─── Cohort events (Phase 3) ──────────────────────────────────────────────────
+// GA fires client-side only, so server outcomes surface where the browser
+// learns about them: invites from the admin screen after a successful send,
+// paid/confirmed on the enrollment-confirmed page.
+
+/** Admin sent cohort invites. */
+export function trackCohortInviteSent(cohortId: string, count: number) {
+  trackEvent("cohort_invite_sent", { cohort_id: cohortId, count });
+}
+
+/** An invited player completed payment (confirmed page, invite flow). */
+export function trackCohortInvitePaid(cohortId: string) {
+  trackEvent("cohort_invite_paid", { cohort_id: cohortId });
+}
+
+/** The cohort shows as confirmed when the payer lands on the confirmed page. */
+export function trackCohortConfirmed(cohortId: string) {
+  trackEvent("cohort_confirmed", { cohort_id: cohortId });
+}

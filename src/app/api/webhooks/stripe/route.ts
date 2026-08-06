@@ -72,9 +72,36 @@ export async function POST(req: NextRequest) {
     const rowNumber = Number(session.metadata?.enrollmentRowNumber);
     const contactEmail = session.metadata?.contactEmail ?? "";
     const supabaseEnrollmentId = session.metadata?.supabaseEnrollmentId ?? null;
+    const cohortId = session.metadata?.cohortId ?? "";
+    const inviteToken = session.metadata?.inviteToken ?? "";
+    const assessmentBookingId = session.metadata?.assessmentBookingId ?? "";
+    const assessmentCreditCents = Number(session.metadata?.assessmentCreditCents ?? 0);
 
     if (rowNumber) {
       await markEnrollmentPaid(rowNumber);
+    }
+
+    // ── Phase 3: assessment credit + invite confirmation ─────────────────────
+    if (assessmentBookingId && assessmentCreditCents > 0) {
+      const { markCreditApplied } = await import("@/lib/assessmentCredit");
+      const { setEnrollmentCredit } = await import("@/lib/enrollmentSheet");
+      await markCreditApplied(assessmentBookingId);
+      if (rowNumber) {
+        await setEnrollmentCredit(
+          rowNumber,
+          (assessmentCreditCents / 100).toFixed(2)
+        );
+      }
+    }
+    if (cohortId && (inviteToken || contactEmail)) {
+      const { markInvitePaidAndMaybeConfirm } = await import("@/lib/cohortActions");
+      await markInvitePaidAndMaybeConfirm({
+        cohortId,
+        email: contactEmail || undefined,
+        inviteToken: inviteToken || undefined,
+      }).catch((err) =>
+        console.error("Invite confirmation failed (non-blocking):", err)
+      );
     }
 
     // If the enrollment wasn't saved to Supabase during checkout creation
