@@ -1,14 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Program } from "@/types/program";
-import { nextCohortForProgram, formatCohortSchedule } from "@/lib/cohorts";
+import { formatCohortSchedule } from "@/lib/cohorts";
+import { getPublicCohorts } from "@/lib/cohortsDb";
 
 type ProgramsGridProps = {
   programs: Program[];
   title?: string;
 };
 
-export function ProgramsGrid({ programs, title = "Our Programs" }: ProgramsGridProps) {
+export async function ProgramsGrid({ programs, title = "Our Programs" }: ProgramsGridProps) {
+  const publicCohorts = await getPublicCohorts();
+  const nextCohortForProgram = (programId: string) =>
+    publicCohorts
+      .filter((c) => c.programId === programId)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+
   return (
     <section>
       <div className="mb-6 flex items-end justify-between gap-4">

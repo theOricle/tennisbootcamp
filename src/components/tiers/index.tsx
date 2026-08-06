@@ -3,7 +3,12 @@
 // nothing here stores or mutates a level.
 
 import Link from "next/link";
-import { TIERS, tierForLevel, formatLevelNumber } from "@/lib/tiers";
+import {
+  TIERS,
+  tierForLevel,
+  formatLevelNumber,
+  tierRangeForLevels,
+} from "@/lib/tiers";
 import { BADGE_BY_TIER, type BadgeProps } from "./badges";
 
 export * from "./badges";
@@ -108,6 +113,46 @@ export function TierChip({
     >
       <TierGlyph level={level} size={16} decorative className="shrink-0" />
       {tier.name}
+    </span>
+  );
+}
+
+/**
+ * A cohort's tier band as badges — "Deuce" for a single-tier band, both ends
+ * for a spread ("Deuce – Break"). Derived from the numeric level_min/level_max
+ * via tierForLevel; renders nothing when the cohort isn't tier-gated.
+ */
+export function TierRangeBadges({
+  levelMin,
+  levelMax,
+  className = "",
+}: {
+  levelMin: number | string | null | undefined;
+  levelMax: number | string | null | undefined;
+  className?: string;
+}) {
+  const range = tierRangeForLevels(levelMin, levelMax);
+  if (!range) return null;
+  const MinBadge = BADGE_BY_TIER[range.min.id];
+  const MaxBadge = BADGE_BY_TIER[range.max.id];
+  const single = range.min.id === range.max.id;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full bg-[#B4E655]/10 px-2.5 py-1 text-[11px] font-semibold text-[#B4E655] ${className}`}
+    >
+      <MinBadge size={16} decorative className="shrink-0" />
+      {single ? (
+        range.min.name
+      ) : (
+        <>
+          {range.min.name}
+          <span aria-hidden="true" className="text-white/40">
+            –
+          </span>
+          <MaxBadge size={16} decorative className="shrink-0" />
+          {range.max.name}
+        </>
+      )}
     </span>
   );
 }

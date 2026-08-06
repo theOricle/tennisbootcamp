@@ -6,12 +6,13 @@ import { programs } from "@/content/programs";
 import { locations } from "@/content/locations";
 import { ProgramInterestForm } from "@/components/sections/ProgramInterestForm";
 import {
-  cohortsForProgram,
   formatDateRange,
   formatDaysTimes,
   formatCohortPrice,
 } from "@/lib/cohorts";
+import { getPublicCohorts } from "@/lib/cohortsDb";
 import { getSeatsRemaining } from "@/lib/seatCount";
+import { TierRangeBadges } from "@/components/tiers";
 import { StickyEnrollBar } from "./StickyEnrollBar";
 
 function fmtStartDate(iso: string): string {
@@ -43,7 +44,9 @@ export default async function ProgramDetailPage({ params }: PageProps) {
     ? locations.find((l) => l.id === program.locationId)
     : undefined;
 
-  const cohorts = cohortsForProgram(program.id);
+  const cohorts = (await getPublicCohorts()).filter(
+    (c) => c.programId === program.id
+  );
   const openCohorts = cohorts.filter(
     (c) => c.status === "open" || c.status === "upcoming"
   );
@@ -267,6 +270,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="font-semibold text-white">{cohort.label}</p>
+                                <TierRangeBadges
+                                  levelMin={cohort.levelMin}
+                                  levelMax={cohort.levelMax}
+                                  className="mt-1"
+                                />
                                 <p className="mt-1 text-sm text-[#B4E655]">
                                   {formatDateRange(cohort)}
                                 </p>

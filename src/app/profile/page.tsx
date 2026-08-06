@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { programs } from "@/content/programs";
-import { cohorts } from "@/content/cohorts";
+import { getAllCohorts } from "@/lib/cohortsDb";
 import { TierStatus } from "@/components/tiers";
 import { ProfileForm } from "./ProfileForm";
 
@@ -122,6 +122,8 @@ async function ProfileContent({
   if (realProfileError || enrollError) {
     return <ProfileErrorState />;
   }
+
+  const cohorts = await getAllCohorts();
 
   return (
     <>

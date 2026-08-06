@@ -1,5 +1,12 @@
 import type { Cohort } from "@/types/cohort";
 
+// DEPRECATED FOR WRITES (Phase 3, 2026-08-06): cohorts live in Supabase now
+// (public.cohorts, seeded from this file by migration 0004 with the same ids).
+// Edit cohorts in /admin/cohorts from now on — changes here no longer reach the
+// site once the migration has run. This file remains only as the read fallback
+// when Supabase is unconfigured (build time, fresh dev) and as input to the
+// client-side recommendation engine.
+
 export const cohorts: Cohort[] = [
   // ─── Bootcamps ────────────────────────────────────────────────────────────
   {

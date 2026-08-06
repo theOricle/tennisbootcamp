@@ -2,10 +2,19 @@ import { cohorts } from "@/content/cohorts";
 import type { Cohort } from "@/types/cohort";
 import { locations } from "@/content/locations";
 
+// Cohort data now lives in Supabase (public.cohorts, migration 0004) — server
+// code reads it through src/lib/cohortsDb.ts, which falls back to the static
+// file. The two helpers below still read the static file directly because they
+// run client-side inside the deterministic recommendation engine
+// (src/lib/recommend.ts), which only powers the tentative match and the demoted
+// direct-enroll link. Everything else formats whatever Cohort it's given.
+
+/** Static-file read — client-safe, used only by the recommendation engine. */
 export function cohortsForProgram(programId: string): Cohort[] {
   return cohorts.filter((c) => c.programId === programId);
 }
 
+/** Static-file read — client-safe, used only by the recommendation engine. */
 export function nextCohortForProgram(programId: string): Cohort | undefined {
   return cohorts
     .filter(
