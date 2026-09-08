@@ -62,3 +62,92 @@ export async function setEnrollmentCredit(
     console.error("setEnrollmentCredit failed (non-blocking):", err);
   }
 }
+
+// ─── Status column helpers (e-transfer rail, backlog #12) ─────────────────────
+// The `status` column is P (col 16) in the frozen layout. Card payments write
+// it from the checkout/webhook routes by row number; the e-transfer path also
+// needs to find rows later by cohort + email when the coach marks an invite
+// paid, because no row number is known at that point. All best-effort.
+
+const STATUS_COL = "P";
+const READ_RANGE = "A:P";
+
+/** Set the status cell of one enrollment row ("pending_etransfer", "paid", …). */
+export async function setEnrollmentStatus(
+  rowNumber: number,
+  status: string
+): Promise<void> {
+  try {
+    const sheets = getSheets();
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    if (!sheets || !spreadsheetId || !rowNumber) return;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${TAB}!${STATUS_COL}${rowNumber}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [[status]] },
+    });
+  } catch (err) {
+    console.error("setEnrollmentStatus failed (non-blocking):", err);
+  }
+}
+
+/**
+ * Flip every enrollment row for (cohort_id, contact_email) whose status is in
+ * `from` to `to`. Returns the row numbers changed so the caller can also
+ * record the assessment credit on them. Best-effort — never throws.
+ */
+export async function setEnrollmentStatusByEmail(params: {
+  cohortId: string;
+  email: string;
+  from: string[];
+  to: string;
+}): Promise<number[]> {
+  try {
+    const sheets = getSheets();
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    if (!sheets || !spreadsheetId) return [];
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${TAB}!${READ_RANGE}`,
+    });
+    const rows = res.data.values ?? [];
+    if (rows.length < 2) return [];
+    const header = rows[0];
+    const cohortCol = header.indexOf("cohort_id");
+    const emailCol = header.indexOf("contact_email");
+    const statusCol = header.indexOf("status");
+    if (cohortCol === -1 || emailCol === -1 || statusCol === -1) return [];
+
+    const target = params.email.trim().toLowerCase();
+    const fromSet = new Set(params.from);
+    const changed: number[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (
+        row[cohortCol] === params.cohortId &&
+        String(row[emailCol] ?? "").trim().toLowerCase() === target &&
+        fromSet.has(String(row[statusCol] ?? ""))
+      ) {
+        changed.push(i + 1); // 1-based sheet row
+      }
+    }
+    if (changed.length === 0) return [];
+
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: changed.map((rowNumber) => ({
+          range: `${TAB}!${STATUS_COL}${rowNumber}`,
+          values: [[params.to]],
+        })),
+      },
+    });
+    return changed;
+  } catch (err) {
+    console.error("setEnrollmentStatusByEmail failed (non-blocking):", err);
+    return [];
+  }
+}

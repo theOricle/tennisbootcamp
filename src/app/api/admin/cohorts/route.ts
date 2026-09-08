@@ -126,7 +126,9 @@ function parseInput(body: Record<string, unknown>): CohortInput | string {
     makeupMaxWeeks: Number.isInteger(Number(body.makeupMaxWeeks)) && Number(body.makeupMaxWeeks) >= 0
       ? Number(body.makeupMaxWeeks)
       : 2,
+    paymentMode: body.paymentMode === "etransfer" ? "etransfer" : "card",
   };
+
 }
 
 export async function POST(req: NextRequest) {

@@ -29,6 +29,7 @@ export type CohortRow = {
   invite_hold_hours: number;
   makeup_max_weeks: number;
   credit_followup: boolean;
+  payment_mode?: "card" | "etransfer" | null; // migration 0006; absent before it runs
   created_at: string;
 };
 
@@ -106,8 +107,10 @@ export function mapRowToCohort(row: CohortRow): Cohort {
     inviteHoldHours: row.invite_hold_hours,
     makeupMaxWeeks: row.makeup_max_weeks,
     creditFollowup: row.credit_followup,
+    paymentMode: row.payment_mode === "etransfer" ? "etransfer" : "card",
   };
 }
+
 
 /** All cohorts, Supabase first, static file as the fallback. */
 export async function getAllCohorts(): Promise<Cohort[]> {

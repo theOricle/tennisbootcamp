@@ -13,13 +13,26 @@ import {
 } from "@/lib/makeup";
 import { findUserIdByEmail } from "@/lib/assessments";
 import { programs } from "@/content/programs";
-import { findUnusedCredit } from "@/lib/assessmentCredit";
+import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { tierRangeForLevels } from "@/lib/tiers";
 import {
   sendCohortInviteEmail,
   sendCohortConfirmedEmail,
   sendSessionCancelledEmail,
+  sendEtransferInstructionsEmail,
+  sendEtransferPendingAdminEmail,
 } from "@/lib/email";
+import {
+  planMarkPaid,
+  planMarkUnpaid,
+  amountDueCents,
+  etransferMemo,
+  etransferRecipient,
+  PAYABLE_STATUSES,
+  type PaymentMethod,
+  type CohortPaymentMode,
+} from "@/lib/paymentTransitions";
+import { setEnrollmentStatusByEmail, setEnrollmentCredit } from "@/lib/enrollmentSheet";
 
 // Server-side cohort operations (Phase 3): invite flow with expiring holds,
 // minimum-to-run confirmation, session generation, and cancellation → make-up
@@ -37,6 +50,10 @@ export type InviteRow = {
   status: "invited" | "paid" | "declined" | "expired";
   invited_at: string;
   expires_at: string;
+  // Payment details (migration 0006) — undefined on rows read before it runs.
+  payment_method?: PaymentMethod | null;
+  payment_note?: string | null;
+  paid_at?: string | null;
 };
 
 export type SessionRow = {
@@ -342,46 +359,363 @@ function sessionLine(s: SessionRow): string {
   return s.makeup_for ? `${base} (make-up)` : base;
 }
 
+type InviteRef = Pick<InviteRow, "id" | "email" | "status" | "expires_at" | "payment_method">;
+
+async function findInviteById(cohortId: string, inviteId: string): Promise<InviteRef | null> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("cohort_invites")
+    .select("*")
+    .eq("id", inviteId)
+    .eq("cohort_id", cohortId)
+    .maybeSingle();
+  return (data as InviteRef | null) ?? null;
+}
+
 /**
- * Mark the invite paid (by token when present, else the newest live invite for
- * that email) and confirm the cohort once paid invites reach capacity_min:
- * status → confirmed, sessions generated, confirmed email to every member.
- * Called from the Stripe webhook and the mock-mode checkout path.
+ * Mark the invite paid and confirm the cohort once paid invites reach
+ * capacity_min: status → confirmed, sessions generated, confirmed email to
+ * every member. The invite is found by id (admin mark-paid), else by token
+ * (Stripe webhook / mock checkout), else the newest live invite for the email.
+ *
+ * `invited` and `expired` both flip to `paid` — paying inside checkout, or an
+ * e-transfer landing late, honors a hold that lapsed in the meantime. The
+ * transition table lives in src/lib/paymentTransitions.ts.
+ *
+ * Payment details (payment_method / payment_note / paid_at, migration 0006)
+ * are written in a second, best-effort update so the card path keeps working
+ * on a database that hasn't run 0006 yet.
  */
 export async function markInvitePaidAndMaybeConfirm(params: {
   cohortId: string;
   email?: string;
   inviteToken?: string;
-}): Promise<void> {
-  const { cohortId, email, inviteToken } = params;
+  inviteId?: string;
+  payment?: { method: PaymentMethod; note?: string | null };
+}): Promise<{ ok: boolean; error?: string }> {
+  const { cohortId, email, inviteToken, inviteId, payment } = params;
   const supabase = createServiceClient();
 
-  if (inviteToken) {
-    await supabase
+  let target: InviteRef | null = null;
+  if (inviteId) {
+    target = await findInviteById(cohortId, inviteId);
+    if (!target) return { ok: false, error: "Invite not found." };
+  } else if (inviteToken) {
+    const { data } = await supabase
       .from("cohort_invites")
-      .update({ status: "paid" })
+      .select("*")
       .eq("token", inviteToken)
       .eq("cohort_id", cohortId)
-      .in("status", ["invited", "expired"]); // paying inside checkout honors a hold that lapsed mid-payment
+      .maybeSingle();
+    target = (data as InviteRef | null) ?? null;
   } else if (email) {
     const { data } = await supabase
       .from("cohort_invites")
-      .select("id")
+      .select("*")
       .eq("cohort_id", cohortId)
       .ilike("email", email.trim())
-      .in("status", ["invited", "expired"])
+      .in("status", PAYABLE_STATUSES)
       .order("invited_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (data) {
-      await supabase
+    target = (data as InviteRef | null) ?? null;
+  }
+
+  if (target) {
+    const plan = planMarkPaid(target, {
+      method: payment?.method ?? "card",
+      note: payment?.note,
+      now: new Date(),
+    });
+    if (!plan.ok) {
+      // Admin double-tap (or a paid invite re-hit by a duplicate webhook):
+      // surface it to the admin, stay silent for the payment rails.
+      if (inviteId) return { ok: false, error: plan.error };
+    } else {
+      const { status, ...details } = plan.patch;
+      const { data: flipped } = await supabase
         .from("cohort_invites")
-        .update({ status: "paid" })
-        .eq("id", (data as { id: string }).id);
+        .update({ status })
+        .eq("id", target.id)
+        .in("status", PAYABLE_STATUSES)
+        .select("id")
+        .maybeSingle();
+      if (!flipped) {
+        if (inviteId) {
+          return { ok: false, error: "That invite changed state — refresh and try again." };
+        }
+      } else {
+        const { error } = await supabase
+          .from("cohort_invites")
+          .update(details)
+          .eq("id", target.id);
+        if (error) {
+          console.warn(
+            "Invite payment details not recorded (run migration 0006?):",
+            error.message
+          );
+        }
+      }
     }
   }
 
   await maybeConfirmCohort(cohortId);
+  return { ok: true };
+}
+
+// ─── E-transfer rail (backlog #12) ────────────────────────────────────────────
+// Cohorts with payment_mode = 'etransfer' collect money outside Stripe: the
+// enroll wizard shows Interac instructions, the player taps "I've sent it"
+// (recordEtransferIntent), and the coach marks the invite paid in the admin
+// (adminMarkInvitePaid) — which reuses markInvitePaidAndMaybeConfirm so the
+// minimum-to-run confirmation and its email behave exactly as after a card
+// payment. Card checkout stays available on every cohort.
+
+/** The invite's price after the assessment credit (for admin display). */
+export async function inviteAmountDueCents(
+  invite: Pick<InviteRow, "email">,
+  cohort: Cohort
+): Promise<number> {
+  const credit = await findUnusedCredit(invite.email);
+  return amountDueCents(cohort.priceCents, credit?.creditCents ?? 0);
+}
+
+/**
+ * Coach confirms an e-transfer arrived: invite → paid (with method, note,
+ * paid_at), the enrollee's assessment credit is consumed, and the enrollment
+ * row (Supabase + Sheet) flips to paid so seat counts and the dashboard agree.
+ * Then the same confirmation path as a card payment.
+ */
+export async function adminMarkInvitePaid(
+  cohortId: string,
+  inviteId: string,
+  note?: string | null
+): Promise<{ ok: boolean; error?: string }> {
+  const invite = await findInviteById(cohortId, inviteId);
+  if (!invite) return { ok: false, error: "Invite not found." };
+
+  const result = await markInvitePaidAndMaybeConfirm({
+    cohortId,
+    inviteId,
+    payment: { method: "etransfer", note },
+  });
+  if (!result.ok) return result;
+
+  await settleEtransferEnrollment(cohortId, invite.email).catch((err) =>
+    console.error("E-transfer settlement bookkeeping failed (non-blocking):", err)
+  );
+  return { ok: true };
+}
+
+async function settleEtransferEnrollment(cohortId: string, email: string): Promise<void> {
+  const credit = await findUnusedCredit(email);
+  if (credit) await markCreditApplied(credit.bookingId);
+
+  const supabase = createServiceClient();
+  await supabase
+    .from("enrollments")
+    .update({ status: "paid" })
+    .eq("cohort_id", cohortId)
+    .ilike("contact_email", email.trim())
+    .eq("status", "pending");
+
+  const rows = await setEnrollmentStatusByEmail({
+    cohortId,
+    email,
+    from: ["pending", "pending_etransfer"],
+    to: "paid",
+  });
+  if (credit) {
+    for (const rowNumber of rows) {
+      await setEnrollmentCredit(rowNumber, (credit.creditCents / 100).toFixed(2));
+    }
+  }
+}
+
+/**
+ * Reverse a paid mark without deleting the invite (mis-tap, bounced
+ * transfer). The cohort's confirmed status is not rolled back — that's a
+ * one-way event whose emails have already gone out — so the paid count can
+ * temporarily sit under capacity_min on a confirmed cohort. E-transfer
+ * enrollments drop back to pending; a card-paid enrollment is left alone.
+ * An assessment credit consumed by mark-paid is not restored here.
+ */
+export async function adminMarkInviteUnpaid(
+  cohortId: string,
+  inviteId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const invite = await findInviteById(cohortId, inviteId);
+  if (!invite) return { ok: false, error: "Invite not found." };
+
+  const plan = planMarkUnpaid(invite, new Date());
+  if (!plan.ok) return { ok: false, error: plan.error };
+
+  const supabase = createServiceClient();
+  const { data: flipped, error } = await supabase
+    .from("cohort_invites")
+    .update(plan.patch)
+    .eq("id", inviteId)
+    .eq("status", "paid")
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!flipped) return { ok: false, error: "That invite changed state — refresh and try again." };
+
+  if (invite.payment_method === "etransfer") {
+    await supabase
+      .from("enrollments")
+      .update({ status: "pending" })
+      .eq("cohort_id", cohortId)
+      .ilike("contact_email", invite.email.trim())
+      .eq("status", "paid");
+    await setEnrollmentStatusByEmail({
+      cohortId,
+      email: invite.email,
+      from: ["paid"],
+      to: "pending_etransfer",
+    });
+  }
+  return { ok: true };
+}
+
+export type EtransferIntentResult =
+  | {
+      ok: true;
+      amountCents: number;
+      creditCents: number;
+      recipientEmail: string;
+      memo: string;
+      alreadyPaid: boolean;
+    }
+  | { ok: false; error: string; status: number };
+
+/**
+ * Player taps "I've sent it" on an e-transfer cohort. Records
+ * payment_method = 'etransfer' on their invite (status stays `invited` —
+ * awaiting the coach's confirmation), emails them the amount / recipient /
+ * memo with the hold line, and pings the inbox so the coach knows to look.
+ * A player admitted without a token (public cohort, or a tier-gated private
+ * one) gets an invite row created here so the coach has something to mark.
+ */
+export async function recordEtransferIntent(params: {
+  cohortId: string;
+  contactEmail: string;
+  participantName: string;
+  inviteToken?: string | null;
+}): Promise<EtransferIntentResult> {
+  const { cohortId, inviteToken } = params;
+  const email = params.contactEmail.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Enter a valid email.", status: 400 };
+  }
+
+  const cohort = await getCohortById(cohortId);
+  if (!cohort || !cohort.dbStatus) {
+    return { ok: false, error: "Cohort not found.", status: 404 };
+  }
+  if ((cohort.paymentMode ?? "card") !== "etransfer") {
+    return { ok: false, error: "This cohort is paid by card.", status: 400 };
+  }
+
+  const supabase = createServiceClient();
+
+  // Resolve the invite: token first, then the newest live invite for the
+  // email, else create one so the admin has a row to mark paid.
+  let invite: InviteRef | null = null;
+  if (inviteToken) {
+    const { data } = await supabase
+      .from("cohort_invites")
+      .select("*")
+      .eq("token", inviteToken)
+      .eq("cohort_id", cohortId)
+      .maybeSingle();
+    invite = (data as InviteRef | null) ?? null;
+  }
+  if (!invite) {
+    const { data } = await supabase
+      .from("cohort_invites")
+      .select("*")
+      .eq("cohort_id", cohortId)
+      .ilike("email", email)
+      .in("status", ["invited", "paid"])
+      .order("invited_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    invite = (data as InviteRef | null) ?? null;
+  }
+  if (!invite) {
+    const holdHours = cohort.inviteHoldHours ?? 48;
+    const { data, error } = await supabase
+      .from("cohort_invites")
+      .insert({
+        cohort_id: cohortId,
+        email,
+        user_id: await findUserIdByEmail(email),
+        token: newToken(),
+        status: "invited",
+        expires_at: new Date(Date.now() + holdHours * 3600 * 1000).toISOString(),
+      })
+      .select("*")
+      .single();
+    if (error || !data) {
+      return { ok: false, error: "Couldn't hold your spot — please try again.", status: 500 };
+    }
+    invite = data as InviteRef;
+  }
+
+  const credit = await findUnusedCredit(email);
+  const creditCents = Math.min(credit?.creditCents ?? 0, cohort.priceCents);
+  const amountCents = amountDueCents(cohort.priceCents, creditCents);
+  const recipientEmail = etransferRecipient();
+  const memo = etransferMemo(params.participantName, cohort.label);
+
+  if (invite.status === "paid") {
+    return { ok: true, amountCents, creditCents, recipientEmail, memo, alreadyPaid: true };
+  }
+
+  const { error } = await supabase
+    .from("cohort_invites")
+    .update({ payment_method: "etransfer" })
+    .eq("id", invite.id);
+  if (error) {
+    console.error("recordEtransferIntent update failed (run migration 0006?):", error.message);
+    return {
+      ok: false,
+      error: "Couldn't record your e-transfer — please email info@tennisbootcamp.ca.",
+      status: 500,
+    };
+  }
+
+  const firstName = params.participantName.trim().split(/\s+/)[0] || "";
+  const cardUrl = inviteToken
+    ? `${siteUrl()}/enroll/${cohortId}?invite=${inviteToken}`
+    : `${siteUrl()}/enroll/${cohortId}`;
+  await sendEtransferInstructionsEmail({
+    to: email,
+    firstName,
+    programTitle: programTitle(cohort.programId),
+    cohortLabel: cohort.label,
+    priceCents: cohort.priceCents,
+    creditCents,
+    amountCents,
+    recipientEmail,
+    memo,
+    cardUrl,
+  }).catch((err) =>
+    console.error(`E-transfer instructions email to ${email} failed (non-blocking):`, err)
+  );
+  await sendEtransferPendingAdminEmail({
+    playerName: params.participantName,
+    playerEmail: email,
+    cohortLabel: cohort.label,
+    cohortId,
+    amountCents,
+    memo,
+  }).catch((err) =>
+    console.error("E-transfer admin notification failed (non-blocking):", err)
+  );
+
+  return { ok: true, amountCents, creditCents, recipientEmail, memo, alreadyPaid: false };
 }
 
 /** Confirm when paid invites reach the minimum; idempotent. */
@@ -561,6 +895,7 @@ export type CohortInput = {
   visibility: "public" | "private";
   inviteHoldHours: number;
   makeupMaxWeeks: number;
+  paymentMode?: CohortPaymentMode; // default card
 };
 
 function slugify(s: string): string {
@@ -595,6 +930,9 @@ export async function createCohort(
     status: "draft",
     invite_hold_hours: input.inviteHoldHours,
     makeup_max_weeks: input.makeupMaxWeeks,
+    // Only sent when non-default so creating cohorts keeps working before
+    // migration 0006 adds the column.
+    ...(input.paymentMode === "etransfer" ? { payment_mode: "etransfer" } : {}),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, id };
@@ -620,7 +958,9 @@ export async function updateCohort(
   if (input.visibility != null) patch.visibility = input.visibility;
   if (input.inviteHoldHours != null) patch.invite_hold_hours = input.inviteHoldHours;
   if (input.makeupMaxWeeks != null) patch.makeup_max_weeks = input.makeupMaxWeeks;
+  if (input.paymentMode != null) patch.payment_mode = input.paymentMode;
   if (input.status != null) patch.status = input.status;
+
 
   const { error } = await supabase.from("cohorts").update(patch).eq("id", id);
   if (error) return { ok: false, error: error.message };

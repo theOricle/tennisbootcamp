@@ -70,6 +70,7 @@ function CreateCohortForm({
   const [capacityMin, setCapacityMin] = useState(3);
   const [capacityMax, setCapacityMax] = useState(6);
   const [visibility, setVisibility] = useState<"private" | "public">("private");
+  const [paymentMode, setPaymentMode] = useState<"card" | "etransfer">("card");
   const [holdHours, setHoldHours] = useState(48);
   const [makeupMaxWeeks, setMakeupMaxWeeks] = useState(2);
   const [busy, setBusy] = useState(false);
@@ -112,6 +113,7 @@ function CreateCohortForm({
           capacityMin,
           capacityMax,
           visibility,
+          paymentMode,
           inviteHoldHours: holdHours,
           makeupMaxWeeks,
         }),
@@ -361,6 +363,18 @@ function CreateCohortForm({
         </div>
       </div>
 
+      <div>
+        <label className="mb-1 block text-xs text-white/60">Payment</label>
+        <select
+          value={paymentMode}
+          onChange={(e) => setPaymentMode(e.target.value as "card" | "etransfer")}
+          className={inputClass}
+        >
+          <option value="card" className="bg-[#061427]">Card (Stripe Checkout)</option>
+          <option value="etransfer" className="bg-[#061427]">E-transfer (you mark invites paid)</option>
+        </select>
+      </div>
+
       {seasonWarning && (
         <p className="rounded-lg border border-yellow-400/30 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-200">
           {seasonWarning}
@@ -474,6 +488,7 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
               <p className="mt-0.5 text-xs text-white/50">
                 {c.programId} · starts {fmtDate(c.startDate)} · {c.weeks} wk
                 {c.visibility === "private" ? " · private" : ""}
+                {c.paymentMode === "etransfer" ? " · e-transfer" : ""}
               </p>
               <TierRangeBadges levelMin={c.levelMin} levelMax={c.levelMax} className="mt-2" />
             </div>

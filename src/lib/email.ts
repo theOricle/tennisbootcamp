@@ -594,3 +594,129 @@ Browse programs: ${BASE_URL}/programs
     text,
   });
 }
+
+// ─── E-transfer rail (backlog #12) ────────────────────────────────────────────
+
+/**
+ * Enrollment received on an e-transfer cohort: the amount, where to send it,
+ * and the message to put on the transfer. The spot is held until the coach
+ * confirms the transfer arrived; the confirmed email follows from there.
+ */
+export async function sendEtransferInstructionsEmail(params: {
+  to: string;
+  firstName: string;
+  programTitle: string;
+  cohortLabel: string;
+  priceCents: number;
+  creditCents: number;   // 0 when no unused assessment credit
+  amountCents: number;   // price − credit
+  recipientEmail: string;
+  memo: string;
+  cardUrl: string;       // enroll link (with invite token) for "pay by card instead"
+}): Promise<void> {
+  const {
+    to, firstName, programTitle, cohortLabel, priceCents, creditCents,
+    amountCents, recipientEmail, memo, cardUrl,
+  } = params;
+  const key = process.env.RESEND_API_KEY;
+  const subject = `Your spot in ${cohortLabel} is held — send your e-transfer`;
+
+  if (!key) {
+    console.log(
+      `[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}:\n  amount ${moneyCAD(amountCents)} → ${recipientEmail}\n  message "${memo}"`
+    );
+    return;
+  }
+
+  const greeting = firstName ? `Your spot is held, ${firstName}.` : "Your spot is held.";
+  const amountMath =
+    creditCents > 0
+      ? `${moneyCAD(priceCents)} − ${moneyCAD(creditCents)} assessment credit = <strong style="color:#fff;">${moneyCAD(amountCents)}</strong>`
+      : `<strong style="color:#fff;">${moneyCAD(amountCents)}</strong>`;
+  const amountMathText =
+    creditCents > 0
+      ? `${moneyCAD(priceCents)} − ${moneyCAD(creditCents)} assessment credit = ${moneyCAD(amountCents)}`
+      : moneyCAD(amountCents);
+
+  const detailRow = (label: string, value: string) => `
+    <tr>
+      <td style="padding:6px 0;font-size:13px;color:rgba(255,255,255,0.45);width:96px;vertical-align:top;">${label}</td>
+      <td style="padding:6px 0;font-size:14px;color:#fff;font-weight:600;">${value}</td>
+    </tr>`;
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      To finish enrolling in ${programTitle} — ${cohortLabel}, send an Interac e-transfer with the details below. Your spot stays held until the coach confirms the transfer arrived. Once it does, you're in, and the confirmation email follows.
+    </p>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
+      ${detailRow("Amount", amountMath)}
+      ${detailRow("Send to", `<a href="mailto:${recipientEmail}" style="color:#B4E655;">${recipientEmail}</a>`)}
+      ${detailRow("Message", memo)}
+    </table>
+    <p style="margin:20px 0 0;font-size:14px;color:rgba(255,255,255,0.85);">
+      Put the message on the transfer exactly as shown — it's how we match your payment to your spot.
+    </p>
+    ${smallText(`Prefer to pay by card? <a href="${cardUrl}" style="color:rgba(255,255,255,0.45);">Pay by card instead</a>. Refund terms: <a href="${BASE_URL}/legal/refund-policy" style="color:rgba(255,255,255,0.45);">program policies</a>.`)}
+    ${signOff()}
+  `;
+
+  const text = `${greeting}
+
+To finish enrolling in ${programTitle} — ${cohortLabel}, send an Interac e-transfer with the details below. Your spot stays held until the coach confirms the transfer arrived. Once it does, you're in, and the confirmation email follows.
+
+  Amount:   ${amountMathText}
+  Send to:  ${recipientEmail}
+  Message:  ${memo}
+
+Put the message on the transfer exactly as shown — it's how we match your payment to your spot.
+
+Prefer to pay by card? ${cardUrl}
+Refund terms: ${BASE_URL}/legal/refund-policy
+
+— Sina Kassaian, Tennis Bootcamp`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+}
+
+/** Inbox notification: a player says their e-transfer is on its way. */
+export async function sendEtransferPendingAdminEmail(params: {
+  playerName: string;
+  playerEmail: string;
+  cohortLabel: string;
+  cohortId: string;
+  amountCents: number;
+  memo: string;
+}): Promise<void> {
+  const { playerName, playerEmail, cohortLabel, cohortId, amountCents, memo } = params;
+  const key = process.env.RESEND_API_KEY;
+  const subject = `E-transfer pending: ${playerName || playerEmail} — ${cohortLabel}`;
+  const adminUrl = `${BASE_URL}/admin/cohorts/${cohortId}`;
+
+  if (!key) {
+    console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} → ${INBOX}\n  ${adminUrl}`);
+    return;
+  }
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${playerName || playerEmail} says their e-transfer is on its way.</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      Expect <strong style="color:#fff;">${moneyCAD(amountCents)}</strong> with the message “${memo}”. When it lands, mark the invite paid — the cohort confirms on its own once paid invites reach the minimum.
+    </p>
+    <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.70);">Player: ${playerName || "—"} · ${playerEmail}</p>
+    ${limeButton(adminUrl, "Open the cohort →")}
+  `;
+
+  const text = `${playerName || playerEmail} says their e-transfer is on its way.
+
+Expect ${moneyCAD(amountCents)} with the message "${memo}". When it lands, mark the invite paid — the cohort confirms on its own once paid invites reach the minimum.
+
+Player: ${playerName || "—"} · ${playerEmail}
+Cohort: ${cohortLabel}
+
+${adminUrl}`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({ from: FROM, to: INBOX, subject, html: emailLayout(bodyHtml), text });
+}

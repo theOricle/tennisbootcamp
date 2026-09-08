@@ -10,7 +10,7 @@ import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
 type PageProps = {
   params: Promise<{ cohortId: string }>;
-  searchParams: Promise<{ invite?: string | string[] }>;
+  searchParams: Promise<{ invite?: string | string[]; etransfer?: string | string[] }>;
 };
 
 export const metadata: Metadata = {
@@ -23,12 +23,15 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
   const { cohortId } = await params;
   const sp = await searchParams;
   const viaInvite = sp.invite === "1";
+  // E-transfer cohorts land here after "I've sent it" — the spot is held,
+  // not paid, until the coach confirms receipt in the admin.
+  const viaEtransfer = sp.etransfer === "1";
   const cohort = await getCohortById(cohortId);
   if (!cohort) notFound();
 
   const program = programs.find((p) => p.id === cohort.programId);
   const location = locations.find((l) => l.id === cohort.locationId);
-  const isMock = !process.env.STRIPE_SECRET_KEY;
+  const isMock = !process.env.STRIPE_SECRET_KEY && !viaEtransfer;
 
   // Auth check — used for CTA and personalised greeting.
   const supabase = await createClient();
@@ -50,6 +53,17 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
 
   const firstName = participantName?.trim().split(/\s+/)[0] ?? null;
 
+  const nextSteps = [
+    ...(viaEtransfer
+      ? ["Send the e-transfer if you haven't yet — the amount, address, and message are in your email."]
+      : []),
+    "Check your email — you'll receive an activation link to access your account.",
+    "Set your password to unlock your training dashboard and enrollment history.",
+    viaEtransfer
+      ? "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email."
+      : "We'll send reminders before your first session with court details and what to bring.",
+  ];
+
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <EnrollCompleteEvent
@@ -57,6 +71,7 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
         program={program?.title ?? cohort.programId}
         viaInvite={viaInvite}
         cohortConfirmed={cohort.dbStatus === "confirmed"}
+        paymentMethod={viaEtransfer ? "etransfer" : "card"}
       />
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
@@ -75,16 +90,28 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
               </svg>
             </div>
             <span className="text-sm font-semibold text-[#B4E655]">
-              {isMock ? "Test Enrollment Confirmed" : "Payment Received"}
+              {viaEtransfer ? "Spot Held" : isMock ? "Test Enrollment Confirmed" : "Payment Received"}
             </span>
           </div>
 
           {/* Greeting */}
           <h1 className="mt-4 text-2xl font-semibold md:text-3xl">
-            {firstName ? `${firstName}, you're enrolled!` : "You're enrolled!"}
+            {viaEtransfer
+              ? firstName
+                ? `${firstName}, your spot is held.`
+                : "Your spot is held."
+              : firstName
+              ? `${firstName}, you're enrolled!`
+              : "You're enrolled!"}
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-white/65">
-            {isMock ? (
+            {viaEtransfer ? (
+              <>
+                Once the coach confirms your e-transfer arrived, you&apos;re in and
+                the confirmation email follows. The amount, the address, and the
+                message to put on the transfer are in your inbox.
+              </>
+            ) : isMock ? (
               <>
                 This is a <strong className="text-yellow-200">test enrollment</strong> — no real
                 payment was collected. It will appear in the database with status{" "}
@@ -135,18 +162,14 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
           <div className="mt-6 rounded-xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-5 py-5">
             <p className="mb-3 text-sm font-semibold text-white">What happens next</p>
             <ol className="space-y-2 text-sm text-white/70">
-              <li className="flex gap-3">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-[11px] font-bold text-[#B4E655]">1</span>
-                <span>Check your email — you&apos;ll receive an activation link to access your account.</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-[11px] font-bold text-[#B4E655]">2</span>
-                <span>Set your password to unlock your training dashboard and enrollment history.</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-[11px] font-bold text-[#B4E655]">3</span>
-                <span>We&apos;ll send reminders before your first session with court details and what to bring.</span>
-              </li>
+              {nextSteps.map((text, i) => (
+                <li key={i} className="flex gap-3">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-[11px] font-bold text-[#B4E655]">
+                    {i + 1}
+                  </span>
+                  <span>{text}</span>
+                </li>
+              ))}
             </ol>
           </div>
 

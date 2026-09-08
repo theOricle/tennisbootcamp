@@ -39,4 +39,6 @@ export type Cohort = {
   inviteHoldHours?: number;
   makeupMaxWeeks?: number;
   creditFollowup?: boolean;      // cancellations exceeded the make-up cap
+  paymentMode?: "card" | "etransfer"; // how players pay (migration 0006); absent = card
 };
+

@@ -8,7 +8,9 @@ import { getInviteByToken } from "@/lib/cohortActions";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { levelWithinRange } from "@/lib/tiers";
 import { createClient } from "@/lib/supabase/server";
-import { EnrollWizard } from "./EnrollWizard";
+import { findUnusedCredit } from "@/lib/assessmentCredit";
+import { etransferRecipient } from "@/lib/paymentTransitions";
+import { EnrollWizard, type EtransferInfo } from "./EnrollWizard";
 
 export const dynamic = "force-dynamic";
 
@@ -139,6 +141,30 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
   const program = programs.find((p) => p.id === cohort.programId);
   const location = locations.find((l) => l.id === cohort.locationId);
 
+  // E-transfer cohorts (backlog #12): the payment step shows the amount after
+  // the $20 assessment credit, looked up by the invite email (or the signed-in
+  // player's). The server re-derives it when the player taps "I've sent it".
+  let etransfer: EtransferInfo | null = null;
+  if ((cohort.paymentMode ?? "card") === "etransfer") {
+    let creditEmail = inviteEmail;
+    if (!creditEmail) {
+      try {
+        const supabase = await createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        creditEmail = user?.email ?? null;
+      } catch {
+        creditEmail = null;
+      }
+    }
+    const credit = creditEmail ? await findUnusedCredit(creditEmail) : null;
+    etransfer = {
+      recipientEmail: etransferRecipient(),
+      creditCents: credit ? Math.min(credit.creditCents, cohort.priceCents) : 0,
+    };
+  }
+
   return (
     <EnrollWizard
       cohort={cohort}
@@ -147,6 +173,8 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
       seatsRemaining={seatsRemaining}
       inviteToken={inviteToken}
       initialEmail={inviteEmail}
+      etransfer={etransfer}
     />
   );
 }
+
