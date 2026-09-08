@@ -8,11 +8,26 @@ import type { Location } from "@/types/location";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
 import { trackEvent } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
+import { amountDueCents, etransferMemo } from "@/lib/paymentTransitions";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WAIVER_VERSION = "v0-placeholder-2026-05-24";
-const TOTAL_STEPS = 3; // 0: summary  1: registrant  2: consent
+// 0: summary  1: registrant  2: consent  (3: e-transfer instructions — only
+// on cohorts whose payment_mode is 'etransfer'; card cohorts go straight to
+// Stripe Checkout after consent, exactly as before.)
+const CARD_STEPS = 3;
+const ETRANSFER_STEPS = 4;
+
+/** Server-derived facts for the e-transfer step (null on card cohorts). */
+export type EtransferInfo = {
+  recipientEmail: string;
+  creditCents: number; // unused assessment credit that comes off the price
+};
+
+function moneyCAD(cents: number): string {
+  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+}
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -411,18 +426,108 @@ function ConsentStep({
   );
 }
 
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard blocked — the value is visible and selectable anyway.
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      aria-label={`Copy ${label}`}
+      className="min-h-[44px] shrink-0 rounded-full border border-white/20 px-3 text-xs font-semibold text-white/70 transition hover:border-[#B4E655]/50 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50"
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function EtransferStep({
+  cohort,
+  info,
+  memo,
+  submitting,
+  onPayByCard,
+}: {
+  cohort: Cohort;
+  info: EtransferInfo;
+  memo: string;
+  submitting: boolean;
+  onPayByCard: () => void;
+}) {
+  const due = amountDueCents(cohort.priceCents, info.creditCents);
+  return (
+    <div className="space-y-5">
+      <p className="text-sm leading-relaxed text-white/70">
+        Send an Interac e-transfer with the details below. Your spot stays held
+        until the coach confirms the transfer arrived. Once it does, you&apos;re
+        in, and the confirmation email follows.
+      </p>
+
+      <div className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">
+        <div className="px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/40">Amount</p>
+          <p className="mt-1 text-xl font-semibold text-white">{moneyCAD(due)} CAD</p>
+          {info.creditCents > 0 && (
+            <p className="mt-0.5 text-xs text-white/50">
+              {moneyCAD(cohort.priceCents)} − {moneyCAD(info.creditCents)} assessment credit
+            </p>
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/40">Send to</p>
+            <p className="mt-1 break-all font-medium text-[#B4E655]">{info.recipientEmail}</p>
+          </div>
+          <CopyButton value={info.recipientEmail} label="email address" />
+        </div>
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/40">Message</p>
+            <p className="mt-1 font-medium text-white">{memo}</p>
+          </div>
+          <CopyButton value={memo} label="message" />
+        </div>
+      </div>
+
+      <p className="text-xs text-white/50">
+        Put the message on the transfer exactly as shown — it&apos;s how we match
+        your payment to your spot. We&apos;ve also emailed you these details.
+      </p>
+
+      <button
+        type="button"
+        onClick={onPayByCard}
+        disabled={submitting}
+        className="text-sm text-white/60 underline-offset-2 hover:text-white hover:underline disabled:opacity-40"
+      >
+        Prefer to pay by card? Pay by card instead
+      </button>
+    </div>
+  );
+}
+
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 const STEP_TITLES = [
   "Review your enrollment",
   "Registrant details",
   "Terms & waiver",
+  "Send your e-transfer",
 ];
 
 const STEP_SUBTITLES = [
   "Confirm what you're signing up for before we collect your details.",
   "Tell us about the participant. If they're under 18, we'll also need a parent or guardian.",
   "Read and agree to the waiver, then sign with your full name.",
+  "Your spot is held while the coach confirms the transfer arrived.",
 ];
 
 export function EnrollWizard({
@@ -432,6 +537,7 @@ export function EnrollWizard({
   seatsRemaining,
   inviteToken = null,
   initialEmail = null,
+  etransfer = null,
 }: {
   cohort: Cohort;
   program: Program | undefined;
@@ -439,7 +545,9 @@ export function EnrollWizard({
   seatsRemaining: number | null;
   inviteToken?: string | null;
   initialEmail?: string | null;
+  etransfer?: EtransferInfo | null;
 }) {
+  const totalSteps = etransfer ? ETRANSFER_STEPS : CARD_STEPS;
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>({
     ...EMPTY_FORM,
@@ -447,6 +555,12 @@ export function EnrollWizard({
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // The Sheet row written by /api/enroll, kept so the e-transfer step can
+  // offer card checkout (or re-send) without appending a second row.
+  const [saved, setSaved] = useState<{
+    rowNumber: number | null;
+    consentAgreedAt: string;
+  } | null>(null);
 
   useEffect(() => {
     trackEvent("enroll_start", {
@@ -458,7 +572,7 @@ export function EnrollWizard({
 
   const age = computeAge(form.participantDob);
   const isMinor = age !== null && age < 18;
-  const progress = Math.round(((step + 1) / TOTAL_STEPS) * 100);
+  const progress = Math.round(((step + 1) / totalSteps) * 100);
 
   function canContinue(): boolean {
     if (step === 0) return true;
@@ -482,6 +596,92 @@ export function EnrollWizard({
     return true;
   }
 
+  function enrollmentMeta(consentAgreedAt: string) {
+    return {
+      contactEmail: form.contactEmail,
+      participantName: form.participantName,
+      participantDob: form.participantDob,
+      isMinor,
+      contactPhone: form.contactPhone,
+      guardianName: isMinor ? form.guardianName : undefined,
+      guardianEmail: isMinor ? form.guardianEmail : undefined,
+      guardianPhone: isMinor ? form.guardianPhone : undefined,
+      consentSignedName: form.consentSignedName,
+      consentAgreedAt,
+      waiverVersion: WAIVER_VERSION,
+      location: location?.name ?? cohort.locationId,
+    };
+  }
+
+  // Step 1 of payment: save the enrollment to Google Sheets (once).
+  async function saveEnrollment(): Promise<{ rowNumber: number | null; consentAgreedAt: string }> {
+    if (saved) return saved;
+    const consentAgreedAt = new Date().toISOString();
+    const enrollRes = await fetch("/api/enroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cohortId: cohort.id,
+        program: program?.title ?? cohort.programId,
+        location: location?.name ?? cohort.locationId,
+        participantName: form.participantName,
+        participantDob: form.participantDob,
+        isMinor,
+        contactEmail: form.contactEmail,
+        contactPhone: form.contactPhone,
+        guardianName: isMinor ? form.guardianName : "",
+        guardianEmail: isMinor ? form.guardianEmail : "",
+        guardianPhone: isMinor ? form.guardianPhone : "",
+        consentSignedName: form.consentSignedName,
+        consentAgreedAt,
+        waiverVersion: WAIVER_VERSION,
+      }),
+    });
+    if (!enrollRes.ok) throw new Error("enrollment");
+    const enrollData = await enrollRes.json();
+    const result = { rowNumber: enrollData.rowNumber ?? null, consentAgreedAt };
+    setSaved(result);
+    return result;
+  }
+
+  // Step 2 of payment (card): create the checkout session and redirect.
+  async function goToCheckout(row: { rowNumber: number | null; consentAgreedAt: string }) {
+    const checkoutRes = await fetch("/api/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cohortId: cohort.id,
+        programTitle: program?.title ?? cohort.programId,
+        priceCents: cohort.priceCents,
+        inviteToken: inviteToken ?? undefined,
+        enrollmentRowNumber: row.rowNumber,
+        enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
+      }),
+    });
+    if (!checkoutRes.ok) throw new Error("checkout");
+    const { sessionUrl } = await checkoutRes.json();
+    // Redirect to Stripe Checkout or confirmed page (mock)
+    window.location.href = sessionUrl;
+  }
+
+  function reportError(err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg === "checkout") {
+      setSubmitError(
+        "Couldn't reach payment — please try again or email info@tennisbootcamp.ca"
+      );
+    } else if (msg === "etransfer") {
+      setSubmitError(
+        "Couldn't record your e-transfer — please try again or email info@tennisbootcamp.ca"
+      );
+    } else {
+      setSubmitError(
+        "Something went wrong — please try again or email us at info@tennisbootcamp.ca"
+      );
+    }
+  }
+
+  /** Card path — unchanged behaviour: save, then straight to checkout. */
   async function submit() {
     setSubmitting(true);
     setSubmitError(null);
@@ -490,85 +690,74 @@ export function EnrollWizard({
       program: program?.title ?? cohort.programId,
     });
     try {
-      const consentAgreedAt = new Date().toISOString();
+      const row = await saveEnrollment();
+      await goToCheckout(row);
+    } catch (err) {
+      reportError(err);
+      setSubmitting(false);
+    }
+  }
 
-      // Step 1: save enrollment to Google Sheets
-      const enrollRes = await fetch("/api/enroll", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cohortId: cohort.id,
-          program: program?.title ?? cohort.programId,
-          location: location?.name ?? cohort.locationId,
-          participantName: form.participantName,
-          participantDob: form.participantDob,
-          isMinor,
-          contactEmail: form.contactEmail,
-          contactPhone: form.contactPhone,
-          guardianName: isMinor ? form.guardianName : "",
-          guardianEmail: isMinor ? form.guardianEmail : "",
-          guardianPhone: isMinor ? form.guardianPhone : "",
-          consentSignedName: form.consentSignedName,
-          consentAgreedAt,
-          waiverVersion: WAIVER_VERSION,
-        }),
-      });
+  /** E-transfer path: save the enrollment, then show the instructions step. */
+  async function continueToEtransfer() {
+    setSubmitting(true);
+    setSubmitError(null);
+    trackEvent("enroll_continue_to_payment", {
+      cohort_id: cohort.id,
+      program: program?.title ?? cohort.programId,
+      payment_method: "etransfer",
+    });
+    try {
+      await saveEnrollment();
+      setStep(ETRANSFER_STEPS - 1);
+    } catch (err) {
+      reportError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
-      if (!enrollRes.ok) throw new Error("enrollment");
-
-      const enrollData = await enrollRes.json();
-
-      // Step 2: create checkout session (real Stripe or mock redirect)
-      const checkoutRes = await fetch("/api/checkout", {
+  /** "I've sent it": flag the invite, email the details, land on the held page. */
+  async function sendEtransfer() {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const row = await saveEnrollment();
+      const res = await fetch("/api/enroll/etransfer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cohortId: cohort.id,
           programTitle: program?.title ?? cohort.programId,
-          priceCents: cohort.priceCents,
           inviteToken: inviteToken ?? undefined,
-          enrollmentRowNumber: enrollData.rowNumber,
-          enrollmentMeta: {
-            contactEmail: form.contactEmail,
-            participantName: form.participantName,
-            participantDob: form.participantDob,
-            isMinor,
-            contactPhone: form.contactPhone,
-            guardianName: isMinor ? form.guardianName : undefined,
-            guardianEmail: isMinor ? form.guardianEmail : undefined,
-            guardianPhone: isMinor ? form.guardianPhone : undefined,
-            consentSignedName: form.consentSignedName,
-            consentAgreedAt,
-            waiverVersion: WAIVER_VERSION,
-            location: location?.name ?? cohort.locationId,
-          },
+          enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
         }),
       });
+      if (!res.ok) throw new Error("etransfer");
 
-      if (!checkoutRes.ok) throw new Error("checkout");
-
-      const { sessionUrl } = await checkoutRes.json();
-
-      // Redirect to Stripe Checkout or confirmed page (mock)
-      window.location.href = sessionUrl;
+      trackEvent("enroll_etransfer_sent", {
+        cohort_id: cohort.id,
+        program: program?.title ?? cohort.programId,
+      });
+      const params = new URLSearchParams({ etransfer: "1" });
+      if (row.rowNumber != null) params.set("row", String(row.rowNumber));
+      if (inviteToken) params.set("invite", "1");
+      window.location.href = `/enroll/${cohort.id}/confirmed?${params.toString()}`;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (msg === "checkout") {
-        setSubmitError(
-          "Couldn't reach payment — please try again or email info@tennisbootcamp.ca"
-        );
-      } else {
-        setSubmitError(
-          "Something went wrong — please try again or email us at info@tennisbootcamp.ca"
-        );
-      }
+      reportError(err);
       setSubmitting(false);
     }
   }
 
   function next() {
     if (!canContinue()) return;
-    if (step < TOTAL_STEPS - 1) {
+    if (etransfer) {
+      if (step === CARD_STEPS - 1) void continueToEtransfer();
+      else if (step === ETRANSFER_STEPS - 1) void sendEtransfer();
+      else setStep((s) => s + 1);
+      return;
+    }
+    if (step < CARD_STEPS - 1) {
       setStep((s) => s + 1);
     } else {
       void submit();
@@ -579,7 +768,20 @@ export function EnrollWizard({
     setStep((s) => Math.max(s - 1, 0));
   }
 
-  const isLastStep = step === TOTAL_STEPS - 1;
+  const isLastStep = step === totalSteps - 1;
+  const isConsentStep = step === CARD_STEPS - 1;
+  const memo = etransferMemo(form.participantName, cohort.label);
+
+  let ctaLabel: string;
+  if (submitting) {
+    ctaLabel = etransfer && isLastStep ? "Sending…" : etransfer && isConsentStep ? "Saving…" : "Redirecting…";
+  } else if (etransfer && isLastStep) {
+    ctaLabel = "I've sent the e-transfer →";
+  } else if (isConsentStep) {
+    ctaLabel = "Continue to Payment →";
+  } else {
+    ctaLabel = "Continue →";
+  }
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -593,7 +795,7 @@ export function EnrollWizard({
             ← Back to program
           </Link>
           <div className="text-sm text-white/60">
-            Step {step + 1} of {TOTAL_STEPS}
+            Step {step + 1} of {totalSteps}
           </div>
         </div>
 
@@ -636,6 +838,15 @@ export function EnrollWizard({
           {step === 2 && (
             <ConsentStep form={form} setForm={setForm} isMinor={isMinor} />
           )}
+          {step === 3 && etransfer && (
+            <EtransferStep
+              cohort={cohort}
+              info={etransfer}
+              memo={memo}
+              submitting={submitting}
+              onPayByCard={() => void submit()}
+            />
+          )}
 
           {/* Navigation */}
           <div className="mt-6 flex flex-col gap-2">
@@ -674,14 +885,11 @@ export function EnrollWizard({
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
                 )}
-                {isLastStep
-                  ? submitting
-                    ? "Redirecting…"
-                    : "Continue to Payment →"
-                  : "Continue →"}
+                {ctaLabel}
               </button>
             </div>
-            {isLastStep && (
+            {isConsentStep && (
+
               <p className="text-right text-xs text-white/50">
                 7-day full-refund window — cancel up to 7 days before the start date.{" "}
                 <Link

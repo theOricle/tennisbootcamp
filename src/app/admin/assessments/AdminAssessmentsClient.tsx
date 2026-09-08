@@ -334,16 +334,22 @@ function BookingCard({
           >
             {booking.status.replace("_", " ")}
           </span>
-          {!booking.paid && booking.status === "booked" && (
+          {(booking.status === "booked" || booking.status === "completed") && (
             <button
               type="button"
               disabled={busy}
               onClick={() => void togglePaid()}
-              className="mt-1.5 block min-h-[28px] w-full rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/50 transition hover:text-white/80 disabled:opacity-40"
+              title={booking.paid ? "Undo: mark as unpaid" : "Paid at court or by e-transfer"}
+              className={`mt-1.5 block min-h-[28px] w-full rounded-full px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-40 ${
+                booking.paid
+                  ? "bg-[#B4E655]/15 text-[#B4E655]"
+                  : "bg-white/10 text-white/50 hover:text-white/80"
+              }`}
             >
-              mark paid
+              {booking.paid ? "paid ✓" : "mark paid"}
             </button>
           )}
+
         </div>
       </div>
 

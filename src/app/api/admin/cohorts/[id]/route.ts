@@ -9,11 +9,15 @@ import {
   updateCohort,
   ensureCohortSessions,
   memberEmails,
+  adminMarkInvitePaid,
+  adminMarkInviteUnpaid,
+  inviteAmountDueCents,
   type CohortInput,
 } from "@/lib/cohortActions";
 
 // Admin cohort detail: invites, sessions, and the state-changing actions —
-// invite, cancel_session (→ make-up append), update, set_status.
+// invite, cancel_session (→ make-up append), update, set_status, and the
+// e-transfer rail's mark_paid / mark_unpaid (backlog #12).
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -36,11 +40,24 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     await ensureCohortSessions(id);
   }
 
-  const [invites, sessions, members] = await Promise.all([
+  const [rawInvites, sessions, members] = await Promise.all([
     listInvites(id),
     listSessions(id),
     memberEmails(id),
   ]);
+
+  // Amount still owed per unpaid invite (price − assessment credit) so the
+  // coach can match an e-transfer against it. Paid rows show their record.
+  const invites = await Promise.all(
+    rawInvites.map(async (i) => ({
+      ...i,
+      payment_method: i.payment_method ?? null,
+      payment_note: i.payment_note ?? null,
+      paid_at: i.paid_at ?? null,
+      amountDueCents:
+        i.status === "paid" ? null : await inviteAmountDueCents(i, cohort),
+    }))
+  );
 
   return NextResponse.json({
     cohort,
@@ -112,6 +129,31 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ ok: true });
     }
 
+    if (action === "mark_paid") {
+      const inviteId = String(body.inviteId ?? "").trim();
+      if (!inviteId) {
+        return NextResponse.json({ error: "Pick the invite." }, { status: 400 });
+      }
+      const note = body.note == null ? null : String(body.note);
+      const result = await adminMarkInvitePaid(id, inviteId, note);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === "mark_unpaid") {
+      const inviteId = String(body.inviteId ?? "").trim();
+      if (!inviteId) {
+        return NextResponse.json({ error: "Pick the invite." }, { status: 400 });
+      }
+      const result = await adminMarkInviteUnpaid(id, inviteId);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     if (action === "update") {
       const patch: Record<string, unknown> = {};
       for (const key of [
@@ -135,6 +177,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       if (body.levelMax !== undefined) {
         patch.levelMax = body.levelMax === null || body.levelMax === "" ? null : Number(body.levelMax);
       }
+      if (body.paymentMode !== undefined) {
+        if (!["card", "etransfer"].includes(String(body.paymentMode))) {
+          return NextResponse.json({ error: "Payment mode is card or etransfer." }, { status: 400 });
+        }
+        patch.paymentMode = body.paymentMode;
+      }
+
       const result = await updateCohort(id, patch as Partial<CohortInput>);
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: 400 });

@@ -8,6 +8,8 @@ import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
 import type { MatrixPlayer } from "@/lib/availabilityMatrix";
 import { dayNameForDate } from "@/lib/makeup";
 
+type PaymentMode = "card" | "etransfer";
+
 type InviteRow = {
   id: string;
   email: string;
@@ -15,6 +17,11 @@ type InviteRow = {
   status: "invited" | "paid" | "declined" | "expired";
   invited_at: string;
   expires_at: string;
+  // E-transfer rail (migration 0006)
+  payment_method: PaymentMode | null;
+  payment_note: string | null;
+  paid_at: string | null;
+  amountDueCents: number | null; // price − assessment credit; null once paid
 };
 
 type SessionRow = {
@@ -67,6 +74,267 @@ function fmtDate(iso: string): string {
     day: "numeric",
     timeZone: "UTC",
   });
+}
+
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-CA", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function money(cents: number): string {
+  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+}
+
+const METHOD_LABEL: Record<PaymentMode, string> = {
+  card: "card",
+  etransfer: "e-transfer",
+};
+
+// ─── Invite row: status + mark paid / undo (e-transfer rail) ──────────────────
+
+function InviteItem({
+  cohortId,
+  invite,
+  onChanged,
+}: {
+  cohortId: string;
+  invite: InviteRow;
+  onChanged: () => void;
+}) {
+  const [mode, setMode] = useState<"idle" | "paying" | "undoing">("idle");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function post(body: Record<string, unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/cohorts/${cohortId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Failed.");
+        setBusy(false);
+        return;
+      }
+      setMode("idle");
+      setNote("");
+      onChanged();
+    } catch {
+      setError("Network error.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const payable = invite.status === "invited" || invite.status === "expired";
+  const method = invite.payment_method ? METHOD_LABEL[invite.payment_method] : null;
+
+  let meta: string;
+  if (invite.status === "paid") {
+    meta = `Paid${method ? ` by ${method}` : ""}${invite.paid_at ? ` · ${fmtDateTime(invite.paid_at)}` : ""}`;
+  } else {
+    const parts: string[] = [];
+    if (invite.payment_method === "etransfer") parts.push("E-transfer sent, awaiting receipt");
+    if (invite.amountDueCents != null) parts.push(`${money(invite.amountDueCents)} due`);
+    meta = parts.join(" · ");
+  }
+
+  return (
+    <li className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm text-white">{invite.email}</p>
+          {meta && <p className="mt-0.5 text-[11px] text-white/45">{meta}</p>}
+          {invite.payment_note && (
+            <p className="mt-0.5 text-[11px] text-white/60">{invite.payment_note}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+              INVITE_STYLE[invite.status] ?? "bg-white/10 text-white/60"
+            }`}
+          >
+            {invite.status}
+          </span>
+          {payable && mode === "idle" && (
+            <button
+              type="button"
+              onClick={() => setMode("paying")}
+              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/70 transition hover:border-[#B4E655]/50 hover:text-white"
+            >
+              Mark paid…
+            </button>
+          )}
+          {invite.status === "paid" && mode === "idle" && (
+            <button
+              type="button"
+              onClick={() => setMode("undoing")}
+              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/50 transition hover:border-red-400/50 hover:text-red-200"
+            >
+              Undo
+            </button>
+          )}
+        </div>
+      </div>
+
+      {mode === "paying" && (
+        <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+          <label className="block text-xs text-white/60">
+            Note (optional) — what arrived and when
+          </label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e-transfer received 2026-09-30, ref C1A2B3"
+            maxLength={500}
+            className={inputClass}
+          />
+          {error && <p className="text-sm text-red-300">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void post({ action: "mark_paid", inviteId: invite.id, note })}
+              className="min-h-[44px] flex-1 rounded-full bg-[#B4E655] px-4 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
+            >
+              {busy ? "Saving…" : "Confirm paid"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setMode("idle");
+                setError(null);
+              }}
+              className="min-h-[44px] rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/70 hover:text-white"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === "undoing" && (
+        <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+          <p className="text-xs text-white/60">
+            Undo puts the invite back to unpaid without deleting it. A cohort
+            that already confirmed stays confirmed.
+          </p>
+          {error && <p className="text-sm text-red-300">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void post({ action: "mark_unpaid", inviteId: invite.id })}
+              className="min-h-[44px] flex-1 rounded-full bg-red-400/80 px-4 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
+            >
+              {busy ? "Saving…" : "Mark unpaid"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setMode("idle");
+                setError(null);
+              }}
+              className="min-h-[44px] rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/70 hover:text-white"
+            >
+              Keep paid
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+// ─── Payment mode (cohort settings) ───────────────────────────────────────────
+
+function PaymentSettings({
+  cohortId,
+  paymentMode,
+  onChanged,
+}: {
+  cohortId: string;
+  paymentMode: PaymentMode;
+  onChanged: () => void;
+}) {
+  const [mode, setMode] = useState<PaymentMode>(paymentMode);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMode(paymentMode);
+  }, [paymentMode]);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/cohorts/${cohortId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", paymentMode: mode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Save failed (run migration 0006?).");
+        setBusy(false);
+        return;
+      }
+      onChanged();
+    } catch {
+      setError("Network error.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">
+        Payment
+      </h2>
+      <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
+        <label className="block text-xs text-white/60">How players pay</label>
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value as PaymentMode)}
+          className={inputClass}
+        >
+          <option value="card" className="bg-[#061427]">Card (Stripe Checkout)</option>
+          <option value="etransfer" className="bg-[#061427]">E-transfer (you mark invites paid)</option>
+        </select>
+        <p className="text-xs text-white/50">
+          {mode === "etransfer"
+            ? "Players get e-transfer instructions in the enroll wizard and tap “I've sent it”; you mark each invite paid below when the money lands. Card checkout stays available as a secondary link."
+            : "Players pay by card at checkout; Stripe marks the invite paid."}
+        </p>
+        {error && <p className="text-sm text-red-300">{error}</p>}
+        <button
+          type="button"
+          disabled={busy || mode === paymentMode}
+          onClick={() => void save()}
+          className="min-h-[44px] rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
+        >
+          {busy ? "Saving…" : "Save payment mode"}
+        </button>
+      </div>
+    </section>
+  );
 }
 
 // ─── Invite section ───────────────────────────────────────────────────────────
@@ -164,19 +432,7 @@ function InviteSection({
       ) : (
         <ul className="space-y-2">
           {invites.map((i) => (
-            <li
-              key={i.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3"
-            >
-              <p className="min-w-0 truncate text-sm text-white">{i.email}</p>
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                  INVITE_STYLE[i.status] ?? "bg-white/10 text-white/60"
-                }`}
-              >
-                {i.status}
-              </span>
-            </li>
+            <InviteItem key={i.id} cohortId={cohortId} invite={i} onChanged={onChanged} />
           ))}
         </ul>
       )}
@@ -393,6 +649,7 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
           {cohort.programId} · starts {fmtDate(cohort.startDate)} · {cohort.weeks} wk ·{" "}
           ${(cohort.priceCents / 100).toFixed(0)} · {cohort.capacityMin}–{cohort.capacityMax} players
           {cohort.visibility === "private" ? " · private" : " · public"}
+          {cohort.paymentMode === "etransfer" ? " · e-transfer" : " · card"}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />
@@ -459,12 +716,19 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
         />
       </section>
 
+      <PaymentSettings
+        cohortId={cohortId}
+        paymentMode={cohort.paymentMode ?? "card"}
+        onChanged={refresh}
+      />
+
       <InviteSection
         cohortId={cohortId}
         invites={invites}
         canInvite={["draft", "inviting"].includes(dbStatus)}
         onChanged={refresh}
       />
+
 
       {/* Sessions */}
       <section className="space-y-3">
