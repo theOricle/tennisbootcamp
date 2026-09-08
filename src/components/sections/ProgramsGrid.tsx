@@ -32,6 +32,9 @@ export async function ProgramsGrid({ programs, title = "Our Programs" }: Program
         {programs.map((p) => {
           const nextCohort = nextCohortForProgram(p.id);
           const scheduleStrip = nextCohort ? formatCohortSchedule(nextCohort) : null;
+          // "Enroll Now" only when there is a cohort to enroll in.
+          const ctaText =
+            !p.comingSoon && !nextCohort ? "View Program" : p.ctaText;
 
           return (
             <div
@@ -88,7 +91,7 @@ export async function ProgramsGrid({ programs, title = "Our Programs" }: Program
                   href={p.ctaHref}
                   className="block w-full rounded-full border border-[#B4E655]/40 px-4 py-2 text-center text-sm font-semibold text-[#B4E655] hover:bg-[#B4E655]/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
                 >
-                  {p.ctaText}
+                  {ctaText}
                 </Link>
               </div>
             </div>

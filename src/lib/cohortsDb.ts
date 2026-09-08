@@ -1,14 +1,15 @@
 import "server-only";
 import type { Cohort, CohortDbStatus, CohortStatus, SessionSlot } from "@/types/cohort";
-import { cohorts as staticCohorts } from "@/content/cohorts";
 import { createServiceClient } from "@/lib/supabase/service";
 import { scheduledEndDate } from "@/lib/makeup";
 import { tierInCohortRange } from "@/lib/tiers";
+import { isCohortPublic, isCohortRenderable } from "@/lib/cohortVisibility";
 
-// Supabase-backed cohort reads (Phase 3). The static file src/content/cohorts.ts
-// is the fallback whenever Supabase is unconfigured (build time, fresh dev
-// setup) or the cohorts table is missing/empty (migration 0004 not yet run) —
-// so every existing page keeps rendering while the database comes online.
+// Supabase-backed cohort reads (Phase 3). Supabase is the only source: when it
+// is unconfigured (build time, fresh dev setup) or the cohorts table is
+// missing/empty, readers get an empty list and pages render their empty state
+// (backlog #1 — the static fallback file was removed so stale cohorts can
+// never render).
 
 export type CohortRow = {
   id: string;
@@ -112,27 +113,25 @@ export function mapRowToCohort(row: CohortRow): Cohort {
 }
 
 
-/** All cohorts, Supabase first, static file as the fallback. */
+/** All cohorts in Supabase, every status (admin, enrollment lookups). */
 export async function getAllCohorts(): Promise<Cohort[]> {
-  if (!supabaseConfigured()) return staticCohorts;
+  if (!supabaseConfigured()) return [];
   try {
     const supabase = createServiceClient();
     const { data, error } = await supabase
       .from("cohorts")
       .select("*")
       .order("start_date", { ascending: true });
-    // An empty table means migration 0004 (with its seed) hasn't run yet —
-    // keep serving the static file rather than an empty site.
-    if (error || !data || data.length === 0) return staticCohorts;
+    if (error || !data) return [];
     return (data as CohortRow[]).map(mapRowToCohort);
   } catch (err) {
-    console.error("getAllCohorts failed — falling back to static file:", err);
-    return staticCohorts;
+    console.error("getAllCohorts failed:", err);
+    return [];
   }
 }
 
 export async function getCohortById(id: string): Promise<Cohort | undefined> {
-  if (!supabaseConfigured()) return staticCohorts.find((c) => c.id === id);
+  if (!supabaseConfigured()) return undefined;
   try {
     const supabase = createServiceClient();
     const { data, error } = await supabase
@@ -140,22 +139,22 @@ export async function getCohortById(id: string): Promise<Cohort | undefined> {
       .select("*")
       .eq("id", id)
       .maybeSingle();
-    if (error || !data) return staticCohorts.find((c) => c.id === id);
+    if (error || !data) return undefined;
     return mapRowToCohort(data as CohortRow);
   } catch (err) {
-    console.error("getCohortById failed — falling back to static file:", err);
-    return staticCohorts.find((c) => c.id === id);
+    console.error("getCohortById failed:", err);
+    return undefined;
   }
 }
 
-/** Publicly listed cohorts (program pages, homepage grid): public + open/upcoming. */
+/**
+ * Publicly listed cohorts (program pages, homepage grid): public visibility,
+ * inviting or confirmed, start date not in the past. Draft and cancelled
+ * cohorts never render publicly.
+ */
 export async function getPublicCohorts(): Promise<Cohort[]> {
   const all = await getAllCohorts();
-  return all.filter(
-    (c) =>
-      (c.visibility ?? "public") === "public" &&
-      (c.status === "open" || c.status === "upcoming")
-  );
+  return all.filter((c) => isCohortPublic(c));
 }
 
 export type CohortSessionRow = {
@@ -201,6 +200,6 @@ export async function getOpenCohortsForLevel(
   if (level === null || level === undefined || level === "") return [];
   const all = await getAllCohorts();
   return all.filter(
-    (c) => c.status === "open" && tierInCohortRange(level, c.levelMin, c.levelMax)
+    (c) => isCohortRenderable(c) && tierInCohortRange(level, c.levelMin, c.levelMax)
   );
 }

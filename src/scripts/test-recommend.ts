@@ -9,7 +9,7 @@ const personas = [
       level: "new" as const,
       goals: ["consistency"],
       programs: [] as string[],
-      preferredLocationIds: ["balliol"],
+      preferredLocationIds: [],
       availability: ["weekday-daytime"],
     },
   },
@@ -20,7 +20,7 @@ const personas = [
       level: "new" as const,
       goals: ["technique", "consistency"],
       programs: ["group"],
-      preferredLocationIds: ["king"],
+      preferredLocationIds: [],
       availability: ["weekday-evening"],
     },
   },
@@ -31,7 +31,7 @@ const personas = [
       level: "competitive" as const,
       goals: ["competition", "tactics", "match"],
       programs: ["bootcamp"],
-      preferredLocationIds: ["balliol"],
+      preferredLocationIds: [],
       availability: ["weekday-evening"],
     },
   },
@@ -52,8 +52,6 @@ for (const persona of personas) {
     const marker = i === 0 ? "★" : " ";
     console.log(`  ${marker} [${rec.score}] ${rec.program.title}`);
     console.log(`        "${rec.reason}"`);
-    const cohortIds = rec.cohorts.map((c) => c.id).join(", ") || "(none)";
-    console.log(`        Cohorts: ${cohortIds}`);
   }
 }
 
@@ -94,21 +92,6 @@ if (miaRecs.length >= 1 && miaRecs[0].program.id === "bootcamps") {
 } else {
   console.log("  ✗ Mia assertion failed:", miaRecs.map((r) => r.program.id));
   passed = false;
-}
-
-// Mia's cohort at balliol should come before king (preferred location)
-if (miaRecs.length > 0 && miaRecs[0].cohorts.length >= 2) {
-  const firstCohortLocation = miaRecs[0].cohorts[0].locationId;
-  console.assert(
-    firstCohortLocation === "balliol",
-    "FAIL: Mia's first cohort should be at balliol (preferred)"
-  );
-  if (firstCohortLocation === "balliol") {
-    console.log("  ✓ Mia → balliol cohort floats first (preferred location)");
-  } else {
-    console.log("  ✗ Mia cohort ordering failed, got:", firstCohortLocation);
-    passed = false;
-  }
 }
 
 console.log(passed ? "\nAll assertions passed." : "\nSome assertions FAILED.");

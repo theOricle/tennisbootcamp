@@ -130,7 +130,7 @@ export default function AboutPage() {
         <div className="mx-auto max-w-6xl px-6 py-16">
           <div className="border-l-2 border-[#B4E655] pl-6">
             <h2 className="text-2xl font-bold text-white">Sina Kassaian</h2>
-            <p className="mt-1 text-sm text-[#B4E655]">Co-Founder &amp; Head Coach</p>
+            <p className="mt-1 text-sm text-[#B4E655]">Head Coach</p>
           </div>
 
           <div className="mt-8 max-w-3xl space-y-5 text-white/70">
@@ -147,34 +147,6 @@ export default function AboutPage() {
               addresses all four — in combination, the way they show up in a
               match.
             </p>
-
-            {/* PLACEHOLDERS — dev only, hidden in production */}
-            {process.env.NODE_ENV === "development" && (
-            <div className="rounded-xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5 text-sm text-white/60">
-              <p className="mb-3 font-semibold text-[#B4E655]/80">
-                ✏ Owner: fill in the following before publishing
-              </p>
-              <ul className="space-y-2">
-                <li>
-                  <strong className="text-white/70">Years coaching:</strong>{" "}
-                  [e.g. &ldquo;With over X years coaching competitive players…&rdquo;]
-                </li>
-                <li>
-                  <strong className="text-white/70">Playing background:</strong>{" "}
-                  [e.g. competed at X level, ranked X, played for X team]
-                </li>
-                <li>
-                  <strong className="text-white/70">Certifications:</strong>{" "}
-                  [e.g. Tennis Canada Certified Level X, PTR, USPTA, etc.]
-                </li>
-                <li>
-                  <strong className="text-white/70">Notable achievements:</strong>{" "}
-                  [e.g. coached X players to X ranking, X tournament wins, X
-                  university scholarship placements]
-                </li>
-              </ul>
-            </div>
-            )}
           </div>
         </div>
       </section>

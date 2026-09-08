@@ -17,7 +17,6 @@ export const programs: Program[] = [
     schedule: "Six-week cohorts · two on-court + one fitness session per week",
     currency: "CAD",
     ageGroup: "Ages 14+",
-    locationId: "balliol",
     includes: [
       "Live-ball pattern play (cross-court, inside-out, serve+1)",
       "Explosive first-step & change-of-direction footwork",

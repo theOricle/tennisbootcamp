@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { programs } from "@/content/programs";
-import { locations } from "@/content/locations";
 import { formatDateRange, formatDaysTimes } from "@/lib/cohorts";
 import { getCohortById } from "@/lib/cohortsDb";
+import { VENUE_LINE } from "@/lib/membership";
 import { createClient } from "@/lib/supabase/server";
 import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
@@ -30,7 +30,6 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
   if (!cohort) notFound();
 
   const program = programs.find((p) => p.id === cohort.programId);
-  const location = locations.find((l) => l.id === cohort.locationId);
   const isMock = !process.env.STRIPE_SECRET_KEY && !viaEtransfer;
 
   // Auth check — used for CTA and personalised greeting.
@@ -143,15 +142,10 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
               <span className="text-white/50">Schedule</span>
               <span className="text-right font-medium text-white">{formatDaysTimes(cohort)}</span>
             </div>
-            {location && (
-              <div className="flex justify-between gap-4 px-4 py-3">
-                <span className="text-white/50">Location</span>
-                <div className="text-right">
-                  <p className="font-medium text-white">{location.name}</p>
-                  <p className="mt-0.5 text-xs text-white/50">{location.address}</p>
-                </div>
-              </div>
-            )}
+            <div className="flex justify-between gap-4 px-4 py-3">
+              <span className="text-white/50">Location</span>
+              <span className="max-w-[60%] text-right text-white/70">{VENUE_LINE}</span>
+            </div>
             <div className="flex justify-between gap-4 px-4 py-3">
               <span className="text-white/50">Duration</span>
               <span className="text-right font-medium text-white">{cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players</span>

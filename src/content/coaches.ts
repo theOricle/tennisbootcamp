@@ -4,7 +4,7 @@ export const coaches: Coach[] = [
   {
     id: "coach-1",
     name: "Sina Kassaian",
-    role: "Co-Founder",
+    role: "Head Coach",
     bio: "High-performance coaching focused on technique, strategy, fitness, and mental toughness.",
     website: "",
   },

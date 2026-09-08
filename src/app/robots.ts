@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/siteUrl";
 
-// Update BASE_URL when tennisbootcamp.ca is live in Vercel
-const BASE_URL = "https://tennisbootcamp-seven.vercel.app";
+const BASE_URL = SITE_URL;
 
 export default function robots(): MetadataRoute.Robots {
   return {

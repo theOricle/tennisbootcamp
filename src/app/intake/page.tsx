@@ -128,14 +128,9 @@ function TentativeMatchScreen({
   const top = recommendations[0];
   const levelLabel = tentativeLevelLabel(form.level);
 
-  // Demoted direct-enroll target: the top program's first open cohort if one
-  // exists (keeps PR #33 direct-enroll alive), otherwise the program page.
-  const openCohort = top?.cohorts.find((c) => c.status === "open");
-  const directEnrollHref = openCohort
-    ? `/enroll/${openCohort.id}`
-    : top
-    ? `/programs/${top.program.slug}`
-    : "/programs";
+  // Demoted secondary link: the top program's page, which lists its cohorts
+  // from Supabase (or its empty state). Enrollment is never linked from here.
+  const directEnrollHref = top ? `/programs/${top.program.slug}` : "/programs";
 
   function bookAssessment() {
     try {
@@ -368,17 +363,6 @@ function IntakePageInner() {
         ],
       },
       {
-        id: "location",
-        title: "Which Toronto location works best?",
-        subtitle: "Select all that apply.",
-        type: "multi",
-        options: [
-          { id: "balliol", label: "Balliol St — Toronto Tennis City", desc: "185 Balliol St, Toronto" },
-          { id: "king", label: "King St E — Tennis Lessons Toronto", desc: "510 King St E, Toronto" },
-          { id: "flexible", label: "Either / Flexible", desc: "I can train at either location." },
-        ],
-      },
-      {
         id: "availability",
         title: "When can you train?",
         subtitle:
@@ -417,6 +401,8 @@ function IntakePageInner() {
   const [form, setForm] = useState<FormState>({
     goals: [],
     programs: preselectedProgram,
+    // No venue step (backlog #1): court details are confirmed in the booking
+    // email. Kept empty so the /api/intake payload shape is unchanged.
     preferredLocationIds: [],
     availability: { days: {}, v: 1 },
     newsletter: false,
@@ -435,13 +421,6 @@ function IntakePageInner() {
         return whoOptionId === optionId;
       case "level":
         return form.level === optionId;
-      case "location":
-        if (optionId === "flexible")
-          return (
-            form.preferredLocationIds.includes("balliol") &&
-            form.preferredLocationIds.includes("king")
-          );
-        return form.preferredLocationIds.includes(optionId);
       default:
         return false;
     }
@@ -469,25 +448,6 @@ function IntakePageInner() {
         setForm((s) => ({ ...s, level: optionId as FormState["level"] }));
       }
       scheduleAutoAdvance();
-    } else if (current.type === "multi") {
-      if (current.id === "location") {
-        if (optionId === "flexible") {
-          const bothSelected =
-            form.preferredLocationIds.includes("balliol") &&
-            form.preferredLocationIds.includes("king");
-          setForm((s) => ({
-            ...s,
-            preferredLocationIds: bothSelected ? [] : ["balliol", "king"],
-          }));
-        } else {
-          setForm((s) => ({
-            ...s,
-            preferredLocationIds: s.preferredLocationIds.includes(optionId)
-              ? s.preferredLocationIds.filter((x) => x !== optionId)
-              : [...s.preferredLocationIds, optionId],
-          }));
-        }
-      }
     }
   }
 
@@ -497,8 +457,6 @@ function IntakePageInner() {
         return whoOptionId !== null;
       case "level":
         return !!form.level;
-      case "location":
-        return form.preferredLocationIds.length > 0;
       case "availability":
         return true;
       case "contact": {

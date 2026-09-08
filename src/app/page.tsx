@@ -5,18 +5,11 @@ import { EmailCapture } from "@/components/sections/EmailCapture";
 import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { Coaches } from "@/components/sections/Coaches";
 import { EventsList } from "@/components/sections/EventsList";
-import { LocationsGrid } from "@/components/sections/LocationsGrid";
+import { PageStack } from "@/components/layout/PageStack";
 
 import { programs } from "@/content/programs";
 import { coaches } from "@/content/coaches";
 import { events } from "@/content/events";
-import { locations } from "@/content/locations";
-
-
-
-
-import { Testimonials } from "@/components/sections/Testimonials";
-import { PageStack } from "@/components/layout/PageStack";
 
 export const metadata: Metadata = {
   title: { absolute: "Tennis Bootcamp — Where Athletes Evolve!" },
@@ -31,9 +24,7 @@ export default function HomePage() {
 
       <TrustBar />
 
-      <Testimonials />
-
-      <section className="mx-auto max-w-6xl px-6 -mt-10">
+      <section className="mx-auto max-w-6xl px-6">
         <EmailCapture />
       </section>
 
@@ -41,7 +32,6 @@ export default function HomePage() {
         <ProgramsGrid programs={programs.slice(0, 3)} title="Our Programs" />
         <Coaches coaches={coaches} title="Meet the Coaches" />
         <EventsList events={events} title="Upcoming Events" />
-        <LocationsGrid locations={locations} title="Our Locations" />
       </PageStack>
     </main>
   );
