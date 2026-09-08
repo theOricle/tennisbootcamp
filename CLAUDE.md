@@ -6,7 +6,7 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Active build plan:** `ops/plans/assessment-restructure.md` — assessment-first pivot (2026-07-18); execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive. (Previous plan `ops/plans/enrollment-and-accounts.md` fully shipped 2026-06-07.)
 
-Last updated: 2026-09-08
+Last updated: 2026-09-08 (production cleanup, backlog #1)
 
 ---
 
@@ -40,7 +40,7 @@ All phases are merged to main as of 2026-06-07.
 - **Phases 0–6** — Supabase Auth, enrollment wizard, Stripe checkout (test mode), dashboard, profile page, password-reset via Resend
 - **Hardening pass** — RLS policies tightened, SECURITY DEFINER revokes baked into migration
 - **Dashboard** — rebuilt to 3-column Figma layout
-- **Testimonials** — placeholder content, flagged as pre-launch
+- **Testimonials** — placeholder section removed in the production cleanup (backlog #1); nothing renders until real, attributable reviews exist
 - **5-step intake** — trimmed from 7 steps; dropped goals/programs/notes collection steps (sent as empty defaults)
 - **SEO** — per-page metadata, per-page OG images, sitemap, robots.ts with targeted disallow
 - **Loading + error states** — Suspense skeletons on dashboard/profile, global-error, page-level error boundary, branded 404
@@ -117,7 +117,6 @@ src/
 │   ├── events/page.tsx
 │   ├── intake/page.tsx + layout.tsx  ← primary conversion page (layout carries metadata)
 │   ├── layout.tsx                ← root layout: metadataBase, title template, OG defaults
-│   ├── locations/page.tsx
 │   ├── opengraph-image.tsx       ← default OG image (1200×630, edge runtime)
 │   ├── page.tsx                  ← homepage
 │   ├── programs/page.tsx
@@ -128,7 +127,7 @@ src/
 ├── components/
 │   ├── layout/                   ← Navbar, Footer, PageStack
 │   ├── sections/                 ← Hero, TrustBar, EmailCapture, ProgramsGrid,
-│   │                                Coaches, EventsList, LocationsGrid,
+│   │                                Coaches, EventsList,
 │   │                                VideoLessonsTeaser
 │   └── ui/                       ← Button, Card, CourtBackground
 ├── content/                      ← typed data (easy to edit)
@@ -140,7 +139,7 @@ src/
 └── types/                        ← TS types for each content file
 ```
 
-Homepage (`src/app/page.tsx`) composes: Hero → TrustBar → EmailCapture → ProgramsGrid (first 3) → Coaches → EventsList → LocationsGrid.
+Homepage (`src/app/page.tsx`) composes: Hero → TrustBar → EmailCapture → ProgramsGrid (first 3) → Coaches → EventsList. No locations section, no testimonials (backlog #1, 2026-09-08).
 
 ## Primary conversion flow
 
@@ -212,8 +211,8 @@ The code has been partially populated with real info — Figma still shows old p
 - Email: info@tennisbootcamp.ca
 - Footer: "Design and Development QUANTUMAPPS"
 - Social links present but all href="#" (needs real URLs)
-- Coaches: Sina Kassaian (Co-Founder, real); second coach is still a placeholder (`name: "Head Coach"`)
-- Locations: two real Toronto venues — 185 Balliol St (Toronto Tennis City) and 510 King St E #809 (Tennis Lessons Toronto), with real phones and websites
+- Coaches: Sina Kassaian (Head Coach, real); no second coach
+- Locations: none named anywhere. `src/content/locations.ts`, `/locations` and the homepage trust line were removed (backlog #1); every venue slot renders `VENUE_LINE` from `src/lib/membership.ts` ("Court details and any club requirements are confirmed in your booking email.")
 - Programs: Bootcamps (available), Kid's Summer Camp (coming soon), Group Lessons (coming soon)
 
 **Still placeholder in code (intentional — replace when real info is available):**
@@ -235,8 +234,8 @@ The code has been partially populated with real info — Figma still shows old p
 These are blockers or content gaps — nothing code can fill without real data from Sina.
 
 - **Sina's real bio** — years coaching, playing background, certifications, notable achievements. Placeholder is in `src/app/about/page.tsx`, hidden in production (`NODE_ENV === "development"`) but needs real content before the banner is removed.
-- **Real venue partnerships** — `src/content/locations.ts` lists Toronto Tennis City (Balliol) and Tennis Lessons Toronto (King St E) as placeholders. These are not confirmed training partners yet. Flagged in `ops/briefs/competitors.md`. Do not present them as confirmed venues in copy until partnerships are signed.
-- **Real cohort dates and capacities** — `src/content/cohorts.ts` has placeholder/sample dates and seat counts. Update before any live enrollment opens.
+- **Real venue partnerships** — no venue is named on the site (backlog #1). When a partnership is signed, add the venue and replace `VENUE_LINE` usages deliberately; do not present a venue as confirmed until then.
+- **Real cohort dates and capacities** — cohorts render from Supabase only (`src/content/cohorts.ts` was deleted). Only inviting/confirmed, public, not-yet-started cohorts render; build real ones in `/admin/cohorts`.
 - **Photos** — coach headshot (Sina), court/training photos for program pages, athlete testimonial photos (currently placeholder silhouettes).
 - **Real social URLs** — all `site.socials` hrefs are `"#"`. Footer already filters them out; update `src/content/site.ts` when accounts are live.
 - **Second coach** — either add a real second coach to `src/content/coaches.ts`, or change the section heading to "More coaches joining soon" treatment.
@@ -251,7 +250,7 @@ In priority order:
 2. **Switch Stripe to live keys** — replace `sk_test_...` with `sk_live_...` in Vercel env vars; test the full checkout flow end-to-end before flipping
 3. **Remove preview banner** — delete `NEXT_PUBLIC_PREVIEW_MODE` from Vercel env vars (or set it to anything other than `"true"`)
 4. **Connect tennisbootcamp.ca domain** — at GoDaddy → Vercel; then update `Supabase Auth URL allowlist` and `NEXT_PUBLIC_SITE_URL`; confirm email links resolve to the real domain
-5. **Update BASE_URL** — change `tennisbootcamp-seven.vercel.app` to `tennisbootcamp.ca` in `src/app/sitemap.ts` and `src/app/robots.ts`
+5. **Site origin** — `metadataBase`, `robots.ts` and `sitemap.ts` read `NEXT_PUBLIC_SITE_URL` via `src/lib/siteUrl.ts` (fallback `tennisbootcamp-seven.vercel.app`); set the env var to `https://tennisbootcamp.ca` in Vercel — no code change
 
 ## Local setup checklist
 

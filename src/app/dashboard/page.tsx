@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { programs } from "@/content/programs";
-import { locations } from "@/content/locations";
 import {
   getAllCohorts,
   getOpenCohortsForLevel,
@@ -13,6 +12,7 @@ import {
 } from "@/lib/cohortsDb";
 import { dayNameForDate } from "@/lib/makeup";
 import { getPlayer } from "@/lib/players";
+import { VENUE_LINE } from "@/lib/membership";
 import { TierStatus, TierRangeBadges } from "@/components/tiers";
 import { AvailabilityEditor } from "./AvailabilityEditor";
 
@@ -134,34 +134,13 @@ function DashboardSkeleton() {
           </div>
         </section>
 
-        {/* Locations — static, rendered immediately below */}
+        {/* Where we train — static line, rendered immediately below */}
         <section>
           <div className="border-l-2 border-[#B4E655] pl-4">
             <h2 className="text-lg font-semibold text-white">Where we train</h2>
           </div>
           <div className="mb-6 mt-2 border-b border-white/10" />
-          <ul className="space-y-5">
-            {locations.map((loc) => (
-              <li key={loc.id} className="flex items-start gap-2.5">
-                <svg
-                  className="mt-0.5 h-4 w-4 shrink-0 text-[#B4E655]"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M8 1.5a4.5 4.5 0 0 0-4.5 4.5c0 2.72 2.58 5.54 3.94 6.84a.75.75 0 0 0 1.12 0C9.92 11.54 12.5 8.72 12.5 6A4.5 4.5 0 0 0 8 1.5ZM8 7.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <div className="text-sm text-white/70">
-                  <p className="font-medium text-white/90">{loc.name}</p>
-                  <p>{loc.address}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <p className="text-sm text-white/70">{VENUE_LINE}</p>
         </section>
       </div>
     </div>
@@ -409,35 +388,14 @@ async function DashboardContent({
           )}
         </section>
 
-        {/* Camps near you */}
+        {/* Where we train */}
         <section>
           <div className="border-l-2 border-[#B4E655] pl-4">
             <h2 className="text-lg font-semibold text-white">Where we train</h2>
           </div>
           <div className="mb-6 mt-2 border-b border-white/10" />
 
-          <ul className="space-y-5">
-            {locations.map((loc) => (
-              <li key={loc.id} className="flex items-start gap-2.5">
-                <svg
-                  className="mt-0.5 h-4 w-4 shrink-0 text-[#B4E655]"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M8 1.5a4.5 4.5 0 0 0-4.5 4.5c0 2.72 2.58 5.54 3.94 6.84a.75.75 0 0 0 1.12 0C9.92 11.54 12.5 8.72 12.5 6A4.5 4.5 0 0 0 8 1.5ZM8 7.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <div className="text-sm text-white/70">
-                  <p className="font-medium text-white/90">{loc.name}</p>
-                  <p>{loc.address}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <p className="text-sm text-white/70">{VENUE_LINE}</p>
         </section>
 
       </div>

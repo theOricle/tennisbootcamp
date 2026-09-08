@@ -4,10 +4,6 @@ const signals = [
     body: "Technique, tactics, fitness, and mental game under one structured system.",
   },
   {
-    label: "Two Toronto Locations",
-    body: "Midtown and Downtown. Find the session closest to you.",
-  },
-  {
     label: "Placed by Assessment",
     body: "Every player hits with the coach before joining a group — levels are assigned on court, not self-reported.",
   },
@@ -16,7 +12,7 @@ const signals = [
 export function TrustBar() {
   return (
     <div className="border-y border-white/10">
-      <div className="mx-auto grid max-w-6xl gap-0 px-6 md:grid-cols-3">
+      <div className="mx-auto grid max-w-6xl gap-0 px-6 md:grid-cols-2">
         {signals.map((s, i) => (
           <div
             key={s.label}

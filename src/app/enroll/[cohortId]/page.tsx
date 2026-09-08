@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { programs } from "@/content/programs";
-import { locations } from "@/content/locations";
 import { getCohortById } from "@/lib/cohortsDb";
+import { isCohortRenderable } from "@/lib/cohortVisibility";
 import { getInviteByToken } from "@/lib/cohortActions";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { levelWithinRange } from "@/lib/tiers";
@@ -98,8 +98,10 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
   const tokenParam =
     typeof sp.invite === "string" && sp.invite.trim() ? sp.invite.trim() : null;
 
+  // Only a cohort a visitor may see is enrollable: in Supabase, inviting or
+  // confirmed (never draft or cancelled), and not yet started.
   const cohort = await getCohortById(cohortId);
-  if (!cohort || cohort.status === "full") notFound();
+  if (!cohort || !isCohortRenderable(cohort)) notFound();
 
   // Private cohorts admit a valid unexpired invite token, or — when the cohort
   // is tier-gated — a signed-in player whose coach-assigned level falls inside
@@ -139,7 +141,6 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
   if (seatsRemaining !== null && seatsRemaining <= 0) notFound();
 
   const program = programs.find((p) => p.id === cohort.programId);
-  const location = locations.find((l) => l.id === cohort.locationId);
 
   // E-transfer cohorts (backlog #12): the payment step shows the amount after
   // the $20 assessment credit, looked up by the invite email (or the signed-in
@@ -169,7 +170,6 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
     <EnrollWizard
       cohort={cohort}
       program={program}
-      location={location}
       seatsRemaining={seatsRemaining}
       inviteToken={inviteToken}
       initialEmail={inviteEmail}

@@ -1,29 +1,9 @@
-import { cohorts } from "@/content/cohorts";
 import type { Cohort } from "@/types/cohort";
-import { locations } from "@/content/locations";
 
-// Cohort data now lives in Supabase (public.cohorts, migration 0004) — server
-// code reads it through src/lib/cohortsDb.ts, which falls back to the static
-// file. The two helpers below still read the static file directly because they
-// run client-side inside the deterministic recommendation engine
-// (src/lib/recommend.ts), which only powers the tentative match and the demoted
-// direct-enroll link. Everything else formats whatever Cohort it's given.
-
-/** Static-file read — client-safe, used only by the recommendation engine. */
-export function cohortsForProgram(programId: string): Cohort[] {
-  return cohorts.filter((c) => c.programId === programId);
-}
-
-/** Static-file read — client-safe, used only by the recommendation engine. */
-export function nextCohortForProgram(programId: string): Cohort | undefined {
-  return cohorts
-    .filter(
-      (c) =>
-        c.programId === programId &&
-        (c.status === "open" || c.status === "upcoming")
-    )
-    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
-}
+// Cohort data lives in Supabase (public.cohorts, migration 0004) — server code
+// reads it through src/lib/cohortsDb.ts. The helpers below format whatever
+// Cohort they're given; none of them name a venue (court details are confirmed
+// in the booking email).
 
 function formatMonth(iso: string): string {
   const d = new Date(iso + "T00:00:00");
@@ -38,15 +18,12 @@ function formatTime(t: string): string {
 }
 
 export function formatCohortSchedule(c: Cohort): string {
-  const location = locations.find((l) => l.id === c.locationId);
-  const locationLabel = location ? location.name : c.locationId;
-
   const days = c.sessions.map((s) => s.day).join(" & ");
   const startTime = formatTime(c.sessions[0].start);
   const endTime = formatTime(c.sessions[0].end);
   const dateRange = `${formatMonth(c.startDate)} – ${formatMonth(c.endDate)}`;
 
-  return `${c.weeks}-week program · ${dateRange} · ${days} ${startTime}–${endTime} · ${c.capacityMin}–${c.capacityMax} players · ${locationLabel}`;
+  return `${c.weeks}-week program · ${dateRange} · ${days} ${startTime}–${endTime} · ${c.capacityMin}–${c.capacityMax} players`;
 }
 
 export function formatCohortPrice(c: Cohort): string {

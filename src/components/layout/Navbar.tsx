@@ -11,7 +11,6 @@ const MOBILE_NAV_LINKS = [
   { href: "/programs", label: "Programs" },
   { href: "/about", label: "About" },
   { href: "/events", label: "Events" },
-  { href: "/locations", label: "Locations" },
   { href: "/video-lessons", label: "Video Lessons" },
 ];
 

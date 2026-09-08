@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { programs } from "@/content/programs";
-import { locations } from "@/content/locations";
 import { ProgramInterestForm } from "@/components/sections/ProgramInterestForm";
+import { EmailCapture } from "@/components/sections/EmailCapture";
 import {
   formatDateRange,
   formatDaysTimes,
@@ -12,6 +12,7 @@ import {
 } from "@/lib/cohorts";
 import { getPublicCohorts } from "@/lib/cohortsDb";
 import { getSeatsRemaining } from "@/lib/seatCount";
+import { VENUE_LINE } from "@/lib/membership";
 import { TierRangeBadges } from "@/components/tiers";
 import { StickyEnrollBar } from "./StickyEnrollBar";
 
@@ -40,15 +41,10 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const program = programs.find((p) => p.slug === slug);
   if (!program) notFound();
 
-  const location = program.locationId
-    ? locations.find((l) => l.id === program.locationId)
-    : undefined;
-
-  const cohorts = (await getPublicCohorts()).filter(
+  // Supabase only (backlog #1): public, inviting/confirmed, not yet started.
+  // Draft, cancelled and past cohorts never reach this page.
+  const openCohorts = (await getPublicCohorts()).filter(
     (c) => c.programId === program.id
-  );
-  const openCohorts = cohorts.filter(
-    (c) => c.status === "open" || c.status === "upcoming"
   );
 
   // Fetch live seat counts for all cohorts in parallel (null = credentials not set)
@@ -57,17 +53,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   );
   const seatCounts: Record<string, number | null> = Object.fromEntries(seatCountEntries);
 
-  // Group cohorts by locationId so we can render one section per venue
-  const cohortsByLocation = openCohorts.reduce<Record<string, typeof openCohorts>>(
-    (acc, c) => {
-      (acc[c.locationId] ??= []).push(c);
-      return acc;
-    },
-    {}
-  );
-
   const hasOpenCohorts = openCohorts.length > 0;
-  // First truly-enrollable cohort (status === "open", not just upcoming)
+  // First enrollable cohort (public cohorts are all inviting/confirmed → "open")
   const nextOpenCohort = openCohorts.find((c) => c.status === "open") ?? null;
 
   return (
@@ -160,38 +147,16 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 </div>
               </div>
             ) : !hasOpenCohorts ? (
+              /* No cohort to enroll in: the primary CTA, never an enroll link */
               <div className="mt-6">
                 <Link
-                  href={program.ctaHref}
+                  href="/assessment/book"
                   className="block w-full rounded-full bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
                 >
-                  {program.ctaText}
+                  Book Your Assessment
                 </Link>
               </div>
             ) : null}
-
-            {/* Location (fallback for programs without cohorts at multiple venues) */}
-            {location && cohorts.length === 0 && (
-              <div className="mt-6">
-                <h3 className="text-base font-semibold text-[#B4E655]">{location.name}</h3>
-                <div className="mt-1 flex items-start gap-2 text-sm text-white/55">
-                  <svg
-                    className="mt-0.5 h-4 w-4 shrink-0 text-[#B4E655]"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.8}
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
-                    />
-                  </svg>
-                  <span>{location.address}</span>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -227,124 +192,92 @@ export default async function ProgramDetailPage({ params }: PageProps) {
         {/* Cohort cards or coming-soon */}
         <div className="mt-10">
           {!program.comingSoon && hasOpenCohorts ? (
-            /* Available: cohort cards grouped by location */
+            /* Available: cohort cards from Supabase */
             <div>
-              <h2 id="cohorts" className="mb-6 text-xl font-semibold text-white">Upcoming cohorts</h2>
-              {Object.entries(cohortsByLocation).map(([locationId, locationCohorts]) => {
-                const loc = locations.find((l) => l.id === locationId);
-                return (
-                  <div key={locationId} className="mb-8">
-                    {/* Location header */}
-                    <div className="mb-3 flex items-center gap-2">
-                      <svg
-                        className="h-4 w-4 shrink-0 text-[#B4E655]"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={1.8}
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
-                        />
-                      </svg>
-                      <span className="text-sm font-semibold text-[#B4E655]">
-                        {loc ? loc.name : locationId}
-                      </span>
-                      {loc && (
-                        <span className="text-sm text-white/40">{loc.address}</span>
-                      )}
-                    </div>
+              <h2 id="cohorts" className="mb-2 text-xl font-semibold text-white">Upcoming cohorts</h2>
+              <p className="mb-6 text-sm text-white/60">{VENUE_LINE}</p>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {locationCohorts.map((cohort) => {
-                        const seats = seatCounts[cohort.id] ?? null;
-                        const isFull = seats !== null && seats <= 0;
-                        const isLowStock = seats !== null && seats > 0 && seats <= 3;
-                        return (
-                          <div
-                            key={cohort.id}
-                            className="rounded-xl border border-white/10 bg-white/5 px-5 py-4"
+              <div className="grid gap-3 sm:grid-cols-2">
+                {openCohorts.map((cohort) => {
+                  const seats = seatCounts[cohort.id] ?? null;
+                  const isFull = seats !== null && seats <= 0;
+                  const isLowStock = seats !== null && seats > 0 && seats <= 3;
+                  return (
+                    <div
+                      key={cohort.id}
+                      className="rounded-xl border border-white/10 bg-white/5 px-5 py-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-white">{cohort.label}</p>
+                          <TierRangeBadges
+                            levelMin={cohort.levelMin}
+                            levelMax={cohort.levelMax}
+                            className="mt-1"
+                          />
+                          <p className="mt-1 text-sm text-[#B4E655]">
+                            {formatDateRange(cohort)}
+                          </p>
+                          <p className="mt-0.5 text-sm text-white/60">
+                            {formatDaysTimes(cohort)}
+                          </p>
+                          <p className="mt-0.5 text-sm text-white/50">
+                            {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-semibold text-white">
+                            {formatCohortPrice(cohort)}
+                          </p>
+                          <span
+                            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                              isFull
+                                ? "bg-white/10 text-white/40"
+                                : "bg-[#B4E655]/15 text-[#B4E655]"
+                            }`}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold text-white">{cohort.label}</p>
-                                <TierRangeBadges
-                                  levelMin={cohort.levelMin}
-                                  levelMax={cohort.levelMax}
-                                  className="mt-1"
-                                />
-                                <p className="mt-1 text-sm text-[#B4E655]">
-                                  {formatDateRange(cohort)}
-                                </p>
-                                <p className="mt-0.5 text-sm text-white/60">
-                                  {formatDaysTimes(cohort)}
-                                </p>
-                                <p className="mt-0.5 text-sm text-white/50">
-                                  {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
-                                </p>
-                              </div>
-                              <div className="shrink-0 text-right">
-                                <p className="text-sm font-semibold text-white">
-                                  {formatCohortPrice(cohort)}
-                                </p>
-                                <span
-                                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                    isFull
-                                      ? "bg-white/10 text-white/40"
-                                      : cohort.status === "open"
-                                      ? "bg-[#B4E655]/15 text-[#B4E655]"
-                                      : cohort.status === "waitlist"
-                                      ? "bg-yellow-400/10 text-yellow-200"
-                                      : "bg-white/10 text-white/50"
-                                  }`}
-                                >
-                                  {isFull
-                                    ? "Full"
-                                    : isLowStock
-                                    ? `${seats} spot${seats === 1 ? "" : "s"} left`
-                                    : cohort.status === "open"
-                                    ? "Spots open"
-                                    : cohort.status === "waitlist"
-                                    ? "Waitlist"
-                                    : cohort.status === "upcoming"
-                                    ? "Coming soon"
-                                    : "Full"}
-                                </span>
-                              </div>
-                            </div>
+                            {isFull
+                              ? "Full"
+                              : isLowStock
+                              ? `${seats} spot${seats === 1 ? "" : "s"} left`
+                              : "Spots open"}
+                          </span>
+                        </div>
+                      </div>
 
-                            <div className="mt-4">
-                              {!isFull && cohort.status !== "upcoming" ? (
-                                <Link
-                                  href={`/enroll/${cohort.id}`}
-                                  className="block w-full rounded-full bg-[#B4E655] py-2 text-center text-sm font-semibold text-[#061427] hover:brightness-110 transition"
-                                >
-                                  Enroll →
-                                </Link>
-                              ) : (
-                                <div className="block w-full rounded-full bg-white/5 py-2 text-center text-sm font-semibold text-white/30">
-                                  {isFull ? "Cohort full" : "Registration opening soon"}
-                                </div>
-                              )}
-                            </div>
+                      <div className="mt-4">
+                        {!isFull ? (
+                          <Link
+                            href={`/enroll/${cohort.id}`}
+                            className="block w-full rounded-full bg-[#B4E655] py-2 text-center text-sm font-semibold text-[#061427] hover:brightness-110 transition"
+                          >
+                            Enroll →
+                          </Link>
+                        ) : (
+                          <div className="block w-full rounded-full bg-white/5 py-2 text-center text-sm font-semibold text-white/30">
+                            Cohort full
                           </div>
-                        );
-                      })}
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           ) : !program.comingSoon ? (
-            /* Available but no open cohorts yet — fall back to intake CTA */
-            <Link
-              href={program.ctaHref}
-              className="inline-block rounded-full bg-[#B4E655] px-8 py-4 text-base font-semibold text-[#061427] hover:brightness-110 transition"
-            >
-              {program.ctaText}
-            </Link>
+            /* Zero renderable cohorts: empty state, no card, no enroll link */
+            <div>
+              <h2 id="cohorts" className="text-xl font-semibold text-white">
+                Upcoming cohorts
+              </h2>
+              <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
+                The next season&apos;s schedule is being finalized. Leave your email
+                and we&apos;ll send you the schedule before registration opens.
+              </p>
+              <div className="-mx-6 mt-2">
+                <EmailCapture />
+              </div>
+            </div>
           ) : (
             /* Coming soon: registration alert + email capture */
             <div className="rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-6 py-6 md:px-8 md:py-7">

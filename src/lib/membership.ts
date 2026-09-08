@@ -8,8 +8,14 @@
 //   "true"       → Variant A (guests allowed for assessments)
 //   "false"      → Variant B (members only, even for assessments)
 
-const NEUTRAL =
+/**
+ * The one line the site uses wherever a venue would otherwise appear (backlog
+ * #1): no venue is named anywhere until a partnership is signed.
+ */
+export const VENUE_LINE =
   "Court details and any club requirements are confirmed in your booking email.";
+
+const NEUTRAL = VENUE_LINE;
 
 const VARIANT_A =
   "No membership needed for your assessment. When you join a program, the club asks for a season membership — $100 until November, paid directly to the club — which also gives you court access all season.";

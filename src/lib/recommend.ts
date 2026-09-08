@@ -1,7 +1,10 @@
 import type { Program } from "@/types/program";
-import type { Cohort } from "@/types/cohort";
 import { programs as allPrograms } from "@/content/programs";
-import { cohortsForProgram } from "@/lib/cohorts";
+
+// Deterministic, client-side program match for the intake quiz. It ranks
+// programs only — cohorts live in Supabase and are rendered by the program
+// pages, so the tentative-match screen links to the program, never to a
+// cohort it cannot verify.
 
 export type IntakeFormSnapshot = {
   who?: "adult" | "youth";
@@ -16,48 +19,7 @@ export type Recommendation = {
   program: Program;
   score: number;
   reason: string;
-  cohorts: Cohort[];
 };
-
-const WEEKEND = new Set(["Sat", "Sun"]);
-const WEEKDAY = new Set(["Mon", "Tue", "Wed", "Thu", "Fri"]);
-
-function matchesSlot(cohort: Cohort, slot: string): boolean {
-  for (const s of cohort.sessions) {
-    const hour = parseInt(s.start.split(":")[0], 10);
-    if (slot === "weekday-evening" && WEEKDAY.has(s.day) && hour >= 17) return true;
-    if (slot === "weekday-daytime" && WEEKDAY.has(s.day) && hour < 17) return true;
-    if (slot === "weekend-morning" && WEEKEND.has(s.day) && hour < 12) return true;
-    if (slot === "weekend-afternoon" && WEEKEND.has(s.day) && hour >= 12) return true;
-  }
-  return false;
-}
-
-function rankCohorts(
-  cohorts: Cohort[],
-  preferredLocationIds: string[],
-  availability: string[]
-): Cohort[] {
-  return [...cohorts]
-    .filter((c) => c.status === "open" || c.status === "upcoming")
-    .sort((a, b) => {
-      // Preferred location floats to top
-      const aLoc =
-        preferredLocationIds.length === 0 || preferredLocationIds.includes(a.locationId) ? 0 : 1;
-      const bLoc =
-        preferredLocationIds.length === 0 || preferredLocationIds.includes(b.locationId) ? 0 : 1;
-      if (aLoc !== bLoc) return aLoc - bLoc;
-
-      // Availability match next
-      const aAvail =
-        availability.length === 0 || availability.some((s) => matchesSlot(a, s)) ? 0 : 1;
-      const bAvail =
-        availability.length === 0 || availability.some((s) => matchesSlot(b, s)) ? 0 : 1;
-      if (aAvail !== bAvail) return aAvail - bAvail;
-
-      return a.startDate.localeCompare(b.startDate);
-    });
-}
 
 function buildReason(program: Program, form: IntakeFormSnapshot): string {
   const { who, level, goals } = form;
@@ -98,14 +60,7 @@ function buildReason(program: Program, form: IntakeFormSnapshot): string {
 }
 
 export function recommendPrograms(form: IntakeFormSnapshot): Recommendation[] {
-  const {
-    who,
-    level,
-    goals,
-    programs: selectedPrograms,
-    preferredLocationIds,
-    availability,
-  } = form;
+  const { who, level, goals, programs: selectedPrograms } = form;
   const results: Recommendation[] = [];
 
   for (const program of allPrograms) {
@@ -167,7 +122,6 @@ export function recommendPrograms(form: IntakeFormSnapshot): Recommendation[] {
       program,
       score,
       reason: buildReason(program, form),
-      cohorts: rankCohorts(cohortsForProgram(program.id), preferredLocationIds, availability),
     });
   }
 

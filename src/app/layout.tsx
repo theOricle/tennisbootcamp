@@ -5,18 +5,18 @@ import "./globals.css";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { PreviewBanner } from "@/components/layout/PreviewBanner";
+import { SITE_URL } from "@/lib/siteUrl";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 
-// Update metadataBase when tennisbootcamp.ca is live in Vercel
 export const metadata: Metadata = {
-  metadataBase: new URL("https://tennisbootcamp-seven.vercel.app"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Tennis Bootcamp",
     template: "%s | Tennis Bootcamp",
   },
   description:
-    "Tennis training in Toronto for players who want to compete — Midtown and Downtown. Every player is placed by a 20-minute on-court assessment: $20, and it comes off the price when you enroll in a program.",
+    "Tennis training in Toronto for players who want to compete. Every player is placed by a 20-minute on-court assessment: $20, and it comes off the price when you enroll in a program.",
   openGraph: {
     siteName: "Tennis Bootcamp",
     locale: "en_CA",

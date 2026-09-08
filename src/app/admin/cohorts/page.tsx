@@ -16,7 +16,7 @@ export default async function AdminCohortsPage() {
   const admin = await getAdminUser();
   if (!admin) redirect("/login");
 
-  const seasonEndDate = process.env.SEASON_END_DATE || "2026-11-30";
+  const seasonEndDate = process.env.SEASON_END_DATE || "2026-11-15";
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">

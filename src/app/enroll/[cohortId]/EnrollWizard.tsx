@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import type { Program } from "@/types/program";
-import type { Location } from "@/types/location";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
+import { VENUE_LINE } from "@/lib/membership";
 import { trackEvent } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
 import { amountDueCents, etransferMemo } from "@/lib/paymentTransitions";
@@ -130,12 +130,10 @@ const EMPTY_FORM: FormState = {
 function OrderSummary({
   cohort,
   program,
-  location,
   seatsRemaining,
 }: {
   cohort: Cohort;
   program: Program | undefined;
-  location: Location | undefined;
   seatsRemaining: number | null;
 }) {
   const price = formatCohortPrice(cohort);
@@ -178,14 +176,7 @@ function OrderSummary({
             d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
           />
         </svg>
-        <div>
-          <p className="text-sm font-semibold text-white">
-            {location?.name ?? cohort.locationId}
-          </p>
-          {location?.address && (
-            <p className="mt-0.5 text-sm text-white/50">{location.address}</p>
-          )}
-        </div>
+        <p className="text-sm text-white/70">{VENUE_LINE}</p>
       </div>
 
       {/* Schedule */}
@@ -533,7 +524,6 @@ const STEP_SUBTITLES = [
 export function EnrollWizard({
   cohort,
   program,
-  location,
   seatsRemaining,
   inviteToken = null,
   initialEmail = null,
@@ -541,7 +531,6 @@ export function EnrollWizard({
 }: {
   cohort: Cohort;
   program: Program | undefined;
-  location: Location | undefined;
   seatsRemaining: number | null;
   inviteToken?: string | null;
   initialEmail?: string | null;
@@ -609,7 +598,7 @@ export function EnrollWizard({
       consentSignedName: form.consentSignedName,
       consentAgreedAt,
       waiverVersion: WAIVER_VERSION,
-      location: location?.name ?? cohort.locationId,
+      location: cohort.locationId,
     };
   }
 
@@ -623,7 +612,7 @@ export function EnrollWizard({
       body: JSON.stringify({
         cohortId: cohort.id,
         program: program?.title ?? cohort.programId,
-        location: location?.name ?? cohort.locationId,
+        location: cohort.locationId,
         participantName: form.participantName,
         participantDob: form.participantDob,
         isMinor,
@@ -821,7 +810,6 @@ export function EnrollWizard({
             <OrderSummary
               cohort={cohort}
               program={program}
-              location={location}
               seatsRemaining={seatsRemaining}
             />
           )}
