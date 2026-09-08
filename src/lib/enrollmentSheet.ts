@@ -65,32 +65,12 @@ export async function setEnrollmentCredit(
 
 // ─── Status column helpers (e-transfer rail, backlog #12) ─────────────────────
 // The `status` column is P (col 16) in the frozen layout. Card payments write
-// it from the checkout/webhook routes by row number; the e-transfer path also
-// needs to find rows later by cohort + email when the coach marks an invite
-// paid, because no row number is known at that point. All best-effort.
+// it from the checkout/webhook routes by row number (carried in Stripe
+// metadata); the e-transfer path resolves rows by cohort + contact email
+// instead — never by a client-supplied row number. Best-effort.
 
 const STATUS_COL = "P";
 const READ_RANGE = "A:P";
-
-/** Set the status cell of one enrollment row ("pending_etransfer", "paid", …). */
-export async function setEnrollmentStatus(
-  rowNumber: number,
-  status: string
-): Promise<void> {
-  try {
-    const sheets = getSheets();
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    if (!sheets || !spreadsheetId || !rowNumber) return;
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${TAB}!${STATUS_COL}${rowNumber}`,
-      valueInputOption: "RAW",
-      requestBody: { values: [[status]] },
-    });
-  } catch (err) {
-    console.error("setEnrollmentStatus failed (non-blocking):", err);
-  }
-}
 
 /**
  * Flip every enrollment row for (cohort_id, contact_email) whose status is in

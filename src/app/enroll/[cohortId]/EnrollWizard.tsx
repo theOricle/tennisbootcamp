@@ -730,11 +730,11 @@ export function EnrollWizard({
           cohortId: cohort.id,
           programTitle: program?.title ?? cohort.programId,
           inviteToken: inviteToken ?? undefined,
-          enrollmentRowNumber: row.rowNumber,
           enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
         }),
       });
       if (!res.ok) throw new Error("etransfer");
+
       trackEvent("enroll_etransfer_sent", {
         cohort_id: cohort.id,
         program: program?.title ?? cohort.programId,
