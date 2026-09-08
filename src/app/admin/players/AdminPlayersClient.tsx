@@ -14,8 +14,14 @@ import {
 } from "@/lib/availability";
 
 type Player = {
+  /** Participant id — the person, not the account. */
   id: string;
   name: string | null;
+  relationship: string;
+  relationshipLabel: string;
+  isMinor: boolean;
+  /** The account holder this player belongs to. */
+  account: { id: string; name: string | null; email: string };
   email: string;
   phone: string | null;
   level: number | null;
@@ -132,8 +138,22 @@ function PlayerCard({
         <div className="min-w-0">
           <p className="truncate font-semibold text-white">
             {player.name || player.email || "Player"}
+            {player.isMinor && (
+              <span className="ml-2 rounded-full border border-white/15 px-1.5 py-0.5 text-[10px] font-medium text-white/50">
+                Under 18
+              </span>
+            )}
           </p>
-          <p className="truncate text-xs text-white/50">{player.email}</p>
+          {/* Account: two players with the same name under different holders
+              are told apart here. */}
+          <p className="truncate text-xs text-white/50">
+            <span className="text-white/35">Account: </span>
+            {player.account.name || player.account.email || "—"}
+            {player.account.email ? ` · ${player.account.email}` : ""}
+          </p>
+          {player.relationship !== "self" && player.relationshipLabel && (
+            <p className="text-[11px] text-white/40">{player.relationshipLabel}</p>
+          )}
           {player.phone && <p className="text-xs text-white/50">{player.phone}</p>}
           <p className="mt-1 text-[11px] text-white/40">{availabilityStatus(player)}</p>
         </div>

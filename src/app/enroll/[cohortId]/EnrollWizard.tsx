@@ -9,15 +9,23 @@ import { VENUE_LINE } from "@/lib/membership";
 import { trackEvent } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
 import { amountDueCents, etransferMemo } from "@/lib/paymentTransitions";
+import {
+  WhoIsThisFor,
+  useHousehold,
+  EMPTY_HOUSEHOLD,
+  householdReady,
+  type HouseholdValue,
+} from "@/components/participants/WhoIsThisFor";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WAIVER_VERSION = "v0-placeholder-2026-05-24";
-// 0: summary  1: registrant  2: consent  (3: e-transfer instructions — only
-// on cohorts whose payment_mode is 'etransfer'; card cohorts go straight to
-// Stripe Checkout after consent, exactly as before.)
-const CARD_STEPS = 3;
-const ETRANSFER_STEPS = 4;
+// 0: summary  1: who is this for  2: registrant  3: consent
+// (4: e-transfer instructions — only on cohorts whose payment_mode is
+// 'etransfer'; card cohorts go straight to Stripe Checkout after consent,
+// exactly as before.)
+const CARD_STEPS = 4;
+const ETRANSFER_STEPS = 5;
 
 /** Server-derived facts for the e-transfer step (null on card cohorts). */
 export type EtransferInfo = {
@@ -100,6 +108,16 @@ function TextInput({
 }
 
 // ─── Form state ───────────────────────────────────────────────────────────────
+
+/** One seat: a player, their date of birth, and where the row came from. */
+export type EnrollPlayer = {
+  key: string;
+  name: string;
+  dob: string;
+  participantId: string | null;
+  relationship: string;
+  isMinor: boolean;
+};
 
 type FormState = {
   participantName: string;
@@ -238,12 +256,20 @@ function OrderSummary({
 function RegistrantStep({
   form,
   setForm,
+  players,
+  setPlayers,
   isMinor,
+  signedIn,
+  accountEmail,
   onEnterSubmit,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  players: EnrollPlayer[];
+  setPlayers: (next: EnrollPlayer[]) => void;
   isMinor: boolean;
+  signedIn: boolean;
+  accountEmail: string;
   onEnterSubmit: () => void;
 }) {
   return (
@@ -254,35 +280,57 @@ function RegistrantStep({
       }}
       className="space-y-5"
     >
-      {/* Participant */}
+      {/* One block per player — a seat each. */}
+      <div className="space-y-4">
+        <p className="text-sm font-semibold text-white">
+          {players.length > 1 ? "Players" : "Player"}
+        </p>
+        {players.map((player) => (
+          <div
+            key={player.key}
+            className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4"
+          >
+            <p className="text-sm font-semibold text-[#B4E655]">
+              {player.name || "This player"}
+            </p>
+            <FieldGroup label="Date of birth">
+              <TextInput
+                type="date"
+                value={player.dob}
+                onChange={(v) =>
+                  setPlayers(
+                    players.map((p) =>
+                      p.key === player.key ? { ...p, dob: v } : p
+                    )
+                  )
+                }
+                required
+              />
+            </FieldGroup>
+          </div>
+        ))}
+      </div>
+
+      {/* Account holder — the payer, and the guardian for anyone under 18. */}
       <div>
-        <p className="mb-3 text-sm font-semibold text-white">Participant</p>
+        <p className="mb-3 text-sm font-semibold text-white">Account holder</p>
         <div className="space-y-3">
-          <FieldGroup label="Full name">
-            <TextInput
-              value={form.participantName}
-              onChange={(v) => setForm((s) => ({ ...s, participantName: v }))}
-              placeholder="Participant's full name"
-              required
-            />
-          </FieldGroup>
-          <FieldGroup label="Date of birth">
-            <TextInput
-              type="date"
-              value={form.participantDob}
-              onChange={(v) => setForm((s) => ({ ...s, participantDob: v }))}
-              required
-            />
-          </FieldGroup>
-          <FieldGroup label="Email">
-            <TextInput
-              type="email"
-              value={form.contactEmail}
-              onChange={(v) => setForm((s) => ({ ...s, contactEmail: v }))}
-              placeholder="email@example.com"
-              required
-            />
-          </FieldGroup>
+          {signedIn ? (
+            <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+              Enrolling on your account —{" "}
+              <span className="font-semibold text-white">{accountEmail}</span>.
+            </p>
+          ) : (
+            <FieldGroup label="Email">
+              <TextInput
+                type="email"
+                value={form.contactEmail}
+                onChange={(v) => setForm((s) => ({ ...s, contactEmail: v }))}
+                placeholder="email@example.com"
+                required
+              />
+            </FieldGroup>
+          )}
           <FieldGroup label="Phone">
             <TextInput
               type="tel"
@@ -295,12 +343,13 @@ function RegistrantStep({
         </div>
       </div>
 
-      {/* Guardian section — shown when participant is under 18 */}
+      {/* Guardian section — shown when any player is under 18 */}
       {isMinor && (
         <div className="rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-5 py-4">
           <p className="mb-1 text-sm font-semibold text-[#B4E655]">Parent / Guardian</p>
           <p className="mb-3 text-xs text-white/55">
-            The guardian is the account holder and will sign the waiver.
+            The guardian is the account holder and will sign the waiver for
+            every player under 18.
           </p>
           <div className="space-y-3">
             <FieldGroup label="Full name">
@@ -444,16 +493,20 @@ function EtransferStep({
   cohort,
   info,
   memo,
+  seats,
   submitting,
   onPayByCard,
 }: {
   cohort: Cohort;
   info: EtransferInfo;
   memo: string;
+  /** How many players this transfer covers — one seat each. */
+  seats: number;
   submitting: boolean;
   onPayByCard: () => void;
 }) {
-  const due = amountDueCents(cohort.priceCents, info.creditCents);
+  const total = cohort.priceCents * seats;
+  const due = amountDueCents(total, info.creditCents);
   return (
     <div className="space-y-5">
       <p className="text-sm leading-relaxed text-white/70">
@@ -466,9 +519,14 @@ function EtransferStep({
         <div className="px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-white/40">Amount</p>
           <p className="mt-1 text-xl font-semibold text-white">{moneyCAD(due)} CAD</p>
-          {info.creditCents > 0 && (
+          {(seats > 1 || info.creditCents > 0) && (
             <p className="mt-0.5 text-xs text-white/50">
-              {moneyCAD(cohort.priceCents)} − {moneyCAD(info.creditCents)} assessment credit
+              {seats > 1
+                ? `${moneyCAD(cohort.priceCents)} × ${seats} players`
+                : moneyCAD(cohort.priceCents)}
+              {info.creditCents > 0
+                ? ` − ${moneyCAD(info.creditCents)} assessment credit`
+                : ""}
             </p>
           )}
         </div>
@@ -509,6 +567,7 @@ function EtransferStep({
 
 const STEP_TITLES = [
   "Review your enrollment",
+  "Who is this for?",
   "Registrant details",
   "Terms & waiver",
   "Send your e-transfer",
@@ -516,7 +575,8 @@ const STEP_TITLES = [
 
 const STEP_SUBTITLES = [
   "Confirm what you're signing up for before we collect your details.",
-  "Tell us about the participant. If they're under 18, we'll also need a parent or guardian.",
+  "One seat per player. Enrolling two people takes two seats and one payment.",
+  "A date of birth for each player, and where to reach you. Anyone under 18 needs a parent or guardian.",
   "Read and agree to the waiver, then sign with your full name.",
   "Your spot is held while the coach confirms the transfer arrived.",
 ];
@@ -542,6 +602,11 @@ export function EnrollWizard({
     ...EMPTY_FORM,
     contactEmail: initialEmail ?? "",
   });
+
+  // Who is this for? (backlog #11) One seat per player, one payment.
+  const household = useHousehold();
+  const [who, setWho] = useState<HouseholdValue>(EMPTY_HOUSEHOLD);
+  const [dobs, setDobs] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // The Sheet row written by /api/enroll, kept so the e-transfer step can
@@ -550,6 +615,9 @@ export function EnrollWizard({
     rowNumber: number | null;
     consentAgreedAt: string;
   } | null>(null);
+  // Sheet row per player, so the e-transfer step and the credit write can
+  // address each seat without appending a second set of rows.
+  const [savedRows, setSavedRows] = useState<Record<string, number>>({});
 
   useEffect(() => {
     trackEvent("enroll_start", {
@@ -559,18 +627,56 @@ export function EnrollWizard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const age = computeAge(form.participantDob);
-  const isMinor = age !== null && age < 18;
+  // The seats this enrollment covers, derived from the chooser. Signed in
+  // that's the picked participants; signed out it's the typed blocks.
+  const players: EnrollPlayer[] = household.signedIn
+    ? who.selectedIds.map((id) => {
+        const p = household.participants.find((x) => x.id === id);
+        return {
+          key: id,
+          name: p?.name?.trim() ?? "",
+          dob: dobs[id] ?? "",
+          participantId: id,
+          relationship: p?.relationship ?? "self",
+          isMinor: p?.isMinor === true,
+        };
+      })
+    : who.guests
+        .filter((g) => g.name.trim())
+        .map((g) => ({
+          key: g.key,
+          name: g.name.trim(),
+          dob: dobs[g.key] ?? "",
+          participantId: null,
+          relationship: g.relationship,
+          isMinor: g.isMinor,
+        }));
+
+  function setPlayers(next: EnrollPlayer[]) {
+    setDobs((prev) => {
+      const out = { ...prev };
+      for (const p of next) out[p.key] = p.dob;
+      return out;
+    });
+  }
+
+  // Anyone under 18 puts the guardian block on screen and the guardian's
+  // signature on the waiver.
+  const isMinor = players.some(
+    (p) => p.isMinor || ((a) => a !== null && a < 18)(computeAge(p.dob))
+  );
   const progress = Math.round(((step + 1) / totalSteps) * 100);
 
   function canContinue(): boolean {
     if (step === 0) return true;
-    if (step === 1) {
+    if (step === 1) return householdReady(who, household.signedIn);
+    if (step === 2) {
       const base =
-        form.participantName.trim().length > 0 &&
-        form.participantDob.length > 0 &&
-        age !== null &&
-        form.contactEmail.trim().length > 0 &&
+        players.length > 0 &&
+        players.every(
+          (p) => p.name.trim().length > 0 && p.dob.length > 0 && computeAge(p.dob) !== null
+        ) &&
+        (household.signedIn || form.contactEmail.trim().length > 0) &&
         form.contactPhone.trim().length > 0;
       const guardian =
         !isMinor ||
@@ -579,17 +685,23 @@ export function EnrollWizard({
           form.guardianPhone.trim().length > 0);
       return base && guardian;
     }
-    if (step === 2) {
+    if (step === 3) {
       return form.consentChecked && form.consentSignedName.trim().length > 0;
     }
     return true;
   }
 
+  const contactEmail = household.signedIn
+    ? household.accountEmail || form.contactEmail
+    : form.contactEmail;
+
   function enrollmentMeta(consentAgreedAt: string) {
+    const first = players[0];
     return {
-      contactEmail: form.contactEmail,
-      participantName: form.participantName,
-      participantDob: form.participantDob,
+      contactEmail,
+      // Kept for anything still reading a single participant.
+      participantName: first?.name ?? form.participantName,
+      participantDob: first?.dob ?? form.participantDob,
       isMinor,
       contactPhone: form.contactPhone,
       guardianName: isMinor ? form.guardianName : undefined,
@@ -599,6 +711,13 @@ export function EnrollWizard({
       consentAgreedAt,
       waiverVersion: WAIVER_VERSION,
       location: cohort.locationId,
+      participants: players.map((p) => ({
+        name: p.name,
+        participantId: p.participantId,
+        dob: p.dob,
+        isMinor: p.isMinor || ((a) => a !== null && a < 18)(computeAge(p.dob)),
+        rowNumber: savedRows[p.key] ?? null,
+      })),
     };
   }
 
@@ -613,10 +732,19 @@ export function EnrollWizard({
         cohortId: cohort.id,
         program: program?.title ?? cohort.programId,
         location: cohort.locationId,
-        participantName: form.participantName,
-        participantDob: form.participantDob,
+        // One row per player.
+        participants: players.map((p) => ({
+          name: p.name,
+          dob: p.dob,
+          isMinor: p.isMinor || ((a) => a !== null && a < 18)(computeAge(p.dob)),
+          participantId: p.participantId,
+          relationship: p.relationship,
+        })),
+        participantName: players[0]?.name ?? form.participantName,
+        participantDob: players[0]?.dob ?? form.participantDob,
         isMinor,
-        contactEmail: form.contactEmail,
+        accountName: isMinor ? form.guardianName : players[0]?.name ?? "",
+        contactEmail,
         contactPhone: form.contactPhone,
         guardianName: isMinor ? form.guardianName : "",
         guardianEmail: isMinor ? form.guardianEmail : "",
@@ -628,6 +756,13 @@ export function EnrollWizard({
     });
     if (!enrollRes.ok) throw new Error("enrollment");
     const enrollData = await enrollRes.json();
+    const rows: Record<string, number> = {};
+    const returned: { rowNumber: number | null }[] = enrollData.participants ?? [];
+    players.forEach((p, i) => {
+      const n = returned[i]?.rowNumber;
+      if (typeof n === "number") rows[p.key] = n;
+    });
+    setSavedRows(rows);
     const result = { rowNumber: enrollData.rowNumber ?? null, consentAgreedAt };
     setSaved(result);
     return result;
@@ -753,13 +888,18 @@ export function EnrollWizard({
     }
   }
 
+  const seatCount = Math.max(1, players.length);
+
   function back() {
     setStep((s) => Math.max(s - 1, 0));
   }
 
   const isLastStep = step === totalSteps - 1;
   const isConsentStep = step === CARD_STEPS - 1;
-  const memo = etransferMemo(form.participantName, cohort.label);
+  const memo = etransferMemo(
+    players.map((p) => p.name).filter(Boolean).join(" + ") || form.participantName,
+    cohort.label
+  );
 
   let ctaLabel: string;
   if (submitting) {
@@ -814,23 +954,37 @@ export function EnrollWizard({
             />
           )}
           {step === 1 && (
+            <WhoIsThisFor
+              household={household}
+              value={who}
+              onChange={setWho}
+              multiple
+              intro="Every player takes their own seat. Add everyone now and pay once."
+            />
+          )}
+          {step === 2 && (
             <RegistrantStep
               form={form}
               setForm={setForm}
+              players={players}
+              setPlayers={setPlayers}
               isMinor={isMinor}
+              signedIn={household.signedIn}
+              accountEmail={household.accountEmail}
               onEnterSubmit={() => {
                 if (canContinue() && !submitting) next();
               }}
             />
           )}
-          {step === 2 && (
+          {step === 3 && (
             <ConsentStep form={form} setForm={setForm} isMinor={isMinor} />
           )}
-          {step === 3 && etransfer && (
+          {step === 4 && etransfer && (
             <EtransferStep
               cohort={cohort}
               info={etransfer}
               memo={memo}
+              seats={seatCount}
               submitting={submitting}
               onPayByCard={() => void submit()}
             />

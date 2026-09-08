@@ -11,7 +11,14 @@ import {
   normTime,
   type ExistingSession,
 } from "@/lib/makeup";
-import { findUserIdByEmail } from "@/lib/assessments";
+import {
+  findUserIdByEmail,
+  resolveParticipantId,
+  getParticipant,
+  listPlayers,
+  listAccounts,
+  type PlayerRecord,
+} from "@/lib/players";
 import { programs } from "@/content/programs";
 import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { tierRangeForLevels } from "@/lib/tiers";
@@ -44,8 +51,11 @@ import { setEnrollmentStatusByEmail, setEnrollmentCredit } from "@/lib/enrollmen
 export type InviteRow = {
   id: string;
   cohort_id: string;
+  /** The account holder's email — one payer, one inbox, many players. */
   email: string;
   user_id: string | null;
+  /** Which player on that account the spot is for (migration 0007). */
+  participant_id?: string | null;
   token: string;
   status: "invited" | "paid" | "declined" | "expired";
   invited_at: string;
@@ -149,7 +159,15 @@ export async function expireStaleInvites(cohortId?: string): Promise<void> {
   await query;
 }
 
-export async function listInvites(cohortId: string): Promise<InviteRow[]> {
+/** Player + account, so the invite list reads "Maya Chen · Dana Chen". */
+export type InviteWithHousehold = InviteRow & {
+  participant_name: string;
+  account_name: string;
+};
+
+export async function listInvites(
+  cohortId: string
+): Promise<InviteWithHousehold[]> {
   await expireStaleInvites(cohortId);
   const supabase = createServiceClient();
   const { data } = await supabase
@@ -157,7 +175,41 @@ export async function listInvites(cohortId: string): Promise<InviteRow[]> {
     .select("*")
     .eq("cohort_id", cohortId)
     .order("invited_at", { ascending: false });
-  return (data as InviteRow[]) ?? [];
+  const rows = (data as InviteRow[]) ?? [];
+  if (rows.length === 0) return [];
+
+  const [participants, accounts] = await Promise.all([
+    listPlayers().catch(() => [] as PlayerRecord[]),
+    listAccounts().catch(() => new Map()),
+  ]);
+  const byId = new Map(participants.map((p) => [p.id, p]));
+  const accountByEmail = new Map<string, string>();
+  for (const [id, a] of accounts) {
+    if (a.email) accountByEmail.set(a.email.trim().toLowerCase(), id);
+  }
+  const selfByAccount = new Map<string, PlayerRecord>();
+  for (const p of participants) {
+    if (p.relationship === "self" && !selfByAccount.has(p.account_id)) {
+      selfByAccount.set(p.account_id, p);
+    }
+  }
+
+  return rows.map((r) => {
+    const accountId =
+      byId.get(r.participant_id ?? "")?.account_id ??
+      r.user_id ??
+      accountByEmail.get(r.email.trim().toLowerCase()) ??
+      null;
+    const participant =
+      byId.get(r.participant_id ?? "") ??
+      (accountId ? selfByAccount.get(accountId) : undefined);
+    const account = accountId ? accounts.get(accountId) : undefined;
+    return {
+      ...r,
+      participant_name: participant?.full_name?.trim() || r.email,
+      account_name: account?.name?.trim() || r.email,
+    };
+  });
 }
 
 /**
@@ -169,7 +221,12 @@ export async function listInvites(cohortId: string): Promise<InviteRow[]> {
  */
 export async function createInvites(
   cohortId: string,
-  emails: string[]
+  emails: string[],
+  /**
+   * Optional player per email, positionally matched. Without it an invite goes
+   * to the account holder — the pre-household behaviour.
+   */
+  participantIds?: (string | null)[]
 ): Promise<{ sent: number; errors: string[] }> {
   const cohort = await getCohortById(cohortId);
   if (!cohort || !cohort.dbStatus) {
@@ -194,6 +251,12 @@ export async function createInvites(
   const errors: string[] = [];
   let sent = 0;
 
+  const participantByEmail = new Map<string, string>();
+  emails.forEach((raw, i) => {
+    const id = participantIds?.[i];
+    if (id) participantByEmail.set(raw.trim().toLowerCase(), id);
+  });
+
   for (const raw of emails) {
     const email = raw.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -205,23 +268,41 @@ export async function createInvites(
     const expiresAt = new Date(Date.now() + holdHours * 3600 * 1000).toISOString();
     const userId = await findUserIdByEmail(email);
 
-    const { error } = await supabase.from("cohort_invites").insert({
+    // Which player on that account the spot is for. An email-only invite goes
+    // to the holder themselves; `participantIds` names someone else.
+    const participantId =
+      participantByEmail.get(email) ??
+      (await resolveParticipantId({ accountId: userId, email }).catch(() => null));
+    const participant = participantId
+      ? await getParticipant(participantId).catch(() => null)
+      : null;
+
+    const inviteRow: Record<string, unknown> = {
       cohort_id: cohortId,
       email,
       user_id: userId,
       token,
       status: "invited",
       expires_at: expiresAt,
-    });
+    };
+    if (participantId) inviteRow.participant_id = participantId;
+
+    let { error } = await supabase.from("cohort_invites").insert(inviteRow);
+    if (error && /participant_id/i.test(error.message)) {
+      // Migration 0007 hasn't been pasted yet — invite on the email alone.
+      delete inviteRow.participant_id;
+      ({ error } = await supabase.from("cohort_invites").insert(inviteRow));
+    }
     if (error) {
       errors.push(`${email}: ${error.message}`);
       continue;
     }
 
-    const credit = await findUnusedCredit(email);
+    const credit = await findUnusedCredit(email, { participantId });
     const enrollUrl = `${siteUrl()}/enroll/${cohortId}?invite=${token}`;
     await sendCohortInviteEmail({
       to: email,
+      participantName: participant?.full_name ?? null,
       levelLabel: cohortLevelLabel(cohort),
       tierNames,
       programTitle: programTitle(cohort.programId),
@@ -285,31 +366,58 @@ export async function getInviteByToken(
 
 // ─── Confirmation ─────────────────────────────────────────────────────────────
 
-/** Distinct member emails: paid invites plus paid/test-paid enrollments. */
-export async function memberEmails(cohortId: string): Promise<string[]> {
+/** One entry per player in the cohort: who is in, and whose inbox to use. */
+export type CohortMember = { email: string; participantName: string | null };
+
+/**
+ * Members: paid invites plus paid/test-paid enrollments. One entry per player,
+ * so a parent with two children in the same cohort gets one email per child.
+ * De-duplicated on (email, player) — the same person from both sources is one
+ * member.
+ */
+export async function cohortMembers(cohortId: string): Promise<CohortMember[]> {
   const supabase = createServiceClient();
   const [{ data: invites }, { data: enrollments }] = await Promise.all([
     supabase
       .from("cohort_invites")
-      .select("email")
+      .select("email, participant_id")
       .eq("cohort_id", cohortId)
       .eq("status", "paid"),
     supabase
       .from("enrollments")
-      .select("contact_email")
+      .select("contact_email, participant_name")
       .eq("cohort_id", cohortId)
       .in("status", ["paid", "test_paid"]),
   ]);
-  const set = new Set<string>();
+
+  const participants = await listPlayers().catch(() => [] as PlayerRecord[]);
+  const byId = new Map(participants.map((p) => [p.id, p]));
+
+  const seen = new Set<string>();
+  const out: CohortMember[] = [];
+  const add = (email: string | null | undefined, name: string | null) => {
+    const e = email?.trim().toLowerCase();
+    if (!e) return;
+    const key = `${e}|${(name ?? "").trim().toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ email: e, participantName: name?.trim() || null });
+  };
+
   for (const r of invites ?? []) {
-    const e = (r as { email: string }).email?.trim().toLowerCase();
-    if (e) set.add(e);
+    const row = r as { email: string; participant_id?: string | null };
+    add(row.email, byId.get(row.participant_id ?? "")?.full_name ?? null);
   }
   for (const r of enrollments ?? []) {
-    const e = (r as { contact_email: string | null }).contact_email?.trim().toLowerCase();
-    if (e) set.add(e);
+    const row = r as { contact_email: string | null; participant_name: string | null };
+    add(row.contact_email, row.participant_name);
   }
-  return [...set];
+  return out;
+}
+
+/** Distinct member emails (one per inbox, players collapsed). */
+export async function memberEmails(cohortId: string): Promise<string[]> {
+  return [...new Set((await cohortMembers(cohortId)).map((m) => m.email))];
 }
 
 /**
@@ -359,7 +467,10 @@ function sessionLine(s: SessionRow): string {
   return s.makeup_for ? `${base} (make-up)` : base;
 }
 
-type InviteRef = Pick<InviteRow, "id" | "email" | "status" | "expires_at" | "payment_method">;
+type InviteRef = Pick<
+  InviteRow,
+  "id" | "email" | "status" | "expires_at" | "payment_method" | "participant_id"
+>;
 
 async function findInviteById(cohortId: string, inviteId: string): Promise<InviteRef | null> {
   const supabase = createServiceClient();
@@ -391,9 +502,11 @@ export async function markInvitePaidAndMaybeConfirm(params: {
   email?: string;
   inviteToken?: string;
   inviteId?: string;
+  /** Narrows the email lookup when one account holds several invites. */
+  participantId?: string;
   payment?: { method: PaymentMethod; note?: string | null };
 }): Promise<{ ok: boolean; error?: string }> {
-  const { cohortId, email, inviteToken, inviteId, payment } = params;
+  const { cohortId, email, inviteToken, inviteId, participantId, payment } = params;
   const supabase = createServiceClient();
 
   let target: InviteRef | null = null;
@@ -409,16 +522,34 @@ export async function markInvitePaidAndMaybeConfirm(params: {
       .maybeSingle();
     target = (data as InviteRef | null) ?? null;
   } else if (email) {
-    const { data } = await supabase
-      .from("cohort_invites")
-      .select("*")
-      .eq("cohort_id", cohortId)
-      .ilike("email", email.trim())
-      .in("status", PAYABLE_STATUSES)
-      .order("invited_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    target = (data as InviteRef | null) ?? null;
+    // With several players on one account the email alone is ambiguous, so
+    // the participant narrows it. Falling back to the newest live invite
+    // keeps every pre-household caller working.
+    const byParticipant = participantId
+      ? await supabase
+          .from("cohort_invites")
+          .select("*")
+          .eq("cohort_id", cohortId)
+          .eq("participant_id", participantId)
+          .in("status", PAYABLE_STATUSES)
+          .order("invited_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : null;
+    if (byParticipant?.data) {
+      target = byParticipant.data as InviteRef;
+    } else {
+      const { data } = await supabase
+        .from("cohort_invites")
+        .select("*")
+        .eq("cohort_id", cohortId)
+        .ilike("email", email.trim())
+        .in("status", PAYABLE_STATUSES)
+        .order("invited_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      target = (data as InviteRef | null) ?? null;
+    }
   }
 
   if (target) {
@@ -473,10 +604,12 @@ export async function markInvitePaidAndMaybeConfirm(params: {
 
 /** The invite's price after the assessment credit (for admin display). */
 export async function inviteAmountDueCents(
-  invite: Pick<InviteRow, "email">,
+  invite: Pick<InviteRow, "email" | "participant_id">,
   cohort: Cohort
 ): Promise<number> {
-  const credit = await findUnusedCredit(invite.email);
+  const credit = await findUnusedCredit(invite.email, {
+    participantId: invite.participant_id ?? null,
+  });
   return amountDueCents(cohort.priceCents, credit?.creditCents ?? 0);
 }
 
@@ -501,14 +634,18 @@ export async function adminMarkInvitePaid(
   });
   if (!result.ok) return result;
 
-  await settleEtransferEnrollment(cohortId, invite.email).catch((err) =>
+  await settleEtransferEnrollment(cohortId, invite.email, invite.participant_id).catch((err) =>
     console.error("E-transfer settlement bookkeeping failed (non-blocking):", err)
   );
   return { ok: true };
 }
 
-async function settleEtransferEnrollment(cohortId: string, email: string): Promise<void> {
-  const credit = await findUnusedCredit(email);
+async function settleEtransferEnrollment(
+  cohortId: string,
+  email: string,
+  participantId?: string | null
+): Promise<void> {
+  const credit = await findUnusedCredit(email, { participantId });
   if (credit) await markCreditApplied(credit.bookingId);
 
   const supabase = createServiceClient();
@@ -599,8 +736,11 @@ export type EtransferIntentResult =
  */
 export async function recordEtransferIntent(params: {
   cohortId: string;
+  /** The account holder's email — one payer. */
   contactEmail: string;
+  /** The player this spot is for. */
   participantName: string;
+  participantId?: string | null;
   inviteToken?: string | null;
 }): Promise<EtransferIntentResult> {
   const { cohortId, inviteToken } = params;
@@ -631,7 +771,20 @@ export async function recordEtransferIntent(params: {
       .maybeSingle();
     invite = (data as InviteRef | null) ?? null;
   }
-  if (!invite) {
+  if (!invite && params.participantId) {
+    // Several players on one account: match this player's own invite first.
+    const { data } = await supabase
+      .from("cohort_invites")
+      .select("*")
+      .eq("cohort_id", cohortId)
+      .eq("participant_id", params.participantId)
+      .in("status", ["invited", "paid"])
+      .order("invited_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    invite = (data as InviteRef | null) ?? null;
+  }
+  if (!invite && !params.participantId) {
     const { data } = await supabase
       .from("cohort_invites")
       .select("*")
@@ -645,25 +798,37 @@ export async function recordEtransferIntent(params: {
   }
   if (!invite) {
     const holdHours = cohort.inviteHoldHours ?? 48;
-    const { data, error } = await supabase
+    const row: Record<string, unknown> = {
+      cohort_id: cohortId,
+      email,
+      user_id: await findUserIdByEmail(email),
+      token: newToken(),
+      status: "invited",
+      expires_at: new Date(Date.now() + holdHours * 3600 * 1000).toISOString(),
+    };
+    if (params.participantId) row.participant_id = params.participantId;
+    let { data, error } = await supabase
       .from("cohort_invites")
-      .insert({
-        cohort_id: cohortId,
-        email,
-        user_id: await findUserIdByEmail(email),
-        token: newToken(),
-        status: "invited",
-        expires_at: new Date(Date.now() + holdHours * 3600 * 1000).toISOString(),
-      })
+      .insert(row)
       .select("*")
       .single();
+    if (error && /participant_id/i.test(error.message)) {
+      delete row.participant_id;
+      ({ data, error } = await supabase
+        .from("cohort_invites")
+        .insert(row)
+        .select("*")
+        .single());
+    }
     if (error || !data) {
       return { ok: false, error: "Couldn't hold your spot — please try again.", status: 500 };
     }
     invite = data as InviteRef;
   }
 
-  const credit = await findUnusedCredit(email);
+  const credit = await findUnusedCredit(email, {
+    participantId: params.participantId ?? invite.participant_id ?? null,
+  });
   const creditCents = Math.min(credit?.creditCents ?? 0, cohort.priceCents);
   const amountCents = amountDueCents(cohort.priceCents, creditCents);
   const recipientEmail = etransferRecipient();
@@ -748,16 +913,17 @@ export async function maybeConfirmCohort(cohortId: string): Promise<void> {
     .filter((s) => s.status !== "cancelled")
     .map(sessionLine);
 
-  const emails = await memberEmails(cohortId);
-  for (const to of emails) {
+  const members = await cohortMembers(cohortId);
+  for (const member of members) {
     await sendCohortConfirmedEmail({
-      to,
+      to: member.email,
+      participantName: member.participantName,
       cohortLabel: cohort.label,
       programTitle: programTitle(cohort.programId),
       startDateLabel: fmtDateShort(cohort.startDate),
       sessionLines: lines,
     }).catch((err) =>
-      console.error(`Confirmed email to ${to} failed (non-blocking):`, err)
+      console.error(`Confirmed email to ${member.email} failed (non-blocking):`, err)
     );
   }
 }

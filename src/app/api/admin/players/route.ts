@@ -1,20 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminUser } from "@/lib/adminAuth";
-import { createServiceClient } from "@/lib/supabase/service";
 import { availabilityChips } from "@/lib/availability";
 import {
   listPlayers,
+  listAccounts,
   filterPlayersByView,
   sortPlayers,
   setPlayerLevel,
   setPlayerLevelNotes,
   setPlayerAvailability,
+  RELATIONSHIP_LABELS,
+  isRelationship,
   type PlayerView,
   type PlayerSort,
 } from "@/lib/players";
 
-// Admin player pool: every account, leveled or not (plus emails from
-// auth.users). Coach corrections — level, note, availability — post back here.
+// Admin player pool: every participant on every account — the holder
+// themselves, their children, a spouse — leveled or not, each carrying the
+// account they belong to. Coach corrections (level, note, availability) post
+// back here against the participant id.
 //
 // GET ?view=all|leveled|unleveled (default all)
 //     &sort=level|availability_updated_at (default level)
@@ -39,33 +43,38 @@ export async function GET(req: NextRequest) {
     : "level";
 
   try {
-    const all = await listPlayers();
-
-    // Small project — one page of users covers everyone (same as assessments).
-    const supabase = createServiceClient();
-    const { data: users } = await supabase.auth.admin.listUsers({
-      page: 1,
-      perPage: 200,
-    });
-    const emailById = new Map(
-      (users?.users ?? []).map((u) => [u.id, u.email ?? ""])
-    );
+    const [all, accounts] = await Promise.all([listPlayers(), listAccounts()]);
 
     const players = sortPlayers(filterPlayersByView(all, view), sort, dirParam).map(
-      (p) => ({
-        id: p.id,
-        name: p.full_name,
-        email: emailById.get(p.id) ?? "",
-        phone: p.phone,
-        level: p.level,
-        level_assessed_at: p.level_assessed_at,
-        level_notes: p.level_notes,
-        availability: p.availability,
-        availability_chips: availabilityChips(p.availability),
-        availability_updated_at: p.availability_updated_at,
-        availability_source: p.availability_source,
-        availability_note: p.availability_note,
-      })
+      (p) => {
+        const account = accounts.get(p.account_id);
+        return {
+          id: p.id,
+          name: p.full_name,
+          relationship: p.relationship,
+          relationshipLabel: isRelationship(p.relationship)
+            ? RELATIONSHIP_LABELS[p.relationship]
+            : "",
+          isMinor: p.is_minor,
+          // The account this player belongs to — two "Maya Chen"s under
+          // different parents are told apart by this.
+          account: {
+            id: p.account_id,
+            name: account?.name ?? null,
+            email: account?.email ?? "",
+          },
+          email: account?.email ?? "",
+          phone: account?.phone ?? null,
+          level: p.level,
+          level_assessed_at: p.level_assessed_at,
+          level_notes: p.level_notes,
+          availability: p.availability,
+          availability_chips: availabilityChips(p.availability),
+          availability_updated_at: p.availability_updated_at,
+          availability_source: p.availability_source,
+          availability_note: p.availability_note,
+        };
+      }
     );
 
     return NextResponse.json({
@@ -91,6 +100,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
+    // The id is the participant's — the person, not the account.
     const id = String(body.id ?? "").trim();
     if (!id) {
       return NextResponse.json({ error: "Missing player id." }, { status: 400 });

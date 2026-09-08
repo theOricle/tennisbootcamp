@@ -11,6 +11,13 @@ import {
   AvailabilityHoursLegend,
 } from "@/components/ui/AvailabilityGrid";
 import { parseAvailability, type Availability } from "@/lib/availability";
+import {
+  WhoIsThisFor,
+  useHousehold,
+  EMPTY_HOUSEHOLD,
+  householdReady,
+  type HouseholdValue,
+} from "@/components/participants/WhoIsThisFor";
 
 type PublicSlot = { slotStart: string; timeLabel: string; taken: boolean };
 type PublicBlock = {
@@ -27,6 +34,8 @@ type Prefill = {
   phone?: string;
   selfLevel?: string;
   availability?: unknown;
+  /** Who the quiz was about, so the booking starts on the same person. */
+  household?: HouseholdValue;
 };
 
 const SELF_LEVELS = [
@@ -49,7 +58,9 @@ const inputClass =
   "w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-base text-white placeholder-white/35 " +
   "focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
 
-// Contact fields shared by the slot-booking and request-a-time forms.
+// Account-holder contact fields, shared by the slot-booking and request-a-time
+// forms. One holder, one inbox — the players they book for come from the
+// "Who is this for?" chooser above.
 function ContactFields({
   name,
   setName,
@@ -59,6 +70,8 @@ function ContactFields({
   setPhone,
   selfLevel,
   setSelfLevel,
+  signedIn,
+  accountEmail,
 }: {
   name: string;
   setName: (v: string) => void;
@@ -68,12 +81,40 @@ function ContactFields({
   setPhone: (v: string) => void;
   selfLevel: string;
   setSelfLevel: (v: string) => void;
+  signedIn: boolean;
+  accountEmail: string;
 }) {
+  if (signedIn) {
+    return (
+      <div className="space-y-4">
+        <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+          Booking on your account —{" "}
+          <span className="font-semibold text-white">{accountEmail}</span>.
+          Confirmations come here.
+        </p>
+        <div>
+          <label htmlFor="phone" className="mb-1.5 block text-sm text-white/70">
+            Phone <span className="text-white/35">(optional)</span>
+          </label>
+          <input
+            id="phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            autoComplete="tel"
+            inputMode="tel"
+            className={inputClass}
+          />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="space-y-4">
       <div>
         <label htmlFor="name" className="mb-1.5 block text-sm text-white/70">
-          Full name
+          Your full name{" "}
+          <span className="text-white/35">(the account holder)</span>
         </label>
         <input
           id="name"
@@ -165,6 +206,10 @@ export default function BookAssessmentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Who is this for? (backlog #11) — one booking is one participant, one slot.
+  const household = useHousehold();
+  const [who, setWho] = useState<HouseholdValue>(EMPTY_HOUSEHOLD);
+
   // Load open slots. All state updates happen in async callbacks so this is safe
   // to call from an effect as well as from event handlers.
   const loadSlots = useCallback(() => {
@@ -195,6 +240,7 @@ export default function BookAssessmentPage() {
         if (p.phone) setPhone(p.phone);
         if (p.selfLevel) setSelfLevel(p.selfLevel);
         if (p.availability) setAvailability(parseAvailability(p.availability));
+        if (p.household?.guests?.length) setWho(p.household);
       } catch {
         // ignore malformed prefill
       }
@@ -209,8 +255,31 @@ export default function BookAssessmentPage() {
     ? availability
     : undefined;
 
-  const canSubmit =
-    !!selected && name.trim().length > 0 && isValidEmail(email.trim()) && !submitting;
+  // Signed in the account supplies the holder's name and email; signed out the
+  // contact fields do.
+  const contactOk =
+    household.signedIn || (name.trim().length > 0 && isValidEmail(email.trim()));
+  const whoOk = householdReady(who, household.signedIn);
+
+  /** The one person this booking is for, in the shape the API expects. */
+  function whoPayload() {
+    if (household.signedIn) {
+      return { participantId: who.selectedIds[0] };
+    }
+    const guest = who.guests.find((g) => g.name.trim());
+    return {
+      participant: guest
+        ? {
+            name: guest.name.trim(),
+            relationship: guest.relationship,
+            isMinor: guest.isMinor,
+            selfLevel: guest.selfLevel || undefined,
+          }
+        : undefined,
+    };
+  }
+
+  const canSubmit = !!selected && contactOk && whoOk && !submitting;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -231,6 +300,7 @@ export default function BookAssessmentPage() {
           phone: phone.trim() || undefined,
           selfLevel: selfLevel || undefined,
           availability: availabilityPayload,
+          ...whoPayload(),
         }),
       });
       const data = await res.json();
@@ -257,10 +327,7 @@ export default function BookAssessmentPage() {
   }
 
   const canSubmitRequest =
-    name.trim().length > 0 &&
-    isValidEmail(email.trim()) &&
-    hasAnyAvailability(availability) &&
-    !submitting;
+    contactOk && whoOk && hasAnyAvailability(availability) && !submitting;
 
   async function handleRequestSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -281,6 +348,7 @@ export default function BookAssessmentPage() {
           selfLevel: selfLevel || undefined,
           availability,
           note: note.trim() || undefined,
+          ...whoPayload(),
         }),
       });
       const data = await res.json();
@@ -395,7 +463,25 @@ export default function BookAssessmentPage() {
 
             <section>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                1 · When can you play?
+                1 · Who is this for?
+              </h2>
+              <div className="mt-4">
+                <WhoIsThisFor
+                  household={household}
+                  value={who}
+                  onChange={setWho}
+                  intro={
+                    household.signedIn
+                      ? "One assessment, one player. Booking for two of your people? Book the first, then come back for the next."
+                      : "One assessment, one player. Your own details come next — they stay the account everything is booked under."
+                  }
+                />
+              </div>
+            </section>
+
+            <section>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
+                2 · When can they play?
               </h2>
               <p className="mt-2 text-sm text-white/55">
                 Tap every time of week that usually works for you.
@@ -408,7 +494,7 @@ export default function BookAssessmentPage() {
 
             <section>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                2 · Your details
+                3 · Your details
               </h2>
               <div className="mt-4">
                 <ContactFields
@@ -420,6 +506,8 @@ export default function BookAssessmentPage() {
                   setPhone={setPhone}
                   selfLevel={selfLevel}
                   setSelfLevel={setSelfLevel}
+                  signedIn={household.signedIn}
+                  accountEmail={household.accountEmail}
                 />
                 <div className="mt-4">
                   <label htmlFor="note" className="mb-1.5 block text-sm text-white/70">
@@ -460,10 +548,28 @@ export default function BookAssessmentPage() {
           </form>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-8">
+            <section>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
+                1 · Who is this for?
+              </h2>
+              <div className="mt-4">
+                <WhoIsThisFor
+                  household={household}
+                  value={who}
+                  onChange={setWho}
+                  intro={
+                    household.signedIn
+                      ? "One assessment, one player. Booking for two of your people? Book the first, then come back for the next."
+                      : "One assessment, one player. Your own details come next — they stay the account everything is booked under."
+                  }
+                />
+              </div>
+            </section>
+
             {/* Slot picker */}
             <section>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                1 · Pick a slot
+                2 · Pick a slot
               </h2>
 
               <div className="mt-4 space-y-6">
@@ -532,7 +638,7 @@ export default function BookAssessmentPage() {
             {/* Contact */}
             <section>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                2 · Your details
+                3 · Your details
               </h2>
               <div className="mt-4">
                 <ContactFields
@@ -544,6 +650,8 @@ export default function BookAssessmentPage() {
                   setPhone={setPhone}
                   selfLevel={selfLevel}
                   setSelfLevel={setSelfLevel}
+                  signedIn={household.signedIn}
+                  accountEmail={household.accountEmail}
                 />
               </div>
             </section>

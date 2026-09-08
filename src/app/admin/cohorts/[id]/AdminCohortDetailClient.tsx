@@ -12,7 +12,11 @@ type PaymentMode = "card" | "etransfer";
 
 type InviteRow = {
   id: string;
+  /** The account holder's email — one payer, one inbox. */
   email: string;
+  /** Which player on that account the spot is for (backlog #11). */
+  participant_name?: string;
+  account_name?: string;
   token: string;
   status: "invited" | "paid" | "declined" | "expired";
   invited_at: string;
@@ -154,7 +158,16 @@ function InviteItem({
     <li className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm text-white">{invite.email}</p>
+          <p className="truncate text-sm text-white">
+            {invite.participant_name || invite.email}
+          </p>
+          {/* Two players under one payer read as two rows, told apart here. */}
+          <p className="truncate text-[11px] text-white/45">
+            <span className="text-white/30">Account: </span>
+            {invite.account_name && invite.account_name !== invite.email
+              ? `${invite.account_name} · ${invite.email}`
+              : invite.email}
+          </p>
           {meta && <p className="mt-0.5 text-[11px] text-white/45">{meta}</p>}
           {invite.payment_note && (
             <p className="mt-0.5 text-[11px] text-white/60">{invite.payment_note}</p>

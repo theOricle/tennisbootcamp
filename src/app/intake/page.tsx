@@ -14,10 +14,17 @@ import {
   AvailabilityGrid,
   AvailabilityHoursLegend,
 } from "@/components/ui/AvailabilityGrid";
+import {
+  WhoIsThisFor,
+  useHousehold,
+  EMPTY_HOUSEHOLD,
+  householdReady,
+  type HouseholdValue,
+} from "@/components/participants/WhoIsThisFor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type StepType = "single" | "multi" | "contact" | "availability";
+type StepType = "single" | "multi" | "contact" | "availability" | "household";
 
 type Option = {
   id: string;
@@ -34,6 +41,8 @@ type Step = {
 };
 
 type FormState = {
+  /** Who the quiz is about — one row per player (backlog #11). */
+  household: HouseholdValue;
   who?: "adult" | "youth";
   level?: "new" | "rally" | "competitive" | "elite";
   goals: string[];
@@ -146,6 +155,7 @@ function TentativeMatchScreen({
           phone: form.phone,
           selfLevel,
           availability: form.availability,
+          household: form.household,
         })
       );
     } catch {
@@ -261,6 +271,7 @@ function FallbackScreen({
           phone: form.phone,
           selfLevel,
           availability: form.availability,
+          household: form.household,
         })
       );
     } catch {
@@ -338,6 +349,13 @@ function IntakePageInner() {
   const steps: Step[] = useMemo(
     () => [
       {
+        id: "household",
+        title: "Who is this for?",
+        subtitle:
+          "Yourself, your child, both — add everyone you want placed and each one gets their own read.",
+        type: "household",
+      },
+      {
         id: "who",
         title: "Who is training?",
         subtitle:
@@ -398,7 +416,9 @@ function IntakePageInner() {
   // selection highlight even though two options map to who="adult".
   const [whoOptionId, setWhoOptionId] = useState<string | null>(null);
 
+  const household = useHousehold();
   const [form, setForm] = useState<FormState>({
+    household: EMPTY_HOUSEHOLD,
     goals: [],
     programs: preselectedProgram,
     // No venue step (backlog #1): court details are confirmed in the booking
@@ -453,6 +473,8 @@ function IntakePageInner() {
 
   function canContinue(): boolean {
     switch (current.id) {
+      case "household":
+        return householdReady(form.household, household.signedIn);
       case "who":
         return whoOptionId !== null;
       case "level":
@@ -496,6 +518,16 @@ function IntakePageInner() {
           // col 16: structured availability grid; API serializes to compact string
           availability: form.availability,
           recommendedProgram: topProgram,
+          // Who the quiz is about (cols 18–22, one row per player).
+          participantIds: form.household.selectedIds,
+          participants: form.household.guests
+            .filter((g) => g.name.trim())
+            .map((g) => ({
+              name: g.name.trim(),
+              relationship: g.relationship,
+              isMinor: g.isMinor,
+              selfLevel: g.selfLevel || undefined,
+            })),
         }),
       });
       if (!res.ok) throw new Error("Submission failed");
@@ -593,6 +625,15 @@ function IntakePageInner() {
                   />
                 ))}
               </div>
+            ) : null}
+
+            {current.type === "household" ? (
+              <WhoIsThisFor
+                household={household}
+                value={form.household}
+                onChange={(next) => setForm((s) => ({ ...s, household: next }))}
+                multiple
+              />
             ) : null}
 
             {current.type === "availability" ? (

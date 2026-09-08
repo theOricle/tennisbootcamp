@@ -11,7 +11,13 @@ import {
   type CohortSessionRow,
 } from "@/lib/cohortsDb";
 import { dayNameForDate } from "@/lib/makeup";
-import { getPlayer } from "@/lib/players";
+import {
+  listParticipantsForAccount,
+  ensureSelfParticipant,
+  RELATIONSHIP_LABELS,
+  isRelationship,
+  type PlayerRecord,
+} from "@/lib/players";
 import { VENUE_LINE } from "@/lib/membership";
 import { TierStatus, TierRangeBadges } from "@/components/tiers";
 import { AvailabilityEditor } from "./AvailabilityEditor";
@@ -174,14 +180,17 @@ async function DashboardContent({
 }) {
   const supabase = await createClient();
 
-  // The player's own row, read with their session (RLS) through the shared
-  // players helper. A missing row (brand-new user) is null, not an error.
-  const [profileResult, { data: enrollments, error: enrollError }] = await Promise.all([
-    getPlayer(userId, supabase).then(
-      (p) => ({ profile: p, error: null as string | null }),
+  // Everyone on this account, read with the holder's session (RLS) through the
+  // shared players helper. A brand-new account gets its 'self' participant on
+  // first load, so the page is never empty.
+  await ensureSelfParticipant(userId).catch(() => null);
+
+  const [playersResult, { data: enrollments, error: enrollError }] = await Promise.all([
+    listParticipantsForAccount(userId, supabase).then(
+      (p) => ({ players: p, error: null as string | null }),
       (err: unknown) => ({
-        profile: null,
-        error: err instanceof Error ? err.message : "profile read failed",
+        players: [] as PlayerRecord[],
+        error: err instanceof Error ? err.message : "player read failed",
       })
     ),
     supabase
@@ -190,13 +199,14 @@ async function DashboardContent({
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
   ]);
-  const profile = profileResult.profile;
+  const players = playersResult.players;
+  const self = players.find((p) => p.relationship === "self") ?? players[0] ?? null;
 
-  if (profileResult.error || enrollError) {
+  if (playersResult.error || enrollError) {
     return <DashboardErrorState />;
   }
 
-  const firstName = profile?.full_name?.trim().split(/\s+/)[0] || userEmail || "";
+  const firstName = self?.full_name?.trim().split(/\s+/)[0] || userEmail || "";
 
   const cohorts = await getAllCohorts();
   const enrolledCohortIds = [
@@ -204,7 +214,7 @@ async function DashboardContent({
   ];
   const [cohortSessions, tierCohorts] = await Promise.all([
     getSessionsForCohorts(enrolledCohortIds),
-    getOpenCohortsForLevel(profile?.level ?? null),
+    getOpenCohortsForLevel(self?.level ?? null),
   ]);
   const sessionsByCohort = new Map<string, CohortSessionRow[]>();
   for (const s of cohortSessions) {
@@ -238,7 +248,7 @@ async function DashboardContent({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          <TierStatus level={profile?.level ?? null} />
+          <TierStatus level={self?.level ?? null} />
           <Link
             href="/profile"
             className="rounded-full text-sm font-semibold text-white/70 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
@@ -400,18 +410,57 @@ async function DashboardContent({
 
       </div>
 
-      {/* Your availability — the standard the cohort builder reads */}
+      {/* One card per person on the account — level, tier, and the availability
+          the cohort builder reads. */}
       <section className="mt-16 max-w-2xl">
         <div className="border-l-2 border-[#B4E655] pl-4">
-          <h2 className="text-lg font-semibold text-white">Your availability</h2>
+          <h2 className="text-lg font-semibold text-white">
+            {players.length > 1 ? "Your players" : "Your availability"}
+          </h2>
         </div>
         <div className="mb-6 mt-2 border-b border-white/10" />
-        <AvailabilityEditor
-          initialAvailability={profile?.availability ?? { days: {}, v: 1 }}
-          initialNote={profile?.availability_note ?? ""}
-          updatedAt={profile?.availability_updated_at ?? null}
-          source={profile?.availability_source ?? null}
-        />
+        <div className="space-y-8">
+          {players.map((player) => (
+            <div
+              key={player.id}
+              className="rounded-2xl border border-white/10 bg-white/5 p-5"
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-base font-semibold text-white">
+                    {player.full_name?.trim() || "Unnamed player"}
+                  </p>
+                  <p className="text-xs text-white/45">
+                    {isRelationship(player.relationship)
+                      ? RELATIONSHIP_LABELS[player.relationship]
+                      : ""}
+                    {player.is_minor ? " · Under 18" : ""}
+                  </p>
+                </div>
+                <TierStatus level={player.level} />
+              </div>
+              <AvailabilityEditor
+                participantId={player.id}
+                participantName={player.full_name?.trim() ?? ""}
+                showName={players.length > 1}
+                initialAvailability={player.availability}
+                initialNote={player.availability_note ?? ""}
+                updatedAt={player.availability_updated_at}
+                source={player.availability_source}
+              />
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-xs text-white/45">
+          Training someone else too — a child, a partner? Add them when you{" "}
+          <Link
+            href="/assessment/book"
+            className="font-semibold text-[#B4E655]/80 underline-offset-2 hover:text-[#B4E655] hover:underline"
+          >
+            book their assessment
+          </Link>
+          .
+        </p>
       </section>
     </>
   );

@@ -16,6 +16,12 @@ import {
   findUserIdByEmail,
   setPlayerLevel,
   setPlayerAvailabilityByEmail,
+  resolveParticipantId,
+  getParticipant,
+  getAccount,
+  listPlayers,
+  listAccounts,
+  type PlayerRecord,
 } from "@/lib/players";
 
 // Re-exported so existing importers keep working; the lookup itself now lives
@@ -50,7 +56,9 @@ export type BookingRow = {
   id: string;
   block_id: string | null;   // null only while status = 'requested'
   slot_start: string | null; // null only while status = 'requested'
+  /** The player's name — the participant, not necessarily the account holder. */
   name: string;
+  /** The account holder's email: one payer, one inbox, many players. */
   email: string;
   phone: string | null;
   user_id: string | null;
@@ -63,6 +71,8 @@ export type BookingRow = {
   coach_notes: string | null;
   credit_status: string;
   request_note: string | null;
+  /** Who this booking is for (migration 0007). Undefined before it runs. */
+  participant_id?: string | null;
   created_at: string;
   expires_at: string | null;
 };
@@ -227,6 +237,82 @@ export async function getUpcomingSlots(): Promise<PublicBlock[]> {
   });
 }
 
+// ─── Household context (backlog #11) ──────────────────────────────────────────
+// A booking is for one participant, on one account. The account holder's email
+// is where confirmations go; the participant's name is who the email is about
+// and what the Sheet and the admin list show.
+
+export type BookingHousehold = {
+  participantId: string | null;
+  participantName: string;
+  participantRelationship: string;
+  accountId: string | null;
+  accountEmail: string;
+  accountName: string;
+};
+
+/** 42703 on participant_id — migration 0007 hasn't been pasted yet. */
+function isMissingParticipantColumn(
+  error: { code?: string; message?: string } | null
+): boolean {
+  return (
+    !!error &&
+    (error.code === "42703" || /participant_id/i.test(error.message ?? ""))
+  );
+}
+
+/** Best-effort: stamp a resolved participant onto a row that predates 0007. */
+async function attachParticipant(bookingId: string, participantId: string) {
+  const supabase = createServiceClient();
+  const { error } = await supabase
+    .from("assessment_bookings")
+    .update({ participant_id: participantId })
+    .eq("id", bookingId);
+  if (error) {
+    console.warn("Booking participant not stamped (run migration 0007?):", error.message);
+  }
+}
+
+/**
+ * Who a booking is for, and whose account it sits on. A row without a
+ * participant_id (written before 0007, or by a guest whose account came later)
+ * is resolved to the holder's 'self' participant and stamped, so the Sheet and
+ * the emails always carry the household columns.
+ */
+export async function bookingHousehold(
+  booking: BookingRow
+): Promise<BookingHousehold> {
+  let participant: PlayerRecord | null = null;
+  if (booking.participant_id) {
+    participant = await getParticipant(booking.participant_id).catch(() => null);
+  }
+  if (!participant) {
+    const resolved = await resolveParticipantId({
+      accountId: booking.user_id,
+      email: booking.email,
+      fullName: booking.name,
+    }).catch(() => null);
+    if (resolved) {
+      participant = await getParticipant(resolved).catch(() => null);
+      if (participant && !booking.participant_id) {
+        await attachParticipant(booking.id, participant.id).catch(() => undefined);
+      }
+    }
+  }
+
+  const accountId = participant?.account_id ?? booking.user_id ?? null;
+  const account = accountId ? await getAccount(accountId).catch(() => null) : null;
+
+  return {
+    participantId: participant?.id ?? null,
+    participantName: participant?.full_name?.trim() || booking.name,
+    participantRelationship: participant?.relationship ?? "",
+    accountId,
+    accountEmail: account?.email || booking.email,
+    accountName: account?.name?.trim() || booking.name,
+  };
+}
+
 // ─── Booking creation ─────────────────────────────────────────────────────────
 
 export class SlotTakenError extends Error {
@@ -239,36 +325,47 @@ export class SlotTakenError extends Error {
 export async function createPendingBooking(input: {
   blockId: string;
   slotStart: string;
+  /** The player's name. */
   name: string;
+  /** The account holder's email. */
   email: string;
   phone?: string | null;
   selfLevel?: string | null;
   availability?: unknown;
   userId?: string | null;
+  /** Who the slot is for (backlog #11). */
+  participantId?: string | null;
 }): Promise<BookingRow> {
   const supabase = createServiceClient();
 
+  // `participant_id` only exists after migration 0007; drop it and retry once
+  // when the column isn't there, so a deploy ahead of the SQL still books.
+  let withParticipant = Boolean(input.participantId);
+
   const attemptInsert = async () => {
     const expiresAt = new Date(Date.now() + PENDING_TTL_MS).toISOString();
-    return supabase
-      .from("assessment_bookings")
-      .insert({
-        block_id: input.blockId,
-        slot_start: normTime(input.slotStart),
-        name: input.name,
-        email: input.email,
-        phone: input.phone ?? null,
-        user_id: input.userId ?? null,
-        self_level: input.selfLevel ?? null,
-        availability: input.availability ?? null,
-        status: "pending",
-        expires_at: expiresAt,
-      })
-      .select("*")
-      .single();
+    const row: Record<string, unknown> = {
+      block_id: input.blockId,
+      slot_start: normTime(input.slotStart),
+      name: input.name,
+      email: input.email,
+      phone: input.phone ?? null,
+      user_id: input.userId ?? null,
+      self_level: input.selfLevel ?? null,
+      availability: input.availability ?? null,
+      status: "pending",
+      expires_at: expiresAt,
+    };
+    if (withParticipant) row.participant_id = input.participantId;
+    return supabase.from("assessment_bookings").insert(row).select("*").single();
   };
 
   let { data, error } = await attemptInsert();
+
+  if (withParticipant && isMissingParticipantColumn(error)) {
+    withParticipant = false;
+    ({ data, error } = await attemptInsert());
+  }
 
   // 23505 = unique_violation on the active-slot partial index → a pending/booked
   // hold exists. It may just be an expired pending that hasn't been swept yet:
@@ -335,9 +432,10 @@ export async function confirmBooking(
   const withBlock = await getBookingWithBlock(bookingId);
   if (!withBlock) return updated as BookingRow;
   const { booking, block } = withBlock;
+  const household = await bookingHousehold(booking);
 
   await appendAssessmentRow({
-    name: booking.name,
+    name: household.participantName,
     email: booking.email,
     phone: booking.phone,
     slotDate: block.block_date,
@@ -345,11 +443,17 @@ export async function confirmBooking(
     status: "booked",
     paid: true,
     creditStatus: booking.credit_status,
+    accountEmail: household.accountEmail,
+    accountName: household.accountName,
+    participantName: household.participantName,
+    participantRelationship: household.participantRelationship,
+    participantId: household.participantId,
   });
 
   await sendBookingConfirmationEmail({
     to: booking.email,
-    name: booking.name,
+    name: household.accountName,
+    participantName: household.participantName,
     dateLabel: formatBlockDate(block.block_date),
     timeLabel: formatSlotTime(booking.slot_start ?? ""),
     locationLabel: block.location_label,
@@ -392,31 +496,34 @@ export async function completeBooking(
     .eq("id", bookingId);
   if (updErr) return { ok: false, error: updErr.message };
 
-  // Update the matching profile, if one exists (by user_id, else by email).
-  const profileId = booking.user_id ?? (await findUserIdByEmail(booking.email));
-  if (profileId) {
-    await setPlayerLevel(profileId, {
+  // The level lands on the participant this booking was for — two children on
+  // one account get two separate levels — mirrored to the profile when the
+  // participant is the account holder themselves.
+  const household = await bookingHousehold(booking);
+  if (household.participantId) {
+    await setPlayerLevel(household.participantId, {
       level: input.level,
       notes: input.coachNotes,
     });
   }
 
-  // Carry the booking's availability snapshot onto the profile as the
-  // assessment-time standard — unless the player confirmed a newer grid
-  // since booking (a dashboard confirmation is never overwritten by an
-  // older snapshot).
+  // Carry the booking's availability snapshot onto the participant as the
+  // assessment-time standard — unless they confirmed a newer grid since
+  // booking (a dashboard confirmation is never overwritten by an older
+  // snapshot).
   await setPlayerAvailabilityByEmail(booking.email, {
     availability: booking.availability,
     source: "assessment",
-    fullName: booking.name,
+    participantId: household.participantId,
     phone: booking.phone,
     onlyIfOlderThan: booking.created_at,
   }).catch((err) =>
-    console.error("Profile availability (assessment) failed (non-blocking):", err)
+    console.error("Player availability (assessment) failed (non-blocking):", err)
   );
 
   await updateAssessmentRow({
     email: booking.email,
+    participantId: household.participantId,
     slotDate: block.block_date,
     slotStart: normTime(booking.slot_start ?? ""),
     status: "completed",
@@ -427,7 +534,8 @@ export async function completeBooking(
 
   await sendAssessmentCompleteEmail({
     to: booking.email,
-    name: booking.name,
+    name: household.accountName,
+    participantName: household.participantName,
     levelLabel: levelLabel(input.level),
     coachNote: input.coachNotes,
   }).catch((err) =>
@@ -453,6 +561,7 @@ export async function markNoShow(
 
   await updateAssessmentRow({
     email: booking.email,
+    participantId: booking.participant_id ?? null,
     slotDate: block.block_date,
     slotStart: normTime(booking.slot_start ?? ""),
     status: "no_show",
@@ -527,11 +636,65 @@ export async function updateBlock(
   return { ok: true };
 }
 
-export type AdminBooking = BookingRow & {
+/** Household columns the admin lists show next to every row. */
+export type HouseholdFields = {
+  participant_name: string;
+  participant_relationship: string;
+  account_name: string;
+  account_email: string;
+};
+
+export type AdminBooking = BookingRow & HouseholdFields & {
   block_date: string;
   block_start: string;
   location_label: string | null;
 };
+
+/**
+ * Decorate a batch of bookings with participant + account, in two queries
+ * rather than two per row. Rows without a participant_id (pre-0007, or a guest
+ * booking whose account came later) fall back to the holder's 'self'
+ * participant, matched on email.
+ */
+export async function decorateHousehold<T extends BookingRow>(
+  rows: T[]
+): Promise<(T & HouseholdFields)[]> {
+  if (rows.length === 0) return [];
+  const [participants, accounts] = await Promise.all([
+    listPlayers().catch(() => [] as PlayerRecord[]),
+    listAccounts().catch(() => new Map<string, { id: string; name: string | null; email: string }>()),
+  ]);
+  const byId = new Map(participants.map((p) => [p.id, p]));
+  const selfByAccount = new Map<string, PlayerRecord>();
+  for (const p of participants) {
+    if (p.relationship === "self" && !selfByAccount.has(p.account_id)) {
+      selfByAccount.set(p.account_id, p);
+    }
+  }
+  const accountByEmail = new Map<string, string>();
+  for (const [id, a] of accounts) {
+    if (a.email) accountByEmail.set(a.email.trim().toLowerCase(), id);
+  }
+
+  return rows.map((row) => {
+    const accountId =
+      row.user_id ??
+      (byId.get(row.participant_id ?? "")?.account_id ??
+        accountByEmail.get(row.email.trim().toLowerCase()) ??
+        null);
+    const participant =
+      byId.get(row.participant_id ?? "") ??
+      (accountId ? selfByAccount.get(accountId) : undefined);
+    const account = accountId ? accounts.get(accountId) : undefined;
+    return {
+      ...row,
+      participant_name: participant?.full_name?.trim() || row.name,
+      participant_relationship: participant?.relationship ?? "",
+      account_name: account?.name?.trim() || row.name,
+      account_email: account?.email || row.email,
+    };
+  });
+}
 
 /** Bookings joined with their block, newest slot first, grouped-ready. */
 export async function listBookings(opts: { date?: string } = {}): Promise<
@@ -552,7 +715,8 @@ export async function listBookings(opts: { date?: string } = {}): Promise<
     .in("status", ["pending", "booked", "completed", "no_show"])
     .order("created_at", { ascending: false });
 
-  return ((data as BookingRow[]) ?? []).map((b) => {
+  const decorated = await decorateHousehold((data as BookingRow[]) ?? []);
+  return decorated.map((b) => {
     const block = byId.get(b.block_id ?? "");
     return {
       ...b,
@@ -581,40 +745,60 @@ function addMinutesToTime(t: string, minutes: number): string {
  * to the prospect and a notification to the inbox, both non-blocking.
  */
 export async function createRequestedBooking(input: {
+  /** The player's name. */
   name: string;
+  /** The account holder's email. */
   email: string;
   phone?: string | null;
   selfLevel?: string | null;
   availability?: unknown;
   requestNote?: string | null;
+  userId?: string | null;
+  /** Who the request is for (backlog #11). */
+  participantId?: string | null;
+  /** The holder's own name, when they're requesting for someone else. */
+  accountName?: string | null;
 }): Promise<BookingRow> {
   const supabase = createServiceClient();
-  const { data, error } = await supabase
-    .from("assessment_bookings")
-    .insert({
+
+  let withParticipant = Boolean(input.participantId);
+  const attemptInsert = async () => {
+    const row: Record<string, unknown> = {
       block_id: null,
       slot_start: null,
       name: input.name,
       email: input.email,
       phone: input.phone ?? null,
+      user_id: input.userId ?? null,
       self_level: input.selfLevel ?? null,
       availability: input.availability ?? null,
       request_note: input.requestNote ?? null,
       status: "requested",
-    })
-    .select("*")
-    .single();
+    };
+    if (withParticipant) row.participant_id = input.participantId;
+    return supabase.from("assessment_bookings").insert(row).select("*").single();
+  };
+
+  let { data, error } = await attemptInsert();
+  if (withParticipant && isMissingParticipantColumn(error)) {
+    withParticipant = false;
+    ({ data, error } = await attemptInsert());
+  }
   if (error) throw new Error(`Failed to create request: ${error.message}`);
   const booking = data as BookingRow;
 
+  const holderName = input.accountName?.trim() || booking.name;
+
   await sendAssessmentRequestReceivedEmail({
     to: booking.email,
-    name: booking.name,
+    name: holderName,
+    participantName: booking.name,
   }).catch((err) =>
     console.error("Request-received email failed (non-blocking):", err)
   );
   await sendAssessmentRequestAdminEmail({
-    name: booking.name,
+    name: holderName,
+    participantName: booking.name,
     email: booking.email,
     phone: booking.phone,
     selfLevel: booking.self_level,
@@ -636,7 +820,8 @@ export async function createRequestedBooking(input: {
   await setPlayerAvailabilityByEmail(booking.email, {
     availability: booking.availability,
     source: "request",
-    fullName: booking.name,
+    participantId: booking.participant_id ?? null,
+    fullName: input.accountName?.trim() ? null : booking.name,
     phone: booking.phone,
   }).catch((err) =>
     console.error("Profile availability (request) failed (non-blocking):", err)
@@ -646,14 +831,16 @@ export async function createRequestedBooking(input: {
 }
 
 /** Open requests, oldest first — the admin works the queue top-down. */
-export async function listRequestedBookings(): Promise<BookingRow[]> {
+export async function listRequestedBookings(): Promise<
+  (BookingRow & HouseholdFields)[]
+> {
   const supabase = createServiceClient();
   const { data } = await supabase
     .from("assessment_bookings")
     .select("*")
     .eq("status", "requested")
     .order("created_at", { ascending: true });
-  return (data as BookingRow[]) ?? [];
+  return decorateHousehold((data as BookingRow[]) ?? []);
 }
 
 /**
@@ -667,8 +854,10 @@ async function finalizeScheduledRequest(bookingId: string): Promise<void> {
   if (!withBlock) return;
   const { booking, block } = withBlock;
 
+  const household = await bookingHousehold(booking);
+
   await appendAssessmentRow({
-    name: booking.name,
+    name: household.participantName,
     email: booking.email,
     phone: booking.phone,
     slotDate: block.block_date,
@@ -676,11 +865,17 @@ async function finalizeScheduledRequest(bookingId: string): Promise<void> {
     status: "booked",
     paid: booking.paid,
     creditStatus: booking.credit_status,
+    accountEmail: household.accountEmail,
+    accountName: household.accountName,
+    participantName: household.participantName,
+    participantRelationship: household.participantRelationship,
+    participantId: household.participantId,
   });
 
   await sendBookingConfirmationEmail({
     to: booking.email,
-    name: booking.name,
+    name: household.accountName,
+    participantName: household.participantName,
     dateLabel: formatBlockDate(block.block_date),
     timeLabel: formatSlotTime(booking.slot_start ?? ""),
     locationLabel: block.location_label,
@@ -791,6 +986,7 @@ export async function setBookingPaid(
     if (withBlock) {
       await updateAssessmentRow({
         email: row.email,
+        participantId: row.participant_id ?? null,
         slotDate: withBlock.block.block_date,
         slotStart: normTime(row.slot_start ?? ""),
         status: row.status,

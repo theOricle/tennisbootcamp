@@ -13,10 +13,11 @@ import {
   type AvailabilitySource,
 } from "@/lib/availability";
 
-// "Your availability" on the dashboard. Same day × band grid as intake and
-// request-a-time, the hour definitions shown from the one shared constant, an
-// optional one-line note, and one button that stamps the grid as confirmed by
-// the player for the season (availability_source = 'dashboard').
+// One player's availability on the dashboard — one card per person on the
+// account. Same day × band grid as intake and request-a-time, the hour
+// definitions shown from the one shared constant, an optional one-line note,
+// and one button that stamps the grid as confirmed for the season
+// (availability_source = 'dashboard').
 
 const NOTE_MAX = 140;
 
@@ -29,11 +30,19 @@ function fmtDate(iso: string | null): string {
 }
 
 export function AvailabilityEditor({
+  participantId,
+  participantName = "",
+  showName = false,
   initialAvailability,
   initialNote,
   updatedAt,
   source,
 }: {
+  /** Which player on the account this grid belongs to. */
+  participantId: string;
+  participantName?: string;
+  /** Households with more than one player name whose week this is. */
+  showName?: boolean;
   initialAvailability: Availability;
   initialNote: string;
   updatedAt: string | null;
@@ -48,6 +57,8 @@ export function AvailabilityEditor({
     source === "dashboard" ? updatedAt : null
   );
 
+  const noteId = `availability-note-${participantId}`;
+
   const dirty =
     JSON.stringify(availability) !== JSON.stringify(initialAvailability) ||
     note.trim() !== initialNote.trim();
@@ -59,7 +70,11 @@ export function AvailabilityEditor({
       const res = await fetch("/api/profile/availability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ availability, note: note.trim() }),
+        body: JSON.stringify({
+          participantId,
+          availability,
+          note: note.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -81,7 +96,9 @@ export function AvailabilityEditor({
       return `On file ${AVAILABILITY_SOURCE_LABELS[source]} · ${fmtDate(updatedAt)}. Confirm it so your coach can build around it.`;
     }
     if (!hasAnyAvailability(initialAvailability)) {
-      return "Nothing on file yet. Tap the times you can train and confirm.";
+      return showName && participantName
+        ? `Nothing on file for ${participantName} yet. Tap the times they can train and confirm.`
+        : "Nothing on file yet. Tap the times you can train and confirm.";
     }
     return null;
   })();
@@ -89,18 +106,19 @@ export function AvailabilityEditor({
   return (
     <div className="space-y-4">
       <p className="text-sm text-white/70">
-        Groups form around shared availability. Keep this current and your
-        coach can place you in a cohort that fits your week.
+        {showName && participantName
+          ? `Groups form around shared availability. Keep ${participantName}'s week current and their coach can place them in a cohort that fits.`
+          : "Groups form around shared availability. Keep this current and your coach can place you in a cohort that fits your week."}
       </p>
       <AvailabilityHoursLegend />
       <AvailabilityGrid value={availability} onChange={setAvailability} />
 
       <div className="grid gap-1.5">
-        <label htmlFor="availability-note" className="text-sm text-white/70">
+        <label htmlFor={noteId} className="text-sm text-white/70">
           Anything your coach should know? <span className="text-white/40">(optional)</span>
         </label>
         <input
-          id="availability-note"
+          id={noteId}
           type="text"
           maxLength={NOTE_MAX}
           value={note}

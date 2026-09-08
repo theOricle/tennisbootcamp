@@ -6,7 +6,7 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Active build plan:** `ops/plans/assessment-restructure.md` — assessment-first pivot (2026-07-18); execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive. (Previous plan `ops/plans/enrollment-and-accounts.md` fully shipped 2026-06-07.)
 
-Last updated: 2026-09-08 (production cleanup, backlog #1)
+Last updated: 2026-09-08 (household accounts, backlog #11)
 
 ---
 
@@ -31,6 +31,7 @@ These are settled — do not re-open without explicit owner instruction.
 - **Preview mode:** `NEXT_PUBLIC_PREVIEW_MODE=true` must be set in Vercel until real launch — shows preview banner site-wide via `PreviewBanner` component in root layout
 - **Assessment product (2026-07-18):** 20-minute on-court assessment · $20 CAD · auto-credited to first program · self-serve slots; the coach-assigned level is the placement source of truth
 - **Group model (2026-07-18):** admin-created private cohorts (Supabase-backed) matched by level + availability grids; email invites with 48h hold; minimum-to-run; cancelled sessions become make-ups appended after the final week (cap 2 weeks, then credit)
+- **Household accounts (2026-09-08, backlog #11):** one account holder can register several participants (themselves, their children, a spouse). `participants` (migration 0007) is the player of record — level and availability live there and `profiles` is kept in sync for the holder's own `'self'` participant. Two participants under one email are two bookings or two invites and one payer; capacity counts participants; the $20 assessment credit is per participant.
 - **Club membership (2026-07-18):** venue is a government-owned non-profit community club — $100/season (to ~November), paid by players directly to the club, never through our Stripe; assessment guest provision TBD
 
 ## Phases shipped
@@ -264,10 +265,49 @@ npm run dev    # http://localhost:3000
 
 If OneDrive gets signed into this machine later, exclude `node_modules` and `.next` from sync (right-click OneDrive taskbar → Settings → Sync and backup → Advanced settings → Exclude files).
 
+## Session workflow (how a build session actually runs)
+
+This is today's truth. It overrides anything older you find in the plans or the
+memory files.
+
+**Migrations are pasted by hand, never run by a session.**
+`supabase/migrations/0001` through `0007` are applied manually by Sina in the
+Supabase SQL editor (Dashboard → SQL Editor → New query). There is no runner and
+no `supabase db push` in this project. A build session writes the migration
+file, pastes **the full SQL into the pull request body**, and stops there — it
+never connects to the database to apply it. Every migration must therefore be
+idempotent (`if not exists` / guarded `do $$` blocks) and additive, and the code
+that depends on it must degrade sanely until the SQL is run.
+
+**One branch per backlog item, always from fresh `origin/main`.**
+`git fetch origin main && git checkout -B claude/<slug> origin/main`. Never
+stack a new item on an unmerged branch, and never reuse a branch whose pull
+request has already merged — restart it from the new `origin/main` instead.
+
+**CI green and a Vercel preview before review.**
+`npm run lint`, `npx tsc --noEmit`, `npm run build` and `npm test` all pass
+locally, GitHub Actions is green, and the Vercel preview deployment renders,
+before the PR is put in front of Sina. Pull requests open as **drafts**.
+
+**Build sessions never schedule reminders or check-ins.**
+No cron, no self-wakeups, no "I'll check back in an hour". A session does the
+work, opens the draft PR, reports, and ends.
+
+**Merges happen only on Sina's explicit word** — said in the session, or relayed
+from Sina by Cowork. A green PR is not permission to merge. Nothing merges on a
+session's own judgement.
+
+**Cohort 1 collects by e-transfer**, with the coach marking each invite paid in
+`/admin/cohorts/[id]`. Stripe card checkout stays fully wired and is still test
+mode; the e-transfer rail is what the first real cohort runs on.
+
+**The business layer lives outside this repo** — in the separate
+`tennisbootcamp-ops` folder (ads, offers, content, ops docs). This repo is the
+product only; don't look for campaign or business material here.
+
 ## Automation and tooling preferences
 
 - All engineering via Claude Code CLI from `C:\Users\farib\tennisbootcamp\` (picks up this CLAUDE.md and in-repo briefs)
-- Claude Code handles commits and pushes directly (no Co-Authored-By)
 - `npm run agent:run -- "..."` is the owner's preferred way to run planned, reviewed changes
 - Cowork is used for browser-driven tasks only (Vercel UI, Figma reference, design review) — Claude Code for all code work
 - GitHub Actions CI runs lint + typecheck on every push — don't skip it

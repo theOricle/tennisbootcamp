@@ -8,6 +8,11 @@ import {
 } from "@/lib/assessments";
 import { createServiceClient } from "@/lib/supabase/service";
 import { parseAvailability } from "@/lib/availability";
+import {
+  currentUser,
+  resolveSubmissionParticipant,
+  type ParticipantInput,
+} from "@/lib/household";
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -32,27 +37,46 @@ export async function POST(req: NextRequest) {
       ? parseAvailability(body.availability)
       : null;
 
+    // Who is this for? A signed-in holder picks one of their people; a guest
+    // types a person in. Either way one booking is one participant, one slot,
+    // one $20 — two children are two bookings under one payer.
+    const signedIn = await currentUser();
+    const who = await resolveSubmissionParticipant({
+      signedInUserId: signedIn?.id ?? null,
+      participantId: body.participantId,
+      participant: (body.participant ?? null) as ParticipantInput | null,
+      holderName: name || signedIn?.email || "",
+      holderEmail: signedIn?.email || email,
+      holderPhone: phone,
+    });
+    const holderEmail = who.accountEmail || email;
+    const playerName = who.participantName || name;
+    const playerSelfLevel = who.selfLevel ?? selfLevel;
+
     // Request mode (Phase 2.6): no slot, no payment — the admin coordinates the
     // time directly. Creates a `requested` booking and fires both emails.
     if (body.mode === "request") {
-      if (!name || !isValidEmail(email)) {
+      if (!playerName || !isValidEmail(holderEmail)) {
         return NextResponse.json(
           { error: "Please provide your name and a valid email." },
           { status: 400 }
         );
       }
       await createRequestedBooking({
-        name,
-        email,
+        name: playerName,
+        email: holderEmail,
         phone,
-        selfLevel,
+        selfLevel: playerSelfLevel,
         availability,
         requestNote: body.note ? String(body.note).trim().slice(0, 1000) : null,
+        userId: who.accountId,
+        participantId: who.participantId,
+        accountName: who.accountName,
       });
       return NextResponse.json({ requested: true });
     }
 
-    if (!blockId || !slotStart || !name || !isValidEmail(email)) {
+    if (!blockId || !slotStart || !playerName || !isValidEmail(holderEmail)) {
       return NextResponse.json(
         { error: "Please provide your name, a valid email, and pick a slot." },
         { status: 400 }
@@ -65,11 +89,13 @@ export async function POST(req: NextRequest) {
       booking = await createPendingBooking({
         blockId,
         slotStart,
-        name,
-        email,
+        name: playerName,
+        email: holderEmail,
         phone,
-        selfLevel,
+        selfLevel: playerSelfLevel,
         availability,
+        userId: who.accountId,
+        participantId: who.participantId,
       });
     } catch (err) {
       if (err instanceof SlotTakenError) {
@@ -97,7 +123,7 @@ export async function POST(req: NextRequest) {
       priceCents,
       successUrl,
       cancelUrl,
-      contactEmail: email,
+      contactEmail: holderEmail,
     });
 
     if (stripeSessionId) {

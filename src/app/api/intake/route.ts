@@ -5,12 +5,17 @@ import { recommendPrograms } from "@/lib/recommend";
 import { sendRecommendationEmail } from "@/lib/email";
 import { tentativeLevelLabel } from "@/lib/level";
 import {
-  INTAKE_HEADERS,
-  INTAKE_APPEND_RANGE_COLUMNS,
+  INTAKE_ALL_HEADERS,
+  INTAKE_APPEND_RANGE_ALL,
   buildIntakeRow,
   intakeAvailabilitySlots,
 } from "@/lib/intakeRow";
 import { provisionIntakeAccount } from "@/lib/intakeAccount";
+import {
+  currentUser,
+  resolveSubmissionParticipants,
+  type ParticipantInput,
+} from "@/lib/household";
 
 export async function POST(req: NextRequest) {
   try {
@@ -47,8 +52,9 @@ export async function POST(req: NextRequest) {
     const sheets = google.sheets({ version: "v4", auth });
 
     // Ensure header row exists and is complete before appending data.
-    // The 17-column shape is frozen — see src/lib/intakeRow.ts.
-    const HEADERS = [...INTAKE_HEADERS];
+    // Columns 1–17 are frozen; 18–22 are the appended household block.
+    // See src/lib/intakeRow.ts.
+    const HEADERS = [...INTAKE_ALL_HEADERS];
 
     const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId,
@@ -70,24 +76,70 @@ export async function POST(req: NextRequest) {
     // Legacy slot list for the rule-based recommender (unchanged engine).
     const availabilitySlots = intakeAvailabilitySlots(body);
 
-    const row = buildIntakeRow(body, new Date().toISOString());
+    // Who is the quiz about? (backlog #11) A parent can answer for two
+    // children at once; each becomes its own row, sharing one account email.
+    // A submission that names nobody resolves to a single self player — the
+    // pre-household behaviour, byte for byte.
+    const holderEmail = typeof body.email === "string" ? body.email.trim() : "";
+    const holderName = typeof body.name === "string" ? body.name.trim() : "";
+    const holderPhone = typeof body.phone === "string" ? body.phone.trim() : null;
+
+    const signedIn = await currentUser();
+    const people = holderEmail
+      ? await resolveSubmissionParticipants({
+          signedInUserId: signedIn?.id ?? null,
+          participantIds: body.participantIds,
+          participants: (body.participants ?? null) as ParticipantInput[] | null,
+          holderName,
+          holderEmail: signedIn?.email || holderEmail,
+          holderPhone,
+        }).catch((err) => {
+          console.error("Participant resolution failed (non-blocking):", err);
+          return [];
+        })
+      : [];
+
+    // One row per player. Cells 1–17 are the frozen contract; only col 2
+    // (name) reflects the player, exactly as it always has.
+    const timestamp = new Date().toISOString();
+    const rows =
+      people.length > 0
+        ? people.map((p) =>
+            buildIntakeRow(
+              { ...body, name: p.participantName || body.name },
+              timestamp,
+              {
+                accountEmail: p.accountEmail || holderEmail,
+                accountName: p.accountName || holderName,
+                participantName: p.participantName,
+                participantRelationship: p.relationship,
+                participantId: p.participantId,
+              }
+            )
+          )
+        : [buildIntakeRow(body, timestamp, {})];
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${tabName}!${INTAKE_APPEND_RANGE_COLUMNS}`,
+      range: `${tabName}!${INTAKE_APPEND_RANGE_ALL}`,
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: [row] },
+      requestBody: { values: rows },
     });
 
     // Account + availability (backlog #13). Runs only after the Sheet append
     // succeeded, only when Supabase is configured, and can never fail the
     // intake response — provisionIntakeAccount logs and swallows everything.
-    if (typeof body.email === "string" && body.email.trim()) {
+    // The grid is written to every player the quiz was about.
+    if (holderEmail) {
       await provisionIntakeAccount({
-        email: body.email,
-        name: typeof body.name === "string" ? body.name : null,
-        phone: typeof body.phone === "string" ? body.phone : null,
+        email: holderEmail,
+        name: holderName || null,
+        phone: holderPhone,
         availability: body.availability,
+        participantIds: people
+          .map((p) => p.participantId)
+          .filter((id): id is string => Boolean(id)),
+        forceInvite: people.some((p) => p.accountCreated),
       });
     }
 
