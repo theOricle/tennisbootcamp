@@ -12,7 +12,9 @@ import {
   type CohortSessionRow,
 } from "@/lib/cohortsDb";
 import { dayNameForDate } from "@/lib/makeup";
+import { getPlayer } from "@/lib/players";
 import { TierStatus, TierRangeBadges } from "@/components/tiers";
+import { AvailabilityEditor } from "./AvailabilityEditor";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -193,19 +195,25 @@ async function DashboardContent({
 }) {
   const supabase = await createClient();
 
-  const [{ data: profile, error: profileError }, { data: enrollments, error: enrollError }] =
-    await Promise.all([
-      supabase.from("profiles").select("full_name, level").eq("id", userId).single(),
-      supabase
-        .from("enrollments")
-        .select("id, cohort_id, program, participant_name, status, created_at")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false }),
-    ]);
+  // The player's own row, read with their session (RLS) through the shared
+  // players helper. A missing row (brand-new user) is null, not an error.
+  const [profileResult, { data: enrollments, error: enrollError }] = await Promise.all([
+    getPlayer(userId, supabase).then(
+      (p) => ({ profile: p, error: null as string | null }),
+      (err: unknown) => ({
+        profile: null,
+        error: err instanceof Error ? err.message : "profile read failed",
+      })
+    ),
+    supabase
+      .from("enrollments")
+      .select("id, cohort_id, program, participant_name, status, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
+  ]);
+  const profile = profileResult.profile;
 
-  // PGRST116 = row not found (new user with no profile yet) — not a real error
-  const realProfileError = profileError && profileError.code !== "PGRST116";
-  if (realProfileError || enrollError) {
+  if (profileResult.error || enrollError) {
     return <DashboardErrorState />;
   }
 
@@ -433,6 +441,20 @@ async function DashboardContent({
         </section>
 
       </div>
+
+      {/* Your availability — the standard the cohort builder reads */}
+      <section className="mt-16 max-w-2xl">
+        <div className="border-l-2 border-[#B4E655] pl-4">
+          <h2 className="text-lg font-semibold text-white">Your availability</h2>
+        </div>
+        <div className="mb-6 mt-2 border-b border-white/10" />
+        <AvailabilityEditor
+          initialAvailability={profile?.availability ?? { days: {}, v: 1 }}
+          initialNote={profile?.availability_note ?? ""}
+          updatedAt={profile?.availability_updated_at ?? null}
+          source={profile?.availability_source ?? null}
+        />
+      </section>
     </>
   );
 }

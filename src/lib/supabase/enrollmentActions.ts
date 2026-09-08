@@ -62,13 +62,15 @@ export async function saveEnrollmentToSupabase(
 
 // Mint an invite (new user) or magic link (returning user) and stub-log it.
 // Updates the enrollment row with user_id when the user is newly created.
+// Resolves to the auth user id when Supabase reports one (a fresh invite),
+// otherwise null — callers that need the id for an existing user look it up.
 export async function issueActivationLink(
   email: string,
   enrollmentId: string | null
-): Promise<void> {
+): Promise<string | null> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     console.log("[issueActivationLink] Supabase not configured — skipping invite for", email);
-    return;
+    return null;
   }
 
   const siteUrl =
@@ -96,7 +98,7 @@ export async function issueActivationLink(
         .update({ user_id: inviteData.user.id })
         .eq("id", enrollmentId);
     }
-    return;
+    return inviteData.user?.id ?? null;
   }
 
   // User already exists — send a magic link instead.
@@ -114,4 +116,5 @@ export async function issueActivationLink(
   } else {
     console.error("Failed to generate activation link:", magicError?.message ?? inviteError?.message);
   }
+  return magicData?.user?.id ?? null;
 }

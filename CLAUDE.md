@@ -6,7 +6,7 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Active build plan:** `ops/plans/assessment-restructure.md` — assessment-first pivot (2026-07-18); execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive. (Previous plan `ops/plans/enrollment-and-accounts.md` fully shipped 2026-06-07.)
 
-Last updated: 2026-07-18
+Last updated: 2026-09-08
 
 ---
 
@@ -156,6 +156,8 @@ The intake form posts to `/api/intake`, which:
 - Computes `priority_score` (1–3) and `lead_type` (`elite` / `high-intent` / `standard`) from the submission
 - Sets `follow_up_status = "new"`
 - Columns: `timestamp, name, email, phone, who, level, goals, programs, area, notes, newsletter, priority_score, lead_type, follow_up_status`
+
+After the append (2026-09-08, backlog #13) the route also provisions an account — set-password invite via `issueActivationLink` (once per email) and the submitted availability grid onto the profile (`availability_source='intake'`) — through `src/lib/intakeAccount.ts`; any failure there is logged and never fails the intake response. Level and availability reads/writes all go through `src/lib/players.ts`. Band hours are the shared standard in `BAND_HOURS` (`src/lib/availability.ts`). Row shape is pinned by `npm test` (`src/scripts/test-intake-row.ts`).
 
 **Non-negotiable (from project brief):** Do not break the intake flow. All changes must be tested against the intake pipeline before being called done.
 

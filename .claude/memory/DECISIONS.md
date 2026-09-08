@@ -193,3 +193,14 @@ _Record architectural, design, and product decisions here. Include context and t
 **Decision**: The venue is a government-owned non-profit community club; membership is $100 for the outdoor season (valid to ~November) and the club wants everyone Sina teaches to be a member. Players register and pay the club directly — membership money never touches our Stripe. Marketed as a value-add ("courts all season"), disclosed before payment. Whether 20-minute assessments can run under guest provisions is pending Sina's check with the club; membership copy ships behind the `NEXT_PUBLIC_CLUB_GUEST_OK` toggle with a neutral default line.
 **Why**: Clean books and no appearance of reselling access to a public facility; the members-only rule is almost certainly permit/insurance-driven, so treat it as firm and make the softer guest-provision ask.
 **Alternatives considered**: Bundling membership into our checkout — rejected (bookkeeping + optics). Asking the club to waive membership — rejected as the opening move; guest provisions likely already exist.
+
+### 2026-09-08 — Availability provenance on profiles, one player helper
+**Decision**: `profiles.availability` carries `availability_updated_at` + `availability_source` (`intake` / `request` / `assessment` / `dashboard`) + an optional `availability_note`. Every level/availability read or write goes through `src/lib/players.ts`; no other module names the `profiles` table for those fields.
+**Why**: The coach needs to know how fresh a grid is and who wrote it before building a cohort on it; a player's own dashboard confirmation must never be overwritten by an older snapshot; and a future participants table should replace `profiles` by renaming one constant.
+**Alternatives considered**: A separate `availability` table (more joins for a small pool, and RLS churn); writing straight to `profiles` from each route (already three writers — drift risk).
+
+### 2026-09-08 — Band hours are a displayed standard, not stored data
+**Decision**: Morning 8:00–12:00, Afternoon 12:00–16:00, Evening 16:00–20:00 live once in `BAND_HOURS` (`src/lib/availability.ts`) and are shown beside every grid. Stored data stays the three-band shape; hours are not persisted.
+**Why**: One definition keeps intake, request-a-time and the dashboard honest with each other; keeping bands (not hours) in the data preserves the frozen col-16 format and the existing recommender.
+**Alternatives considered**: Hour-grid availability (`v: 2`) — heavier to fill on a phone, not needed to build cohorts.
+

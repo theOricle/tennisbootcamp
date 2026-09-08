@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "npx tsx src/scripts/test-recommend.ts && npx tsx src/scripts/test-makeup.ts && npx tsx src/scripts/test-intake-row.ts && npx tsx src/scripts/test-availability-matrix.ts",
     "agent:run": "node ops/controller/run-task.mjs"
   },
   "dependencies": {

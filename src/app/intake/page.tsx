@@ -10,7 +10,10 @@ import {
   availabilityToLegacySlots,
   type Availability,
 } from "@/lib/availability";
-import { AvailabilityGrid } from "@/components/ui/AvailabilityGrid";
+import {
+  AvailabilityGrid,
+  AvailabilityHoursLegend,
+} from "@/components/ui/AvailabilityGrid";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -386,7 +389,7 @@ function IntakePageInner() {
         id: "contact",
         title: "Where can we reach you?",
         subtitle:
-          "We'll only reach out when we're forming groups that fit your level and goals.",
+          "You'll get a link to set a password so your coach can place you. We only reach out when we're forming groups that fit your level and schedule.",
         type: "contact",
       },
     ],
@@ -635,10 +638,13 @@ function IntakePageInner() {
             ) : null}
 
             {current.type === "availability" ? (
-              <AvailabilityGrid
-                value={form.availability}
-                onChange={(next) => setForm((s) => ({ ...s, availability: next }))}
-              />
+              <>
+                <AvailabilityHoursLegend />
+                <AvailabilityGrid
+                  value={form.availability}
+                  onChange={(next) => setForm((s) => ({ ...s, availability: next }))}
+                />
+              </>
             ) : null}
 
             {current.type === "contact" ? (

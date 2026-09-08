@@ -2,7 +2,9 @@
 //
 // Stored shape (profiles.availability, assessment_bookings.availability):
 //   {"days":{"mon":["eve"],"wed":["mor","eve"],"sat":["aft"]},"v":1}
-// Day keys mon…sun; bands mor (before 12), aft (12–17), eve (after 17).
+// Day keys mon…sun; bands mor / aft / eve, defined by the hours in BAND_HOURS
+// below (the one place those hours live — intake, request-a-time and the
+// dashboard all display from it).
 // Bands, not hours: phone-friendly to fill, coarse enough to cluster on later.
 // `v` allows a future hour-grid upgrade.
 
@@ -11,6 +13,35 @@ export const BANDS = ["mor", "aft", "eve"] as const;
 
 export type Day = (typeof DAYS)[number];
 export type Band = (typeof BANDS)[number];
+
+/**
+ * The hour definition behind each band. This is the standard every surface
+ * shows next to the grid; change it here and intake, request-a-time and the
+ * dashboard all follow.
+ */
+export const BAND_HOURS: Record<Band, { start: string; end: string; label: string }> = {
+  mor: { start: "08:00", end: "12:00", label: "8:00–12:00" },
+  aft: { start: "12:00", end: "16:00", label: "12:00–16:00" },
+  eve: { start: "16:00", end: "20:00", label: "16:00–20:00" },
+};
+
+/** One-line caveat shown with the evening band on outdoor courts. */
+export const EVENING_FALL_NOTE = "Outdoor evenings end at dark in the fall.";
+
+/** Where a profile's availability last came from (profiles.availability_source). */
+export const AVAILABILITY_SOURCES = ["intake", "request", "assessment", "dashboard"] as const;
+export type AvailabilitySource = (typeof AVAILABILITY_SOURCES)[number];
+
+export const AVAILABILITY_SOURCE_LABELS: Record<AvailabilitySource, string> = {
+  intake: "from the 2-minute quiz",
+  request: "from an assessment request",
+  assessment: "set by the coach",
+  dashboard: "confirmed by the player",
+};
+
+export function isAvailabilitySource(x: unknown): x is AvailabilitySource {
+  return typeof x === "string" && (AVAILABILITY_SOURCES as readonly string[]).includes(x);
+}
 
 export type Availability = {
   days: Partial<Record<Day, Band[]>>;
@@ -77,6 +108,12 @@ export function parseAvailability(input: unknown): Availability {
     if (bands.length > 0) days[key] = BANDS.filter((b) => bands.includes(b));
   }
   return { days, v: 1 };
+}
+
+/** True when at least one day/band is selected. */
+export function hasAnyAvailability(input: unknown): boolean {
+  const { days } = parseAvailability(input);
+  return DAYS.some((d) => (days[d]?.length ?? 0) > 0);
 }
 
 /** Compact human-readable chips, e.g. ["Mon eve", "Wed mor/eve"]. */

@@ -20,7 +20,7 @@ const CARDS = [
   {
     href: "/admin/players",
     title: "Players",
-    body: "The assessed pool — levels, availability, and coach corrections.",
+    body: "The player pool — set levels for new sign-ups, correct levels and availability.",
   },
   {
     href: "/admin/cohorts",

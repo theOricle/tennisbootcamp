@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { Cohort } from "@/types/cohort";
 import { trackCohortInviteSent } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
+import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
+import type { MatrixPlayer } from "@/lib/availabilityMatrix";
 import { dayNameForDate } from "@/lib/makeup";
 
 type InviteRow = {
@@ -313,6 +315,35 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [pool, setPool] = useState<MatrixPlayer[]>([]);
+  const [poolLoading, setPoolLoading] = useState(true);
+
+  // Leveled pool for the who's-free matrix above the invite box.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/players?view=leveled")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setPool(
+          (data.players ?? []).map(
+            (p: { id: string; name: string | null; level: number | null; availability: unknown }) => ({
+              id: p.id,
+              name: p.name,
+              level: p.level,
+              availability: p.availability,
+            })
+          )
+        );
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setPoolLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -414,6 +445,19 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
           </button>
         )}
       </div>
+
+      {/* Who's free in this cohort's band — read it, then invite below */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">
+          Who&apos;s free
+        </h2>
+        <AvailabilityMatrix
+          players={pool}
+          levelMin={cohort.levelMin ?? null}
+          levelMax={cohort.levelMax ?? null}
+          loading={poolLoading}
+        />
+      </section>
 
       <InviteSection
         cohortId={cohortId}

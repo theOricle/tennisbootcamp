@@ -6,6 +6,8 @@ import type { Cohort } from "@/types/cohort";
 import { programs } from "@/content/programs";
 import { scheduledEndDate, addDaysISO } from "@/lib/makeup";
 import { TierRangeBadges } from "@/components/tiers";
+import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
+import type { MatrixPlayer } from "@/lib/availabilityMatrix";
 import type { SessionSlot } from "@/types/cohort";
 
 type AdminCohort = Cohort & { paidCount: number };
@@ -44,9 +46,13 @@ type SlotDraft = { day: SessionSlot["day"]; start: string; end: string };
 
 function CreateCohortForm({
   seasonEndDate,
+  pool,
+  poolLoading,
   onCreated,
 }: {
   seasonEndDate: string;
+  pool: MatrixPlayer[];
+  poolLoading: boolean;
   onCreated: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -193,6 +199,13 @@ function CreateCohortForm({
           </select>
         </div>
       </div>
+      {/* Who's free in this band — read-only, counts per day-part, names on tap */}
+      <AvailabilityMatrix
+        players={pool}
+        levelMin={levelMin ? Number(levelMin) : null}
+        levelMax={levelMax ? Number(levelMax) : null}
+        loading={poolLoading}
+      />
       <div>
         <label className="mb-1 block text-xs text-white/60">
           Location note (optional)
@@ -379,6 +392,36 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
   const [cohorts, setCohorts] = useState<AdminCohort[]>([]);
   const [dbReady, setDbReady] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [pool, setPool] = useState<MatrixPlayer[]>([]);
+  const [poolLoading, setPoolLoading] = useState(true);
+
+  // Leveled pool for the create form's matrix — one fetch, shared by every band
+  // the coach tries.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/players?view=leveled")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setPool(
+          (data.players ?? []).map(
+            (p: { id: string; name: string | null; level: number | null; availability: unknown }) => ({
+              id: p.id,
+              name: p.name,
+              level: p.level,
+              availability: p.availability,
+            })
+          )
+        );
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setPoolLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -407,7 +450,12 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
         </p>
       )}
 
-      <CreateCohortForm seasonEndDate={seasonEndDate} onCreated={refresh} />
+      <CreateCohortForm
+        seasonEndDate={seasonEndDate}
+        pool={pool}
+        poolLoading={poolLoading}
+        onCreated={refresh}
+      />
 
       {loading && <p className="text-sm text-white/50">Loading…</p>}
       {!loading && dbReady && cohorts.length === 0 && (
