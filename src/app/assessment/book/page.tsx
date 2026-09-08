@@ -6,7 +6,10 @@ import {
   trackAssessmentBookStart,
   trackAssessmentRequestSubmit,
 } from "@/lib/analytics";
-import { AvailabilityGrid } from "@/components/ui/AvailabilityGrid";
+import {
+  AvailabilityGrid,
+  AvailabilityHoursLegend,
+} from "@/components/ui/AvailabilityGrid";
 import { parseAvailability, type Availability } from "@/lib/availability";
 
 type PublicSlot = { slotStart: string; timeLabel: string; taken: boolean };
@@ -397,6 +400,7 @@ export default function BookAssessmentPage() {
               <p className="mt-2 text-sm text-white/55">
                 Tap every time of week that usually works for you.
               </p>
+              <AvailabilityHoursLegend className="mt-2" />
               <div className="mt-4">
                 <AvailabilityGrid value={availability} onChange={setAvailability} />
               </div>

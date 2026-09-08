@@ -3,16 +3,41 @@
 import {
   DAYS,
   BANDS,
+  BAND_HOURS,
   DAY_LABELS,
   BAND_LABELS,
+  EVENING_FALL_NOTE,
   serializeAvailability,
   type Availability,
   type Day,
   type Band,
 } from "@/lib/availability";
 
+/**
+ * The hour definitions behind the three bands, read from the one constant in
+ * src/lib/availability.ts. Shown next to every grid — intake, request-a-time,
+ * the dashboard editor and the admin correction — so a "Morning" means the
+ * same hours everywhere.
+ */
+export function AvailabilityHoursLegend({ className = "" }: { className?: string }) {
+  return (
+    <div className={["text-xs leading-relaxed text-white/50", className].join(" ").trim()}>
+      <p className="flex flex-wrap gap-x-3 gap-y-0.5">
+        {BANDS.map((b) => (
+          <span key={b} className="whitespace-nowrap">
+            <span className="font-semibold text-white/70">{BAND_LABELS[b]}</span>{" "}
+            {BAND_HOURS[b].label}
+          </span>
+        ))}
+      </p>
+      <p className="mt-0.5">{EVENING_FALL_NOTE}</p>
+    </div>
+  );
+}
+
 // Days × bands tap-to-toggle grid (7 rows × Morning/Afternoon/Evening).
-// Shared by the intake availability step and the booking request-a-time form.
+// Shared by the intake availability step, the booking request-a-time form,
+// the dashboard editor and the admin player correction.
 export function AvailabilityGrid({
   value,
   onChange,

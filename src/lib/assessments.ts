@@ -12,6 +12,15 @@ import {
 } from "@/lib/email";
 import { availabilityChips } from "@/lib/availability";
 import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
+import {
+  findUserIdByEmail,
+  setPlayerLevel,
+  setPlayerAvailabilityByEmail,
+} from "@/lib/players";
+
+// Re-exported so existing importers keep working; the lookup itself now lives
+// with the other player reads/writes.
+export { findUserIdByEmail };
 
 // How far ahead the booking page shows open slots.
 const LOOKAHEAD_DAYS = 21;
@@ -359,21 +368,6 @@ export async function confirmBooking(
 
 // ─── Completion (admin) ───────────────────────────────────────────────────────
 
-export async function findUserIdByEmail(email: string): Promise<string | null> {
-  const supabase = createServiceClient();
-  const target = email.trim().toLowerCase();
-  // Small project — a single page of users is plenty.
-  const { data, error } = await supabase.auth.admin.listUsers({
-    page: 1,
-    perPage: 200,
-  });
-  if (error || !data) return null;
-  const match = data.users.find(
-    (u) => (u.email ?? "").trim().toLowerCase() === target
-  );
-  return match?.id ?? null;
-}
-
 /**
  * Complete a booking with a coach-assigned level + note. Writes the level to the
  * booking, the matching profile (if an account exists), and the Sheet row, then
@@ -401,15 +395,25 @@ export async function completeBooking(
   // Update the matching profile, if one exists (by user_id, else by email).
   const profileId = booking.user_id ?? (await findUserIdByEmail(booking.email));
   if (profileId) {
-    await supabase
-      .from("profiles")
-      .update({
-        level: input.level,
-        level_assessed_at: new Date().toISOString(),
-        level_notes: input.coachNotes,
-      })
-      .eq("id", profileId);
+    await setPlayerLevel(profileId, {
+      level: input.level,
+      notes: input.coachNotes,
+    });
   }
+
+  // Carry the booking's availability snapshot onto the profile as the
+  // assessment-time standard — unless the player confirmed a newer grid
+  // since booking (a dashboard confirmation is never overwritten by an
+  // older snapshot).
+  await setPlayerAvailabilityByEmail(booking.email, {
+    availability: booking.availability,
+    source: "assessment",
+    fullName: booking.name,
+    phone: booking.phone,
+    onlyIfOlderThan: booking.created_at,
+  }).catch((err) =>
+    console.error("Profile availability (assessment) failed (non-blocking):", err)
+  );
 
   await updateAssessmentRow({
     email: booking.email,
@@ -625,6 +629,17 @@ export async function createRequestedBooking(input: {
   // it again, and confirmBooking only fires it on pending rows — never these.
   await issueActivationLink(booking.email, null).catch((err) =>
     console.error("Activation link failed (non-blocking):", err)
+  );
+
+  // The account now exists (invite creates it), so the request's grid becomes
+  // the profile's availability, stamped source = 'request'.
+  await setPlayerAvailabilityByEmail(booking.email, {
+    availability: booking.availability,
+    source: "request",
+    fullName: booking.name,
+    phone: booking.phone,
+  }).catch((err) =>
+    console.error("Profile availability (request) failed (non-blocking):", err)
   );
 
   return booking;

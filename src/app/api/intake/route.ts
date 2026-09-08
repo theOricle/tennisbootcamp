@@ -3,11 +3,14 @@ import { google } from "googleapis";
 import { subscribeToMailerLite } from "@/lib/mailerlite";
 import { recommendPrograms } from "@/lib/recommend";
 import { sendRecommendationEmail } from "@/lib/email";
-import {
-  availabilityToCompactString,
-  availabilityToLegacySlots,
-} from "@/lib/availability";
 import { tentativeLevelLabel } from "@/lib/level";
+import {
+  INTAKE_HEADERS,
+  INTAKE_APPEND_RANGE_COLUMNS,
+  buildIntakeRow,
+  intakeAvailabilitySlots,
+} from "@/lib/intakeRow";
+import { provisionIntakeAccount } from "@/lib/intakeAccount";
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,15 +46,9 @@ export async function POST(req: NextRequest) {
 
     const sheets = google.sheets({ version: "v4", auth });
 
-    // Ensure header row exists and is complete before appending data
-    // Columns 1–14 are frozen (never reorder or remove).
-    // Columns 15–17 were added 2026-05-23 (additive only).
-    const HEADERS = [
-      "timestamp", "name", "email", "phone", "who", "level",
-      "goals", "programs", "area", "notes", "newsletter",
-      "priority_score", "lead_type", "follow_up_status",
-      "preferred_locations", "availability", "recommended_program",
-    ];
+    // Ensure header row exists and is complete before appending data.
+    // The 17-column shape is frozen — see src/lib/intakeRow.ts.
+    const HEADERS = [...INTAKE_HEADERS];
 
     const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId,
@@ -70,62 +67,29 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // col 9 (area): accept new preferredLocationIds array or legacy area string
-    const areaValue = body.area
-      ? String(body.area)
-      : Array.isArray(body.preferredLocationIds)
-      ? body.preferredLocationIds.join(", ")
-      : "";
-
-    // col 16 (availability): the frozen column stays "availability"; only the
-    // cell format is upgraded. New clients send the structured grid object
-    // ({days,v:1}) → compact self-identifying string ("v1:mon:eve;wed:mor,eve").
-    // Legacy clients that sent a slot array still serialize the old way.
-    const availabilityValue = Array.isArray(body.availability)
-      ? body.availability.join(", ")
-      : body.availability
-      ? availabilityToCompactString(body.availability)
-      : "";
-
     // Legacy slot list for the rule-based recommender (unchanged engine).
-    const availabilitySlots = Array.isArray(body.availability)
-      ? body.availability
-      : availabilityToLegacySlots(body.availability);
+    const availabilitySlots = intakeAvailabilitySlots(body);
 
-    const row = [
-      new Date().toISOString(),
-      body.name ?? "",
-      body.email ?? "",
-      body.phone ?? "",
-      body.who ?? "",
-      body.level ?? "",
-      Array.isArray(body.goals) ? body.goals.join(", ") : "",
-      Array.isArray(body.programs) ? body.programs.join(", ") : "",
-      areaValue,
-      body.notes ?? "",
-      body.newsletter === true ? "yes" : body.newsletter === false ? "no" : "",
-      // priority_score
-      body.level === "elite" ? "3"
-        : (Array.isArray(body.programs) && (body.programs.includes("private") || body.programs.length > 1)) ? "2"
-        : "1",
-      // lead_type
-      body.level === "elite" ? "elite"
-        : (Array.isArray(body.programs) && (body.programs.includes("private") || body.programs.length > 1)) ? "high-intent"
-        : "standard",
-      // follow_up_status
-      "new",
-      // cols 15–17 (additive 2026-05-23)
-      Array.isArray(body.preferredLocationIds) ? body.preferredLocationIds.join(", ") : "",
-      availabilityValue,
-      body.recommendedProgram ?? "",
-    ];
+    const row = buildIntakeRow(body, new Date().toISOString());
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${tabName}!A:Q`,
+      range: `${tabName}!${INTAKE_APPEND_RANGE_COLUMNS}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] },
     });
+
+    // Account + availability (backlog #13). Runs only after the Sheet append
+    // succeeded, only when Supabase is configured, and can never fail the
+    // intake response — provisionIntakeAccount logs and swallows everything.
+    if (typeof body.email === "string" && body.email.trim()) {
+      await provisionIntakeAccount({
+        email: body.email,
+        name: typeof body.name === "string" ? body.name : null,
+        phone: typeof body.phone === "string" ? body.phone : null,
+        availability: body.availability,
+      });
+    }
 
     if (body.newsletter === true) {
       await subscribeToMailerLite(body.email ?? "", body.name);

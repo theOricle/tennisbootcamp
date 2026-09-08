@@ -6,7 +6,7 @@ import { AdminPlayersClient } from "./AdminPlayersClient";
 
 export const metadata: Metadata = {
   title: "Players — Admin",
-  description: "Assessed-player pool.",
+  description: "Player pool — leveled and waiting for a level.",
   robots: { index: false, follow: false },
 };
 
@@ -27,8 +27,9 @@ export default async function AdminPlayersPage() {
             Players
           </h1>
           <p className="mt-1 text-sm text-white/55">
-            Everyone with a coach-assigned level. Tap a player to correct their
-            level, note, or availability.
+            Everyone with an account. Unleveled players came in through the
+            2-minute quiz or an assessment request — tap one to set their level.
+            Tap a leveled player to correct their level, note, or availability.
           </p>
         </header>
         <AdminPlayersClient />
