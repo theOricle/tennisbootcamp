@@ -23,6 +23,7 @@ import { programs } from "@/content/programs";
 import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { tierRangeForLevels } from "@/lib/tiers";
 import {
+  emailConfigured,
   sendCohortInviteEmail,
   sendCohortConfirmedEmail,
   sendSessionCancelledEmail,
@@ -227,14 +228,15 @@ export async function createInvites(
    * to the account holder — the pre-household behaviour.
    */
   participantIds?: (string | null)[]
-): Promise<{ sent: number; errors: string[] }> {
+): Promise<{ sent: number; emailed: number; errors: string[] }> {
   const cohort = await getCohortById(cohortId);
   if (!cohort || !cohort.dbStatus) {
-    return { sent: 0, errors: ["Cohort not found in the database."] };
+    return { sent: 0, emailed: 0, errors: ["Cohort not found in the database."] };
   }
   if (!["draft", "inviting"].includes(cohort.dbStatus)) {
     return {
       sent: 0,
+      emailed: 0,
       errors: [`Cohort is ${cohort.dbStatus} — invites go out from draft or inviting.`],
     };
   }
@@ -249,7 +251,20 @@ export async function createInvites(
     : [];
 
   const errors: string[] = [];
+  // `sent` counts invite rows written (a held spot); `emailed` counts the ones
+  // the provider actually accepted. They are not the same number when email is
+  // misconfigured, and the coach has to be told which is which.
   let sent = 0;
+  let emailed = 0;
+
+  // Without a key every send logs a stub and returns normally, so nothing
+  // below may count those as delivered.
+  const canEmail = emailConfigured();
+  if (!canEmail) {
+    errors.push(
+      "Email is not configured (RESEND_API_KEY is unset), so no invite email was sent."
+    );
+  }
 
   const participantByEmail = new Map<string, string>();
   emails.forEach((raw, i) => {
@@ -298,33 +313,45 @@ export async function createInvites(
       continue;
     }
 
+    sent++;
+
     const credit = await findUnusedCredit(email, { participantId });
     const enrollUrl = `${siteUrl()}/enroll/${cohortId}?invite=${token}`;
-    await sendCohortInviteEmail({
-      to: email,
-      participantName: participant?.full_name ?? null,
-      levelLabel: cohortLevelLabel(cohort),
-      tierNames,
-      programTitle: programTitle(cohort.programId),
-      cohortLabel: cohort.label,
-      dayTimeLabel: cohortDayTimeLabel(cohort),
-      startDateLabel: fmtDateShort(cohort.startDate),
-      weeks: cohort.weeks,
-      priceCents: cohort.priceCents,
-      creditCents: credit ? Math.min(credit.creditCents, cohort.priceCents) : 0,
-      holdHours,
-      enrollUrl,
-    }).catch((err) =>
-      console.error(`Invite email to ${email} failed (non-blocking):`, err)
-    );
-    sent++;
+    try {
+      await sendCohortInviteEmail({
+        to: email,
+        participantName: participant?.full_name ?? null,
+        levelLabel: cohortLevelLabel(cohort),
+        tierNames,
+        programTitle: programTitle(cohort.programId),
+        cohortLabel: cohort.label,
+        dayTimeLabel: cohortDayTimeLabel(cohort),
+        startDateLabel: fmtDateShort(cohort.startDate),
+        weeks: cohort.weeks,
+        priceCents: cohort.priceCents,
+        creditCents: credit ? Math.min(credit.creditCents, cohort.priceCents) : 0,
+        holdHours,
+        enrollUrl,
+      });
+      if (canEmail) emailed++;
+    } catch (err) {
+      // The spot is held and the token is valid — only the message failed.
+      // Re-inviting the same email issues a fresh token and tries again.
+      console.error(`Invite email to ${email} failed:`, err);
+      if (canEmail) {
+        errors.push(
+          `${email}: spot held, but the email didn't go out ` +
+            `(${err instanceof Error ? err.message : String(err)}). Re-invite to retry.`
+        );
+      }
+    }
   }
 
   if (sent > 0 && cohort.dbStatus === "draft") {
     await supabase.from("cohorts").update({ status: "inviting" }).eq("id", cohortId);
   }
 
-  return { sent, errors };
+  return { sent, emailed, errors };
 }
 
 export type InviteLookup =

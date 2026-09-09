@@ -3,10 +3,54 @@ import { Resend } from "resend";
 import type { Recommendation } from "@/lib/recommend";
 import { membershipNote } from "@/lib/membership";
 import { tierForLevel } from "@/lib/tiers";
+import { formatResendError } from "@/lib/emailResult";
 
 const FROM = "Tennis Bootcamp <noreply@send.tennisbootcamp.ca>";
 const BASE_URL = "https://tennisbootcamp.ca";
 const INBOX = "info@tennisbootcamp.ca";
+
+// ─── Delivery ─────────────────────────────────────────────────────────────────
+
+/**
+ * Is Resend configured? Without a key every send below logs a stub and
+ * returns, which is right for local dev but must never be reported to a coach
+ * as a delivered email — callers that tell a human what happened check this.
+ */
+export function emailConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY);
+}
+
+/** A send the provider refused. Carries the provider's own words. */
+export class EmailSendError extends Error {
+  constructor(recipient: string, reason: string) {
+    super(`Resend refused the message to ${recipient}: ${reason}`);
+    this.name = "EmailSendError";
+  }
+}
+
+/**
+ * The one place a message leaves the app.
+ *
+ * `resend.emails.send()` RESOLVES with `{ data, error }` on an API failure —
+ * it does not reject. Awaiting it without reading `error` therefore succeeds
+ * whatever happened, which is why invite emails could silently never arrive
+ * while the admin screen reported them sent. Read the error, raise it.
+ */
+async function deliver(params: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    // Callers stub out before reaching here; this is the safety net.
+    throw new EmailSendError(params.to, "RESEND_API_KEY is not set");
+  }
+  const resend = new Resend(key);
+  const { error } = await resend.emails.send({ from: FROM, ...params });
+  if (error) throw new EmailSendError(params.to, formatResendError(error));
+}
 
 // ─── Shared branded wrapper ───────────────────────────────────────────────────
 
@@ -111,9 +155,7 @@ export async function sendLinkEmail(
     ${signOff()}
   `;
 
-  const resend = new Resend(key);
-  await resend.emails.send({
-    from: FROM,
+  await deliver({
     to,
     subject,
     html: emailLayout(bodyHtml),
@@ -160,9 +202,7 @@ export async function sendRecommendationEmail(
     ${signOff()}
   `;
 
-  const resend = new Resend(key);
-  await resend.emails.send({
-    from: FROM,
+  await deliver({
     to,
     subject,
     html: emailLayout(bodyHtml),
@@ -240,9 +280,7 @@ ${membership}
 
 — Sina Kassaian, Tennis Bootcamp`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({
-    from: FROM,
+  await deliver({
     to,
     subject,
     html: emailLayout(bodyHtml),
@@ -295,9 +333,7 @@ Anything change on your end? Just reply to this email.
 
 — Sina Kassaian, Tennis Bootcamp`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({
-    from: FROM,
+  await deliver({
     to,
     subject,
     html: emailLayout(bodyHtml),
@@ -364,9 +400,7 @@ Preferred: ${preferredTimes.length ? preferredTimes.join(", ") : "No times given
 
 Assign a slot or record a time: ${BASE_URL}/admin/assessments`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({
-    from: FROM,
+  await deliver({
     to: INBOX,
     subject,
     html: emailLayout(bodyHtml),
@@ -482,8 +516,7 @@ The link is personal to you. Terms: ${BASE_URL}/legal/refund-policy
 
 — Sina Kassaian, Tennis Bootcamp`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+  await deliver({ to, subject, html: emailLayout(bodyHtml), text });
 }
 
 /** Cohort reached minimum — everyone paid gets the schedule. */
@@ -545,8 +578,7 @@ Bring a racquet if you have one, water, and court shoes. If we ever cancel a ses
 
 — Sina Kassaian, Tennis Bootcamp`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+  await deliver({ to, subject, html: emailLayout(bodyHtml), text });
 }
 
 /**
@@ -602,8 +634,7 @@ Full rules: ${BASE_URL}/legal/refund-policy
 
 — Sina Kassaian, Tennis Bootcamp`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+  await deliver({ to, subject, html: emailLayout(bodyHtml), text });
 }
 
 // ─── sendAssessmentCompleteEmail ──────────────────────────────────────────────
@@ -677,9 +708,7 @@ Browse programs: ${BASE_URL}/programs
 
 — Sina Kassaian, Tennis Bootcamp`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({
-    from: FROM,
+  await deliver({
     to,
     subject,
     html: emailLayout(bodyHtml),
@@ -768,8 +797,7 @@ Refund terms: ${BASE_URL}/legal/refund-policy
 
 — Sina Kassaian, Tennis Bootcamp`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+  await deliver({ to, subject, html: emailLayout(bodyHtml), text });
 }
 
 /** Inbox notification: a player says their e-transfer is on its way. */
@@ -809,6 +837,5 @@ Cohort: ${cohortLabel}
 
 ${adminUrl}`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({ from: FROM, to: INBOX, subject, html: emailLayout(bodyHtml), text });
+  await deliver({ to: INBOX, subject, html: emailLayout(bodyHtml), text });
 }

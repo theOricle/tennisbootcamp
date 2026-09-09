@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Cohort } from "@/types/cohort";
 import { trackCohortInviteSent } from "@/lib/analytics";
+import { inviteNotice } from "@/lib/emailResult";
 import { TierRangeBadges } from "@/components/tiers";
 import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
 import type { MatrixPlayer } from "@/lib/availabilityMatrix";
@@ -392,11 +393,21 @@ function InviteSection({
         setBusy(false);
         return;
       }
-      trackCohortInviteSent(cohortId, data.sent ?? list.length);
+      const created: number = data.sent ?? 0;
+      // Count the emails that actually left, not the rows we wrote.
+      const emailed: number = data.emailed ?? created;
+      trackCohortInviteSent(cohortId, emailed);
       setEmails("");
-      if (Array.isArray(data.errors) && data.errors.length > 0) {
-        setNotice(`Sent ${data.sent}. Skipped: ${data.errors.join(" ")}`);
-      }
+
+      const message = inviteNotice({
+        created,
+        emailed,
+        errors: Array.isArray(data.errors) ? data.errors : [],
+      });
+      // A held spot whose email never went out is a failure the coach has to
+      // act on, so it reads as an error rather than a passing note.
+      if (emailed < created) setError(message);
+      else setNotice(message);
       onChanged();
     } catch {
       setError("Network error.");
