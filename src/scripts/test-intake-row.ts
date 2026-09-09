@@ -179,6 +179,29 @@ check(
   false
 );
 
+// Each player answers their own age and level (backlog #14), so cols 5–6
+// describe the row's player. The columns themselves do not move.
+const junior = buildIntakeRow(
+  { ...wizard, name: "Maya Chen", who: "youth", level: "new" },
+  TS,
+  HOUSEHOLD
+);
+const teen = buildIntakeRow(
+  { ...wizard, name: "Noah Chen", who: "youth", level: "competitive" },
+  TS,
+  { ...HOUSEHOLD, participantName: "Noah Chen" }
+);
+check("two players in one household still write 22 cells each",
+  [junior.length, teen.length], [22, 22]);
+check("each row carries its own who / level",
+  [junior[4], junior[5], teen[4], teen[5]],
+  ["youth", "new", "youth", "competitive"]);
+check(
+  "differing who / level never shifts the household block",
+  [junior.slice(17, 19), teen.slice(17, 19)],
+  [["dana@example.com", "Dana Chen"], ["dana@example.com", "Dana Chen"]]
+);
+
 // No household → exactly the pre-#11 row, unchanged.
 check(
   "omitting the household yields exactly 17 cells",

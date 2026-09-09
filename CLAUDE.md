@@ -6,7 +6,7 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Active build plan:** `ops/plans/assessment-restructure.md` — assessment-first pivot (2026-07-18); execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive. (Previous plan `ops/plans/enrollment-and-accounts.md` fully shipped 2026-06-07.)
 
-Last updated: 2026-09-08 (household accounts, backlog #11)
+Last updated: 2026-09-09 (intake asks age and level per participant, backlog #14)
 
 ---
 
@@ -31,6 +31,7 @@ These are settled — do not re-open without explicit owner instruction.
 - **Preview mode:** `NEXT_PUBLIC_PREVIEW_MODE=true` must be set in Vercel until real launch — shows preview banner site-wide via `PreviewBanner` component in root layout
 - **Assessment product (2026-07-18):** 20-minute on-court assessment · $20 CAD · auto-credited to first program · self-serve slots; the coach-assigned level is the placement source of truth
 - **Group model (2026-07-18):** admin-created private cohorts (Supabase-backed) matched by level + availability grids; email invites with 48h hold; minimum-to-run; cancelled sessions become make-ups appended after the final week (cap 2 weeks, then credit)
+- **Per-participant age and level (2026-09-09, backlog #14):** the quiz asks who a submission is for exactly once. Each participant block carries its own age band (Adult 18+ / Teen 14–17 / Junior 7–13, defaulted from the relationship, editable, and the only source of `isMinor`) and its own self-estimate (now including Elite, which carries the retired elite-14plus track). `recommendPrograms()` runs once per participant, so a household sees one result card each; a lone player sees exactly the screen they always did. The availability grid stays one shared household schedule.
 - **Household accounts (2026-09-08, backlog #11):** one account holder can register several participants (themselves, their children, a spouse). `participants` (migration 0007) is the player of record — level and availability live there and `profiles` is kept in sync for the holder's own `'self'` participant. Two participants under one email are two bookings or two invites and one payer; capacity counts participants; the $20 assessment credit is per participant.
 - **Club membership (2026-07-18):** venue is a government-owned non-profit community club — $100/season (to ~November), paid by players directly to the club, never through our Stripe; assessment guest provision TBD
 
@@ -42,7 +43,7 @@ All phases are merged to main as of 2026-06-07.
 - **Hardening pass** — RLS policies tightened, SECURITY DEFINER revokes baked into migration
 - **Dashboard** — rebuilt to 3-column Figma layout
 - **Testimonials** — placeholder section removed in the production cleanup (backlog #1); nothing renders until real, attributable reviews exist
-- **5-step intake** — trimmed from 7 steps; dropped goals/programs/notes collection steps (sent as empty defaults)
+- **Intake wizard** — trimmed 7 → 5 steps (dropped goals/programs/notes, sent as empty defaults), then 5 → 3 (backlog #14: the "Who is training?" and "Where's your game right now?" steps folded into the per-participant blocks)
 - **SEO** — per-page metadata, per-page OG images, sitemap, robots.ts with targeted disallow
 - **Loading + error states** — Suspense skeletons on dashboard/profile, global-error, page-level error boundary, branded 404
 - **Accessibility pass** — focus rings, skip link, semantic nav landmarks, label associations, aria-hidden decoratives, contrast bump
@@ -158,6 +159,8 @@ The intake form posts to `/api/intake`, which:
 - Columns: `timestamp, name, email, phone, who, level, goals, programs, area, notes, newsletter, priority_score, lead_type, follow_up_status`
 
 After the append (2026-09-08, backlog #13) the route also provisions an account — set-password invite via `issueActivationLink` (once per email) and the submitted availability grid onto the profile (`availability_source='intake'`) — through `src/lib/intakeAccount.ts`; any failure there is logged and never fails the intake response. Level and availability reads/writes all go through `src/lib/players.ts`. Band hours are the shared standard in `BAND_HOURS` (`src/lib/availability.ts`). Row shape is pinned by `npm test` (`src/scripts/test-intake-row.ts`).
+
+Since 2026-09-09 (backlog #14) each row's `who` and `level` describe that row's own player, resolved from their age band and self-estimate; a submission that names no band falls back to the submission-level values, as before. The columns themselves have not moved.
 
 **Non-negotiable (from project brief):** Do not break the intake flow. All changes must be tested against the intake pipeline before being called done.
 

@@ -15,9 +15,11 @@ import {
   WhoIsThisFor,
   useHousehold,
   EMPTY_HOUSEHOLD,
+  defaultAgeBand,
   householdReady,
   type HouseholdValue,
 } from "@/components/participants/WhoIsThisFor";
+import { isAgeBand } from "@/lib/ageBand";
 
 type PublicSlot = { slotStart: string; timeLabel: string; taken: boolean };
 type PublicBlock = {
@@ -240,7 +242,20 @@ export default function BookAssessmentPage() {
         if (p.phone) setPhone(p.phone);
         if (p.selfLevel) setSelfLevel(p.selfLevel);
         if (p.availability) setAvailability(parseAvailability(p.availability));
-        if (p.household?.guests?.length) setWho(p.household);
+        // A prefill written before backlog #14 has no age bands and no
+        // profiles map; fill both in so the chooser renders.
+        if (p.household?.guests?.length) {
+          setWho({
+            selectedIds: p.household.selectedIds ?? [],
+            profiles: p.household.profiles ?? {},
+            guests: p.household.guests.map((g) => ({
+              ...g,
+              ageBand: isAgeBand(g.ageBand)
+                ? g.ageBand
+                : defaultAgeBand(g.relationship),
+            })),
+          });
+        }
       } catch {
         // ignore malformed prefill
       }
