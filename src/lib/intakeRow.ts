@@ -2,7 +2,9 @@
 //
 // Columns 1–14 are frozen (never reorder, rename, or remove).
 // Columns 15–17 were added 2026-05-23 (additive only).
-// Anything new goes AFTER column 17, and only by explicit owner decision.
+// Columns 18–22 were added 2026-09-08 for household accounts (backlog #11) —
+// appended after 17, never touching a byte of what comes before.
+// Anything new goes AFTER column 22, and only by explicit owner decision.
 //
 // Pure: no I/O, so src/scripts/test-intake-row.ts can pin the shape.
 
@@ -20,6 +22,33 @@ export const INTAKE_HEADERS = [
 
 /** Append range for the 17 frozen columns (A–Q). */
 export const INTAKE_APPEND_RANGE_COLUMNS = "A:Q";
+
+/**
+ * Columns 18–22: which player the row is about, and whose account they're on.
+ * Two children under one parent are two rows sharing an account_email and
+ * telling themselves apart by participant_id.
+ */
+export const INTAKE_HOUSEHOLD_HEADERS = [
+  "account_email", "account_name", "participant_name",
+  "participant_relationship", "participant_id",
+] as const;
+
+/** All 22 columns: the frozen 17 plus the appended household block. */
+export const INTAKE_ALL_HEADERS = [
+  ...INTAKE_HEADERS,
+  ...INTAKE_HOUSEHOLD_HEADERS,
+] as const;
+
+/** Append range covering all 22 columns (A–V). */
+export const INTAKE_APPEND_RANGE_ALL = "A:V";
+
+export type IntakeHousehold = {
+  accountEmail?: string | null;
+  accountName?: string | null;
+  participantName?: string | null;
+  participantRelationship?: string | null;
+  participantId?: string | null;
+};
 
 /** Loose request body — every field optional, exactly as the route treats it. */
 export type IntakeBody = {
@@ -80,12 +109,32 @@ function isHighIntent(body: IntakeBody): boolean {
   );
 }
 
-/**
- * Build the 17-cell row. `timestamp` is injected so the shape can be tested
- * deterministically; the route passes `new Date().toISOString()`.
- */
-export function buildIntakeRow(body: IntakeBody, timestamp: string): unknown[] {
+/** The 5 appended household cells (18–22). */
+export function buildIntakeHouseholdCells(
+  body: IntakeBody,
+  household: IntakeHousehold
+): unknown[] {
   return [
+    household.accountEmail ?? body.email ?? "",
+    household.accountName ?? body.name ?? "",
+    household.participantName ?? body.name ?? "",
+    household.participantRelationship ?? "",
+    household.participantId ?? "",
+  ];
+}
+
+/**
+ * Build the row. Cells 1–17 are the frozen contract and never change shape or
+ * value; passing a `household` appends cells 18–22 after them. `timestamp` is
+ * injected so the shape can be tested deterministically; the route passes
+ * `new Date().toISOString()`.
+ */
+export function buildIntakeRow(
+  body: IntakeBody,
+  timestamp: string,
+  household?: IntakeHousehold
+): unknown[] {
+  const frozen: unknown[] = [
     timestamp,
     orEmpty(body.name),
     orEmpty(body.email),
@@ -108,4 +157,7 @@ export function buildIntakeRow(body: IntakeBody, timestamp: string): unknown[] {
     intakeAvailabilityValue(body),
     orEmpty(body.recommendedProgram),
   ];
+  return household
+    ? [...frozen, ...buildIntakeHouseholdCells(body, household)]
+    : frozen;
 }

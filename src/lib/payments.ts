@@ -16,6 +16,7 @@ function getStripe(): Stripe {
 export async function createCheckoutSession(params: {
   cohortId: string;
   programTitle: string;
+  /** Price for ONE seat. `quantity` multiplies it. */
   priceCents: number;
   enrollmentRowNumber: number;
   successUrl: string;
@@ -27,16 +28,21 @@ export async function createCheckoutSession(params: {
   discountCents?: number;
   assessmentBookingId?: string;
   inviteToken?: string;
+  // Household accounts (backlog #11): one payer, several players. Each player
+  // is a seat, a Sheet row, an invite and their own $20 credit.
+  quantity?: number;
+  enrollmentRowNumbers?: number[];
+  assessmentBookingIds?: string[];
+  participantIds?: string[];
 }): Promise<{ sessionUrl: string }> {
   if (isMockMode) {
     return { sessionUrl: params.successUrl };
   }
 
   const stripe = getStripe();
-  const discountCents = Math.min(
-    params.discountCents ?? 0,
-    params.priceCents > 0 ? params.priceCents : 0
-  );
+  const quantity = Math.max(1, params.quantity ?? 1);
+  const totalCents = (params.priceCents > 0 ? params.priceCents : 0) * quantity;
+  const discountCents = Math.min(params.discountCents ?? 0, totalCents);
 
   let discounts: { coupon: string }[] | undefined;
   if (discountCents > 0) {
@@ -59,7 +65,7 @@ export async function createCheckoutSession(params: {
           // Stripe requires a positive integer; use 1 CAD as placeholder when price not yet set
           unit_amount: params.priceCents > 0 ? params.priceCents : 100,
         },
-        quantity: 1,
+        quantity,
       },
     ],
     discounts,
@@ -71,6 +77,12 @@ export async function createCheckoutSession(params: {
       assessmentBookingId: params.assessmentBookingId ?? "",
       assessmentCreditCents: discountCents > 0 ? String(discountCents) : "",
       inviteToken: params.inviteToken ?? "",
+      // Household accounts: the full set, comma-joined. The singular fields
+      // above stay populated with the first entry so an in-flight session
+      // created before this deploy still settles correctly.
+      enrollmentRowNumbers: (params.enrollmentRowNumbers ?? []).join(","),
+      assessmentBookingIds: (params.assessmentBookingIds ?? []).join(","),
+      participantIds: (params.participantIds ?? []).join(","),
     },
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,

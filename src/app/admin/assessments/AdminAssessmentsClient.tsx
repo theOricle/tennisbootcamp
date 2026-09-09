@@ -21,6 +21,11 @@ type Booking = {
   slot_start: string;
   name: string;
   email: string;
+  /** Who the booking is for, and whose account it sits on (backlog #11). */
+  participant_name?: string;
+  participant_relationship?: string;
+  account_name?: string;
+  account_email?: string;
   phone: string | null;
   self_level: string | null;
   status: string;
@@ -36,6 +41,11 @@ type RequestRow = {
   id: string;
   name: string;
   email: string;
+  /** Who the booking is for, and whose account it sits on (backlog #11). */
+  participant_name?: string;
+  participant_relationship?: string;
+  account_name?: string;
+  account_email?: string;
   phone: string | null;
   self_level: string | null;
   availability_chips: string[];
@@ -317,8 +327,14 @@ function BookingCard({
     <div className="rounded-xl border border-white/10 bg-white/5 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-semibold text-white">{booking.name}</p>
-          <p className="truncate text-xs text-white/50">{booking.email}</p>
+          <p className="truncate font-semibold text-white">
+            {booking.participant_name || booking.name}
+          </p>
+          <p className="truncate text-xs text-white/50">
+            <span className="text-white/35">Account: </span>
+            {booking.account_name || booking.email}
+            {booking.account_email ? ` · ${booking.account_email}` : ` · ${booking.email}`}
+          </p>
           {booking.phone && (
             <p className="text-xs text-white/50">{booking.phone}</p>
           )}
@@ -476,8 +492,14 @@ function RequestCard({
     <div className="rounded-xl border border-white/10 bg-white/5 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-semibold text-white">{request.name}</p>
-          <p className="truncate text-xs text-white/50">{request.email}</p>
+          <p className="truncate font-semibold text-white">
+            {request.participant_name || request.name}
+          </p>
+          <p className="truncate text-xs text-white/50">
+            <span className="text-white/35">Account: </span>
+            {request.account_name || request.email}
+            {request.account_email ? ` · ${request.account_email}` : ` · ${request.email}`}
+          </p>
           {request.phone && (
             <p className="text-xs text-white/50">{request.phone}</p>
           )}

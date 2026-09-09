@@ -17,6 +17,11 @@ export async function GET() {
     id: r.id,
     name: r.name,
     email: r.email,
+    // Who it's for, and whose account it sits on (backlog #11).
+    participant_name: r.participant_name,
+    participant_relationship: r.participant_relationship,
+    account_name: r.account_name,
+    account_email: r.account_email,
     phone: r.phone,
     self_level: r.self_level,
     availability_chips: availabilityChips(r.availability),

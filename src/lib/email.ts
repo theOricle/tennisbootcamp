@@ -52,6 +52,43 @@ function signOff(): string {
   </p>`;
 }
 
+// ─── Who the message is about (household accounts, backlog #11) ───────────────
+// Every email goes to the account holder. When the person it concerns is
+// someone else on the account — a child, a spouse — the subject and the copy
+// name them, so a parent with two kids can tell two emails apart at a glance.
+
+function firstNameOf(name: string | null | undefined): string {
+  return (name ?? "").trim().split(/\s+/)[0] ?? "";
+}
+
+export type Subject = {
+  /** The holder's first name — who is reading. */
+  holderFirst: string;
+  /** The player's first name — who the email is about. */
+  playerFirst: string;
+  /** True when the holder is the player (the ordinary single-user case). */
+  isSelf: boolean;
+  /** "your" / "Maya's" — drops into a sentence either way. */
+  possessive: string;
+  /** "Your" / "Maya's" — sentence-initial. */
+  Possessive: string;
+};
+
+function subjectOf(holderName: string, participantName?: string | null): Subject {
+  const holderFirst = firstNameOf(holderName) || "Athlete";
+  const playerFirst = firstNameOf(participantName) || holderFirst;
+  const isSelf =
+    playerFirst.toLowerCase() === holderFirst.toLowerCase() ||
+    !participantName?.trim();
+  return {
+    holderFirst,
+    playerFirst,
+    isSelf,
+    possessive: isSelf ? "your" : `${playerFirst}'s`,
+    Possessive: isSelf ? "Your" : `${playerFirst}'s`,
+  };
+}
+
 // ─── sendLinkEmail ────────────────────────────────────────────────────────────
 
 export async function sendLinkEmail(
@@ -136,22 +173,28 @@ export async function sendRecommendationEmail(
 // ─── sendBookingConfirmationEmail ─────────────────────────────────────────────
 
 export async function sendBookingConfirmationEmail(params: {
+  /** The account holder — every email goes to them. */
   to: string;
   name: string;
+  /** Who the assessment is for, when that isn't the holder. */
+  participantName?: string | null;
   dateLabel: string;
   timeLabel: string;
   locationLabel?: string | null;
 }): Promise<void> {
-  const { to, name, dateLabel, timeLabel, locationLabel } = params;
+  const { to, name, participantName, dateLabel, timeLabel, locationLabel } = params;
   const key = process.env.RESEND_API_KEY;
-  const subject = `You're booked: ${dateLabel} at ${timeLabel}`;
+  const who = subjectOf(name, participantName);
+  const subject = who.isSelf
+    ? `You're booked: ${dateLabel} at ${timeLabel}`
+    : `${who.playerFirst}'s assessment is booked: ${dateLabel} at ${timeLabel}`;
 
   if (!key) {
     console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}`);
     return;
   }
 
-  const firstName = name.trim().split(/\s+/)[0] || "Athlete";
+  const firstName = who.holderFirst;
   const whereLine = locationLabel
     ? locationLabel
     : "We'll confirm the exact court with you before your slot.";
@@ -164,9 +207,11 @@ export async function sendBookingConfirmationEmail(params: {
     </tr>`;
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">You're on court, ${firstName}.</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${
+      who.isSelf ? `You're on court, ${firstName}.` : `${who.playerFirst} is on court.`
+    }</p>
     <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
-      Your 20-minute player assessment is booked. Here's everything you need.
+      ${who.Possessive} 20-minute player assessment is booked. Here's everything you need.
     </p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
       ${detailRow("When", `${dateLabel}, ${timeLabel}`)}
@@ -180,9 +225,11 @@ export async function sendBookingConfirmationEmail(params: {
     ${signOff()}
   `;
 
-  const text = `You're booked, ${firstName}.
+  const text = `${
+    who.isSelf ? `You're booked, ${firstName}.` : `${who.playerFirst} is booked, ${firstName}.`
+  }
 
-Your 20-minute player assessment:
+${who.Possessive} 20-minute player assessment:
   When:  ${dateLabel}, ${timeLabel}
   Where: ${whereLine}
   Bring: A racquet if you have one, water, and court shoes.
@@ -206,24 +253,30 @@ ${membership}
 // ─── sendAssessmentRequestReceivedEmail ───────────────────────────────────────
 
 export async function sendAssessmentRequestReceivedEmail(params: {
+  /** The account holder — every email goes to them. */
   to: string;
   name: string;
+  /** Who the request is for, when that isn't the holder. */
+  participantName?: string | null;
 }): Promise<void> {
-  const { to, name } = params;
+  const { to, name, participantName } = params;
   const key = process.env.RESEND_API_KEY;
-  const subject = "Your assessment request is in — we'll set your time";
+  const who = subjectOf(name, participantName);
+  const subject = who.isSelf
+    ? "Your assessment request is in — we'll set your time"
+    : `${who.playerFirst}'s assessment request is in — we'll set the time`;
 
   if (!key) {
     console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}`);
     return;
   }
 
-  const firstName = name.trim().split(/\s+/)[0] || "Athlete";
+  const firstName = who.holderFirst;
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Got it, ${firstName}.</p>
     <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
-      Your 20-minute assessment request is in. We'll reach out within a day to set a time that fits the availability you gave us.
+      ${who.Possessive} 20-minute assessment request is in. We'll reach out within a day to set a time that fits the availability you gave us.
     </p>
     <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.70);">
       No payment now — we'll confirm your time first. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.
@@ -257,15 +310,21 @@ Anything change on your end? Just reply to this email.
 /** Internal notification to the inbox when a prospect requests a time. */
 export async function sendAssessmentRequestAdminEmail(params: {
   name: string;
+  /** The player, when the account holder is booking for someone else. */
+  participantName?: string | null;
   email: string;
   phone?: string | null;
   selfLevel?: string | null;
   preferredTimes: string[];
   note?: string | null;
 }): Promise<void> {
-  const { name, email, phone, selfLevel, preferredTimes, note } = params;
+  const { name, participantName, email, phone, selfLevel, preferredTimes, note } = params;
   const key = process.env.RESEND_API_KEY;
-  const subject = `New assessment request: ${name}`;
+  const player = (participantName ?? "").trim();
+  const subject =
+    player && player.toLowerCase() !== name.trim().toLowerCase()
+      ? `New assessment request: ${player} (account: ${name})`
+      : `New assessment request: ${name}`;
 
   if (!key) {
     console.log(
@@ -331,7 +390,10 @@ function tierChip(name: string): string {
  * so the invitee sees which tier band the group is for.
  */
 export async function sendCohortInviteEmail(params: {
+  /** The account holder — every email goes to them. */
   to: string;
+  /** Which player on the account the spot is for. */
+  participantName?: string | null;
   levelLabel: string | null; // "3.0" or "3.0–3.5"; null when not tier-gated
   tierNames: string[];       // ["Deuce"] or ["Deuce","Break"]; [] when not tier-gated
   programTitle: string;
@@ -345,12 +407,16 @@ export async function sendCohortInviteEmail(params: {
   enrollUrl: string;
 }): Promise<void> {
   const {
-    to, levelLabel, tierNames, programTitle, cohortLabel, dayTimeLabel,
+    to, participantName, levelLabel, tierNames, programTitle, cohortLabel, dayTimeLabel,
     startDateLabel, weeks, priceCents, creditCents, holdHours, enrollUrl,
   } = params;
   const key = process.env.RESEND_API_KEY;
+  const player = (participantName ?? "").trim();
+  const forWhom = player ? `${player.split(/\s+/)[0]}'s` : "Your";
 
-  const groupName = levelLabel ? `Your Level ${levelLabel} group` : `Your ${programTitle} group`;
+  const groupName = levelLabel
+    ? `${forWhom} Level ${levelLabel} group`
+    : `${forWhom} ${programTitle} group`;
   const subject = `${groupName} is forming — ${dayTimeLabel}, starts ${startDateLabel}`;
 
   if (!key) {
@@ -422,15 +488,23 @@ The link is personal to you. Terms: ${BASE_URL}/legal/refund-policy
 
 /** Cohort reached minimum — everyone paid gets the schedule. */
 export async function sendCohortConfirmedEmail(params: {
+  /** The account holder — every email goes to them. */
   to: string;
+  /** Which player on the account is in, when that isn't the holder. */
+  participantName?: string | null;
   cohortLabel: string;
   programTitle: string;
   startDateLabel: string;
   sessionLines: string[]; // "Tue Sep 8 · 6–7pm"
 }): Promise<void> {
-  const { to, cohortLabel, programTitle, startDateLabel, sessionLines } = params;
+  const {
+    to, participantName, cohortLabel, programTitle, startDateLabel, sessionLines,
+  } = params;
   const key = process.env.RESEND_API_KEY;
-  const subject = `You're in: ${cohortLabel} starts ${startDateLabel}`;
+  const player = (participantName ?? "").trim().split(/\s+/)[0] ?? "";
+  const subject = player
+    ? `${player} is in: ${cohortLabel} starts ${startDateLabel}`
+    : `You're in: ${cohortLabel} starts ${startDateLabel}`;
 
   if (!key) {
     console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}`);
@@ -445,7 +519,9 @@ export async function sendCohortConfirmedEmail(params: {
     .join("");
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Your group is confirmed.</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${
+      player ? `${player}'s group is confirmed.` : "Your group is confirmed."
+    }</p>
     <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
       ${programTitle} — ${cohortLabel} reached its minimum and starts ${startDateLabel}. Every session, in order:
     </p>
@@ -459,7 +535,7 @@ export async function sendCohortConfirmedEmail(params: {
     ${signOff()}
   `;
 
-  const text = `Your group is confirmed.
+  const text = `${player ? `${player}'s group is confirmed.` : "Your group is confirmed."}
 
 ${programTitle} — ${cohortLabel} reached its minimum and starts ${startDateLabel}. Every session, in order:
 
@@ -533,33 +609,43 @@ Full rules: ${BASE_URL}/legal/refund-policy
 // ─── sendAssessmentCompleteEmail ──────────────────────────────────────────────
 
 export async function sendAssessmentCompleteEmail(params: {
+  /** The account holder — every email goes to them. */
   to: string;
   name: string;
+  /** Whose level this is, when that isn't the holder. */
+  participantName?: string | null;
   levelLabel: string;
   coachNote: string;
 }): Promise<void> {
-  const { to, name, levelLabel, coachNote } = params;
+  const { to, name, participantName, levelLabel, coachNote } = params;
   const key = process.env.RESEND_API_KEY;
-  const subject = `Your level: ${levelLabel} — here's your next step`;
+  const who = subjectOf(name, participantName);
+  const subject = `${who.Possessive} level: ${levelLabel} — here's ${who.possessive} next step`;
 
   if (!key) {
     console.log(`[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}`);
     return;
   }
 
-  const firstName = name.trim().split(/\s+/)[0] || "Athlete";
+  const firstName = who.holderFirst;
   const tier = tierForLevel(levelLabel);
   const tierLine = tier
-    ? `<p style="margin:12px 0 0;font-size:15px;color:rgba(255,255,255,0.85);">You're a <strong style="color:#B4E655;">${tier.name}</strong>.</p>`
+    ? `<p style="margin:12px 0 0;font-size:15px;color:rgba(255,255,255,0.85);">${
+        who.isSelf ? "You're" : `${who.playerFirst} is`
+      } a <strong style="color:#B4E655;">${tier.name}</strong>.</p>`
     : "";
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Nice work out there, ${firstName}.</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${
+      who.isSelf
+        ? `Nice work out there, ${firstName}.`
+        : `Nice work out there from ${who.playerFirst}.`
+    }</p>
     <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
-      Here's your read from the court.
+      Here's ${who.possessive} read from the court.
     </p>
     <div style="margin:8px 0 4px;">
-      <span style="font-size:13px;color:rgba(255,255,255,0.45);">Your level</span><br/>
+      <span style="font-size:13px;color:rgba(255,255,255,0.45);">${who.Possessive} level</span><br/>
       <span style="font-size:28px;font-weight:700;color:#B4E655;">${levelLabel}</span>
     </div>
     ${tierLine}
@@ -567,19 +653,25 @@ export async function sendAssessmentCompleteEmail(params: {
       ${coachNote}
     </p>
     <p style="margin:20px 0 0;font-size:14px;color:rgba(255,255,255,0.70);">
-      We're forming your ${levelLabel} group around everyone's availability — invitations go out by email. Want to move sooner?
+      We're forming ${who.possessive} ${levelLabel} group around everyone's availability — invitations go out by email. Want to move sooner?
     </p>
     ${limeButton(`${BASE_URL}/programs`, "Browse programs →")}
     ${signOff()}
   `;
 
-  const text = `Nice work out there, ${firstName}.
+  const text = `${
+    who.isSelf
+      ? `Nice work out there, ${firstName}.`
+      : `Nice work out there from ${who.playerFirst}.`
+  }
 
-Your level: ${levelLabel}${tier ? `\nYou're a ${tier.name}.` : ""}
+${who.Possessive} level: ${levelLabel}${
+    tier ? `\n${who.isSelf ? "You're" : `${who.playerFirst} is`} a ${tier.name}.` : ""
+  }
 
 ${coachNote}
 
-We're forming your ${levelLabel} group around everyone's availability — invitations go out by email. Want to move sooner? Just reply.
+We're forming ${who.possessive} ${levelLabel} group around everyone's availability — invitations go out by email. Want to move sooner? Just reply.
 
 Browse programs: ${BASE_URL}/programs
 

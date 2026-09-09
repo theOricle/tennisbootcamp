@@ -77,31 +77,58 @@ export async function POST(req: NextRequest) {
     const assessmentBookingId = session.metadata?.assessmentBookingId ?? "";
     const assessmentCreditCents = Number(session.metadata?.assessmentCreditCents ?? 0);
 
-    if (rowNumber) {
-      await markEnrollmentPaid(rowNumber);
+    // Household accounts (backlog #11): one payment can cover several players.
+    // The plural metadata is authoritative when present; a session created
+    // before this deploy only has the singular fields, and still settles.
+    const csv = (v: string | undefined) =>
+      (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    const rowNumbers = csv(session.metadata?.enrollmentRowNumbers)
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const bookingIds = csv(session.metadata?.assessmentBookingIds);
+    const participantIds = csv(session.metadata?.participantIds);
+
+    const paidRows = rowNumbers.length > 0 ? rowNumbers : rowNumber ? [rowNumber] : [];
+    for (const n of paidRows) {
+      await markEnrollmentPaid(n);
     }
 
     // ── Phase 3: assessment credit + invite confirmation ─────────────────────
-    if (assessmentBookingId && assessmentCreditCents > 0) {
+    const creditBookings =
+      bookingIds.length > 0
+        ? bookingIds
+        : assessmentBookingId && assessmentCreditCents > 0
+          ? [assessmentBookingId]
+          : [];
+    if (creditBookings.length > 0) {
       const { markCreditApplied } = await import("@/lib/assessmentCredit");
       const { setEnrollmentCredit } = await import("@/lib/enrollmentSheet");
-      await markCreditApplied(assessmentBookingId);
-      if (rowNumber) {
-        await setEnrollmentCredit(
-          rowNumber,
-          (assessmentCreditCents / 100).toFixed(2)
-        );
+      const { ASSESSMENT_CREDIT_CENTS } = await import("@/lib/assessmentCredit");
+      // One credit per player, in the same order the rows were appended.
+      const perCredit =
+        bookingIds.length > 0 ? ASSESSMENT_CREDIT_CENTS : assessmentCreditCents;
+      for (let i = 0; i < creditBookings.length; i++) {
+        await markCreditApplied(creditBookings[i]);
+        const target = paidRows[i] ?? paidRows[0];
+        if (target) {
+          await setEnrollmentCredit(target, (perCredit / 100).toFixed(2));
+        }
       }
     }
     if (cohortId && (inviteToken || contactEmail)) {
       const { markInvitePaidAndMaybeConfirm } = await import("@/lib/cohortActions");
-      await markInvitePaidAndMaybeConfirm({
-        cohortId,
-        email: contactEmail || undefined,
-        inviteToken: inviteToken || undefined,
-      }).catch((err) =>
-        console.error("Invite confirmation failed (non-blocking):", err)
-      );
+      const targets = participantIds.length > 0 ? participantIds : [undefined];
+      for (let i = 0; i < targets.length; i++) {
+        await markInvitePaidAndMaybeConfirm({
+          cohortId,
+          email: contactEmail || undefined,
+          participantId: targets[i],
+          // The single-use token belongs to the first invite only.
+          inviteToken: i === 0 ? inviteToken || undefined : undefined,
+        }).catch((err) =>
+          console.error("Invite confirmation failed (non-blocking):", err)
+        );
+      }
     }
 
     // If the enrollment wasn't saved to Supabase during checkout creation

@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { parseAvailability, hasAnyAvailability } from "@/lib/availability";
-import { setPlayerAvailability } from "@/lib/players";
+import {
+  setPlayerAvailability,
+  getParticipant,
+  ensureSelfParticipant,
+} from "@/lib/players";
 
-// Dashboard "Your availability" editor → the player's own profile.
-// Session-gated (the caller can only write their own row); the write itself
-// goes through the players helper with the service client so the provenance
-// stamp (source = 'dashboard') can't be forged from the browser.
+// Dashboard availability editor → one player on the caller's account.
+// Session-gated: the participant must belong to the signed-in holder, so a
+// forged id can't reach someone else's household. The write itself goes
+// through the players helper with the service client, so the provenance stamp
+// (source = 'dashboard') can't be forged from the browser either.
 
 const NOTE_MAX = 140;
 
@@ -37,7 +42,23 @@ export async function POST(req: NextRequest) {
     const note =
       typeof body.note === "string" ? body.note.trim().slice(0, NOTE_MAX) : "";
 
-    const result = await setPlayerAvailability(user.id, {
+    // Which player on this account. An unknown or foreign id falls back to the
+    // holder's own row rather than writing where it shouldn't.
+    const requested =
+      typeof body.participantId === "string" && body.participantId.trim()
+        ? body.participantId.trim()
+        : null;
+    let target = requested ? await getParticipant(requested) : null;
+    if (target && target.account_id !== user.id) target = null;
+    if (!target) target = await ensureSelfParticipant(user.id);
+    if (!target) {
+      return NextResponse.json(
+        { error: "Couldn't find who to save this for." },
+        { status: 400 }
+      );
+    }
+
+    const result = await setPlayerAvailability(target.id, {
       availability,
       source: "dashboard",
       note: note || null,

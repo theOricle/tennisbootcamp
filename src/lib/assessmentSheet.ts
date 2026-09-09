@@ -8,6 +8,10 @@ import { google, type sheets_v4 } from "googleapis";
 
 const TAB = "assessments";
 
+// Columns 1–11 are frozen (never reorder, rename, or remove).
+// Columns 12–16 were appended 2026-09-08 for household accounts (backlog #11)
+// — additive only, after the last existing column, same rule as every other
+// Sheets extension here.
 const HEADERS = [
   "timestamp",
   "name",
@@ -20,7 +24,18 @@ const HEADERS = [
   "level_result",
   "coach_notes",
   "credit_status",
+  // ── appended (household accounts) ──
+  "account_email",
+  "account_name",
+  "participant_name",
+  "participant_relationship",
+  "participant_id",
 ] as const;
+
+/** A–P: the 11 frozen columns plus the 5 appended household columns. */
+const RANGE = "A:P";
+/** The last frozen column — the in-place status update never writes past it. */
+const FROZEN_END_COL = "K";
 
 function getSheets(): sheets_v4.Sheets | null {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -57,7 +72,9 @@ async function ensureHeader(sheets: sheets_v4.Sheets, spreadsheetId: string) {
 }
 
 export type AssessmentSheetRow = {
+  /** The player's name (col 2) — the participant, not the account holder. */
   name: string;
+  /** The account holder's email (col 3) — where every email goes. */
   email: string;
   phone?: string | null;
   slotDate: string;
@@ -67,6 +84,12 @@ export type AssessmentSheetRow = {
   levelResult?: string | number | null;
   coachNotes?: string | null;
   creditStatus?: string;
+  // ── household columns (appended) ──
+  accountEmail?: string | null;
+  accountName?: string | null;
+  participantName?: string | null;
+  participantRelationship?: string | null;
+  participantId?: string | null;
 };
 
 function toRow(r: AssessmentSheetRow): string[] {
@@ -82,6 +105,12 @@ function toRow(r: AssessmentSheetRow): string[] {
     r.levelResult != null ? String(r.levelResult) : "",
     r.coachNotes ?? "",
     r.creditStatus ?? "unused",
+    // ── appended (household accounts) ──
+    r.accountEmail ?? r.email ?? "",
+    r.accountName ?? "",
+    r.participantName ?? r.name ?? "",
+    r.participantRelationship ?? "",
+    r.participantId ?? "",
   ];
 }
 
@@ -94,7 +123,7 @@ export async function appendAssessmentRow(r: AssessmentSheetRow): Promise<void> 
     await ensureHeader(sheets, spreadsheetId);
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${TAB}!A:K`,
+      range: `${TAB}!${RANGE}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [toRow(r)] },
     });
@@ -109,6 +138,8 @@ export async function appendAssessmentRow(r: AssessmentSheetRow): Promise<void> 
  */
 export async function updateAssessmentRow(match: {
   email: string;
+  /** Narrows the match when two people on one account both have bookings. */
+  participantId?: string | null;
   slotDate: string;
   slotStart: string;
   status: string;
@@ -124,23 +155,29 @@ export async function updateAssessmentRow(match: {
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${TAB}!A:K`,
+      range: `${TAB}!${RANGE}`,
     });
     const rows = res.data.values ?? [];
     const email = match.email.trim().toLowerCase();
 
-    // Scan bottom-up so we hit the most recent matching booking first.
+    // Scan bottom-up so we hit the most recent matching booking first. The
+    // participant id (col 16) is the tie-break when one account has several
+    // players; rows written before that column existed match on email alone.
+    const participantId = (match.participantId ?? "").trim();
     let target = -1;
     for (let i = rows.length - 1; i >= 1; i--) {
       const row = rows[i];
-      if (
-        (row[2] ?? "").trim().toLowerCase() === email &&
-        (row[4] ?? "") === match.slotDate &&
-        (row[5] ?? "") === match.slotStart
-      ) {
-        target = i;
-        break;
+      const rowParticipant = (row[15] ?? "").trim();
+      const sameSlot =
+        (row[4] ?? "") === match.slotDate && (row[5] ?? "") === match.slotStart;
+      if (!sameSlot) continue;
+      if (participantId && rowParticipant) {
+        if (rowParticipant !== participantId) continue;
+      } else if ((row[2] ?? "").trim().toLowerCase() !== email) {
+        continue;
       }
+      target = i;
+      break;
     }
     if (target === -1) return;
 
@@ -153,11 +190,13 @@ export async function updateAssessmentRow(match: {
     if (match.coachNotes != null) updated[9] = match.coachNotes;
     if (match.creditStatus != null) updated[10] = match.creditStatus;
 
+    // Only the frozen block is rewritten in place; the appended household
+    // columns were set at append time and are left exactly as they are.
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${TAB}!A${rowNumber}:K${rowNumber}`,
+      range: `${TAB}!A${rowNumber}:${FROZEN_END_COL}${rowNumber}`,
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: [updated] },
+      requestBody: { values: [updated.slice(0, 11)] },
     });
   } catch (err) {
     console.error("updateAssessmentRow failed (non-blocking):", err);

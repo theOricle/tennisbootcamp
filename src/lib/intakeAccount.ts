@@ -4,6 +4,7 @@ import {
   findUserIdByEmail,
   setPlayerAvailability,
   fillPlayerContact,
+  ensureSelfParticipant,
 } from "@/lib/players";
 import { hasAnyAvailability } from "@/lib/availability";
 
@@ -33,6 +34,18 @@ export async function provisionIntakeAccount(input: {
   name?: string | null;
   phone?: string | null;
   availability?: unknown;
+  /**
+   * The players the quiz was about (backlog #11). Empty means "the account
+   * holder", which is what every pre-household submission is.
+   */
+  participantIds?: string[];
+  /**
+   * True when the "who is this for?" resolution created the auth account a
+   * moment ago (a parent quizzing for a child). The account technically
+   * "exists" by the time we look, but nobody has been sent the link yet — so
+   * send it.
+   */
+  forceInvite?: boolean;
 }): Promise<IntakeAccountResult> {
   const result: IntakeAccountResult = {
     account: "skipped",
@@ -46,8 +59,11 @@ export async function provisionIntakeAccount(input: {
     // Once per email: an existing auth user gets no second set-password email
     // from the quiz (they already have the link from an earlier step).
     let userId = await findUserIdByEmail(email);
-    if (userId) {
+    if (userId && !input.forceInvite) {
       result.account = "existing";
+    } else if (userId && input.forceInvite) {
+      await issueActivationLink(email, null);
+      result.account = "created";
     } else {
       userId = await issueActivationLink(email, null);
       if (!userId) userId = await findUserIdByEmail(email);
@@ -63,17 +79,26 @@ export async function provisionIntakeAccount(input: {
       phone: input.phone ?? null,
     }).catch(() => undefined);
 
-    // Carry the grid onto the profile. An empty grid writes nothing — never
-    // wipe what a player confirmed earlier with a blank.
+    // Carry the grid onto every player the quiz was about. An empty grid
+    // writes nothing — never wipe what a player confirmed earlier with a blank.
     if (hasAnyAvailability(input.availability)) {
-      const write = await setPlayerAvailability(userId, {
-        availability: input.availability,
-        source: "intake",
-      });
-      if (write.ok) {
-        result.availability = "written";
-      } else {
-        console.error("[intake account] availability write failed:", write.error);
+      let targets = input.participantIds ?? [];
+      if (targets.length === 0) {
+        const self = await ensureSelfParticipant(userId, {
+          fullName: input.name ?? null,
+        }).catch(() => null);
+        targets = self ? [self.id] : [];
+      }
+      for (const participantId of targets) {
+        const write = await setPlayerAvailability(participantId, {
+          availability: input.availability,
+          source: "intake",
+        });
+        if (write.ok) {
+          result.availability = "written";
+        } else {
+          console.error("[intake account] availability write failed:", write.error);
+        }
       }
     }
   } catch (err) {

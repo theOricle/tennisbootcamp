@@ -36,6 +36,14 @@ async function markEnrollmentStatus(rowNumber: number, status: string) {
   });
 }
 
+type CheckoutParticipant = {
+  name?: string;
+  participantId?: string | null;
+  rowNumber?: number | null;
+  isMinor?: boolean;
+  dob?: string;
+};
+
 type EnrollmentMeta = {
   contactEmail: string;
   participantName?: string;
@@ -49,6 +57,8 @@ type EnrollmentMeta = {
   consentAgreedAt?: string;
   waiverVersion?: string;
   location?: string;
+  /** Every player this payment covers (backlog #11). One payer, many seats. */
+  participants?: CheckoutParticipant[];
 };
 
 export async function POST(req: NextRequest) {
@@ -79,14 +89,46 @@ export async function POST(req: NextRequest) {
 
     // The server's price wins over whatever the client sent.
     const cohort = await getCohortById(cohortId);
-    const chargeCents = cohort?.priceCents ?? priceCents ?? 0;
+    const seatCents = cohort?.priceCents ?? priceCents ?? 0;
 
-    // $20 assessment credit: completed + paid + unused, looked up by enrollee
-    // email. Applied as a Stripe Checkout discount (subtracted in mock mode).
-    const credit = enrollmentMeta?.contactEmail
-      ? await findUnusedCredit(enrollmentMeta.contactEmail)
-      : null;
-    const discountCents = credit ? Math.min(credit.creditCents, chargeCents) : 0;
+    // Every player this payment covers. A body without the household field is
+    // a single-player enrollment — one seat, exactly as before.
+    const players: CheckoutParticipant[] =
+      enrollmentMeta?.participants && enrollmentMeta.participants.length > 0
+        ? enrollmentMeta.participants
+        : [
+            {
+              name: enrollmentMeta?.participantName,
+              rowNumber: enrollmentRowNumber,
+            },
+          ];
+    const rowNumbers = players
+      .map((p) => p.rowNumber ?? null)
+      .filter((n): n is number => typeof n === "number" && n > 0);
+    const chargeCents = seatCents * players.length;
+
+    // The $20 assessment credit is per player: two children assessed under one
+    // parent's email bring $40 off between them.
+    const credits: { rowNumber: number | null; bookingId: string; cents: number }[] = [];
+    if (enrollmentMeta?.contactEmail) {
+      for (const p of players) {
+        const found = await findUnusedCredit(enrollmentMeta.contactEmail, {
+          participantId: p.participantId ?? null,
+        });
+        if (found && !credits.some((c) => c.bookingId === found.bookingId)) {
+          credits.push({
+            rowNumber: p.rowNumber ?? null,
+            bookingId: found.bookingId,
+            cents: found.creditCents,
+          });
+        }
+      }
+    }
+    const discountCents = Math.min(
+      credits.reduce((sum, c) => sum + c.cents, 0),
+      chargeCents
+    );
+    const credit = credits[0] ?? null;
 
     const origin =
       req.headers.get("origin") ??
@@ -95,48 +137,61 @@ export async function POST(req: NextRequest) {
 
     const successUrl =
       `${origin}/enroll/${cohortId}/confirmed?row=${enrollmentRowNumber}` +
+      (players.length > 1 ? `&players=${players.length}` : "") +
       (inviteToken ? "&invite=1" : "");
     const cancelUrl = `${origin}/enroll/${cohortId}${inviteToken ? `?invite=${inviteToken}` : ""}`;
 
-    // Save to Supabase (fire-and-forget on error so it never breaks checkout)
+    // Save to Supabase — one enrollment row per player (fire-and-forget on
+    // error so it never breaks checkout).
     let supabaseEnrollmentId: string | null = null;
     if (enrollmentMeta?.contactEmail) {
-      supabaseEnrollmentId = await saveEnrollmentToSupabase({
-        cohortId,
-        program: programTitle,
-        location: enrollmentMeta.location,
-        participantName: enrollmentMeta.participantName,
-        participantDob: enrollmentMeta.participantDob,
-        isMinor: enrollmentMeta.isMinor,
-        contactEmail: enrollmentMeta.contactEmail,
-        contactPhone: enrollmentMeta.contactPhone,
-        guardianName: enrollmentMeta.guardianName,
-        guardianEmail: enrollmentMeta.guardianEmail,
-        guardianPhone: enrollmentMeta.guardianPhone,
-        consentSignedName: enrollmentMeta.consentSignedName,
-        consentAgreedAt: enrollmentMeta.consentAgreedAt,
-        waiverVersion: enrollmentMeta.waiverVersion,
-        status: isMockMode ? "test_paid" : "pending",
-      });
+      for (const p of players) {
+        const id = await saveEnrollmentToSupabase({
+          cohortId,
+          program: programTitle,
+          location: enrollmentMeta.location,
+          participantName: p.name ?? enrollmentMeta.participantName,
+          participantDob: p.dob ?? enrollmentMeta.participantDob,
+          isMinor: p.isMinor ?? enrollmentMeta.isMinor,
+          contactEmail: enrollmentMeta.contactEmail,
+          contactPhone: enrollmentMeta.contactPhone,
+          guardianName: enrollmentMeta.guardianName,
+          guardianEmail: enrollmentMeta.guardianEmail,
+          guardianPhone: enrollmentMeta.guardianPhone,
+          consentSignedName: enrollmentMeta.consentSignedName,
+          consentAgreedAt: enrollmentMeta.consentAgreedAt,
+          waiverVersion: enrollmentMeta.waiverVersion,
+          status: isMockMode ? "test_paid" : "pending",
+        });
+        if (!supabaseEnrollmentId) supabaseEnrollmentId = id;
+      }
     }
 
     const { sessionUrl } = await createCheckoutSession({
       cohortId,
       programTitle: programTitle ?? "Tennis Bootcamp",
-      priceCents: chargeCents,
+      priceCents: seatCents,
+      quantity: players.length,
       enrollmentRowNumber,
+      enrollmentRowNumbers: rowNumbers,
       successUrl,
       cancelUrl,
       contactEmail: enrollmentMeta?.contactEmail,
       supabaseEnrollmentId: supabaseEnrollmentId ?? undefined,
       discountCents,
       assessmentBookingId: credit?.bookingId,
+      assessmentBookingIds: credits.map((c) => c.bookingId),
+      participantIds: players
+        .map((p) => p.participantId ?? "")
+        .filter((id): id is string => Boolean(id)),
       inviteToken,
     });
 
     if (isMockMode) {
       // No webhook in mock mode — mark paid immediately in Sheets + issue invite
-      await markEnrollmentStatus(enrollmentRowNumber, "test_paid");
+      for (const rowNumber of rowNumbers.length > 0 ? rowNumbers : [enrollmentRowNumber]) {
+        await markEnrollmentStatus(rowNumber, "test_paid");
+      }
       if (enrollmentMeta?.contactEmail) {
         await issueActivationLink(
           enrollmentMeta.contactEmail,
@@ -144,22 +199,25 @@ export async function POST(req: NextRequest) {
         );
       }
       // Mirror the webhook's Phase 3 tail: credit applied + invite paid +
-      // minimum-to-run confirmation.
-      if (credit && discountCents > 0) {
-        await markCreditApplied(credit.bookingId);
-        await setEnrollmentCredit(
-          enrollmentRowNumber,
-          (discountCents / 100).toFixed(2)
-        );
+      // minimum-to-run confirmation — once per player.
+      for (const c of credits) {
+        await markCreditApplied(c.bookingId);
+        if (c.rowNumber) {
+          await setEnrollmentCredit(c.rowNumber, (c.cents / 100).toFixed(2));
+        }
       }
       if (inviteToken || enrollmentMeta?.contactEmail) {
-        await markInvitePaidAndMaybeConfirm({
-          cohortId,
-          email: enrollmentMeta?.contactEmail,
-          inviteToken,
-        }).catch((err) =>
-          console.error("Invite confirmation failed (non-blocking):", err)
-        );
+        for (const p of players) {
+          await markInvitePaidAndMaybeConfirm({
+            cohortId,
+            email: enrollmentMeta?.contactEmail,
+            participantId: p.participantId ?? undefined,
+            // The single-use token belongs to the first invite only.
+            inviteToken: p === players[0] ? inviteToken : undefined,
+          }).catch((err) =>
+            console.error("Invite confirmation failed (non-blocking):", err)
+          );
+        }
       }
     }
 
