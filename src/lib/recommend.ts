@@ -1,5 +1,6 @@
 import type { Program } from "@/types/program";
 import { programs as allPrograms } from "@/content/programs";
+import type { AgeBand } from "@/lib/ageBand";
 
 // Deterministic, client-side program match for the intake quiz. It ranks
 // programs only — cohorts live in Supabase and are rendered by the program
@@ -8,6 +9,12 @@ import { programs as allPrograms } from "@/content/programs";
 
 export type IntakeFormSnapshot = {
   who?: "adult" | "youth";
+  /**
+   * The player's age band, asked per person since backlog #14. Optional: a
+   * caller that only knows the legacy adult/youth split (an older payload,
+   * the recommendation email) still gets exactly the pre-#14 gating.
+   */
+  ageBand?: AgeBand;
   level?: "new" | "rally" | "competitive" | "elite";
   goals: string[];
   programs: string[];
@@ -60,22 +67,27 @@ function buildReason(program: Program, form: IntakeFormSnapshot): string {
 }
 
 export function recommendPrograms(form: IntakeFormSnapshot): Recommendation[] {
-  const { who, level, goals, programs: selectedPrograms } = form;
+  const { who, ageBand, level, goals, programs: selectedPrograms } = form;
   const results: Recommendation[] = [];
 
   for (const program of allPrograms) {
     let score = 0;
 
-    // ── Hard age / who gates ─────────────────────────────────────────────
+    // ── Hard age gates ────────────────────────────────────────────────────
+    // Each program states its own ages: camp is 7–13, bootcamps 14+, group
+    // lessons 18+. With an age band we gate on those directly; without one we
+    // fall back to the legacy adult/youth split, unchanged.
     if (program.id === "kids-summer-camp") {
-      if (who !== "youth") continue;
+      if (ageBand ? ageBand !== "junior" : who !== "youth") continue;
     }
     if (program.id === "bootcamps") {
-      // Youth eligible only if competitive/elite (proxy for 14+)
-      if (who === "youth" && level !== "competitive" && level !== "elite") continue;
+      if (ageBand === "junior") continue;
+      // No band: youth eligible only if competitive/elite (proxy for 14+)
+      if (!ageBand && who === "youth" && level !== "competitive" && level !== "elite")
+        continue;
     }
     if (program.id === "group-lessons") {
-      if (who !== "adult") continue;
+      if (ageBand ? ageBand !== "adult" : who !== "adult") continue;
     }
 
     // ── Base score (passed gate) ──────────────────────────────────────────

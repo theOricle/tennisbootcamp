@@ -1,5 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { ageBandToWho, isAgeBand } from "@/lib/ageBand";
+import { selfEstimateToLevel } from "@/lib/level";
 import {
   ensureSelfParticipant,
   ensureAccountForEmail,
@@ -30,6 +32,8 @@ export type ParticipantInput = {
   name?: unknown;
   relationship?: unknown;
   isMinor?: unknown;
+  /** "adult" | "teen" | "junior", asked per person since backlog #14. */
+  ageBand?: unknown;
   selfLevel?: unknown;
 };
 
@@ -44,6 +48,13 @@ export type ResolvedParticipant = {
   accountEmail: string;
   /** Optional self-estimate for this player, carried onto the booking. */
   selfLevel: string | null;
+  /**
+   * This player's own answers as Sheet columns 5–6 spell them. Null when the
+   * submission never named an age band (a signed-in pick, an older client) —
+   * the caller then falls back to the submission-level values, as before.
+   */
+  legacyWho: "adult" | "youth" | null;
+  legacyLevel: string | null;
   /**
    * True when this resolution had to create the auth account itself (a guest
    * registering someone else). The flow still owes them a set-password email.
@@ -102,6 +113,11 @@ export async function resolveSubmissionParticipant(input: {
     typeof block?.selfLevel === "string" && block.selfLevel.trim()
       ? block.selfLevel.trim()
       : null;
+  const ageBand = isAgeBand(block?.ageBand) ? block.ageBand : null;
+  const own = {
+    legacyWho: ageBand ? ageBandToWho(ageBand) : null,
+    legacyLevel: ageBand ? (selfEstimateToLevel(selfLevel) ?? "") : null,
+  };
 
   const fallback: ResolvedParticipant = {
     accountId: null,
@@ -111,6 +127,7 @@ export async function resolveSubmissionParticipant(input: {
     accountName: holderName,
     accountEmail: holderEmail,
     selfLevel,
+    ...own,
     accountCreated: false,
   };
 
@@ -142,6 +159,7 @@ export async function resolveSubmissionParticipant(input: {
       accountName: account?.name?.trim() || holderName,
       accountEmail: account?.email || holderEmail,
       selfLevel,
+      ...own,
       accountCreated: false,
     };
   }
@@ -172,6 +190,7 @@ export async function resolveSubmissionParticipant(input: {
       accountName: account?.name?.trim() || holderName,
       accountEmail: account?.email || holderEmail,
       selfLevel,
+      ...own,
       accountCreated: false,
     };
   }
@@ -207,6 +226,7 @@ export async function resolveSubmissionParticipant(input: {
     accountName: account?.name?.trim() || holderName,
     accountEmail: account?.email || holderEmail,
     selfLevel,
+    ...own,
     accountCreated,
   };
 }
@@ -221,6 +241,11 @@ export async function resolveSubmissionParticipants(input: {
   signedInUserId?: string | null;
   participantIds?: unknown;
   participants?: ParticipantInput[] | null;
+  /**
+   * Signed in, the chooser sends ids rather than blocks, so each player's own
+   * age band and self-estimate arrive here keyed by participant id.
+   */
+  participantProfiles?: unknown;
   holderName: string;
   holderEmail: string;
   holderPhone?: string | null;
@@ -233,6 +258,12 @@ export async function resolveSubmissionParticipants(input: {
   );
 
   if (input.signedInUserId) {
+    const profiles =
+      input.participantProfiles &&
+      typeof input.participantProfiles === "object" &&
+      !Array.isArray(input.participantProfiles)
+        ? (input.participantProfiles as Record<string, ParticipantInput>)
+        : {};
     const list = ids.length > 0 ? ids : [null];
     const out: ResolvedParticipant[] = [];
     for (const id of list) {
@@ -240,6 +271,9 @@ export async function resolveSubmissionParticipants(input: {
         await resolveSubmissionParticipant({
           signedInUserId: input.signedInUserId,
           participantId: id,
+          // The signed-in branch takes the name and relationship from the
+          // participant row; only the age band and self-estimate come from here.
+          participant: id ? (profiles[id] ?? null) : null,
           holderName: input.holderName,
           holderEmail: input.holderEmail,
           holderPhone: input.holderPhone,

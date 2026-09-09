@@ -23,3 +23,19 @@ export function tentativeLevelLabel(level?: string): string {
       return "2.5–3.0";
   }
 }
+
+/**
+ * The per-person self-estimate select → the level the recommender and the
+ * Sheet speak. "Not sure" and "Prefer not to say" name no level, and the
+ * player is placed on court like everyone else.
+ */
+export function selfEstimateToLevel(
+  value: string | null | undefined
+): SelfLevel | undefined {
+  return value === "new" ||
+    value === "rally" ||
+    value === "competitive" ||
+    value === "elite"
+    ? value
+    : undefined;
+}

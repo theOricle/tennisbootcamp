@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { recommendPrograms, type Recommendation } from "@/lib/recommend";
 import { trackEvent, trackAssessmentCtaClick } from "@/lib/analytics";
-import { tentativeLevelLabel } from "@/lib/level";
+import { tentativeLevelLabel, selfEstimateToLevel, type SelfLevel } from "@/lib/level";
+import { ageBandToWho, type AgeBand } from "@/lib/ageBand";
 import {
   availabilityToLegacySlots,
   type Availability,
@@ -18,33 +19,26 @@ import {
   WhoIsThisFor,
   useHousehold,
   EMPTY_HOUSEHOLD,
+  householdPeople,
+  householdProfilesReady,
   householdReady,
   type HouseholdValue,
 } from "@/components/participants/WhoIsThisFor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type StepType = "single" | "multi" | "contact" | "availability" | "household";
-
-type Option = {
-  id: string;
-  label: string;
-  desc?: string;
-};
+type StepType = "contact" | "availability" | "household";
 
 type Step = {
   id: string;
   title: string;
   subtitle?: string;
   type: StepType;
-  options?: Option[];
 };
 
 type FormState = {
   /** Who the quiz is about — one row per player (backlog #11). */
   household: HouseholdValue;
-  who?: "adult" | "youth";
-  level?: "new" | "rally" | "competitive" | "elite";
   goals: string[];
   programs: string[];
   preferredLocationIds: string[];
@@ -56,6 +50,20 @@ type FormState = {
   newsletter?: boolean;
 };
 
+/**
+ * One player's match. Age and level are asked per person on the household
+ * step (backlog #14), so a parent registering a 9-year-old and a 15-year-old
+ * gets a separate read for each.
+ */
+type PersonResult = {
+  key: string;
+  name: string;
+  ageBand: AgeBand;
+  /** The recommender's level, or undefined when they answered "not sure". */
+  level?: SelfLevel;
+  recommendations: Recommendation[];
+};
+
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 function cn(...classes: Array<string | false | undefined | null>) {
@@ -64,6 +72,38 @@ function cn(...classes: Array<string | false | undefined | null>) {
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+type Router = ReturnType<typeof useRouter>;
+
+/**
+ * Hand the booking form what the quiz already knows. The booking page takes
+ * one player per slot; a household starts with the first and comes back.
+ */
+function goToBooking(
+  router: Router,
+  form: FormState,
+  level: SelfLevel | undefined
+) {
+  try {
+    const selfLevel =
+      level && ["new", "rally", "competitive"].includes(level) ? level : undefined;
+    sessionStorage.setItem(
+      "assessmentPrefill",
+      JSON.stringify({
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        selfLevel,
+        availability: form.availability,
+        household: form.household,
+      })
+    );
+  } catch {
+    // sessionStorage unavailable — booking form just starts empty.
+  }
+  trackAssessmentCtaClick("intake-result");
+  router.push("/assessment/book");
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -79,91 +119,76 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-function OptionCard({
-  label,
-  desc,
-  selected,
-  onClick,
-  multi = false,
-}: {
-  label: string;
-  desc?: string;
-  selected: boolean;
-  onClick: () => void;
-  multi?: boolean;
-}) {
+// ─── Tentative-match result screens (funnel flip) ─────────────────────────────
+
+/** The one program card, identical wherever a player's match is shown. */
+function ProgramMatchCard({ rec }: { rec: Recommendation }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "w-full rounded-2xl border p-4 text-left transition",
-        "bg-white/5 hover:bg-white/10",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-        selected ? "border-[#B4E655]/60 ring-1 ring-[#B4E655]/30" : "border-white/10"
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-base font-semibold text-white">{label}</div>
-          {desc ? <div className="mt-1 text-sm text-white/65">{desc}</div> : null}
-        </div>
-        <div
-          className={cn(
-            "mt-1 h-5 w-5 shrink-0 border",
-            multi ? "rounded-sm" : "rounded-full",
-            selected ? "border-[#B4E655] bg-[#B4E655]/30" : "border-white/20"
-          )}
-        />
-      </div>
-    </button>
+    <div className="mt-5 rounded-2xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-5">
+      <span className="text-xs text-white/40">{rec.program.type}</span>
+      <h2 className="mt-1 text-lg font-semibold text-white">{rec.program.title}</h2>
+      <p className="mt-1 text-sm italic text-white/65">&ldquo;{rec.reason}&rdquo;</p>
+    </div>
   );
 }
 
-// ─── Tentative-match result screen (funnel flip) ──────────────────────────────
+/** Newsletter opt-in + the two demoted links, shared by both result screens. */
+function ResultFooter({
+  newsletter,
+  onNewsletterChange,
+}: {
+  newsletter: boolean;
+  onNewsletterChange: (v: boolean) => void;
+}) {
+  return (
+    <>
+      <label className="mt-6 flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+        <input
+          type="checkbox"
+          checked={newsletter}
+          onChange={(e) => onNewsletterChange(e.target.checked)}
+          className="h-4 w-4"
+        />
+        <span className="text-sm text-white/75">Also email me when new programs and dates open</span>
+      </label>
 
+      <div className="mt-6 flex flex-wrap gap-3">
+        <Link
+          href="/"
+          className="rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
+        >
+          Back to Home
+        </Link>
+        <Link
+          href="/programs"
+          className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white/70 transition hover:border-white/30 hover:text-white"
+        >
+          Browse Programs
+        </Link>
+      </div>
+    </>
+  );
+}
+
+/** One player: the screen exactly as it has always read. */
 function TentativeMatchScreen({
-  recommendations,
+  result,
   form,
   newsletter,
   onNewsletterChange,
 }: {
-  recommendations: Recommendation[];
+  result: PersonResult;
   form: FormState;
   newsletter: boolean;
   onNewsletterChange: (v: boolean) => void;
 }) {
   const router = useRouter();
-  const top = recommendations[0];
-  const levelLabel = tentativeLevelLabel(form.level);
+  const top = result.recommendations[0];
+  const levelLabel = tentativeLevelLabel(result.level);
 
   // Demoted secondary link: the top program's page, which lists its cohorts
   // from Supabase (or its empty state). Enrollment is never linked from here.
   const directEnrollHref = top ? `/programs/${top.program.slug}` : "/programs";
-
-  function bookAssessment() {
-    try {
-      const selfLevel =
-        form.level && ["new", "rally", "competitive"].includes(form.level)
-          ? form.level
-          : undefined;
-      sessionStorage.setItem(
-        "assessmentPrefill",
-        JSON.stringify({
-          name: form.name,
-          email: form.email,
-          phone: form.phone,
-          selfLevel,
-          availability: form.availability,
-          household: form.household,
-        })
-      );
-    } catch {
-      // sessionStorage unavailable — booking form just starts empty.
-    }
-    trackAssessmentCtaClick("intake-result");
-    router.push("/assessment/book");
-  }
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -176,13 +201,7 @@ function TentativeMatchScreen({
             You profile like a Level {levelLabel} player
           </h1>
 
-          {top && (
-            <div className="mt-5 rounded-2xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-5">
-              <span className="text-xs text-white/40">{top.program.type}</span>
-              <h2 className="mt-1 text-lg font-semibold text-white">{top.program.title}</h2>
-              <p className="mt-1 text-sm italic text-white/65">&ldquo;{top.reason}&rdquo;</p>
-            </div>
-          )}
+          {top && <ProgramMatchCard rec={top} />}
 
           <p className="mt-5 text-sm leading-relaxed text-white/70">
             Based on your answers, {top ? top.program.title : "this program"} looks like your fit.
@@ -202,7 +221,7 @@ function TentativeMatchScreen({
             </p>
             <button
               type="button"
-              onClick={bookAssessment}
+              onClick={() => goToBooking(router, form, result.level)}
               className="mt-4 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
             >
               Book my 20-minute assessment
@@ -215,31 +234,91 @@ function TentativeMatchScreen({
             </Link>
           </div>
 
-          {/* Newsletter opt-in */}
-          <label className="mt-6 flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <input
-              type="checkbox"
-              checked={newsletter}
-              onChange={(e) => onNewsletterChange(e.target.checked)}
-              className="h-4 w-4"
-            />
-            <span className="text-sm text-white/75">Also email me when new programs and dates open</span>
-          </label>
+          <ResultFooter newsletter={newsletter} onNewsletterChange={onNewsletterChange} />
+        </div>
+      </div>
+    </main>
+  );
+}
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/"
-              className="rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
+/** Two or more players: one read each, one household, one booking at a time. */
+function HouseholdMatchScreen({
+  results,
+  form,
+  newsletter,
+  onNewsletterChange,
+}: {
+  results: PersonResult[];
+  form: FormState;
+  newsletter: boolean;
+  onNewsletterChange: (v: boolean) => void;
+}) {
+  const router = useRouter();
+  const first = results[0];
+
+  return (
+    <main className="min-h-screen bg-[#061427] text-white">
+      <div className="mx-auto max-w-2xl px-6 py-16">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
+          <span className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/80">
+            Your tentative matches
+          </span>
+          <h1 className="mt-2 text-2xl font-semibold md:text-3xl">
+            A read for each of your {results.length} players
+          </h1>
+
+          <div className="mt-2 space-y-6">
+            {results.map((r) => {
+              const top = r.recommendations[0];
+              return (
+                <div key={r.key} className="border-t border-white/10 pt-5 first:border-t-0">
+                  <p className="text-base font-semibold text-white">{r.name}</p>
+                  <p className="mt-0.5 text-sm text-white/60">
+                    Profiles like a Level {tentativeLevelLabel(r.level)} player
+                  </p>
+                  {top ? (
+                    <ProgramMatchCard rec={top} />
+                  ) : (
+                    <p className="mt-3 text-sm text-white/60">
+                      Nothing lines up on paper — the coach will place them from the court.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="mt-6 text-sm leading-relaxed text-white/70">
+            Every player here is placed by a 20-minute on-court assessment with the coach, so the
+            group each of them trains with matches their level.
+          </p>
+
+          {/* Assessment pitch + primary CTA */}
+          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <p className="text-sm font-semibold text-white">
+              Book each player&apos;s 20-minute assessment
+            </p>
+            <p className="mt-1 text-sm text-white/60">
+              It&apos;s $20 per player — enroll in a program afterward and that $20 comes off the
+              price. One player per slot: book {first?.name ?? "the first player"} now and the
+              form comes back for the next.
+            </p>
+            <button
+              type="button"
+              onClick={() => goToBooking(router, form, first?.level)}
+              className="mt-4 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
             >
-              Back to Home
-            </Link>
+              Book the first assessment
+            </button>
             <Link
               href="/programs"
-              className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white/70 transition hover:border-white/30 hover:text-white"
+              className="mt-3 block text-center text-sm text-white/50 underline-offset-2 transition hover:text-white/80 hover:underline"
             >
-              Browse Programs
+              Know what you want? Enroll directly →
             </Link>
           </div>
+
+          <ResultFooter newsletter={newsletter} onNewsletterChange={onNewsletterChange} />
         </div>
       </div>
     </main>
@@ -248,38 +327,16 @@ function TentativeMatchScreen({
 
 function FallbackScreen({
   form,
+  level,
   newsletter,
   onNewsletterChange,
 }: {
   form: FormState;
+  level?: SelfLevel;
   newsletter: boolean;
   onNewsletterChange: (v: boolean) => void;
 }) {
   const router = useRouter();
-
-  function bookAssessment() {
-    try {
-      const selfLevel =
-        form.level && ["new", "rally", "competitive"].includes(form.level)
-          ? form.level
-          : undefined;
-      sessionStorage.setItem(
-        "assessmentPrefill",
-        JSON.stringify({
-          name: form.name,
-          email: form.email,
-          phone: form.phone,
-          selfLevel,
-          availability: form.availability,
-          household: form.household,
-        })
-      );
-    } catch {
-      // sessionStorage unavailable — booking form just starts empty.
-    }
-    trackAssessmentCtaClick("intake-result");
-    router.push("/assessment/book");
-  }
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -297,7 +354,7 @@ function FallbackScreen({
           </p>
           <button
             type="button"
-            onClick={bookAssessment}
+            onClick={() => goToBooking(router, form, level)}
             className="mt-6 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
           >
             Book my 20-minute assessment
@@ -352,39 +409,14 @@ function IntakePageInner() {
         id: "household",
         title: "Who is this for?",
         subtitle:
-          "Yourself, your child, both — add everyone you want placed and each one gets their own read.",
+          "Yourself, your child, both — add everyone you want placed. We ask each person's age and where their game is right now, and each one gets their own read.",
         type: "household",
-      },
-      {
-        id: "who",
-        title: "Who is training?",
-        subtitle:
-          "A few quick questions so we can place you correctly. It takes about two minutes.",
-        type: "single",
-        options: [
-          { id: "adult", label: "Myself — Adult (18+)" },
-          { id: "kid-7-13", label: "My child — Junior (7–13)", desc: "Youth development track" },
-          { id: "kid-14-17", label: "My child — Teen (14–17)", desc: "Competitive foundations" },
-          { id: "elite-14plus", label: "Elite track (14+)", desc: "High-performance program for tournament-level players" },
-        ],
-      },
-      {
-        id: "level",
-        title: "Where's your game right now?",
-        subtitle: "There's no right or wrong answer — this helps us place you correctly.",
-        type: "single",
-        options: [
-          { id: "new", label: "New or returning to tennis" },
-          { id: "rally", label: "Comfortable rallying" },
-          { id: "competitive", label: "Advanced / competitive" },
-          { id: "elite", label: "Elite (High Performance Track)" },
-        ],
       },
       {
         id: "availability",
         title: "When can you train?",
         subtitle:
-          "Tap every slot that works. Groups form around shared availability — the more times you give us, the more groups fit you.",
+          "One schedule for everyone you added — you can adjust it per person later. Tap every slot that works: groups form around shared availability, so the more times you give us, the more groups fit.",
         type: "availability",
       },
       {
@@ -399,22 +431,11 @@ function IntakePageInner() {
   );
 
   const [stepIndex, setStepIndex] = useState(0);
-  // Pending auto-advance on single-choice steps: the tap flashes the selected
-  // state for a beat, then the step advances on its own — no Next button.
-  const advanceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
-    };
-  }, []);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(false);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-
-  // Tracks the raw option ID for the "who" step so we can show the correct
-  // selection highlight even though two options map to who="adult".
-  const [whoOptionId, setWhoOptionId] = useState<string | null>(null);
+  // One entry per player the quiz was about (backlog #14).
+  const [results, setResults] = useState<PersonResult[]>([]);
 
   const household = useHousehold();
   const [form, setForm] = useState<FormState>({
@@ -435,50 +456,19 @@ function IntakePageInner() {
     trackEvent("intake_start");
   }, []);
 
-  function isSelected(optionId: string): boolean {
-    switch (current.id) {
-      case "who":
-        return whoOptionId === optionId;
-      case "level":
-        return form.level === optionId;
-      default:
-        return false;
-    }
-  }
-
-  // Single-choice steps are never the last step (contact is), so advancing
-  // never needs to submit. Re-tapping (including after Back) re-schedules.
-  const AUTO_ADVANCE_MS = 180;
-  function scheduleAutoAdvance() {
-    if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
-    advanceTimerRef.current = setTimeout(() => {
-      advanceTimerRef.current = null;
-      setStepIndex((i) => Math.min(i + 1, steps.length - 1));
-    }, AUTO_ADVANCE_MS);
-  }
-
-  function toggleOption(optionId: string) {
-    if (current.type === "single") {
-      if (current.id === "who") {
-        const mappedWho: FormState["who"] =
-          optionId === "kid-7-13" || optionId === "kid-14-17" ? "youth" : "adult";
-        setWhoOptionId(optionId);
-        setForm((s) => ({ ...s, who: mappedWho }));
-      } else if (current.id === "level") {
-        setForm((s) => ({ ...s, level: optionId as FormState["level"] }));
-      }
-      scheduleAutoAdvance();
-    }
-  }
-
   function canContinue(): boolean {
     switch (current.id) {
       case "household":
-        return householdReady(form.household, household.signedIn);
-      case "who":
-        return whoOptionId !== null;
-      case "level":
-        return !!form.level;
+        // A name and a self-estimate for every player: the quiz places each
+        // of them off those two answers plus their age band.
+        return (
+          householdReady(form.household, household.signedIn) &&
+          householdProfilesReady(
+            form.household,
+            household.signedIn,
+            household.participants
+          )
+        );
       case "availability":
         return true;
       case "contact": {
@@ -496,19 +486,51 @@ function IntakePageInner() {
     setSubmitting(true);
     setSubmitError(false);
     try {
-      // The rule-based recommender still consumes the legacy slot list; derive
-      // it from the grid so the engine is unchanged.
-      const recs = recommendPrograms({
-        ...form,
-        availability: availabilityToLegacySlots(form.availability),
+      // One read per player: their own age band and self-estimate, the
+      // household's shared availability and program interest (backlog #14).
+      // The rule-based recommender still consumes the legacy slot list, so
+      // derive it from the grid once and share it across the players.
+      const slots = availabilityToLegacySlots(form.availability);
+      const people = householdPeople(
+        form.household,
+        household.signedIn,
+        household.participants
+      );
+      const personResults: PersonResult[] = people.map((p) => {
+        const level = selfEstimateToLevel(p.selfLevel);
+        return {
+          key: p.key,
+          name: p.name,
+          ageBand: p.ageBand,
+          level,
+          recommendations: recommendPrograms({
+            who: ageBandToWho(p.ageBand),
+            ageBand: p.ageBand,
+            level,
+            goals: form.goals,
+            programs: form.programs,
+            preferredLocationIds: form.preferredLocationIds,
+            availability: slots,
+          }),
+        };
       });
-      const topProgram = recs[0]?.program.slug ?? "";
+      // Sheet columns 5–6 (`who`, `level`) describe the row's player. The
+      // route writes each resolved participant's own values; these are the
+      // fallback for a row it could not resolve, and for a lone player they
+      // are exactly what the deleted steps used to send.
+      const primary = personResults[0];
+      const topProgram = primary?.recommendations[0]?.program.slug ?? "";
 
       const res = await fetch("/api/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          who: primary ? ageBandToWho(primary.ageBand) : "",
+          level: primary?.level ?? "",
+          // Not a Sheet column — it keeps the recommendation email on the same
+          // read as the card the player just saw.
+          ageBand: primary?.ageBand ?? "",
           // goals, programs, notes not collected in wizard — send empty defaults
           goals: form.goals,
           programs: form.programs,
@@ -520,19 +542,22 @@ function IntakePageInner() {
           recommendedProgram: topProgram,
           // Who the quiz is about (cols 18–22, one row per player).
           participantIds: form.household.selectedIds,
+          // Signed in, each chosen player's own age band and self-estimate.
+          participantProfiles: form.household.profiles,
           participants: form.household.guests
             .filter((g) => g.name.trim())
             .map((g) => ({
               name: g.name.trim(),
               relationship: g.relationship,
               isMinor: g.isMinor,
+              ageBand: g.ageBand,
               selfLevel: g.selfLevel || undefined,
             })),
         }),
       });
       if (!res.ok) throw new Error("Submission failed");
-      trackEvent("intake_complete");
-      setRecommendations(recs);
+      trackEvent("intake_complete", { participants: personResults.length });
+      setResults(personResults);
       setSubmitted(true);
     } catch (err) {
       console.error("Intake submission error:", err);
@@ -552,31 +577,41 @@ function IntakePageInner() {
   }
 
   function back() {
-    // A pending auto-advance must not fire after the user steps back.
-    if (advanceTimerRef.current) {
-      clearTimeout(advanceTimerRef.current);
-      advanceTimerRef.current = null;
-    }
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
   // ── Submitted ─────────────────────────────────────────────────────────────
   if (submitted) {
-    if (recommendations.length === 0) {
+    const onNewsletterChange = (v: boolean) =>
+      setForm((s) => ({ ...s, newsletter: v }));
+
+    if (!results.some((r) => r.recommendations.length > 0)) {
       return (
         <FallbackScreen
           form={form}
+          level={results[0]?.level}
           newsletter={!!form.newsletter}
-          onNewsletterChange={(v) => setForm((s) => ({ ...s, newsletter: v }))}
+          onNewsletterChange={onNewsletterChange}
+        />
+      );
+    }
+    // One player reads exactly as it always has; a household gets a card each.
+    if (results.length === 1) {
+      return (
+        <TentativeMatchScreen
+          result={results[0]}
+          form={form}
+          newsletter={!!form.newsletter}
+          onNewsletterChange={onNewsletterChange}
         />
       );
     }
     return (
-      <TentativeMatchScreen
-        recommendations={recommendations}
+      <HouseholdMatchScreen
+        results={results}
         form={form}
         newsletter={!!form.newsletter}
-        onNewsletterChange={(v) => setForm((s) => ({ ...s, newsletter: v }))}
+        onNewsletterChange={onNewsletterChange}
       />
     );
   }
@@ -612,27 +647,13 @@ function IntakePageInner() {
 
           {/* Step content */}
           <div className="space-y-3">
-            {current.type === "single" || current.type === "multi" ? (
-              <div className="grid gap-3">
-                {current.options?.map((o) => (
-                  <OptionCard
-                    key={o.id}
-                    label={o.label}
-                    desc={o.desc}
-                    selected={isSelected(o.id)}
-                    onClick={() => toggleOption(o.id)}
-                    multi={current.type === "multi"}
-                  />
-                ))}
-              </div>
-            ) : null}
-
             {current.type === "household" ? (
               <WhoIsThisFor
                 household={household}
                 value={form.household}
                 onChange={(next) => setForm((s) => ({ ...s, household: next }))}
                 multiple
+                collectProfile
               />
             ) : null}
 
@@ -720,49 +741,44 @@ function IntakePageInner() {
               Something went wrong — please try again or email us at info@tennisbootcamp.ca
             </p>
           )}
-          {/* Single-choice steps auto-advance on tap — Back is their only control. */}
-          {(stepIndex > 0 || current.type !== "single") && (
-            <div className="mt-6 flex items-center justify-between gap-3">
-              {stepIndex > 0 && (
-                <button
-                  type="button"
-                  onClick={back}
-                  disabled={submitting}
-                  className={cn(
-                    "min-h-[44px] rounded-full px-5 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-                    submitting
-                      ? "bg-white/5 text-white/30"
-                      : "bg-white/10 text-white hover:bg-white/15"
-                  )}
-                >
-                  Back
-                </button>
+          <div className="mt-6 flex items-center justify-between gap-3">
+            {stepIndex > 0 && (
+              <button
+                type="button"
+                onClick={back}
+                disabled={submitting}
+                className={cn(
+                  "min-h-[44px] rounded-full px-5 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                  submitting
+                    ? "bg-white/5 text-white/30"
+                    : "bg-white/10 text-white hover:bg-white/15"
+                )}
+              >
+                Back
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={next}
+              disabled={!canContinue() || submitting}
+              className={cn(
+                "ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
+                !canContinue() && !submitting
+                  ? "bg-[#B4E655]/30 text-[#061427]/50"
+                  : submitting
+                  ? "cursor-wait bg-[#B4E655] text-[#061427]"
+                  : "bg-[#B4E655] text-[#061427] hover:brightness-110"
               )}
-              {current.type !== "single" && (
-                <button
-                  type="button"
-                  onClick={next}
-                  disabled={!canContinue() || submitting}
-                  className={cn(
-                    "ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-                    !canContinue() && !submitting
-                      ? "bg-[#B4E655]/30 text-[#061427]/50"
-                      : submitting
-                      ? "cursor-wait bg-[#B4E655] text-[#061427]"
-                      : "bg-[#B4E655] text-[#061427] hover:brightness-110"
-                  )}
-                >
-                  {submitting && (
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  )}
-                  {stepIndex === steps.length - 1 ? (submitting ? "Submitting…" : "Submit") : "Next"}
-                </button>
+            >
+              {submitting && (
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
               )}
-            </div>
-          )}
+              {stepIndex === steps.length - 1 ? (submitting ? "Submitting…" : "Submit") : "Next"}
+            </button>
+          </div>
         </div>
       </div>
     </main>

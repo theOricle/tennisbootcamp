@@ -4,6 +4,7 @@ import { subscribeToMailerLite } from "@/lib/mailerlite";
 import { recommendPrograms } from "@/lib/recommend";
 import { sendRecommendationEmail } from "@/lib/email";
 import { tentativeLevelLabel } from "@/lib/level";
+import { isAgeBand } from "@/lib/ageBand";
 import {
   INTAKE_ALL_HEADERS,
   INTAKE_APPEND_RANGE_ALL,
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
           signedInUserId: signedIn?.id ?? null,
           participantIds: body.participantIds,
           participants: (body.participants ?? null) as ParticipantInput[] | null,
+          participantProfiles: body.participantProfiles,
           holderName,
           holderEmail: signedIn?.email || holderEmail,
           holderPhone,
@@ -99,14 +101,24 @@ export async function POST(req: NextRequest) {
         })
       : [];
 
-    // One row per player. Cells 1–17 are the frozen contract; only col 2
-    // (name) reflects the player, exactly as it always has.
+    // One row per player. Cells 1–17 are the frozen contract, unchanged in
+    // shape and order; cols 2, 5 and 6 (name, who, level) describe the row's
+    // own player now that the quiz asks age and level per person (backlog
+    // #14). A player who named no age band falls back to the submission's
+    // values — for a lone player that is byte for byte what it always was.
+    // (An older client that sends neither lands on the fallback for every row,
+    // exactly as it did before this change.)
     const timestamp = new Date().toISOString();
     const rows =
       people.length > 0
         ? people.map((p) =>
             buildIntakeRow(
-              { ...body, name: p.participantName || body.name },
+              {
+                ...body,
+                name: p.participantName || body.name,
+                who: p.legacyWho ?? body.who,
+                level: p.legacyLevel ?? body.level,
+              },
               timestamp,
               {
                 accountEmail: p.accountEmail || holderEmail,
@@ -151,6 +163,9 @@ export async function POST(req: NextRequest) {
     if (process.env.RESEND_API_KEY && body.email) {
       const recs = recommendPrograms({
         who: body.who,
+        // Age band of the player the email is about (the first one named), so
+        // it reaches the same program the result screen showed.
+        ageBand: isAgeBand(body.ageBand) ? body.ageBand : undefined,
         level: body.level,
         goals: Array.isArray(body.goals) ? body.goals : [],
         programs: Array.isArray(body.programs) ? body.programs : [],
