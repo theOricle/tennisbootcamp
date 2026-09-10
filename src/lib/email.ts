@@ -800,6 +800,84 @@ Refund terms: ${BASE_URL}/legal/refund-policy
   await deliver({ to, subject, html: emailLayout(bodyHtml), text });
 }
 
+/**
+ * The coach confirmed the transfer arrived (backlog #15). Only the admin
+ * mark-paid path sends this — card payers already get a Stripe receipt — and
+ * it is suppressed when the same payment confirms the cohort, so nobody gets
+ * a receipt and a confirmation in the same beat.
+ *
+ * `amountCents` is the after-credit figure the coach was told to expect
+ * (inviteAmountDueCents); it is never recomputed here. The email names no
+ * dates and no group size — those aren't real until the cohort confirms.
+ */
+export async function sendPaymentReceivedEmail(params: {
+  /** The account holder — every email goes to them. */
+  to: string;
+  /** Which player on the account the payment is for. */
+  participantName?: string | null;
+  programTitle: string;
+  cohortLabel: string;
+  /** What actually arrived, after any assessment credit. */
+  amountCents: number;
+}): Promise<void> {
+  const { to, participantName, programTitle, cohortLabel, amountCents } = params;
+  const key = process.env.RESEND_API_KEY;
+  const player = (participantName ?? "").trim().split(/\s+/)[0] ?? "";
+  const subject = player
+    ? `Payment received for ${player} — ${cohortLabel}`
+    : `Payment received — ${cohortLabel}`;
+
+  if (!key) {
+    console.log(
+      `[STUB EMAIL — set RESEND_API_KEY] ${subject} for ${to}: ${moneyCAD(amountCents)}`
+    );
+    return;
+  }
+
+  const headline = player ? `${player}'s payment is in.` : "Your payment is in.";
+  const spotLine = player ? `${player}'s spot is held.` : "Your spot is held.";
+
+  const detailRow = (label: string, value: string) => `
+    <tr>
+      <td style="padding:6px 0;font-size:13px;color:rgba(255,255,255,0.45);width:96px;vertical-align:top;">${label}</td>
+      <td style="padding:6px 0;font-size:14px;color:#fff;font-weight:600;">${value}</td>
+    </tr>`;
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${headline}</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      We've received your e-transfer. ${spotLine} Nothing else to do on your side.
+    </p>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
+      ${detailRow("Program", programTitle)}
+      ${detailRow("Group", cohortLabel)}
+      ${detailRow("Received", `<strong style="color:#fff;">${moneyCAD(amountCents)}</strong>`)}
+    </table>
+    <p style="margin:20px 0 0;font-size:14px;color:rgba(255,255,255,0.85);">
+      The group runs once enough players have paid to meet its minimum. The moment it does, we'll email you every session date and time.
+    </p>
+    ${smallText(`Refund terms: <a href="${BASE_URL}/legal/refund-policy" style="color:rgba(255,255,255,0.45);">program policies</a>.`)}
+    ${signOff()}
+  `;
+
+  const text = `${headline}
+
+We've received your e-transfer. ${spotLine} Nothing else to do on your side.
+
+  Program:  ${programTitle}
+  Group:    ${cohortLabel}
+  Received: ${moneyCAD(amountCents)}
+
+The group runs once enough players have paid to meet its minimum. The moment it does, we'll email you every session date and time.
+
+Refund terms: ${BASE_URL}/legal/refund-policy
+
+— Sina Kassaian, Tennis Bootcamp`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+}
+
 /** Inbox notification: a player says their e-transfer is on its way. */
 export async function sendEtransferPendingAdminEmail(params: {
   playerName: string;

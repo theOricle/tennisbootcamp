@@ -103,6 +103,18 @@ const METHOD_LABEL: Record<PaymentMode, string> = {
 
 // ─── Invite row: status + mark paid / undo (e-transfer rail) ──────────────────
 
+/** Outcome of the player receipt that mark-paid sends (backlog #15). */
+type Receipt =
+  | { status: "sent" }
+  | { status: "skipped"; detail: string }
+  | { status: "failed"; detail: string };
+
+function receiptLine(receipt: Receipt): string {
+  if (receipt.status === "sent") return "Receipt emailed to the player.";
+  if (receipt.status === "skipped") return receipt.detail;
+  return `Receipt email failed — the payment is still recorded. ${receipt.detail}`;
+}
+
 function InviteItem({
   cohortId,
   invite,
@@ -116,6 +128,9 @@ function InviteItem({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What the mark-paid receipt did (backlog #15) — the payment is recorded
+  // whatever happens here, so this reports rather than blocks.
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
 
   async function post(body: Record<string, unknown>) {
     setBusy(true);
@@ -132,6 +147,7 @@ function InviteItem({
         setBusy(false);
         return;
       }
+      setReceipt(body.action === "mark_paid" ? (data.receipt ?? null) : null);
       setMode("idle");
       setNote("");
       onChanged();
@@ -172,6 +188,15 @@ function InviteItem({
           {meta && <p className="mt-0.5 text-[11px] text-white/45">{meta}</p>}
           {invite.payment_note && (
             <p className="mt-0.5 text-[11px] text-white/60">{invite.payment_note}</p>
+          )}
+          {receipt && (
+            <p
+              className={`mt-0.5 text-[11px] ${
+                receipt.status === "failed" ? "text-red-300" : "text-white/45"
+              }`}
+            >
+              {receiptLine(receipt)}
+            </p>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">

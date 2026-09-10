@@ -9,6 +9,7 @@ import {
   amountDueCents,
   etransferMemo,
   etransferRecipient,
+  planPaymentReceipt,
   PAYABLE_STATUSES,
 } from "../lib/paymentTransitions";
 
@@ -152,6 +153,68 @@ check("memo falls back to the label without a name", etransferMemo("", "Fall Ses
 check("ETRANSFER_EMAIL wins when set", etransferRecipient(" pay@tennisbootcamp.ca "), "pay@tennisbootcamp.ca");
 check("blank ETRANSFER_EMAIL falls back to info@", etransferRecipient("   "), "info@tennisbootcamp.ca");
 check("unset ETRANSFER_EMAIL falls back to info@", etransferRecipient(undefined), "info@tennisbootcamp.ca");
+
+// ─── mark-paid receipt (backlog #15) ──────────────────────────────────────────
+
+console.log("planPaymentReceipt");
+
+const receipt = (
+  statusBefore: "invited" | "paid" | "declined" | "expired",
+  cohortStatusBefore: string | null,
+  cohortStatusAfter: string | null,
+  flipped = true
+) => planPaymentReceipt({ statusBefore, flipped, cohortStatusBefore, cohortStatusAfter });
+
+check(
+  "an ordinary payment into an inviting cohort gets a receipt",
+  receipt("invited", "inviting", "inviting"),
+  { send: true }
+);
+check(
+  "a late payment on an expired hold still gets a receipt",
+  receipt("expired", "inviting", "inviting"),
+  { send: true }
+);
+check(
+  "a second non-final payment gets a receipt too",
+  receipt("invited", "draft", "draft"),
+  { send: true }
+);
+check(
+  "the payment that fills the cohort stands the receipt down",
+  receipt("invited", "inviting", "confirmed"),
+  { send: false, reason: "confirmed-instead" }
+);
+check(
+  "draft → confirmed in one payment also stands it down",
+  receipt("invited", "draft", "confirmed"),
+  { send: false, reason: "confirmed-instead" }
+);
+check(
+  "a payment into an already-confirmed cohort gets a receipt",
+  receipt("invited", "confirmed", "confirmed"),
+  { send: true }
+);
+check(
+  "an admin double-tap on a paid invite sends nothing",
+  receipt("paid", "inviting", "inviting"),
+  { send: false, reason: "no-transition" }
+);
+check(
+  "a declined invite sends nothing",
+  receipt("declined", "inviting", "inviting"),
+  { send: false, reason: "no-transition" }
+);
+check(
+  "a lost race (no flip) sends nothing",
+  receipt("invited", "inviting", "inviting", false),
+  { send: false, reason: "no-transition" }
+);
+check(
+  "an unreadable cohort status still sends the receipt",
+  receipt("invited", null, null),
+  { send: true }
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 

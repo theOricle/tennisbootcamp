@@ -146,7 +146,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
-      return NextResponse.json({ ok: true });
+      // The payment is recorded either way; the receipt outcome rides along so
+      // the admin sees whether the player was emailed (backlog #15).
+      return NextResponse.json({ ok: true, receipt: result.receipt ?? null });
     }
 
     if (action === "mark_unpaid") {

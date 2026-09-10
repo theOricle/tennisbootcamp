@@ -29,10 +29,12 @@ import {
   sendSessionCancelledEmail,
   sendEtransferInstructionsEmail,
   sendEtransferPendingAdminEmail,
+  sendPaymentReceivedEmail,
 } from "@/lib/email";
 import {
   planMarkPaid,
   planMarkUnpaid,
+  planPaymentReceipt,
   amountDueCents,
   etransferMemo,
   etransferRecipient,
@@ -640,20 +642,36 @@ export async function inviteAmountDueCents(
   return amountDueCents(cohort.priceCents, credit?.creditCents ?? 0);
 }
 
+/** What the mark-paid receipt did, for the admin's confirmation line. */
+export type ReceiptOutcome =
+  | { status: "sent" }
+  | { status: "skipped"; detail: string }
+  | { status: "failed"; detail: string };
+
 /**
  * Coach confirms an e-transfer arrived: invite → paid (with method, note,
  * paid_at), the enrollee's assessment credit is consumed, and the enrollment
  * row (Supabase + Sheet) flips to paid so seat counts and the dashboard agree.
  * Then the same confirmation path as a card payment.
+ *
+ * Last, the player gets a receipt (backlog #15). It lives here and not in
+ * markInvitePaidAndMaybeConfirm on purpose: the Stripe webhook and the
+ * checkout routes share that function, and card payers already have a Stripe
+ * receipt — their path must stay exactly as it was. planPaymentReceipt keeps
+ * a double-tap silent and stands the receipt down when this payment is the one
+ * that confirmed the cohort, because maybeConfirmCohort has then already
+ * emailed every paid member the schedule. The send is awaited but never
+ * blocking: a Resend failure leaves the invite paid and is reported back.
  */
 export async function adminMarkInvitePaid(
   cohortId: string,
   inviteId: string,
   note?: string | null
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; receipt?: ReceiptOutcome }> {
   const invite = await findInviteById(cohortId, inviteId);
   if (!invite) return { ok: false, error: "Invite not found." };
 
+  const cohortBefore = await getCohortById(cohortId);
   const result = await markInvitePaidAndMaybeConfirm({
     cohortId,
     inviteId,
@@ -661,10 +679,67 @@ export async function adminMarkInvitePaid(
   });
   if (!result.ok) return result;
 
+  // Read the after-credit amount before settlement spends the credit —
+  // markCreditApplied flips it out of `unused`, and inviteAmountDueCents would
+  // then report the full price.
+  const amountCents = cohortBefore
+    ? await inviteAmountDueCents(invite, cohortBefore).catch(() => null)
+    : null;
+
   await settleEtransferEnrollment(cohortId, invite.email, invite.participant_id).catch((err) =>
     console.error("E-transfer settlement bookkeeping failed (non-blocking):", err)
   );
-  return { ok: true };
+
+  const cohortAfter = await getCohortById(cohortId);
+  const decision = planPaymentReceipt({
+    statusBefore: invite.status,
+    // With an inviteId, markInvitePaidAndMaybeConfirm only reports ok on a
+    // guarded flip — a refused plan or a lost race returns an error above.
+    flipped: true,
+    cohortStatusBefore: cohortBefore?.dbStatus ?? null,
+    cohortStatusAfter: cohortAfter?.dbStatus ?? null,
+  });
+  if (!decision.send) {
+    return { ok: true, receipt: { status: "skipped", detail: RECEIPT_SKIP[decision.reason] } };
+  }
+
+  const receipt = await sendMarkPaidReceipt(invite, cohortAfter ?? cohortBefore ?? null, amountCents);
+  return { ok: true, receipt };
+}
+
+const RECEIPT_SKIP: Record<"no-transition" | "confirmed-instead", string> = {
+  "no-transition": "No receipt sent — the invite was already paid.",
+  "confirmed-instead":
+    "No receipt sent — this payment confirmed the group, so every member got the schedule email instead.",
+};
+
+/** Send the player their receipt; never throws, reports what happened. */
+async function sendMarkPaidReceipt(
+  invite: InviteRef,
+  cohort: Cohort | null,
+  amountCents: number | null
+): Promise<ReceiptOutcome> {
+  if (!cohort) return { status: "failed", detail: "Cohort not found." };
+  if (amountCents == null) {
+    return { status: "failed", detail: "Could not read the amount due." };
+  }
+  try {
+    const participant = invite.participant_id
+      ? await getParticipant(invite.participant_id).catch(() => null)
+      : null;
+    await sendPaymentReceivedEmail({
+      to: invite.email,
+      participantName: participant?.full_name ?? null,
+      programTitle: programTitle(cohort.programId),
+      cohortLabel: cohort.label,
+      amountCents,
+    });
+    return { status: "sent" };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`Payment receipt to ${invite.email} failed (non-blocking):`, err);
+    return { status: "failed", detail };
+  }
 }
 
 async function settleEtransferEnrollment(

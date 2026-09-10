@@ -110,3 +110,46 @@ export function planMarkUnpaid(
     patch: { status: lapsed ? "expired" : "invited", paid_at: null, payment_note: null },
   };
 }
+
+// ─── Mark-paid receipt (backlog #15) ──────────────────────────────────────────
+
+/** Cohort lifecycle statuses that a payment can confirm out of. */
+export const CONFIRMABLE_STATUSES = ["draft", "inviting"];
+
+export type ReceiptDecision =
+  | { send: true }
+  | { send: false; reason: "no-transition" | "confirmed-instead" };
+
+/**
+ * Whether the admin mark-paid should email the player a receipt.
+ *
+ * Two cases stay silent:
+ *  - `no-transition` — the invite was not moved from invited/expired to paid
+ *    (an admin double-tap, or a row that changed underneath us).
+ *  - `confirmed-instead` — the cohort left draft/inviting for `confirmed`
+ *    during this mark, so maybeConfirmCohort already emailed every paid
+ *    member (this one included) the schedule. One email per member, not two.
+ *
+ * A payment into an already-confirmed cohort still gets a receipt: that
+ * confirmation flip is one-way and its emails went out long before.
+ */
+export function planPaymentReceipt(params: {
+  /** The invite's status as read before the mark. */
+  statusBefore: InviteStatus;
+  /** Whether the guarded flip to `paid` actually landed. */
+  flipped: boolean;
+  /** Cohort status read before the mark, and after it. */
+  cohortStatusBefore: string | null;
+  cohortStatusAfter: string | null;
+}): ReceiptDecision {
+  const { statusBefore, flipped, cohortStatusBefore, cohortStatusAfter } = params;
+  if (!flipped || !PAYABLE_STATUSES.includes(statusBefore)) {
+    return { send: false, reason: "no-transition" };
+  }
+  const confirmedNow =
+    cohortStatusBefore !== null &&
+    CONFIRMABLE_STATUSES.includes(cohortStatusBefore) &&
+    cohortStatusAfter === "confirmed";
+  if (confirmedNow) return { send: false, reason: "confirmed-instead" };
+  return { send: true };
+}
