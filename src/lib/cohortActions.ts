@@ -723,6 +723,14 @@ async function sendMarkPaidReceipt(
   if (amountCents == null) {
     return { status: "failed", detail: "Could not read the amount due." };
   }
+  // Without a key the send logs a stub and returns normally. Reporting that
+  // as "sent" is the same lie the invite notice used to tell, so name it.
+  if (!emailConfigured()) {
+    return {
+      status: "failed",
+      detail: "Email is not configured (RESEND_API_KEY is unset), so no receipt was sent.",
+    };
+  }
   try {
     const participant = invite.participant_id
       ? await getParticipant(invite.participant_id).catch(() => null)

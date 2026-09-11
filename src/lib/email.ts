@@ -874,8 +874,7 @@ Refund terms: ${BASE_URL}/legal/refund-policy
 
 — Sina Kassaian, Tennis Bootcamp`;
 
-  const resend = new Resend(key);
-  await resend.emails.send({ from: FROM, to, subject, html: emailLayout(bodyHtml), text });
+  await deliver({ to, subject, html: emailLayout(bodyHtml), text });
 }
 
 /** Inbox notification: a player says their e-transfer is on its way. */
