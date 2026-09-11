@@ -91,7 +91,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       if (result.sent === 0 && result.errors.length > 0) {
         return NextResponse.json({ error: result.errors.join(" ") }, { status: 400 });
       }
-      return NextResponse.json({ ok: true, sent: result.sent, errors: result.errors });
+      // `emailed` can be lower than `sent` — a held spot whose email the
+      // provider refused. The admin screen reports both.
+      return NextResponse.json({
+        ok: true,
+        sent: result.sent,
+        emailed: result.emailed,
+        errors: result.errors,
+      });
     }
 
     if (action === "cancel_session") {

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npx tsx src/scripts/test-recommend.ts && npx tsx src/scripts/test-makeup.ts && npx tsx src/scripts/test-intake-row.ts && npx tsx src/scripts/test-availability-matrix.ts && npx tsx src/scripts/test-etransfer.ts && npx tsx src/scripts/test-cohort-visibility.ts",
+    "test": "npx tsx src/scripts/test-recommend.ts && npx tsx src/scripts/test-makeup.ts && npx tsx src/scripts/test-intake-row.ts && npx tsx src/scripts/test-availability-matrix.ts && npx tsx src/scripts/test-etransfer.ts && npx tsx src/scripts/test-cohort-visibility.ts && npx tsx src/scripts/test-invite-delivery.ts",
     "agent:run": "node ops/controller/run-task.mjs"
   },
   "dependencies": {

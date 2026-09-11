@@ -141,7 +141,12 @@ export async function POST(req: NextRequest) {
         status: "paid",
       });
       if (newId) {
-        await issueActivationLink(contactEmail, newId);
+        // Non-blocking: the payment is already recorded. Letting a Resend
+        // refusal throw here would 500 the webhook and make Stripe retry a
+        // payment we have already banked.
+        await issueActivationLink(contactEmail, newId).catch((err) =>
+          console.error("Activation link failed (non-blocking):", err)
+        );
       }
     } else if (supabaseEnrollmentId && contactEmail) {
       // Update existing Supabase row to paid
@@ -151,7 +156,9 @@ export async function POST(req: NextRequest) {
         .from("enrollments")
         .update({ status: "paid" })
         .eq("id", supabaseEnrollmentId);
-      await issueActivationLink(contactEmail, supabaseEnrollmentId);
+      await issueActivationLink(contactEmail, supabaseEnrollmentId).catch((err) =>
+        console.error("Activation link failed (non-blocking):", err)
+      );
     }
   }
 
