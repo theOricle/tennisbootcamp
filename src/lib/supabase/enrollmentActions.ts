@@ -89,15 +89,19 @@ export async function issueActivationLink(
   if (!inviteError && inviteData.properties?.hashed_token) {
     const activationUrl =
       `${siteUrl}/auth/callback?token_hash=${inviteData.properties.hashed_token}&type=invite&next=/set-password`;
-    await sendLinkEmail(email, "Set your password for Tennis Bootcamp", activationUrl, "set your password");
 
-    // Link newly-created user to the enrollment row.
+    // Link the newly-created user to the enrollment row BEFORE sending. The
+    // send throws on a provider refusal, and the auth user already exists by
+    // this point — leaving the row unlinked would orphan the enrollment from
+    // the account that owns it, and no later link attempt would run.
     if (enrollmentId && inviteData.user?.id) {
       await supabase
         .from("enrollments")
         .update({ user_id: inviteData.user.id })
         .eq("id", enrollmentId);
     }
+
+    await sendLinkEmail(email, "Set your password for Tennis Bootcamp", activationUrl, "set your password");
     return inviteData.user?.id ?? null;
   }
 

@@ -36,11 +36,17 @@ export async function POST(req: NextRequest) {
   const recoveryUrl =
     `${siteUrl}/auth/callback?token_hash=${data.properties.hashed_token}&type=recovery&next=/set-password`;
 
+  // Non-blocking, and deliberately so: this route answers 200 on every path
+  // above so it never reveals whether an account exists. Letting a Resend
+  // refusal throw would 500 only for addresses that got this far — an
+  // account-existence oracle — so the failure is logged, not propagated.
   await sendLinkEmail(
     email,
     "Reset your Tennis Bootcamp password",
     recoveryUrl,
     "reset your password"
+  ).catch((err) =>
+    console.error("[reset-password] reset email failed (non-blocking):", err)
   );
 
   return NextResponse.json({ ok: true });

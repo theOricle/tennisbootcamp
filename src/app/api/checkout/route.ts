@@ -193,9 +193,14 @@ export async function POST(req: NextRequest) {
         await markEnrollmentStatus(rowNumber, "test_paid");
       }
       if (enrollmentMeta?.contactEmail) {
+        // Non-blocking: an uncaught refusal here would skip the credit and
+        // invite-confirmation tail below and turn a completed mock checkout
+        // into a 500 via this route's outer catch.
         await issueActivationLink(
           enrollmentMeta.contactEmail,
           supabaseEnrollmentId
+        ).catch((err) =>
+          console.error("Activation link failed (non-blocking):", err)
         );
       }
       // Mirror the webhook's Phase 3 tail: credit applied + invite paid +

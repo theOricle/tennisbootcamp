@@ -62,10 +62,20 @@ export async function provisionIntakeAccount(input: {
     if (userId && !input.forceInvite) {
       result.account = "existing";
     } else if (userId && input.forceInvite) {
-      await issueActivationLink(email, null);
+      // Non-blocking: the auth account is what the availability write below
+      // needs, and it exists whether or not the message was accepted. Letting
+      // a refusal throw would skip that write entirely.
+      await issueActivationLink(email, null).catch((err) =>
+        console.error("[intake account] activation link failed (non-blocking):", err)
+      );
       result.account = "created";
     } else {
-      userId = await issueActivationLink(email, null);
+      userId = await issueActivationLink(email, null).catch((err) => {
+        console.error("[intake account] activation link failed (non-blocking):", err);
+        return null;
+      });
+      // generateLink creates the user before the message goes out, so the
+      // account is findable even when the send was refused.
       if (!userId) userId = await findUserIdByEmail(email);
       result.account = userId ? "created" : "skipped";
     }
