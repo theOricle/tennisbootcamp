@@ -6,7 +6,8 @@ import { tierForLevel } from "@/lib/tiers";
 import { formatResendError } from "@/lib/emailResult";
 
 const FROM = "Tennis Bootcamp <noreply@send.tennisbootcamp.ca>";
-const BASE_URL = "https://tennisbootcamp.ca";
+// TEMP: Vercel origin until the custom domain is attached (ops ROADMAP B5), then point this back at it
+const BASE_URL = "https://tennisbootcamp-seven.vercel.app";
 const INBOX = "info@tennisbootcamp.ca";
 
 // ─── Delivery ─────────────────────────────────────────────────────────────────
@@ -72,7 +73,7 @@ function emailLayout(bodyHtml: string): string {
     </div>
     <div style="margin-top:24px;text-align:center;font-size:12px;color:rgba(255,255,255,0.35);line-height:1.6;">
       Sent by Tennis Bootcamp &middot;
-      <a href="${BASE_URL}" style="color:rgba(255,255,255,0.35);">tennisbootcamp.ca</a>
+      <a href="${BASE_URL}" style="color:rgba(255,255,255,0.35);">Tennis Bootcamp</a>
       &middot; info@tennisbootcamp.ca
     </div>
   </div>
@@ -206,7 +207,7 @@ export async function sendRecommendationEmail(
     to,
     subject,
     html: emailLayout(bodyHtml),
-    text: `Hi ${firstName},\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "Thanks for telling us about your game."} Based on your answers, ${programTitle} looks like your fit.\n\nEvery player here is placed by a 20-minute on-court assessment with the coach, so the group you train with matches your level. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.\n\nBook my 20-minute assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enroll directly from any program page.\n\n— Sina Kassaian, Tennis Bootcamp\nhttps://tennisbootcamp.ca`,
+    text: `Hi ${firstName},\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "Thanks for telling us about your game."} Based on your answers, ${programTitle} looks like your fit.\n\nEvery player here is placed by a 20-minute on-court assessment with the coach, so the group you train with matches your level. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.\n\nBook my 20-minute assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enroll directly from any program page.\n\n— Sina Kassaian, Tennis Bootcamp\n${BASE_URL}`,
   });
 }
 
