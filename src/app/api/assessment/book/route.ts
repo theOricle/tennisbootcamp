@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
     const origin =
       req.headers.get("origin") ??
       process.env.NEXT_PUBLIC_SITE_URL ??
-      "http://localhost:3000";
+      "https://tennisbootcamp-seven.vercel.app";
     const successUrl = `${origin}/assessment/booked?booking=${booking.id}`;
     const cancelUrl = `${origin}/assessment/book`;
 
