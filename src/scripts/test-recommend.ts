@@ -150,10 +150,11 @@ const juniorSlot = youthProgram?.timetable?.find((s) => s.group === AGE_BAND_LAB
 const juniorReason = recommendPrograms({ ...base, who: "youth", ageBand: "junior", level: "new" })[0]
   ?.reason;
 check(
-  "junior reason names the junior class day, start and label from the timetable",
+  "junior reason leads with the label, then the day and start, from the timetable",
   !!juniorSlot &&
-    !!juniorReason?.includes(`${juniorSlot.day} ${juniorSlot.time.split("–")[0]}`) &&
-    !!juniorReason?.includes(AGE_BAND_LABELS.junior),
+    !!juniorReason?.startsWith(
+      `${AGE_BAND_LABELS.junior} class, ${juniorSlot.day} at ${juniorSlot.time.split("–")[0]}`
+    ),
   juniorReason
 );
 const hpSlot = programs.find((p) => p.id === "high-performance")?.timetable?.[0];

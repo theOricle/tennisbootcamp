@@ -49,7 +49,7 @@ function startOf(slot: TimetableSlot): string {
 
 /** Times and group labels come from src/content/programs.ts, never from here. */
 function classLine(slot: TimetableSlot | undefined): string | null {
-  return slot ? `${slot.day} ${startOf(slot)} class for ${slot.group}` : null;
+  return slot ? `${slot.group} class, ${slot.day} at ${startOf(slot)}` : null;
 }
 
 function buildReason(program: Program, form: IntakeFormSnapshot): string {
@@ -78,10 +78,10 @@ function buildReason(program: Program, form: IntakeFormSnapshot): string {
 
   if (program.id === "bootcamps") {
     // Timetable order is newer → intermediate → advanced.
-    const newer = timetable[0];
-    const day = newer?.day ?? "Weekend";
+    const newer = classLine(timetable[0]);
+    const day = timetable[0]?.day ?? "Weekend";
     if (level === "new" && newer)
-      return `${newer.day} ${startOf(newer)} class for ${newer.group.toLowerCase()} — one part of the game each week, with corrections every session.`;
+      return `${newer} — one part of the game each week, with corrections every session.`;
     if (level === "rally")
       return `${day} classes grouped by level — groundstrokes, serve and return, and net play built into rally and point play.`;
     if (goals.includes("technique"))
