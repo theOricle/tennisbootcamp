@@ -12,7 +12,7 @@ import {
 import { VENUE_LINE } from "@/lib/membership";
 import { hasLevel } from "@/lib/tiers";
 import { isCohortPublic } from "@/lib/cohortVisibility";
-import { TierStatus, TierRangeBadges } from "@/components/tiers";
+import { TierBadge, TierRangeBadges } from "@/components/tiers";
 import { ProgramCard, nextCohortFor } from "@/components/sections/ProgramCard";
 import { AvailabilityEditor } from "./AvailabilityEditor";
 
@@ -68,10 +68,6 @@ function fmt12h(time: string): string {
   const suffix = h >= 12 ? "pm" : "am";
   const hour = h % 12 || 12;
   return m === 0 ? `${hour}${suffix}` : `${hour}:${String(m).padStart(2, "0")}${suffix}`;
-}
-
-function ageLabel(ageGroup: string): string {
-  return ageGroup.replace(/^Ages?\s*/i, "").replace(/^Adults?\s*/i, "");
 }
 
 function fmtSessionDate(iso: string): string {
@@ -155,7 +151,7 @@ function SessionRow({ row, replaces, muted = false }: SessionWithMakeup & { mute
   return (
     <li
       className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm ${
-        muted ? "text-white/45" : "text-white/80"
+        muted ? "text-white/60" : "text-white/80"
       }`}
     >
       <span className="w-[7.5rem] shrink-0 font-medium">
@@ -202,7 +198,7 @@ function SessionList({
       )}
       {past.length > 0 && (
         <details className="group mt-3">
-          <summary className="cursor-pointer list-none rounded text-sm font-semibold text-white/60 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]">
+          <summary className="cursor-pointer list-none rounded text-sm font-semibold text-white/70 transition-colors hover:text-white [&::-webkit-details-marker]:hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]">
             <span className="inline-block w-4 transition-transform group-open:rotate-90" aria-hidden="true">
               ›
             </span>
@@ -266,14 +262,12 @@ function nextStepFor(props: DashboardViewProps): NextStep {
       ]
         .filter(Boolean)
         .join(" · "),
-      secondary: { href: "#my-programs", label: "All sessions" },
+      secondary: { href: "#my-programs", label: "See all sessions" },
     };
   }
 
-  const headline = "Sina will place you in a group and time.";
-
-  // Enrolled in a cohort whose dates aren't generated yet — the weekly slot is
-  // the only schedule on record.
+  // Enrolled in a cohort whose dates aren't generated yet — the player is
+  // placed; the weekly slot is the only schedule on record.
   const pending = enrollments
     .map((e) => cohorts.find((c) => c.id === e.cohort_id))
     .find((c) => c && c.sessions.length > 0 && !(sessionsByCohort[c.id] ?? []).length);
@@ -281,13 +275,15 @@ function nextStepFor(props: DashboardViewProps): NextStep {
     const program = programs.find((p) => p.id === pending.programId);
     return {
       eyebrow: "Next step",
-      headline,
+      headline: "Your session dates are coming.",
       detail: `${program?.title ?? pending.programId} trains ${weeklySlots(
         pending
       )}. Dates are confirmed once the group is set.`,
-      secondary: { href: "#my-programs", label: "My programs" },
+      secondary: { href: "#my-programs", label: "See my programs" },
     };
   }
+
+  const headline = "Sina will place you in a group and time.";
 
   if (!hasLevel(self?.level)) {
     return {
@@ -343,7 +339,14 @@ export function DashboardView(props: DashboardViewProps) {
               Your enrollments and upcoming programs.
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-4">
-              <TierStatus level={self?.level ?? null} />
+              {hasLevel(self?.level) ? (
+                <TierBadge level={self?.level} />
+              ) : (
+                <span className="inline-flex items-center gap-2 text-sm font-medium text-white/70">
+                  <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-white/30" />
+                  Unranked
+                </span>
+              )}
               <Link href="/profile" className={linkClass}>
                 Edit profile
               </Link>
@@ -422,7 +425,7 @@ export function DashboardView(props: DashboardViewProps) {
                         </div>
                         {program?.ageGroup && (
                           <span className="shrink-0 rounded-full bg-[#B4E655]/10 px-3 py-1 text-xs font-semibold text-[#B4E655]">
-                            Age {ageLabel(program.ageGroup)}
+                            {program.ageGroup}
                           </span>
                         )}
                       </div>
@@ -488,25 +491,37 @@ export function DashboardView(props: DashboardViewProps) {
 
         {/* Side column */}
         <aside className="space-y-6">
-          <section className={`${SURFACE} p-5 md:p-6`} aria-labelledby="your-level">
-            <h2 id="your-level" className="text-base font-semibold text-white">
-              {household ? "Your players" : "Your level"}
+          <section className={`${SURFACE} p-5 md:p-6`} aria-labelledby="your-week">
+            <h2 id="your-week" className="text-base font-semibold text-white">
+              {household ? "Your players" : "Your week"}
             </h2>
-            <ul className="mt-4 divide-y divide-white/10">
-              {players.map((player) => (
-                <li key={player.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      {player.full_name?.trim() || "Unnamed player"}
-                    </p>
-                    <p className="text-xs text-white/45">{relationshipLine(player)}</p>
-                  </div>
-                  <TierStatus level={player.level} badgeSize={32} />
-                </li>
-              ))}
-            </ul>
+            {household && (
+              <ul className="mt-4 divide-y divide-white/10">
+                {players.map((player) => (
+                  <li
+                    key={player.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        {player.full_name?.trim() || "Unnamed player"}
+                      </p>
+                      <p className="text-xs text-white/45">{relationshipLine(player)}</p>
+                    </div>
+                    {player.id !== self?.id &&
+                      (hasLevel(player.level) ? (
+                        <TierBadge level={player.level} size={32} />
+                      ) : (
+                        <span className="text-xs font-medium text-white/60">Unranked</span>
+                      ))}
+                  </li>
+                ))}
+              </ul>
+            )}
             <p className="mt-4 text-sm text-white/60">
-              Groups form around shared availability.
+              Groups form around shared availability. Keep {household ? "every" : "your"} week
+              current and your coach can place {household ? "each player" : "you"} in a cohort that
+              fits.
             </p>
             <Link href="#availability" className={`${secondaryButton} mt-3 w-full`}>
               Edit availability
@@ -529,17 +544,17 @@ export function DashboardView(props: DashboardViewProps) {
           title={household ? "Your players' availability" : "Your availability"}
           sub="The week your coach builds cohorts around."
         />
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className={`grid gap-4 ${household ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
           {players.map((player) => (
-            <div key={player.id} className={`${SURFACE} p-5 md:p-6`}>
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-base font-semibold text-white">
-                    {player.full_name?.trim() || "Unnamed player"}
-                  </p>
-                  <p className="text-xs text-white/45">{relationshipLine(player)}</p>
-                </div>
-                <TierStatus level={player.level} />
+            <div
+              key={player.id}
+              className={`${SURFACE} p-5 md:p-6 ${household ? "" : "lg:col-span-2"}`}
+            >
+              <div className="mb-4">
+                <p className="text-base font-semibold text-white">
+                  {player.full_name?.trim() || "Unnamed player"}
+                </p>
+                <p className="text-xs text-white/45">{relationshipLine(player)}</p>
               </div>
               <AvailabilityEditor
                 participantId={player.id}
