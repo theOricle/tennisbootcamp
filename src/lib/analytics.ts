@@ -40,6 +40,16 @@ export function trackAssessmentCtaClick(source: string) {
   trackEvent("assessment_cta_click", { source });
 }
 
+// ─── Quiz-first events (backlog #22) ──────────────────────────────────────────
+
+/**
+ * A player taps a "Take the 2-minute quiz" CTA. `source` distinguishes where:
+ * "hero" | "navbar" | "not-found".
+ */
+export function trackQuizCtaClick(source: string) {
+  trackEvent("quiz_cta_click", { source });
+}
+
 // ─── Friction-pass events (Phase 2.6) ─────────────────────────────────────────
 
 /**

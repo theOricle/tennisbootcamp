@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Book Your Assessment",
+  title: "The 2-minute quiz",
   description:
-    "Answer a few quick questions to see your tentative match, then book a 20-minute on-court assessment so the coach can place you at the right level. It's $20, and it comes off the price when you enroll in a program.",
+    "A few questions about your game and your schedule. Sina places you in a group from your answers. The 20-minute on-court assessment is optional: it's $20, and it comes off the price when you enroll in a program.",
   openGraph: {
-    title: "Book Your Assessment | Tennis Bootcamp",
+    title: "The 2-minute quiz | Tennis Bootcamp",
     description:
-      "A few quick questions, then a 20-minute on-court assessment with the coach. $20 — it comes off the price when you enroll.",
+      "A few questions about your game and your schedule, then Sina places you in a group. The 20-minute assessment is optional.",
   },
   robots: { index: false, follow: false },
 };

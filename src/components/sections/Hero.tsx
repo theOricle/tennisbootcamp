@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { trackAssessmentCtaClick } from "@/lib/analytics";
+import { trackQuizCtaClick } from "@/lib/analytics";
 
 // Code-split Three.js out of the initial bundle; never SSR the WebGL canvas.
 const CourtBackground = dynamic(
@@ -54,11 +54,11 @@ export function Hero() {
           <div className="mt-8 flex flex-col items-start gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <a
-                href="/assessment/book"
-                onClick={() => trackAssessmentCtaClick("hero")}
+                href="/intake"
+                onClick={() => trackQuizCtaClick("hero")}
                 className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >
-                Book Your Assessment
+                Take the 2-minute quiz
               </a>
               <Link
                 href="/programs"

@@ -4,10 +4,11 @@ import type { Recommendation } from "@/lib/recommend";
 import { membershipNote } from "@/lib/membership";
 import { tierForLevel } from "@/lib/tiers";
 import { formatResendError } from "@/lib/emailResult";
+import { SITE_URL } from "@/lib/siteUrl";
 
 const FROM = "Tennis Bootcamp <noreply@send.tennisbootcamp.ca>";
-// TEMP: Vercel origin until the custom domain is attached (ops ROADMAP B5), then point this back at it
-const BASE_URL = "https://tennisbootcamp-seven.vercel.app";
+// Follows NEXT_PUBLIC_SITE_URL (vercel.app fallback), so the domain switch is an env change.
+const BASE_URL = SITE_URL;
 const INBOX = "info@tennisbootcamp.ca";
 
 // ─── Delivery ─────────────────────────────────────────────────────────────────

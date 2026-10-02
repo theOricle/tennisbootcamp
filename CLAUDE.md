@@ -22,7 +22,7 @@ Last updated: 2026-10-02 (weekend catalog and prices, backlog #20)
 These are settled — do not re-open without explicit owner instruction.
 
 - **Auth:** Supabase Auth (NOT Auth.js — pivoted from original plan)
-- **Primary CTA label:** "Book Your Assessment" (2026-07-18 pivot; code still shows "Find My Program" until restructure Phase 2 ships)
+- **Primary CTA label:** "Take the 2-minute quiz" → `/intake` (owner 2026-10-02, backlog #22). "Book Your Assessment" stays the exact label of the optional assessment button (program pages, the quiz's last screen, the dashboard).
 - **Pricing (CAD, 2026-10-01, backlog #20):** weekend classes $35 a session · $210 per six-week cohort (Youth Programs, High Performance, Adult Bootcamps) · Assessment $20 · Kids Camp $499/week (coming soon). Retired 2026-10-01: Bootcamps $649 and Group Lessons $599.
 - **Refund policy:** 7-day full refund window; 50% refund or full credit for 3–6 days; $25 admin fee
 - **Sending domain:** `send.tennisbootcamp.ca` (Resend-verified, GoDaddy DNS records set)
@@ -147,7 +147,7 @@ Homepage (`src/app/page.tsx`) composes: Hero → TrustBar → EmailCapture → P
 
 Per `ops/briefs/project.md`:
 
-1. **Book Your Assessment** (primary CTA) → `/intake` wizard → tentative match → `/assessment/book` (per `ops/plans/assessment-restructure.md`; label flips in restructure Phase 2)
+1. **Take the 2-minute quiz** (primary CTA, owner 2026-10-02) → `/intake` wizard → Sina places the player from their answers; `/assessment/book` ("Book Your Assessment") is the optional $20 extra
 2. **View Programs** (secondary) → `/programs`
 3. **Newsletter signup** (tertiary)
 
