@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { programs } from "@/content/programs";
+import { programs, listedPrograms } from "@/content/programs";
 import {
   getAllCohorts,
   getOpenCohortsForLevel,
@@ -160,7 +160,9 @@ async function DashboardContent({
       return cohort?.programId ?? e.program ?? "";
     })
   );
-  const suggestedPrograms = programs.filter((p) => !enrolledProgramIds.has(p.id));
+  // Suggestions come from the public catalog only; `programs` (above) still
+  // resolves retired ids so old enrollment rows keep their title.
+  const suggestedPrograms = listedPrograms.filter((p) => !enrolledProgramIds.has(p.id));
 
   return (
     <DashboardView
