@@ -6,7 +6,7 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Active build plan:** `ops/plans/assessment-restructure.md` — assessment-first pivot (2026-07-18); execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive. (Previous plan `ops/plans/enrollment-and-accounts.md` fully shipped 2026-06-07.)
 
-Last updated: 2026-09-09 (intake asks age and level per participant, backlog #14)
+Last updated: 2026-10-02 (weekend catalog and prices, backlog #20)
 
 ---
 
@@ -23,7 +23,7 @@ These are settled — do not re-open without explicit owner instruction.
 
 - **Auth:** Supabase Auth (NOT Auth.js — pivoted from original plan)
 - **Primary CTA label:** "Book Your Assessment" (2026-07-18 pivot; code still shows "Find My Program" until restructure Phase 2 ships)
-- **Pricing (CAD):** Bootcamps $649 · Kids Camp $499/week · Group Lessons $599
+- **Pricing (CAD, 2026-10-01, backlog #20):** weekend classes $35 a session · $210 per six-week cohort (Youth Programs, High Performance, Adult Bootcamps) · Assessment $20 · Kids Camp $499/week (coming soon). Retired 2026-10-01: Bootcamps $649 and Group Lessons $599.
 - **Refund policy:** 7-day full refund window; 50% refund or full credit for 3–6 days; $25 admin fee
 - **Sending domain:** `send.tennisbootcamp.ca` (Resend-verified, GoDaddy DNS records set)
 - **Sender FROM:** `Tennis Bootcamp <noreply@send.tennisbootcamp.ca>`

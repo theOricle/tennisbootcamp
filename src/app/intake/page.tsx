@@ -396,6 +396,8 @@ function IntakePageInner() {
 
   // Keep pre-selection so ?program=bootcamps still seeds the recommendation engine
   const slugToOptionId: Record<string, string> = {
+    "youth-programs": "youth",
+    "high-performance": "high-performance",
     bootcamps: "bootcamp",
     "kids-summer-camp": "camp",
     "group-lessons": "group",

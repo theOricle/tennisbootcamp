@@ -2,7 +2,7 @@
 
 Operational voice guide for every word a visitor, player, or parent reads: page copy, button labels, form helper text, validation messages, emails, and metadata. Distilled from `ops/briefs/brand.md` plus the owner's editorial corrections of 2026-08-02. Load this file before writing or rewriting any user-facing string, in any tool, with any model.
 
-Last updated: 2026-08-04
+Last updated: 2026-10-01
 
 ---
 
@@ -32,7 +32,8 @@ Not a salesperson. Not a tech company. Not a hype account. The coach has nothing
 
 ## Locked strings — never rewrite
 
-- All prices: Bootcamps **$649** · Kids Camp **$499/week** · Group Lessons **$599** · Assessment **$20**.
+- All prices (2026-10-01, backlog #20): weekend classes **$35 a session** · **$210 per six-week cohort** (Youth Programs, High Performance, Adult Bootcamps) · Assessment **$20** · Kids Camp **$499/week** (coming soon). The $20 mechanic on program pages: "$35 a session, $210 for the six weeks. If you took the $20 assessment, that $20 comes off the price."
+- Retired 2026-10-01: Bootcamps **$649** and Group Lessons **$599**. Do not quote either price anywhere.
 - The $20 mechanic and its condition (comes off the price **when you enroll in a program afterward**) — rephrase length, never the facts.
 - Refund policy numbers: 7-day full refund; 50% refund or full credit at 3–6 days; $25 admin fee.
 - The sentence **"Built for athletes who want to compete."** — verbatim, hero subhead.
@@ -73,11 +74,11 @@ Every pair below is an actual string from the codebase; the "after" is the shipp
 
 ## Positioning ruling: all levels welcome (2026-08-04)
 
-The brand welcomes every level. The training is serious from the Love tier to Grand Slam; everyone starts with the same $20 on-court assessment; **Bootcamps is the explicitly competitive tier** and may keep its competitive framing. Never tell a beginner to go elsewhere — the old About line "If you're not preparing to compete, there are better programs out there" is the banned pattern. The locked hero sentence "Built for athletes who want to compete." stands unchanged; it states ambition, not a gate. Sentence fragments as a style device are owner-approved — keep them.
+The brand welcomes every level. The training is serious from the Love tier to Grand Slam; Sina places every player by level and schedule, and the $20 on-court assessment is optional; **High Performance is the explicitly competitive tier** (moved from Bootcamps 2026-10-01) and may keep its competitive framing. Never tell a beginner to go elsewhere — the old About line "If you're not preparing to compete, there are better programs out there" is the banned pattern. The locked hero sentence "Built for athletes who want to compete." stands unchanged; it states ambition, not a gate. Sentence fragments as a style device are owner-approved — keep them.
 
 ## Jargon budget (2026-08-04)
 
-Tournament dialect is allowed **only on Bootcamps-specific surfaces** (the Bootcamps card, its detail page content, and Bootcamps-targeted recommendation reasons). On all-levels surfaces (Group Lessons, Kids' Camp, About, intake, assessment pages) translate insider terms to plain language:
+Tournament dialect is allowed **only on High Performance surfaces** (the High Performance card, its detail page content, and High Performance recommendation reasons; moved from Bootcamps 2026-10-01). On all-levels surfaces (Youth Programs, Adult Bootcamps, Kids' Camp, About, intake, assessment pages) translate insider terms to plain language:
 
 | Insider term | Plain replacement |
 |---|---|

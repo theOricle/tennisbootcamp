@@ -5,7 +5,7 @@ import { coaches } from "@/content/coaches";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Every player starts with a 20-minute on-court assessment; Bootcamps is the competitive tier.",
+    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Sina places every player by level and schedule; High Performance is the competitive tier.",
 };
 
 export default function AboutPage() {
@@ -107,7 +107,7 @@ export default function AboutPage() {
               {
                 heading: "Serious at every level",
                 body:
-                  "The training methods come from competitive player development, applied at every rung of the ladder — Love through Grand Slam. Everyone starts with the same $20 on-court assessment, and every group trains with structure and intent. Bootcamps is the explicitly competitive tier; the rest of the ladder builds your game seriously from wherever you start.",
+                  "The training methods come from competitive player development, applied at every rung of the ladder — Love through Grand Slam. Sina places every player by level and schedule, and every group trains with structure and intent. High Performance is the explicitly competitive tier; the rest of the ladder builds your game seriously from wherever you start.",
               },
             ].map(({ heading, body }) => (
               <div
