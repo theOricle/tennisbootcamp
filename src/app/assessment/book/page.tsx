@@ -690,6 +690,16 @@ export default function BookAssessmentPage() {
             </p>
           </form>
         )}
+        <p className="mt-6 text-center text-xs text-white/40">
+          Refunds, weather rebooking and the $20 credit are set out in our{" "}
+          <Link
+            href="/legal/refund-policy"
+            className="text-[#B4E655] underline-offset-2 hover:underline"
+          >
+            Program Policies
+          </Link>
+          .
+        </p>
       </div>
     </main>
   );
