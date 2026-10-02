@@ -132,126 +132,141 @@ function ProgramMatchCard({ rec }: { rec: Recommendation }) {
   );
 }
 
-/** Newsletter opt-in + the two demoted links, shared by both result screens. */
-function ResultFooter({
-  newsletter,
-  onNewsletterChange,
+const OUTLINE_BUTTON =
+  "inline-flex min-h-[48px] items-center justify-center rounded-full border border-[#B4E655]/60 px-6 py-3 text-sm font-semibold text-[#B4E655] transition hover:border-[#B4E655] hover:bg-[#B4E655]/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
+
+/**
+ * The intake is already saved when any result screen renders, so every one
+ * opens by saying so: nothing else is required (backlog #19).
+ */
+function IntakeComplete({
+  name,
+  household,
+  signedIn,
 }: {
-  newsletter: boolean;
-  onNewsletterChange: (v: boolean) => void;
+  name?: string;
+  household: boolean;
+  signedIn: boolean;
 }) {
+  const firstName = (name ?? "").trim().split(/\s+/)[0];
   return (
     <>
-      <label className="mt-6 flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <input
-          type="checkbox"
-          checked={newsletter}
-          onChange={(e) => onNewsletterChange(e.target.checked)}
-          className="h-4 w-4"
-        />
-        <span className="text-sm text-white/75">Also email me when new programs and dates open</span>
-      </label>
-
-      <div className="mt-6 flex flex-wrap gap-3">
-        <Link
-          href="/"
-          className="rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
-        >
-          Back to Home
-        </Link>
-        <Link
-          href="/programs"
-          className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white/70 transition hover:border-white/30 hover:text-white"
-        >
-          Browse Programs
-        </Link>
-      </div>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/80">
+        Quiz complete
+      </span>
+      <h1 className="mt-2 text-2xl font-semibold md:text-3xl">
+        {firstName ? `You're all set, ${firstName}.` : "You're all set."}
+      </h1>
+      <p className="mt-3 text-sm leading-relaxed text-white/70">
+        {household
+          ? "Your answers are in and there's nothing else you need to do. Sina reviews each player's level and your schedule, then places each of them in a group and a time that fit."
+          : "Your answers are in and there's nothing else you need to do. Sina reviews your level and schedule, then places you in a group and a time that fit."}
+      </p>
+      {/* Only a brand-new email gets the set-password link; a signed-in holder has one. */}
+      {!signedIn && (
+        <p className="mt-3 text-sm leading-relaxed text-white/70">
+          The first time you use an email address with us, we send it a link to set a password.
+        </p>
+      )}
     </>
   );
 }
 
-/** One player: the screen exactly as it has always read. */
+/** The assessment, offered — never required. Same booking hand-off as before. */
+function AssessmentSuggestion({
+  onBook,
+  household,
+}: {
+  onBook: () => void;
+  household: boolean;
+}) {
+  return (
+    <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+      <p className="text-sm font-semibold text-white">Optional: an on-court assessment</p>
+      <p className="mt-1 text-sm leading-relaxed text-white/60">
+        {household
+          ? "If you'd like a player's level confirmed on court before they're placed, you can book a 20-minute assessment with the coach, one player per slot. The assessment is $20 per player, and if that player enrolls in a program afterward their $20 comes off the price."
+          : "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with the coach. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."}
+      </p>
+      <button type="button" onClick={onBook} className={cn("mt-4", OUTLINE_BUTTON)}>
+        Book Your Assessment
+      </button>
+    </div>
+  );
+}
+
+/** The two demoted links, shared by every result screen. */
+function ResultLinks() {
+  return (
+    <div className="mt-6 flex flex-wrap gap-3">
+      <Link
+        href="/"
+        className="rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
+      >
+        Back to Home
+      </Link>
+      <Link
+        href="/programs"
+        className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white/70 transition hover:border-white/30 hover:text-white"
+      >
+        Browse Programs
+      </Link>
+    </div>
+  );
+}
+
+/** One player: confirmation, their tentative match, the optional assessment. */
 function TentativeMatchScreen({
   result,
   form,
-  newsletter,
-  onNewsletterChange,
+  signedIn,
 }: {
   result: PersonResult;
   form: FormState;
-  newsletter: boolean;
-  onNewsletterChange: (v: boolean) => void;
+  signedIn: boolean;
 }) {
   const router = useRouter();
   const top = result.recommendations[0];
   const levelLabel = tentativeLevelLabel(result.level);
 
-  // Demoted secondary link: the top program's page, which lists its cohorts
-  // from Supabase (or its empty state). Enrollment is never linked from here.
-  const directEnrollHref = top ? `/programs/${top.program.slug}` : "/programs";
-
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/80">
-            Your tentative match
-          </span>
-          <h1 className="mt-2 text-2xl font-semibold md:text-3xl">
-            You profile like a Level {levelLabel} player
-          </h1>
+          <IntakeComplete name={form.name} household={false} signedIn={signedIn} />
 
-          {top && <ProgramMatchCard rec={top} />}
-
-          <p className="mt-5 text-sm leading-relaxed text-white/70">
-            Based on your answers, {top ? top.program.title : "this program"} looks like your fit.
-            Every player here is placed by a 20-minute on-court assessment with the coach, so the
-            group you train with matches your level.
-          </p>
-
-          {/* Assessment pitch + primary CTA */}
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-            <p className="text-sm font-semibold text-white">
-              Book your 20-minute assessment
+          {/* The match, as information */}
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-white/45">
+              Your tentative match
+            </span>
+            <p className="mt-1 text-base font-semibold text-white">
+              You profile like a Level {levelLabel} player
             </p>
-            <p className="mt-1 text-sm text-white/60">
-              The assessment is $20 — enroll in a program afterward and that $20 comes off the
-              price. You leave with a real level, a written read on your game, and a group
-              matched to your level and schedule.
-            </p>
-            <button
-              type="button"
-              onClick={() => goToBooking(router, form, result.level)}
-              className="mt-4 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-            >
-              Book my 20-minute assessment
-            </button>
-            <Link
-              href={directEnrollHref}
-              className="mt-3 block text-center text-sm text-white/50 underline-offset-2 transition hover:text-white/80 hover:underline"
-            >
-              Know what you want? Enroll directly →
-            </Link>
+            {top && <ProgramMatchCard rec={top} />}
           </div>
 
-          <ResultFooter newsletter={newsletter} onNewsletterChange={onNewsletterChange} />
+          <AssessmentSuggestion
+            household={false}
+            onBook={() => goToBooking(router, form, result.level)}
+          />
+
+          <ResultLinks />
         </div>
       </div>
     </main>
   );
 }
 
-/** Two or more players: one read each, one household, one booking at a time. */
+/** Two or more players: confirmation, one read each, the optional assessment. */
 function HouseholdMatchScreen({
   results,
   form,
-  newsletter,
-  onNewsletterChange,
+  signedIn,
 }: {
   results: PersonResult[];
   form: FormState;
-  newsletter: boolean;
-  onNewsletterChange: (v: boolean) => void;
+  signedIn: boolean;
 }) {
   const router = useRouter();
   const first = results[0];
@@ -260,128 +275,73 @@ function HouseholdMatchScreen({
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/80">
-            Your tentative matches
-          </span>
-          <h1 className="mt-2 text-2xl font-semibold md:text-3xl">
-            A read for each of your {results.length} players
-          </h1>
+          <IntakeComplete name={form.name} household signedIn={signedIn} />
 
-          <div className="mt-2 space-y-6">
-            {results.map((r) => {
-              const top = r.recommendations[0];
-              return (
-                <div key={r.key} className="border-t border-white/10 pt-5 first:border-t-0">
-                  <p className="text-base font-semibold text-white">{r.name}</p>
-                  <p className="mt-0.5 text-sm text-white/60">
-                    Profiles like a Level {tentativeLevelLabel(r.level)} player
-                  </p>
-                  {top ? (
-                    <ProgramMatchCard rec={top} />
-                  ) : (
-                    <p className="mt-3 text-sm text-white/60">
-                      Nothing lines up on paper — the coach will place them from the court.
+          {/* The matches, as information */}
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-white/45">
+              Tentative matches for your {results.length} players
+            </span>
+            <div className="mt-2 space-y-6">
+              {results.map((r) => {
+                const top = r.recommendations[0];
+                return (
+                  <div key={r.key} className="border-t border-white/10 pt-5 first:border-t-0 first:pt-2">
+                    <p className="text-base font-semibold text-white">{r.name}</p>
+                    <p className="mt-0.5 text-sm text-white/60">
+                      Profiles like a Level {tentativeLevelLabel(r.level)} player
                     </p>
-                  )}
-                </div>
-              );
-            })}
+                    {top ? (
+                      <ProgramMatchCard rec={top} />
+                    ) : (
+                      <p className="mt-3 text-sm text-white/60">
+                        Nothing lines up on paper — the coach will place them from the court.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          <p className="mt-6 text-sm leading-relaxed text-white/70">
-            Every player here is placed by a 20-minute on-court assessment with the coach, so the
-            group each of them trains with matches their level.
-          </p>
+          <AssessmentSuggestion
+            household
+            onBook={() => goToBooking(router, form, first?.level)}
+          />
 
-          {/* Assessment pitch + primary CTA */}
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-            <p className="text-sm font-semibold text-white">
-              Book each player&apos;s 20-minute assessment
-            </p>
-            <p className="mt-1 text-sm text-white/60">
-              It&apos;s $20 per player — enroll in a program afterward and that $20 comes off the
-              price. One player per slot: book {first?.name ?? "the first player"} now and the
-              form comes back for the next.
-            </p>
-            <button
-              type="button"
-              onClick={() => goToBooking(router, form, first?.level)}
-              className="mt-4 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-            >
-              Book the first assessment
-            </button>
-            <Link
-              href="/programs"
-              className="mt-3 block text-center text-sm text-white/50 underline-offset-2 transition hover:text-white/80 hover:underline"
-            >
-              Know what you want? Enroll directly →
-            </Link>
-          </div>
-
-          <ResultFooter newsletter={newsletter} onNewsletterChange={onNewsletterChange} />
+          <ResultLinks />
         </div>
       </div>
     </main>
   );
 }
 
+/** No program lines up on paper: confirmation and the optional assessment. */
 function FallbackScreen({
   form,
   level,
-  newsletter,
-  onNewsletterChange,
+  household,
+  signedIn,
 }: {
   form: FormState;
   level?: SelfLevel;
-  newsletter: boolean;
-  onNewsletterChange: (v: boolean) => void;
+  household: boolean;
+  signedIn: boolean;
 }) {
   const router = useRouter();
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-16">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/80">
-            Your next step
-          </span>
-          <h1 className="mt-2 text-3xl font-semibold">Every player starts on court</h1>
-          <p className="mt-3 text-white/70">
-            The best next step is a 20-minute on-court assessment with the coach. You leave with a
-            real level, a written read on your game, and a group matched to your level and
-            schedule. It&apos;s $20 — and if you enroll in a program afterward, that $20 comes
-            off the price.
-          </p>
-          <button
-            type="button"
-            onClick={() => goToBooking(router, form, level)}
-            className="mt-6 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-          >
-            Book my 20-minute assessment
-          </button>
-          <label className="mt-6 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <input
-              type="checkbox"
-              checked={newsletter}
-              onChange={(e) => onNewsletterChange(e.target.checked)}
-              className="h-4 w-4"
-            />
-            <span className="text-sm text-white/75">Also email me when new programs and dates open</span>
-          </label>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/"
-              className="rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
-            >
-              Back to Home
-            </Link>
-            <Link
-              href="/programs"
-              className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white/70 transition hover:border-white/30 hover:text-white"
-            >
-              Browse Programs
-            </Link>
-          </div>
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
+          <IntakeComplete name={form.name} household={household} signedIn={signedIn} />
+
+          <AssessmentSuggestion
+            household={household}
+            onBook={() => goToBooking(router, form, level)}
+          />
+
+          <ResultLinks />
         </div>
       </div>
     </main>
@@ -425,7 +385,7 @@ function IntakePageInner() {
         id: "contact",
         title: "Where can we reach you?",
         subtitle:
-          "You'll get a link to set a password so your coach can place you. We only reach out when we're forming groups that fit your level and schedule.",
+          "The first time you use an email address with us, we send it a link to set a password. We only reach out when we're forming groups that fit your level and schedule.",
         type: "contact",
       },
     ],
@@ -584,37 +544,24 @@ function IntakePageInner() {
 
   // ── Submitted ─────────────────────────────────────────────────────────────
   if (submitted) {
-    const onNewsletterChange = (v: boolean) =>
-      setForm((s) => ({ ...s, newsletter: v }));
-
     if (!results.some((r) => r.recommendations.length > 0)) {
       return (
         <FallbackScreen
           form={form}
           level={results[0]?.level}
-          newsletter={!!form.newsletter}
-          onNewsletterChange={onNewsletterChange}
+          household={results.length > 1}
+          signedIn={household.signedIn}
         />
       );
     }
-    // One player reads exactly as it always has; a household gets a card each.
+    // One player reads as a single card; a household gets a card each.
     if (results.length === 1) {
       return (
-        <TentativeMatchScreen
-          result={results[0]}
-          form={form}
-          newsletter={!!form.newsletter}
-          onNewsletterChange={onNewsletterChange}
-        />
+        <TentativeMatchScreen result={results[0]} form={form} signedIn={household.signedIn} />
       );
     }
     return (
-      <HouseholdMatchScreen
-        results={results}
-        form={form}
-        newsletter={!!form.newsletter}
-        onNewsletterChange={onNewsletterChange}
-      />
+      <HouseholdMatchScreen results={results} form={form} signedIn={household.signedIn} />
     );
   }
 
