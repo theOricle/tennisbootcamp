@@ -290,9 +290,9 @@ function nextStepFor(props: DashboardViewProps): NextStep {
       eyebrow: "Next step",
       headline,
       detail:
-        "It starts with your 20-minute on-court assessment. The assessment costs $20, and if you enroll in a program afterward that $20 comes off the price.",
-      primary: { href: "/assessment/book", label: "Book Your Assessment" },
-      secondary: { href: "#availability", label: "Update my availability" },
+        "There is nothing else you need to do. Keeping your availability current helps Sina place you. If you want your level confirmed on court first, you can book a 20-minute assessment. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.",
+      primary: { href: "#availability", label: "Update my availability" },
+      secondary: { href: "/assessment/book", label: "Book Your Assessment" },
     };
   }
 
