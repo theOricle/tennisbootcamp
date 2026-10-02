@@ -85,6 +85,10 @@ function limeButton(href: string, label: string): string {
   return `<a href="${href}" style="display:inline-block;margin-top:20px;padding:14px 28px;background:#B4E655;color:#061427;font-size:15px;font-weight:700;text-decoration:none;border-radius:100px;">${label}</a>`;
 }
 
+function outlineButton(href: string, label: string): string {
+  return `<a href="${href}" style="display:inline-block;margin-top:16px;padding:12px 24px;border:1px solid #B4E655;color:#B4E655;font-size:14px;font-weight:600;text-decoration:none;border-radius:100px;">${label}</a>`;
+}
+
 function smallText(text: string): string {
   return `<p style="margin:16px 0 0;font-size:13px;color:rgba(255,255,255,0.45);">${text}</p>`;
 }
@@ -185,19 +189,28 @@ export async function sendRecommendationEmail(
     ? `You profile like a <strong style="color:#fff;">Level ${tentativeLevel}</strong> player`
     : `Thanks for telling us about your game`;
   const subject = tentativeLevel
-    ? `You profile like a Level ${tentativeLevel} player — here's your next step`
-    : `Your Tennis Bootcamp next step — ${firstName}`;
+    ? `Your intake is complete — you profile like a Level ${tentativeLevel} player`
+    : `Your Tennis Bootcamp intake is complete — ${firstName}`;
+
+  // Confirmation first; the assessment is a suggestion, never a required step
+  // (backlog #19). HTML and text say the same thing in the same order.
+  const done =
+    "Your intake is complete and there's nothing else you need to do. I review each player's level and schedule, then place them in a group and a time that fit.";
+  const newAccount =
+    "New to Tennis Bootcamp? A separate email has a link to set a password for your account.";
+  const suggestion =
+    "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with me. It's optional. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.";
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Hi ${firstName},</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">${done}</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">${newAccount}</p>
     <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
       ${levelLine}. Based on your answers, <strong style="color:#B4E655;">${programTitle}</strong> looks like your fit.
     </p>
-    <p style="margin:0 0 4px;font-size:14px;color:rgba(255,255,255,0.70);">
-      Every player here is placed by a 20-minute on-court assessment with the coach, so the group you train with matches your level. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.
-    </p>
-    <div style="margin-top:8px;">
-      ${limeButton(`${BASE_URL}/assessment/book`, "Book my 20-minute assessment →")}
+    <p style="margin:0 0 4px;font-size:13px;color:rgba(255,255,255,0.60);">${suggestion}</p>
+    <div>
+      ${outlineButton(`${BASE_URL}/assessment/book`, "Book Your Assessment")}
     </div>
     ${smallText("Know what you want already? You can still enroll directly from any program page.")}
     ${signOff()}
@@ -207,7 +220,7 @@ export async function sendRecommendationEmail(
     to,
     subject,
     html: emailLayout(bodyHtml),
-    text: `Hi ${firstName},\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "Thanks for telling us about your game."} Based on your answers, ${programTitle} looks like your fit.\n\nEvery player here is placed by a 20-minute on-court assessment with the coach, so the group you train with matches your level. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.\n\nBook my 20-minute assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enroll directly from any program page.\n\n— Sina Kassaian, Tennis Bootcamp\n${BASE_URL}`,
+    text: `Hi ${firstName},\n\n${done}\n\n${newAccount}\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "Thanks for telling us about your game."} Based on your answers, ${programTitle} looks like your fit.\n\n${suggestion}\n\nBook Your Assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enroll directly from any program page.\n\nSee you on the court,\nSina Kassaian\nHead Coach, Tennis Bootcamp\n${BASE_URL}`,
   });
 }
 
