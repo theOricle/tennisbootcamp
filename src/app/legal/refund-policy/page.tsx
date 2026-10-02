@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { RefundPolicyBackButton } from "./RefundPolicyBackButton";
 import {
-  ADMIN_FEE_CAD,
   ASSESSMENT_CREDIT_MONTHS,
   COOLING_OFF_DAYS,
   EFFECTIVE_DATE,
@@ -80,22 +79,6 @@ export default function RefundPolicyPage() {
               and the day of your cohort&apos;s first session. No administration fee
               applies inside this window.
             </p>
-          </section>
-
-          <section>
-            <h2 className="mb-3 text-base font-semibold text-white">
-              Cancelling after those {COOLING_OFF_DAYS} days, before your cohort starts
-            </h2>
-            <ul className="list-disc space-y-2 pl-5">
-              <li>
-                7 or more days before the first session: full refund, less a ${ADMIN_FEE_CAD}{" "}
-                administration fee.
-              </li>
-              <li>
-                3 to 6 days before the first session: 50% refund, or full credit
-                toward another program, your choice.
-              </li>
-            </ul>
           </section>
 
           <section>
