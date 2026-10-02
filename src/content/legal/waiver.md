@@ -32,7 +32,7 @@ Tennis Bootcamp may photograph or record training sessions for promotional and e
 
 ## 6. Cancellation Policy
 
-[PLACEHOLDER — cancellation and refund policy to be defined by owner before go-live.]
+Cancellations, refunds and make-ups are covered by our [Program Policies](/legal/refund-policy).
 
 ## 7. Governing Law
 

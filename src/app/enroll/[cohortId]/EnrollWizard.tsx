@@ -6,6 +6,7 @@ import type { Cohort } from "@/types/cohort";
 import type { Program } from "@/types/program";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
 import { VENUE_LINE } from "@/lib/membership";
+import { COOLING_OFF_DAYS } from "@/content/policies";
 import { trackEvent } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
 import { amountDueCents, etransferMemo } from "@/lib/paymentTransitions";
@@ -20,6 +21,7 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WAIVER_VERSION = "v0-placeholder-2026-05-24";
+const COOLING_OFF_COPY = `Cancel for any reason within ${COOLING_OFF_DAYS} days for a full refund. The ${COOLING_OFF_DAYS} days run from the later of receiving your written agreement and your first session.`;
 // 0: summary  1: who is this for  2: registrant  3: consent
 // (4: e-transfer instructions — only on cohorts whose payment_mode is
 // 'etransfer'; card cohorts go straight to Stripe Checkout after consent,
@@ -239,14 +241,14 @@ function OrderSummary({
 
       {/* Refund reassurance */}
       <p className="text-xs text-white/50">
-        7-day full-refund window — cancel up to 7 days before the start date.{" "}
+        {COOLING_OFF_COPY}{" "}
         <Link
           href="/legal/refund-policy"
           target="_blank"
           rel="noopener noreferrer"
           className="text-[#B4E655] underline-offset-2 hover:underline"
         >
-          Refund Policy
+          Program Policies
         </Link>
       </p>
     </div>
@@ -405,7 +407,7 @@ function ConsentStep({
       <div>
         <p className="text-sm text-white/70 leading-relaxed">
           Before we can process payment, {isMinor ? "the guardian" : "you"} must read and
-          agree to the Terms &amp; Liability Waiver and Refund Policy.
+          agree to the Terms &amp; Liability Waiver and Program Policies.
         </p>
       </div>
 
@@ -441,7 +443,7 @@ function ConsentStep({
             rel="noopener noreferrer"
             className="text-[#B4E655] underline-offset-2 hover:underline"
           >
-            Refund Policy
+            Program Policies
           </Link>
           {isMinor && (
             <span className="ml-1 text-white/50">
@@ -1033,14 +1035,14 @@ export function EnrollWizard({
             {isConsentStep && (
 
               <p className="text-right text-xs text-white/50">
-                7-day full-refund window — cancel up to 7 days before the start date.{" "}
+                {COOLING_OFF_COPY}{" "}
                 <Link
                   href="/legal/refund-policy"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[#B4E655] underline-offset-2 hover:underline"
                 >
-                  Refund Policy
+                  Program Policies
                 </Link>
               </p>
             )}

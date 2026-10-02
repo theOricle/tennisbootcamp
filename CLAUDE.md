@@ -6,7 +6,7 @@ Standing brief for the tennisbootcamp.ca project. Any Claude session (Cowork or 
 
 **Active build plan:** `ops/plans/assessment-restructure.md` — assessment-first pivot (2026-07-18); execute phase by phase, one PR per phase. The `/api/intake` column contract is non-negotiable; all changes must be additive. (Previous plan `ops/plans/enrollment-and-accounts.md` fully shipped 2026-06-07.)
 
-Last updated: 2026-10-02 (weekend catalog and prices, backlog #20)
+Last updated: 2026-10-02 (interim Program Policies, backlog #2a)
 
 ---
 
@@ -24,7 +24,7 @@ These are settled — do not re-open without explicit owner instruction.
 - **Auth:** Supabase Auth (NOT Auth.js — pivoted from original plan)
 - **Primary CTA label:** "Book Your Assessment" (2026-07-18 pivot; code still shows "Find My Program" until restructure Phase 2 ships)
 - **Pricing (CAD, 2026-10-01, backlog #20):** weekend classes $35 a session · $210 per six-week cohort (Youth Programs, High Performance, Adult Bootcamps) · Assessment $20 · Kids Camp $499/week (coming soon). Retired 2026-10-01: Bootcamps $649 and Group Lessons $599.
-- **Refund policy:** 7-day full refund window; 50% refund or full credit for 3–6 days; $25 admin fee
+- **Program Policies (interim, backlog #2a, replaces the refund policy):** 10-day no-reason cancellation with no fee inside it, counted from the later of receiving the written agreement and the first session (CPA 2002 s. 35(1)), so it always ends after the cohort has started. Once a cohort has started, missed sessions are not refunded; sessions we cancel are made up inside the cohort's make-up window (none for fall 2026 cohorts), and any the window can't hold become account credit. The old $25 administration fee and 50% tier are retired (owner, 2026-10-02). Published at `/legal/refund-policy` (titled "Program Policies"); configurable values in `src/content/policies.ts`. Pending legal review.
 - **Sending domain:** `send.tennisbootcamp.ca` (Resend-verified, GoDaddy DNS records set)
 - **Sender FROM:** `Tennis Bootcamp <noreply@send.tennisbootcamp.ca>`
 - **Email accounts:** `info@tennisbootcamp.ca` for business APIs (Stripe, Resend, MailerLite, GA4); `sina2666@gmail.com` for dev accounts (Supabase, Vercel, GitHub)

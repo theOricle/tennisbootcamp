@@ -575,8 +575,8 @@ export async function sendCohortConfirmedEmail(params: {
       ${sessionsHtml}
     </ul>
     <p style="margin:20px 0 0;font-size:14px;color:rgba(255,255,255,0.70);">
-      Bring a racquet if you have one, water, and court shoes. If we ever cancel a session, it becomes a make-up at the same day and time after the final week — the full rules are in the
-      <a href="${BASE_URL}/legal/refund-policy" style="color:#B4E655;">program policies</a>.
+      Bring a racquet if you have one, water, and court shoes. If we cancel a session, it is made up inside your cohort's make-up window or becomes a credit on your account. The full rules are in our
+      <a href="${BASE_URL}/legal/refund-policy" style="color:#B4E655;">Program Policies</a>.
     </p>
     ${signOff()}
   `;
@@ -587,7 +587,7 @@ ${programTitle} — ${cohortLabel} reached its minimum and starts ${startDateLab
 
 ${sessionLines.map((l) => `  ${l}`).join("\n")}
 
-Bring a racquet if you have one, water, and court shoes. If we ever cancel a session, it becomes a make-up at the same day and time after the final week — full rules: ${BASE_URL}/legal/refund-policy
+Bring a racquet if you have one, water, and court shoes. If we cancel a session, it is made up inside your cohort's make-up window or becomes a credit on your account. Program Policies: ${BASE_URL}/legal/refund-policy
 
 — Sina Kassaian, Tennis Bootcamp`;
 

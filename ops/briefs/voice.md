@@ -35,7 +35,7 @@ Not a salesperson. Not a tech company. Not a hype account. The coach has nothing
 - All prices (2026-10-01, backlog #20): weekend classes **$35 a session** · **$210 per six-week cohort** (Youth Programs, High Performance, Adult Bootcamps) · Assessment **$20** · Kids Camp **$499/week** (coming soon). The $20 mechanic on program pages: "$35 a session, $210 for the six weeks. If you took the $20 assessment, that $20 comes off the price."
 - Retired 2026-10-01: Bootcamps **$649** and Group Lessons **$599**. Do not quote either price anywhere.
 - The $20 mechanic and its condition (comes off the price **when you enroll in a program afterward**) — rephrase length, never the facts.
-- Refund policy numbers: 7-day full refund; 50% refund or full credit at 3–6 days; $25 admin fee.
+- ~~Refund policy numbers: 7-day full refund; 50% refund or full credit at 3–6 days; $25 admin fee.~~ **SUPERSEDED 2026-09-07** by the interim Program Policies (`/legal/refund-policy`, values in `src/content/policies.ts`): 10-day no-reason cancellation with no fee inside it, counted from the later of the written agreement and the first session, so it always ends after the cohort has started. Once a cohort has started, missed sessions are not refunded and sessions we cancel are made up inside the make-up window or become account credit. The $25 fee and the 50% tier are retired (owner, 2026-10-02) and no longer locked. Locked: 10 days, $105 (2 × $105 instalments).
 - The sentence **"Built for athletes who want to compete."** — verbatim, hero subhead.
 - The hero line "A system that makes progress inevitable." (owner-chosen 2026-08-02 replacement for "Real reps. Real progress.").
 - Preview-banner text (`PreviewBanner.tsx`).
