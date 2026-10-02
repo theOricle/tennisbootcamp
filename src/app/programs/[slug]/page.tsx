@@ -1,8 +1,8 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { programs } from "@/content/programs";
+import { programs, PLACEMENT_LINE } from "@/content/programs";
 import { ProgramInterestForm } from "@/components/sections/ProgramInterestForm";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import {
@@ -40,7 +40,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const program = programs.find((p) => p.slug === slug);
   if (!program) notFound();
   // Retired programs keep their id for old rows but have no public page.
-  if (program.unlisted) redirect("/programs");
+  if (program.unlisted) permanentRedirect("/programs");
 
   // Supabase only (backlog #1): public, inviting/confirmed, not yet started.
   // Draft, cancelled and past cohorts never reach this page.
@@ -270,7 +270,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 })}
               </div>
               <p className="mt-6 text-sm text-white/60">
-                Places in a cohort are offered after the 20-minute assessment.{" "}
+                {PLACEMENT_LINE}{" "}
                 <Link href={quizHref} className="text-[#B4E655] hover:underline">
                   Take the 2-minute quiz
                 </Link>{" "}

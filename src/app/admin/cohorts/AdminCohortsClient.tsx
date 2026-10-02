@@ -290,7 +290,7 @@ function CreateCohortForm({
         <button
           type="button"
           onClick={() =>
-            setSlots((s) => [...s, { day: "Thu", start: "18:00", end: "19:00" }])
+            setSlots((s) => [...s, { day: "Sat", start: "12:00", end: "13:00" }])
           }
           className="mt-2 min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:text-white"
         >

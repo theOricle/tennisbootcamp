@@ -1,6 +1,6 @@
-import type { Program } from "@/types/program";
+import type { Program, TimetableSlot } from "@/types/program";
 import { programs as allPrograms } from "@/content/programs";
-import type { AgeBand } from "@/lib/ageBand";
+import { AGE_BAND_LABELS, type AgeBand } from "@/lib/ageBand";
 
 // Deterministic, client-side program match for the intake quiz. It ranks
 // programs only — cohorts live in Supabase and are rendered by the program
@@ -42,31 +42,51 @@ function isCompetitive(form: IntakeFormSnapshot): boolean {
   return form.level === "competitive" || form.level === "elite";
 }
 
+/** "12:00–1:00 pm" → "12:00" — the class start as the timetable states it. */
+function startOf(slot: TimetableSlot): string {
+  return slot.time.split("–")[0];
+}
+
+/** Times and group labels come from src/content/programs.ts, never from here. */
+function classLine(slot: TimetableSlot | undefined): string | null {
+  return slot ? `${slot.day} ${startOf(slot)} class for ${slot.group}` : null;
+}
+
 function buildReason(program: Program, form: IntakeFormSnapshot): string {
   const { level, goals } = form;
+  const timetable = program.timetable ?? [];
 
   if (program.id === "high-performance") {
+    const slot = timetable[0];
+    const when = slot ? `, every ${slot.day} at ${startOf(slot)}` : "";
     if (level === "elite")
-      return "The competitive tier — pattern play, serve plus the next shot, and match play with the score on, every Saturday at 2:00.";
-    return "Built for players who compete — pattern play and match play with the score on, every Saturday at 2:00.";
+      return `The competitive tier — pattern play, serve plus the next shot, and match play with the score on${when}.`;
+    return `Built for players who compete — pattern play and match play with the score on${when}.`;
   }
 
   if (program.id === "youth-programs") {
-    if (form.ageBand === "junior")
-      return "Saturday 12:00 class for juniors (7–13), grouped by level — fundamentals, movement, and rally play every week.";
-    if (form.ageBand === "teen")
-      return "Saturday 1:00 class for teens (14–17), grouped by level — fundamentals built into rally and point play every week.";
-    return "Saturday classes for juniors and teens, grouped by age and level.";
+    const band = form.ageBand === "junior" || form.ageBand === "teen" ? form.ageBand : null;
+    const line = band
+      ? classLine(timetable.find((s) => s.group === AGE_BAND_LABELS[band]))
+      : null;
+    if (line && band === "junior")
+      return `${line}, grouped by level — fundamentals, movement, and rally play every week.`;
+    if (line)
+      return `${line}, grouped by level — fundamentals built into rally and point play every week.`;
+    return "Weekend classes for juniors and teens, grouped by age and level.";
   }
 
   if (program.id === "bootcamps") {
-    if (level === "new")
-      return "Sunday 4:00 class for newer players — one part of the game each week, with corrections every session.";
+    // Timetable order is newer → intermediate → advanced.
+    const newer = timetable[0];
+    const day = newer?.day ?? "Weekend";
+    if (level === "new" && newer)
+      return `${newer.day} ${startOf(newer)} class for ${newer.group.toLowerCase()} — one part of the game each week, with corrections every session.`;
     if (level === "rally")
-      return "Sunday classes in three levels — groundstrokes, serve and return, and net play built into rally and point play.";
+      return `${day} classes grouped by level — groundstrokes, serve and return, and net play built into rally and point play.`;
     if (goals.includes("technique"))
       return "One part of the game each week, with corrections from the coach every session.";
-    return "Sunday group classes for adults in three levels, six weeks that build on each other.";
+    return `${day} group classes for adults, grouped by level, six weeks that build on each other.`;
   }
 
   return "A strong fit based on your level and goals.";

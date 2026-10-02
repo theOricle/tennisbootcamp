@@ -8,6 +8,10 @@ import { AGE_BAND_LABELS } from "@/lib/ageBand";
 const PRICE_LINE =
   "$35 a session, $210 for the six weeks. If you took the $20 assessment, that $20 comes off the price.";
 
+// The assessment is optional: Sina places each player (backlog #20 review).
+export const PLACEMENT_LINE =
+  "Sina places each player by level and schedule, and a 20-minute assessment is available if you want your level confirmed on court first. It is $20, and if you enroll in a program afterward that $20 comes off the price.";
+
 export const programs: Program[] = [
   {
     id: "youth-programs",
@@ -17,7 +21,8 @@ export const programs: Program[] = [
     longDescription:
       "Each cohort is a fixed group that trains together for six weeks, one 60-minute class every Saturday. " +
       `${AGE_BAND_LABELS.junior} players train at 12:00 and ${AGE_BAND_LABELS.teen} players at 1:00, and each class is grouped by level, so a first-season player and a club player are not on the same drill. ` +
-      "Every class works the fundamentals — forehand, backhand, serve, volley and movement — and puts them into rally and point play the same day. Where a player starts is set by the 20-minute on-court assessment, not by a form.",
+      "Every class works the fundamentals — forehand, backhand, serve, volley and movement — and puts them into rally and point play the same day. " +
+      PLACEMENT_LINE,
     type: "Youth Programs",
     comingSoon: false,
     ctaText: "View Program",
@@ -49,7 +54,7 @@ export const programs: Program[] = [
     longDescription:
       "One 60-minute class every Saturday at 2:00, in six-week cohorts. This is the competitive tier: players who already compete, or are training to, whatever their age. " +
       "Classes are built around live-ball pattern play, serve plus the next shot, building points on purpose, and match play with the score on. " +
-      "Places are set by the 20-minute on-court assessment, so the group trains at one standard.",
+      PLACEMENT_LINE,
     type: "High Performance",
     comingSoon: false,
     ctaText: "View Program",
@@ -82,7 +87,8 @@ export const programs: Program[] = [
     longDescription:
       "Each cohort is a fixed group that trains together for six weeks, one 60-minute class every Sunday. " +
       "Three levels run back to back: 4:00 for newer players, 5:00 for intermediate, 6:00 for advanced. " +
-      "Each class works one part of the game — groundstrokes, serve and return, net play, rally and point play — and the six weeks build on each other. Your level is set by the 20-minute on-court assessment, so you train with players at your standard.",
+      "Each class works one part of the game — groundstrokes, serve and return, net play, rally and point play — and the six weeks build on each other. " +
+      PLACEMENT_LINE,
     type: "Bootcamp",
     comingSoon: false,
     ctaText: "View Program",

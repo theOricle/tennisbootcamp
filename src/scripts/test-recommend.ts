@@ -6,7 +6,8 @@
 //   adult                         → Adult Bootcamps (id "bootcamps")
 //   nothing recommends the coming-soon camp or the retired Group Lessons
 import { recommendPrograms, type IntakeFormSnapshot } from "../lib/recommend";
-import { AGE_BANDS } from "../lib/ageBand";
+import { AGE_BANDS, AGE_BAND_LABELS } from "../lib/ageBand";
+import { programs } from "../content/programs";
 
 let passed = true;
 
@@ -142,6 +143,27 @@ for (const band of AGE_BANDS) {
     check(`${band} (${level ?? "no level"}) gets a recommendation`, ids(form).length >= 1);
   }
 }
+
+// Reasons read times and labels from src/content/programs.ts
+const youthProgram = programs.find((p) => p.id === "youth-programs");
+const juniorSlot = youthProgram?.timetable?.find((s) => s.group === AGE_BAND_LABELS.junior);
+const juniorReason = recommendPrograms({ ...base, who: "youth", ageBand: "junior", level: "new" })[0]
+  ?.reason;
+check(
+  "junior reason names the junior class day, start and label from the timetable",
+  !!juniorSlot &&
+    !!juniorReason?.includes(`${juniorSlot.day} ${juniorSlot.time.split("–")[0]}`) &&
+    !!juniorReason?.includes(AGE_BAND_LABELS.junior),
+  juniorReason
+);
+const hpSlot = programs.find((p) => p.id === "high-performance")?.timetable?.[0];
+const hpReason = recommendPrograms({ ...base, who: "adult", ageBand: "adult", level: "elite" })[0]
+  ?.reason;
+check(
+  "High Performance reason names its timetable day and start",
+  !!hpSlot && !!hpReason?.includes(`${hpSlot.day} at ${hpSlot.time.split("–")[0]}`),
+  hpReason
+);
 
 console.log(passed ? "\nAll assertions passed." : "\nSome assertions FAILED.");
 process.exit(passed ? 0 : 1);
