@@ -13,6 +13,51 @@ export function trackEvent(
   sendGAEvent("event", name, params ?? {});
 }
 
+// ─── URLs without query strings (backlog #23) ─────────────────────────────────
+// Invite links carry a personal token (/enroll/…?invite=<token>) and Stripe
+// returns carry a session id. GA gets origin + path only: never a query
+// string, never a hash. Pages read their own URLs untouched; only what GA
+// sees is trimmed.
+
+/** origin + path of a URL; "" when it doesn't parse (an empty referrer). */
+export function withoutQuery(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Inline script for the root layout, run before gtag's own config so the
+ * first page_view already has the trimmed URL and referrer. Mirrors
+ * withoutQuery — it has to run before the app bundle loads.
+ */
+export const GA_STRIP_QUERY_SCRIPT = `
+window.dataLayer = window.dataLayer || [];
+(function () {
+  function gtag() { window.dataLayer.push(arguments); }
+  function clean(u) {
+    try { var x = new URL(u); return x.origin + x.pathname; } catch (e) { return ""; }
+  }
+  gtag("set", {
+    page_location: clean(window.location.href),
+    page_referrer: clean(document.referrer)
+  });
+})();
+`;
+
+/** After a client-side navigation, keep GA's location and referrer trimmed. */
+export function setGaPageLocation(location: string, referrer: string) {
+  if (typeof window === "undefined") return;
+  if (!process.env.NEXT_PUBLIC_GA_ID) return;
+  sendGAEvent("set", {
+    page_location: withoutQuery(location),
+    page_referrer: withoutQuery(referrer),
+  });
+}
+
 // ─── Assessment funnel events (Phase 1) ───────────────────────────────────────
 
 /** Player submits the assessment booking form. */
