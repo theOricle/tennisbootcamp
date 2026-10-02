@@ -20,9 +20,15 @@ function Email() {
 const PROCESSORS: { name: string; use: string }[] = [
   { name: "Supabase", use: "Accounts and our database." },
   { name: "Vercel", use: "Hosts this website." },
-  { name: "Resend", use: "Sends emails about your bookings and programs." },
+  {
+    name: "Resend",
+    use: "Sends account links, quiz results, bookings, invitations and receipts.",
+  },
   { name: "MailerLite", use: "Sends the newsletter, only if you opt in." },
-  { name: "Google Sheets", use: "Our internal records of quiz submissions, bookings and enrollments." },
+  {
+    name: "Google Sheets",
+    use: "Our internal records of quiz answers, newsletter and program-interest sign-ups, assessment bookings and results, and enrollments.",
+  },
   { name: "Google Analytics", use: "Measures how the site is used." },
   { name: "Stripe", use: "Processes card payments." },
 ];
@@ -55,10 +61,25 @@ export default function PrivacyPolicyPage() {
                 <p className="font-semibold text-white">Account and player details</p>
                 <p className="mt-1">
                   Names, email, phone, age group, level, availability and any notes you give
-                  us. This includes household members a parent or guardian adds to their
-                  account. A child&apos;s details always come from their parent or guardian. We
-                  use these to place each player, build groups that fit their schedule, and
-                  contact you about training.
+                  us. This includes household members an account holder adds, such as a child
+                  or a spouse. We ask that a child&apos;s details come from their parent or
+                  guardian. We use these to place each player, build groups that fit their
+                  schedule, and contact you about training.
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="font-semibold text-white">Assessment results</p>
+                <p className="mt-1">
+                  After an assessment, the level the coach assigns and the coach&apos;s notes on
+                  your game. We use these to place you in a group at your level.
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="font-semibold text-white">Enrollment details</p>
+                <p className="mt-1">
+                  When you enroll, each player&apos;s date of birth. For anyone under 18, a
+                  parent or guardian&apos;s name, email and phone. We also record the name typed
+                  to sign the waiver, when it was signed and which version of the waiver it was.
                 </p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
@@ -76,10 +97,21 @@ export default function PrivacyPolicyPage() {
                 </p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="font-semibold text-white">Photos and video</p>
+                <p className="mt-1">
+                  We may photograph or film training sessions. Section 5 of the{" "}
+                  <a href="/legal/waiver" className="text-[#B4E655] hover:underline">
+                    Terms &amp; Liability Waiver
+                  </a>{" "}
+                  explains how, and how to tell your coach you don&apos;t want to be filmed.
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                 <p className="font-semibold text-white">How the site is used</p>
                 <p className="mt-1">
                   Pages visited and steps completed, measured through Google Analytics, so we
-                  can see what works on the site and fix what doesn&apos;t.
+                  can see what works on the site and fix what doesn&apos;t. See the Google
+                  Analytics section below.
                 </p>
               </div>
             </div>
@@ -102,8 +134,9 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className="mb-3 text-base font-semibold text-white">Email</h2>
             <p>
-              Emails about your bookings and programs are sent because you booked or enrolled.
-              The newsletter only goes to people who opted in. Every newsletter has an
+              Emails about the quiz, your account, bookings, enrollments and invitations to
+              groups that fit your level and schedule are sent because you asked us to place
+              you. The newsletter only goes to people who opted in. Every newsletter has an
               unsubscribe link, and you can withdraw at any time by emailing <Email />.
             </p>
           </section>
@@ -111,8 +144,10 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className="mb-3 text-base font-semibold text-white">How long we keep it</h2>
             <p>
-              We keep your information while your account is open. Ask us and we delete it,
-              except payment records, which we must keep for six years for tax purposes.
+              We keep your information while your account is open. Newsletter and
+              program-interest sign-ups without an account are kept until you unsubscribe or
+              ask us to delete them. Ask us and we delete your information, except payment
+              records, which we must keep for six years for tax purposes.
             </p>
           </section>
 
@@ -126,8 +161,13 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="mb-3 text-base font-semibold text-white">
-              Opting out of Google Analytics
+              Google Analytics and opting out
             </h2>
+            <p className="mb-3">
+              Google Analytics starts when a page loads and sets cookies in your browser. We
+              don&apos;t ask first. Google receives the page address, your device and browser
+              type, and your approximate location.
+            </p>
             <p>
               Google offers a browser add-on that stops Google Analytics from measuring your
               visits. You can install it from{" "}
