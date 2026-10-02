@@ -676,6 +676,17 @@ function IntakePageInner() {
                     Also email me when new programs and dates open
                   </span>
                 </label>
+                <p className="text-xs text-white/50">
+                  How we handle your information:{" "}
+                  <Link
+                    href="/legal/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#B4E655] underline-offset-2 hover:underline"
+                  >
+                    Privacy Policy
+                  </Link>
+                </p>
                 {/* Enables Enter-to-advance from any field; the visible CTA lives in the footer */}
                 <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
                   Continue

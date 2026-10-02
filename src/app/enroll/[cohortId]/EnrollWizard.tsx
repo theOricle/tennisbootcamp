@@ -407,6 +407,17 @@ function ConsentStep({
           Before we can process payment, {isMinor ? "the guardian" : "you"} must read and
           agree to the Terms &amp; Liability Waiver and Refund Policy.
         </p>
+        <p className="mt-2 text-xs text-white/50">
+          How we handle your information:{" "}
+          <Link
+            href="/legal/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#B4E655] underline-offset-2 hover:underline"
+          >
+            Privacy Policy
+          </Link>
+        </p>
       </div>
 
       {/* Checkbox */}
