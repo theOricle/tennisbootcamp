@@ -139,25 +139,35 @@ const OUTLINE_BUTTON =
  * The intake is already saved when any result screen renders, so every one
  * opens by saying so: nothing else is required (backlog #19).
  */
-function IntakeComplete({ name, household }: { name?: string; household: boolean }) {
+function IntakeComplete({
+  name,
+  household,
+  signedIn,
+}: {
+  name?: string;
+  household: boolean;
+  signedIn: boolean;
+}) {
   const firstName = (name ?? "").trim().split(/\s+/)[0];
   return (
     <>
       <span className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/80">
-        Intake complete
+        Quiz complete
       </span>
       <h1 className="mt-2 text-2xl font-semibold md:text-3xl">
         {firstName ? `You're all set, ${firstName}.` : "You're all set."}
       </h1>
       <p className="mt-3 text-sm leading-relaxed text-white/70">
         {household
-          ? "Your intake is in and there's nothing else you need to do. Sina reviews each player's level and your schedule, then places each of them in a group and a time that fit."
-          : "Your intake is in and there's nothing else you need to do. Sina reviews your level and schedule, then places you in a group and a time that fit."}
+          ? "Your answers are in and there's nothing else you need to do. Sina reviews each player's level and your schedule, then places each of them in a group and a time that fit."
+          : "Your answers are in and there's nothing else you need to do. Sina reviews your level and schedule, then places you in a group and a time that fit."}
       </p>
-      <p className="mt-3 text-sm leading-relaxed text-white/70">
-        New to Tennis Bootcamp? Check your inbox for an email with a link to set a password for
-        your account.
-      </p>
+      {/* Only a brand-new email gets the set-password link; a signed-in holder has one. */}
+      {!signedIn && (
+        <p className="mt-3 text-sm leading-relaxed text-white/70">
+          The first time you use an email address with us, we send it a link to set a password.
+        </p>
+      )}
     </>
   );
 }
@@ -166,31 +176,21 @@ function IntakeComplete({ name, household }: { name?: string; household: boolean
 function AssessmentSuggestion({
   onBook,
   household,
-  directEnrollHref,
 }: {
   onBook: () => void;
   household: boolean;
-  directEnrollHref?: string;
 }) {
   return (
     <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
       <p className="text-sm font-semibold text-white">Optional: an on-court assessment</p>
       <p className="mt-1 text-sm leading-relaxed text-white/60">
         {household
-          ? "If you'd like a player's level confirmed on court before they're placed, you can book a 20-minute assessment with the coach, one player per slot. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."
+          ? "If you'd like a player's level confirmed on court before they're placed, you can book a 20-minute assessment with the coach, one player per slot. The assessment is $20 per player, and if that player enrolls in a program afterward their $20 comes off the price."
           : "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with the coach. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."}
       </p>
       <button type="button" onClick={onBook} className={cn("mt-4", OUTLINE_BUTTON)}>
         Book Your Assessment
       </button>
-      {directEnrollHref && (
-        <Link
-          href={directEnrollHref}
-          className="mt-3 block text-sm text-white/50 underline-offset-2 transition hover:text-white/80 hover:underline"
-        >
-          Know what you want? Enroll directly →
-        </Link>
-      )}
     </div>
   );
 }
@@ -216,20 +216,24 @@ function ResultLinks() {
 }
 
 /** One player: confirmation, their tentative match, the optional assessment. */
-function TentativeMatchScreen({ result, form }: { result: PersonResult; form: FormState }) {
+function TentativeMatchScreen({
+  result,
+  form,
+  signedIn,
+}: {
+  result: PersonResult;
+  form: FormState;
+  signedIn: boolean;
+}) {
   const router = useRouter();
   const top = result.recommendations[0];
   const levelLabel = tentativeLevelLabel(result.level);
-
-  // Demoted secondary link: the top program's page, which lists its cohorts
-  // from Supabase (or its empty state). Enrollment is never linked from here.
-  const directEnrollHref = top ? `/programs/${top.program.slug}` : "/programs";
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
-          <IntakeComplete name={form.name} household={false} />
+          <IntakeComplete name={form.name} household={false} signedIn={signedIn} />
 
           {/* The match, as information */}
           <div className="mt-6 border-t border-white/10 pt-5">
@@ -245,7 +249,6 @@ function TentativeMatchScreen({ result, form }: { result: PersonResult; form: Fo
           <AssessmentSuggestion
             household={false}
             onBook={() => goToBooking(router, form, result.level)}
-            directEnrollHref={directEnrollHref}
           />
 
           <ResultLinks />
@@ -256,7 +259,15 @@ function TentativeMatchScreen({ result, form }: { result: PersonResult; form: Fo
 }
 
 /** Two or more players: confirmation, one read each, the optional assessment. */
-function HouseholdMatchScreen({ results, form }: { results: PersonResult[]; form: FormState }) {
+function HouseholdMatchScreen({
+  results,
+  form,
+  signedIn,
+}: {
+  results: PersonResult[];
+  form: FormState;
+  signedIn: boolean;
+}) {
   const router = useRouter();
   const first = results[0];
 
@@ -264,7 +275,7 @@ function HouseholdMatchScreen({ results, form }: { results: PersonResult[]; form
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
-          <IntakeComplete name={form.name} household />
+          <IntakeComplete name={form.name} household signedIn={signedIn} />
 
           {/* The matches, as information */}
           <div className="mt-6 border-t border-white/10 pt-5">
@@ -296,7 +307,6 @@ function HouseholdMatchScreen({ results, form }: { results: PersonResult[]; form
           <AssessmentSuggestion
             household
             onBook={() => goToBooking(router, form, first?.level)}
-            directEnrollHref="/programs"
           />
 
           <ResultLinks />
@@ -311,10 +321,12 @@ function FallbackScreen({
   form,
   level,
   household,
+  signedIn,
 }: {
   form: FormState;
   level?: SelfLevel;
   household: boolean;
+  signedIn: boolean;
 }) {
   const router = useRouter();
 
@@ -322,7 +334,7 @@ function FallbackScreen({
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
-          <IntakeComplete name={form.name} household={household} />
+          <IntakeComplete name={form.name} household={household} signedIn={signedIn} />
 
           <AssessmentSuggestion
             household={household}
@@ -371,7 +383,7 @@ function IntakePageInner() {
         id: "contact",
         title: "Where can we reach you?",
         subtitle:
-          "You'll get a link to set a password so your coach can place you. We only reach out when we're forming groups that fit your level and schedule.",
+          "The first time you use an email address with us, we send it a link to set a password. We only reach out when we're forming groups that fit your level and schedule.",
         type: "contact",
       },
     ],
@@ -536,14 +548,19 @@ function IntakePageInner() {
           form={form}
           level={results[0]?.level}
           household={results.length > 1}
+          signedIn={household.signedIn}
         />
       );
     }
     // One player reads as a single card; a household gets a card each.
     if (results.length === 1) {
-      return <TentativeMatchScreen result={results[0]} form={form} />;
+      return (
+        <TentativeMatchScreen result={results[0]} form={form} signedIn={household.signedIn} />
+      );
     }
-    return <HouseholdMatchScreen results={results} form={form} />;
+    return (
+      <HouseholdMatchScreen results={results} form={form} signedIn={household.signedIn} />
+    );
   }
 
   // ── Wizard ────────────────────────────────────────────────────────────────

@@ -189,15 +189,15 @@ export async function sendRecommendationEmail(
     ? `You profile like a <strong style="color:#fff;">Level ${tentativeLevel}</strong> player`
     : `Thanks for telling us about your game`;
   const subject = tentativeLevel
-    ? `Your intake is complete — you profile like a Level ${tentativeLevel} player`
-    : `Your Tennis Bootcamp intake is complete — ${firstName}`;
+    ? `Your answers are in — you profile like a Level ${tentativeLevel} player`
+    : `Your Tennis Bootcamp answers are in — ${firstName}`;
 
   // Confirmation first; the assessment is a suggestion, never a required step
   // (backlog #19). HTML and text say the same thing in the same order.
   const done =
-    "Your intake is complete and there's nothing else you need to do. I review each player's level and schedule, then place them in a group and a time that fit.";
+    "Your answers to the 2-minute quiz are in and there's nothing else you need to do. I review each player's level and schedule, then place them in a group and a time that fit.";
   const newAccount =
-    "New to Tennis Bootcamp? A separate email has a link to set a password for your account.";
+    "The first time you use an email address with us, we send it a link to set a password.";
   const suggestion =
     "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with me. It's optional. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.";
 
@@ -212,7 +212,6 @@ export async function sendRecommendationEmail(
     <div>
       ${outlineButton(`${BASE_URL}/assessment/book`, "Book Your Assessment")}
     </div>
-    ${smallText("Know what you want already? You can still enroll directly from any program page.")}
     ${signOff()}
   `;
 
@@ -220,7 +219,7 @@ export async function sendRecommendationEmail(
     to,
     subject,
     html: emailLayout(bodyHtml),
-    text: `Hi ${firstName},\n\n${done}\n\n${newAccount}\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "Thanks for telling us about your game."} Based on your answers, ${programTitle} looks like your fit.\n\n${suggestion}\n\nBook Your Assessment: ${BASE_URL}/assessment/book\n\nKnow what you want already? You can still enroll directly from any program page.\n\nSee you on the court,\nSina Kassaian\nHead Coach, Tennis Bootcamp\n${BASE_URL}`,
+    text: `Hi ${firstName},\n\n${done}\n\n${newAccount}\n\n${tentativeLevel ? `You profile like a Level ${tentativeLevel} player.` : "Thanks for telling us about your game."} Based on your answers, ${programTitle} looks like your fit.\n\n${suggestion}\n\nBook Your Assessment: ${BASE_URL}/assessment/book\n\nSee you on the court,\nSina Kassaian\nHead Coach, Tennis Bootcamp\n${BASE_URL}`,
   });
 }
 
