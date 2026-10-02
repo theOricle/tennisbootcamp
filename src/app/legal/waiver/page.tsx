@@ -70,8 +70,12 @@ export default function WaiverPage() {
 
           <section>
             <h2 className="mb-2 text-base font-semibold text-white">6. Cancellation Policy</h2>
-            <p className="text-yellow-200/80">
-              [Placeholder — cancellation and refund policy to be defined by owner before go-live.]
+            <p>
+              Cancellations, refunds and make-ups are covered by our{" "}
+              <a href="/legal/refund-policy" className="text-[#B4E655] hover:underline">
+                Program Policies
+              </a>
+              .
             </p>
           </section>
 
