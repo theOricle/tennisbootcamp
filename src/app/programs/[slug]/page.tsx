@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -14,7 +14,6 @@ import { getPublicCohorts } from "@/lib/cohortsDb";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { VENUE_LINE } from "@/lib/membership";
 import { TierRangeBadges } from "@/components/tiers";
-import { StickyEnrollBar } from "./StickyEnrollBar";
 
 function fmtStartDate(iso: string): string {
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -40,6 +39,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const program = programs.find((p) => p.slug === slug);
   if (!program) notFound();
+  // Retired programs keep their id for old rows but have no public page.
+  if (program.unlisted) redirect("/programs");
 
   // Supabase only (backlog #1): public, inviting/confirmed, not yet started.
   // Draft, cancelled and past cohorts never reach this page.
@@ -54,8 +55,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const seatCounts: Record<string, number | null> = Object.fromEntries(seatCountEntries);
 
   const hasOpenCohorts = openCohorts.length > 0;
-  // First enrollable cohort (public cohorts are all inviting/confirmed → "open")
+  // Earliest public cohort (public cohorts are all inviting/confirmed → "open")
   const nextOpenCohort = openCohorts.find((c) => c.status === "open") ?? null;
+  // No public Enroll button yet (backlog #20): a public enroll flow would ask
+  // for an e-transfer before the written agreement is delivered (backlog #2b).
+  const quizHref = `/intake?program=${program.slug}`;
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -117,26 +121,52 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               {program.longDescription}
             </p>
 
-            {/* ── Hero CTA ───────────────────────────────────────────────── */}
-            {nextOpenCohort && !program.comingSoon ? (
-              <div id="hero-cta" className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
-                <p className="text-sm font-semibold text-[#B4E655]">
-                  Next cohort starts {fmtStartDate(nextOpenCohort.startDate)}
-                </p>
+            {/* ── Timetable, price, quiz ─────────────────────────────────── */}
+            {!program.comingSoon ? (
+              <div className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
+                {program.timetable && program.timetable.length > 0 && (
+                  <>
+                    <h2 className="text-sm font-semibold text-[#B4E655]">Weekend timetable</h2>
+                    <ul className="mt-2 space-y-1.5">
+                      {program.timetable.map((slot) => (
+                        <li
+                          key={`${slot.day}-${slot.time}`}
+                          className="flex flex-wrap justify-between gap-x-4 text-sm text-white/85"
+                        >
+                          <span>
+                            {slot.day} {slot.time}
+                          </span>
+                          <span className="text-white/60">{slot.group}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {program.schedule && (
+                  <p className="mt-3 text-xs text-white/60">{program.schedule}</p>
+                )}
+                {program.priceLine && (
+                  <p className="mt-3 text-sm text-white">{program.priceLine}</p>
+                )}
+                {nextOpenCohort && (
+                  <p className="mt-3 text-sm font-semibold text-[#B4E655]">
+                    Next cohort starts {fmtStartDate(nextOpenCohort.startDate)}
+                  </p>
+                )}
                 <Link
-                  href={`/enroll/${nextOpenCohort.id}`}
-                  className="mt-3 block w-full rounded-full bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
+                  href={quizHref}
+                  className="mt-4 block w-full rounded-full bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
                 >
-                  Enroll now →
+                  Take the 2-minute quiz
                 </Link>
-                <a
-                  href="#cohorts"
+                <Link
+                  href="/assessment/book"
                   className="mt-2 block text-center text-xs text-white/50 transition hover:text-white/80"
                 >
-                  Or see all upcoming cohorts ↓
-                </a>
+                  Or Book Your Assessment
+                </Link>
               </div>
-            ) : program.comingSoon ? (
+            ) : (
               <div className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
                 <p className="text-sm font-semibold text-white">Registration coming soon</p>
                 <p className="mt-1 text-xs text-white/60">
@@ -146,17 +176,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   <ProgramInterestForm programSlug={program.slug} programTitle={program.title} />
                 </div>
               </div>
-            ) : !hasOpenCohorts ? (
-              /* No cohort to enroll in: the primary CTA, never an enroll link */
-              <div className="mt-6">
-                <Link
-                  href="/assessment/book"
-                  className="block w-full rounded-full bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
-                >
-                  Book Your Assessment
-                </Link>
-              </div>
-            ) : null}
+            )}
           </div>
         </div>
 
@@ -245,24 +265,17 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                         </div>
                       </div>
 
-                      <div className="mt-4">
-                        {!isFull ? (
-                          <Link
-                            href={`/enroll/${cohort.id}`}
-                            className="block w-full rounded-full bg-[#B4E655] py-2 text-center text-sm font-semibold text-[#061427] hover:brightness-110 transition"
-                          >
-                            Enroll →
-                          </Link>
-                        ) : (
-                          <div className="block w-full rounded-full bg-white/5 py-2 text-center text-sm font-semibold text-white/30">
-                            Cohort full
-                          </div>
-                        )}
-                      </div>
                     </div>
                   );
                 })}
               </div>
+              <p className="mt-6 text-sm text-white/60">
+                Places in a cohort are offered after the 20-minute assessment.{" "}
+                <Link href={quizHref} className="text-[#B4E655] hover:underline">
+                  Take the 2-minute quiz
+                </Link>{" "}
+                to start.
+              </p>
             </div>
           ) : !program.comingSoon ? (
             /* Zero renderable cohorts: empty state, no card, no enroll link */
@@ -319,14 +332,6 @@ export default async function ProgramDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* Sticky bottom bar — mobile only, appears after hero CTA scrolls out of view */}
-      {nextOpenCohort && !program.comingSoon && (
-        <StickyEnrollBar
-          cohortId={nextOpenCohort.id}
-          price={formatCohortPrice(nextOpenCohort)}
-          programTitle={program.title}
-        />
-      )}
     </main>
   );
 }

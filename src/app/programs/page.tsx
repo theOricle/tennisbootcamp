@@ -1,12 +1,12 @@
 ﻿import type { Metadata } from "next";
-import { programs } from "@/content/programs";
+import { listedPrograms } from "@/content/programs";
 import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 
 export const metadata: Metadata = {
   title: "Programs",
   description:
-    "Competitive bootcamps, group lessons, and summer camps for tennis players of all levels in Toronto.",
+    "Weekend tennis classes in Toronto: Youth Programs, High Performance and Adult Bootcamps. Once a week, 60 minutes, six-week cohorts, $35 a session.",
 };
 
 export default function ProgramsPage() {
@@ -23,7 +23,7 @@ export default function ProgramsPage() {
       </div>
 
       <EmailCapture />
-      <ProgramsGrid programs={programs} title="Programs" />
+      <ProgramsGrid programs={listedPrograms} title="Programs" />
     </main>
   );
 }

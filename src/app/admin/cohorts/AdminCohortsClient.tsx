@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
-import { programs } from "@/content/programs";
+import { listedPrograms as programs } from "@/content/programs";
 import { scheduledEndDate, addDaysISO } from "@/lib/makeup";
 import { TierRangeBadges } from "@/components/tiers";
 import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
@@ -64,9 +64,11 @@ function CreateCohortForm({
   const [startDate, setStartDate] = useState("");
   const [weeks, setWeeks] = useState(6);
   const [slots, setSlots] = useState<SlotDraft[]>([
-    { day: "Tue", start: "18:00", end: "19:00" },
+    { day: "Sat", start: "12:00", end: "13:00" },
   ]);
-  const [priceDollars, setPriceDollars] = useState("649");
+  // Weekend offer defaults (backlog #20): $210 for six weeks, one 60-minute
+  // session a week.
+  const [priceDollars, setPriceDollars] = useState("210");
   const [capacityMin, setCapacityMin] = useState(3);
   const [capacityMax, setCapacityMax] = useState(6);
   const [visibility, setVisibility] = useState<"private" | "public">("private");

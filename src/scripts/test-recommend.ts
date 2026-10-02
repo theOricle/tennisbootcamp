@@ -1,104 +1,14 @@
 // Run from project root: npx tsx src/scripts/test-recommend.ts
-import { recommendPrograms } from "../lib/recommend";
-
-const personas = [
-  {
-    name: "Emma — 9-year-old beginner",
-    form: {
-      who: "youth" as const,
-      level: "new" as const,
-      goals: ["consistency"],
-      programs: [] as string[],
-      preferredLocationIds: [],
-      availability: ["weekday-daytime"],
-    },
-  },
-  {
-    name: "David — adult beginner",
-    form: {
-      who: "adult" as const,
-      level: "new" as const,
-      goals: ["technique", "consistency"],
-      programs: ["group"],
-      preferredLocationIds: [],
-      availability: ["weekday-evening"],
-    },
-  },
-  {
-    name: "Mia — competitive teen",
-    form: {
-      who: "youth" as const,
-      level: "competitive" as const,
-      goals: ["competition", "tactics", "match"],
-      programs: ["bootcamp"],
-      preferredLocationIds: [],
-      availability: ["weekday-evening"],
-    },
-  },
-];
+//
+// Weekend catalog (backlog #20):
+//   junior or teen                → Youth Programs
+//   competitive or elite, any age → High Performance
+//   adult                         → Adult Bootcamps (id "bootcamps")
+//   nothing recommends the coming-soon camp or the retired Group Lessons
+import { recommendPrograms, type IntakeFormSnapshot } from "../lib/recommend";
+import { AGE_BANDS } from "../lib/ageBand";
 
 let passed = true;
-
-for (const persona of personas) {
-  console.log(`\n=== ${persona.name} ===`);
-  const recs = recommendPrograms(persona.form);
-
-  if (recs.length === 0) {
-    console.log("  → (no recommendations — no program passed age gate)");
-    continue;
-  }
-
-  for (const [i, rec] of recs.entries()) {
-    const marker = i === 0 ? "★" : " ";
-    console.log(`  ${marker} [${rec.score}] ${rec.program.title}`);
-    console.log(`        "${rec.reason}"`);
-  }
-}
-
-// Assertions
-console.log("\n=== Assertions ===");
-
-const emmaRecs = recommendPrograms(personas[0].form);
-console.assert(
-  emmaRecs.length === 1 && emmaRecs[0].program.id === "kids-summer-camp",
-  "FAIL: Emma (9y beginner) should only get Kids Summer Camp"
-);
-if (emmaRecs.length === 1 && emmaRecs[0].program.id === "kids-summer-camp") {
-  console.log("  ✓ Emma → Kids Summer Camp only");
-} else {
-  console.log("  ✗ Emma assertion failed:", emmaRecs.map((r) => r.program.id));
-  passed = false;
-}
-
-const davidRecs = recommendPrograms(personas[1].form);
-console.assert(
-  davidRecs.length >= 1 && davidRecs[0].program.id === "group-lessons",
-  "FAIL: David (adult beginner) should rank Group Lessons #1"
-);
-if (davidRecs.length >= 1 && davidRecs[0].program.id === "group-lessons") {
-  console.log("  ✓ David → Group Lessons #1");
-} else {
-  console.log("  ✗ David assertion failed:", davidRecs.map((r) => r.program.id));
-  passed = false;
-}
-
-const miaRecs = recommendPrograms(personas[2].form);
-console.assert(
-  miaRecs.length >= 1 && miaRecs[0].program.id === "bootcamps",
-  "FAIL: Mia (competitive teen) should rank Bootcamps #1"
-);
-if (miaRecs.length >= 1 && miaRecs[0].program.id === "bootcamps") {
-  console.log("  ✓ Mia → Bootcamps #1");
-} else {
-  console.log("  ✗ Mia assertion failed:", miaRecs.map((r) => r.program.id));
-  passed = false;
-}
-
-// ─── Age bands, asked per person (backlog #14) ────────────────────────────────
-// The intake now knows each player's band, so two children on one submission
-// get different reads. Without a band the legacy adult/youth gating stands.
-
-console.log("\n=== Age bands ===");
 
 function check(name: string, ok: boolean, detail?: unknown) {
   if (ok) {
@@ -113,59 +23,124 @@ const base = {
   goals: [] as string[],
   programs: [] as string[],
   preferredLocationIds: [] as string[],
-  availability: ["weekday-evening"],
+  availability: ["weekend-daytime"],
 };
 
-// A parent adding a Junior 9 and a Teen 15 — the case the shared "who is
-// training?" step could never answer twice.
-const junior9 = recommendPrograms({
-  ...base,
-  who: "youth",
-  ageBand: "junior",
-});
-const teen15 = recommendPrograms({
-  ...base,
-  who: "youth",
-  ageBand: "teen",
-});
-check(
-  "junior 7–13 → Kids' Summer Camp only",
-  junior9.length === 1 && junior9[0].program.id === "kids-summer-camp",
-  junior9.map((r) => r.program.id)
-);
-check(
-  "teen 14–17 → Bootcamps, never the 7–13 camp",
-  teen15.length === 1 && teen15[0].program.id === "bootcamps",
-  teen15.map((r) => r.program.id)
-);
-check(
-  "the two children get different top programs",
-  junior9[0]?.program.id !== teen15[0]?.program.id
-);
+const ids = (form: IntakeFormSnapshot) => recommendPrograms(form).map((r) => r.program.id);
+const top = (form: IntakeFormSnapshot) => recommendPrograms(form)[0]?.program.id;
 
-// An elite teen keeps the high-performance track the deleted step used to
-// carry as its own option.
-const eliteTeen = recommendPrograms({
-  ...base,
-  who: "youth",
-  ageBand: "teen",
-  level: "elite",
-});
-check(
-  "elite teen → Bootcamps, top-scored",
-  eliteTeen[0]?.program.id === "bootcamps" && eliteTeen[0].score >= 75,
-  eliteTeen.map((r) => `${r.program.id}:${r.score}`)
-);
+const personas: { name: string; form: IntakeFormSnapshot }[] = [
+  { name: "Emma — junior beginner", form: { ...base, who: "youth", ageBand: "junior", level: "new" } },
+  { name: "Leo — teen rally player", form: { ...base, who: "youth", ageBand: "teen", level: "rally" } },
+  { name: "Mia — competitive teen", form: { ...base, who: "youth", ageBand: "teen", level: "competitive" } },
+  { name: "David — adult beginner", form: { ...base, who: "adult", ageBand: "adult", level: "new" } },
+  { name: "Priya — elite adult", form: { ...base, who: "adult", ageBand: "adult", level: "elite" } },
+];
 
-// An adult alone must read exactly as before the bands existed.
-for (const level of ["new", "rally", "competitive", "elite"] as const) {
-  const withBand = recommendPrograms({ ...base, who: "adult", ageBand: "adult", level });
-  const withoutBand = recommendPrograms({ ...base, who: "adult", level });
+for (const persona of personas) {
+  console.log(`\n=== ${persona.name} ===`);
+  for (const [i, rec] of recommendPrograms(persona.form).entries()) {
+    console.log(`  ${i === 0 ? "★" : " "} [${rec.score}] ${rec.program.title}`);
+    console.log(`        "${rec.reason}"`);
+  }
+}
+
+console.log("\n=== Assertions ===");
+
+// Juniors and teens → Youth Programs
+for (const band of ["junior", "teen"] as const) {
+  for (const level of ["new", "rally"] as const) {
+    const form: IntakeFormSnapshot = { ...base, who: "youth", ageBand: band, level };
+    check(
+      `${band} (${level}) → Youth Programs only`,
+      JSON.stringify(ids(form)) === JSON.stringify(["youth-programs"]),
+      ids(form)
+    );
+  }
+}
+
+// Competitive or elite at any age → High Performance first
+for (const band of AGE_BANDS) {
+  for (const level of ["competitive", "elite"] as const) {
+    const form: IntakeFormSnapshot = {
+      ...base,
+      who: band === "adult" ? "adult" : "youth",
+      ageBand: band,
+      level,
+    };
+    check(`${band} (${level}) → High Performance #1`, top(form) === "high-performance", ids(form));
+  }
+}
+
+// Adults → Adult Bootcamps
+for (const level of ["new", "rally"] as const) {
+  const form: IntakeFormSnapshot = { ...base, who: "adult", ageBand: "adult", level };
   check(
-    `adult (${level}) is unchanged by the band`,
-    JSON.stringify(withBand.map((r) => [r.program.id, r.score, r.reason])) ===
-      JSON.stringify(withoutBand.map((r) => [r.program.id, r.score, r.reason]))
+    `adult (${level}) → Adult Bootcamps only`,
+    JSON.stringify(ids(form)) === JSON.stringify(["bootcamps"]),
+    ids(form)
   );
+}
+const adultHp = ids({ ...base, who: "adult", ageBand: "adult", level: "competitive" });
+check(
+  "competitive adult → High Performance, then Adult Bootcamps",
+  JSON.stringify(adultHp) === JSON.stringify(["high-performance", "bootcamps"]),
+  adultHp
+);
+const teenHp = ids({ ...base, who: "youth", ageBand: "teen", level: "elite" });
+check(
+  "elite teen → High Performance, then Youth Programs",
+  JSON.stringify(teenHp) === JSON.stringify(["high-performance", "youth-programs"]),
+  teenHp
+);
+
+// Legacy callers without a band (older payloads, the recommendation email)
+check(
+  "no band, who=youth → Youth Programs",
+  top({ ...base, who: "youth", level: "new" }) === "youth-programs"
+);
+check(
+  "no band, who=adult → Adult Bootcamps",
+  top({ ...base, who: "adult", level: "rally" }) === "bootcamps"
+);
+
+// A ?program= preselection never outranks the level rule
+check(
+  "competitive teen preselecting Youth Programs still gets High Performance #1",
+  top({ ...base, who: "youth", ageBand: "teen", level: "competitive", programs: ["youth"] }) ===
+    "high-performance"
+);
+
+// Nothing ever recommends the coming-soon camp or retired Group Lessons
+const never = new Set(["kids-summer-camp", "group-lessons"]);
+let leaked: string[] = [];
+for (const band of AGE_BANDS) {
+  for (const level of ["new", "rally", "competitive", "elite", undefined] as const) {
+    for (const programs of [[], ["camp"], ["group"], ["not-sure"]]) {
+      const got = ids({
+        ...base,
+        who: band === "adult" ? "adult" : "youth",
+        ageBand: band,
+        level,
+        programs,
+      });
+      leaked = leaked.concat(got.filter((id) => never.has(id)));
+    }
+  }
+}
+check("no persona is recommended Kids' Summer Camp or Group Lessons", leaked.length === 0, leaked);
+
+// Every player gets at least one recommendation
+for (const band of AGE_BANDS) {
+  for (const level of ["new", "rally", "competitive", "elite", undefined] as const) {
+    const form: IntakeFormSnapshot = {
+      ...base,
+      who: band === "adult" ? "adult" : "youth",
+      ageBand: band,
+      level,
+    };
+    check(`${band} (${level ?? "no level"}) gets a recommendation`, ids(form).length >= 1);
+  }
 }
 
 console.log(passed ? "\nAll assertions passed." : "\nSome assertions FAILED.");

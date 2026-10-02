@@ -2,7 +2,7 @@
 
 Operational voice guide for every word a visitor, player, or parent reads: page copy, button labels, form helper text, validation messages, emails, and metadata. Distilled from `ops/briefs/brand.md` plus the owner's editorial corrections of 2026-08-02. Load this file before writing or rewriting any user-facing string, in any tool, with any model.
 
-Last updated: 2026-08-04
+Last updated: 2026-10-01
 
 ---
 
@@ -32,7 +32,8 @@ Not a salesperson. Not a tech company. Not a hype account. The coach has nothing
 
 ## Locked strings — never rewrite
 
-- All prices: Bootcamps **$649** · Kids Camp **$499/week** · Group Lessons **$599** · Assessment **$20**.
+- All prices (2026-10-01, backlog #20): weekend classes **$35 a session** · **$210 per six-week cohort** (Youth Programs, High Performance, Adult Bootcamps) · Assessment **$20** · Kids Camp **$499/week** (coming soon). The $20 mechanic on program pages: "$35 a session, $210 for the six weeks. If you took the $20 assessment, that $20 comes off the price."
+- Retired 2026-10-01: Bootcamps **$649** and Group Lessons **$599**. Do not quote either price anywhere.
 - The $20 mechanic and its condition (comes off the price **when you enroll in a program afterward**) — rephrase length, never the facts.
 - Refund policy numbers: 7-day full refund; 50% refund or full credit at 3–6 days; $25 admin fee.
 - The sentence **"Built for athletes who want to compete."** — verbatim, hero subhead.

@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { programs } from "@/content/programs";
+import { listedPrograms } from "@/content/programs";
 import { SITE_URL } from "@/lib/siteUrl";
 
 const BASE_URL = SITE_URL;
@@ -9,7 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: BASE_URL, lastModified: new Date(), changeFrequency: "weekly", priority: 1 },
     { url: `${BASE_URL}/assessment`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.9 },
     { url: `${BASE_URL}/programs`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.9 },
-    ...programs.map((p) => ({
+    ...listedPrograms.map((p) => ({
       url: `${BASE_URL}/programs/${p.slug}`,
       lastModified: new Date(),
       changeFrequency: "monthly" as const,
