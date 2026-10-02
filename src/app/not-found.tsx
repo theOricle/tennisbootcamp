@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { trackQuizCtaClick } from "@/lib/analytics";
 
 export default function NotFound() {
   return (
@@ -24,10 +27,11 @@ export default function NotFound() {
             Programs
           </Link>
           <Link
-            href="/assessment/book"
+            href="/intake"
+            onClick={() => trackQuizCtaClick("not-found")}
             className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-semibold text-white transition hover:border-[#B4E655]/40 hover:bg-[#B4E655]/5 hover:text-[#B4E655]"
           >
-            Book Your Assessment
+            Take the 2-minute quiz
           </Link>
         </div>
       </div>

@@ -22,7 +22,7 @@ Last updated: 2026-10-02 (interim Program Policies, backlog #2a)
 These are settled — do not re-open without explicit owner instruction.
 
 - **Auth:** Supabase Auth (NOT Auth.js — pivoted from original plan)
-- **Primary CTA label:** "Book Your Assessment" (2026-07-18 pivot; code still shows "Find My Program" until restructure Phase 2 ships)
+- **Primary CTA label:** "Take the 2-minute quiz" → `/intake` (owner 2026-10-02, backlog #22). "Book Your Assessment" stays the exact label of the optional assessment button (program pages, the quiz's last screen, the dashboard).
 - **Pricing (CAD, 2026-10-01, backlog #20):** weekend classes $35 a session · $210 per six-week cohort (Youth Programs, High Performance, Adult Bootcamps) · Assessment $20 · Kids Camp $499/week (coming soon). Retired 2026-10-01: Bootcamps $649 and Group Lessons $599.
 - **Program Policies (interim, backlog #2a, replaces the refund policy):** 10-day no-reason cancellation with no fee inside it, counted from the later of receiving the written agreement and the first session (CPA 2002 s. 35(1)), so it always ends after the cohort has started. Once a cohort has started, missed sessions are not refunded; sessions we cancel are made up inside the cohort's make-up window (none for fall 2026 cohorts), and any the window can't hold become account credit. The old $25 administration fee and 50% tier are retired (owner, 2026-10-02). Published at `/legal/refund-policy` (titled "Program Policies"); configurable values in `src/content/policies.ts`. Pending legal review.
 - **Sending domain:** `send.tennisbootcamp.ca` (Resend-verified, GoDaddy DNS records set)
@@ -147,7 +147,7 @@ Homepage (`src/app/page.tsx`) composes: Hero → TrustBar → EmailCapture → P
 
 Per `ops/briefs/project.md`:
 
-1. **Book Your Assessment** (primary CTA) → `/intake` wizard → tentative match → `/assessment/book` (per `ops/plans/assessment-restructure.md`; label flips in restructure Phase 2)
+1. **Take the 2-minute quiz** (primary CTA, owner 2026-10-02) → `/intake` wizard → Sina places the player from their answers; `/assessment/book` ("Book Your Assessment") is the optional $20 extra
 2. **View Programs** (secondary) → `/programs`
 3. **Newsletter signup** (tertiary)
 

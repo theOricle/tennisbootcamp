@@ -27,7 +27,7 @@ Not a salesperson. Not a tech company. Not a hype account. The coach has nothing
 4. **No salesperson hype.** No manufactured scarcity ("limited spots!"), no empty flattery ("you've got a strong profile"), no "unlock", "supercharge", "elevate", "take it to the next level". A single factual scarcity line ("2 spots left", computed from data) is fine; invented urgency is not.
 5. **No SaaS-speak.** No "journey", "experience" (as a noun for a product), "seamless", "solution", "platform", "empower". A player has a game and a schedule, not a journey.
 6. **No stale promises.** Copy must describe the funnel as it works today (assessment-first, coach-assigned levels). A claim the product no longer delivers is a voice failure even if the sentence is pretty.
-7. **Consistent product vocabulary.** "Book Your Assessment" (primary CTA, exact casing) · "the 2-minute quiz" (the intake wizard) · "cohort" (a scheduled program group) · "enroll" (never "enrol"/"register" in body copy) · "Browse Programs" (secondary programs CTA). One name per thing, everywhere, including emails.
+7. **Consistent product vocabulary.** "Take the 2-minute quiz" (primary CTA, opens the intake wizard; owner 2026-10-02) · "Book Your Assessment" (the optional assessment button, exact casing) · "the 2-minute quiz" (the intake wizard) · "cohort" (a scheduled program group) · "enroll" (never "enrol"/"register" in body copy) · "Browse Programs" (secondary programs CTA). One name per thing, everywhere, including emails.
 8. **Exclamation marks: effectively zero.** The tagline "Where Athletes Evolve!" is the single grandfathered exception. Nothing else gets one.
 
 ## Locked strings — never rewrite
