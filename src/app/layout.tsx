@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import Script from "next/script";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { PreviewBanner } from "@/components/layout/PreviewBanner";
+import { AnalyticsPageLocation } from "@/components/layout/AnalyticsPageLocation";
 import { SITE_URL } from "@/lib/siteUrl";
+import { GA_STRIP_QUERY_SCRIPT } from "@/lib/analytics";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 
@@ -45,7 +48,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Footer />
       </body>
       {process.env.NEXT_PUBLIC_GA_ID && (
-        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+        <>
+          {/* Before gtag's config: GA never sees a query string (invite tokens). */}
+          <Script
+            id="ga-strip-query"
+            strategy="beforeInteractive"
+            dangerouslySetInnerHTML={{ __html: GA_STRIP_QUERY_SCRIPT }}
+          />
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+          <AnalyticsPageLocation />
+        </>
       )}
     </html>
   );

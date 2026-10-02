@@ -5,6 +5,8 @@ import { membershipNote } from "@/lib/membership";
 import { tierForLevel } from "@/lib/tiers";
 import { formatResendError } from "@/lib/emailResult";
 import { SITE_URL } from "@/lib/siteUrl";
+import { CONTACT_EMAIL } from "@/content/business";
+import { senderLine, unsubscribeLine, commercialFooterText } from "@/lib/casl";
 
 const FROM = "Tennis Bootcamp <noreply@send.tennisbootcamp.ca>";
 // Follows NEXT_PUBLIC_SITE_URL (vercel.app fallback), so the domain switch is an env change.
@@ -43,6 +45,8 @@ async function deliver(params: {
   subject: string;
   html: string;
   text: string;
+  /** Where a reply lands; FROM is a no-reply address. */
+  replyTo?: string;
 }): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
@@ -92,6 +96,18 @@ function outlineButton(href: string, label: string): string {
 
 function smallText(text: string): string {
   return `<p style="margin:16px 0 0;font-size:13px;color:rgba(255,255,255,0.45);">${text}</p>`;
+}
+
+/**
+ * Sender and unsubscribe lines for commercial messages (CASL): group
+ * invitations and reminders to enroll only, never transactional mail.
+ */
+function commercialFooter(): string {
+  const style = "margin:0;font-size:12px;color:rgba(255,255,255,0.45);line-height:1.6;";
+  return `<div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.10);">
+    <p style="${style}">${senderLine()}</p>
+    <p style="${style}">${unsubscribeLine()}</p>
+  </div>`;
 }
 
 function signOff(): string {
@@ -510,6 +526,7 @@ export async function sendCohortInviteEmail(params: {
     ${limeButton(enrollUrl, "Claim my spot →")}
     ${smallText(`The link is personal to you. Terms: <a href="${BASE_URL}/legal/refund-policy" style="color:rgba(255,255,255,0.45);">program policies</a>.`)}
     ${signOff()}
+    ${commercialFooter()}
   `;
 
   const text = `${groupName} is forming.
@@ -528,9 +545,12 @@ Claim my spot: ${enrollUrl}
 
 The link is personal to you. Terms: ${BASE_URL}/legal/refund-policy
 
-— Sina Kassaian, Tennis Bootcamp`;
+— Sina Kassaian, Tennis Bootcamp
 
-  await deliver({ to, subject, html: emailLayout(bodyHtml), text });
+${commercialFooterText()}`;
+
+  // Replies reach the inbox, so "reply to this email" is a working opt-out.
+  await deliver({ to, subject, html: emailLayout(bodyHtml), text, replyTo: CONTACT_EMAIL });
 }
 
 /** Cohort reached minimum — everyone paid gets the schedule. */
