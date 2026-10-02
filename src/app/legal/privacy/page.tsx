@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     "What Tennis Bootcamp collects, why, who processes it for us, and how to see, correct or delete your information.",
 };
 
-const EFFECTIVE_DATE = "October 5, 2026";
+const EFFECTIVE_DATE = "October 2, 2026";
 
 function Email() {
   return (
