@@ -23,7 +23,7 @@ export const programs: Program[] = [
       `${AGE_BAND_LABELS.junior} players train at 12:00 and ${AGE_BAND_LABELS.teen} players at 1:00, and each class is grouped by level, so a first-season player and a club player are not on the same drill. ` +
       "Every class works the fundamentals — forehand, backhand, serve, volley and movement — and puts them into rally and point play the same day. " +
       PLACEMENT_LINE,
-    type: "Youth Programs",
+    type: "Weekend group class",
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/youth-programs",
@@ -55,7 +55,7 @@ export const programs: Program[] = [
       "One 60-minute class every Saturday at 2:00, in six-week cohorts. This is the competitive tier: players who already compete, or are training to, whatever their age. " +
       "Classes are built around live-ball pattern play, serve plus the next shot, building points on purpose, and match play with the score on. " +
       PLACEMENT_LINE,
-    type: "High Performance",
+    type: "Weekend group class",
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/high-performance",
@@ -89,7 +89,7 @@ export const programs: Program[] = [
       "Three levels run back to back: 4:00 for newer players, 5:00 for intermediate, 6:00 for advanced. " +
       "Each class works one part of the game — groundstrokes, serve and return, net play, rally and point play — and the six weeks build on each other. " +
       PLACEMENT_LINE,
-    type: "Bootcamp",
+    type: "Weekend group class",
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/bootcamps",

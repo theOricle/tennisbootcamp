@@ -1,10 +1,5 @@
-export type ProgramType =
-  | "Bootcamp"
-  | "Junior Bootcamp"
-  | "Youth Programs"
-  | "High Performance"
-  | "Group Lessons"
-  | "Summer Camp";
+// The eyebrow above a program's title, so it never repeats the title.
+export type ProgramType = "Weekend group class" | "Group Lessons" | "Summer Camp";
 
 /** One weekly class in a program's weekend timetable. */
 export type TimetableSlot = {
