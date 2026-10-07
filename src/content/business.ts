@@ -11,4 +11,3 @@ export const CONTACT_EMAIL = "info@tennisbootcamp.ca";
 export function mailingAddress(): string {
   return (process.env.BUSINESS_MAILING_ADDRESS ?? "").trim();
 }
-export const MAILING_ADDRESS = mailingAddress();
