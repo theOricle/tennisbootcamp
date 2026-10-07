@@ -1,9 +1,26 @@
 // Run from project root: npx tsx src/scripts/test-privacy.ts
-// Pins backlog #23: GA never sees a query string (invite tokens), and every
-// group invitation carries the CASL sender and unsubscribe lines.
+// Pins backlog #23: GA never sees an invite token while utm_*, gclid and
+// fbclid reach it untouched, and every email to a player carries the CASL
+// sender and unsubscribe lines (the link email and emails to Sina don't).
 
 import { withoutInvite, GA_STRIP_QUERY_SCRIPT } from "../lib/analytics";
 import { senderLine, unsubscribeLine, commercialFooterText } from "../lib/casl";
+import type { Recommendation } from "../lib/recommend";
+import {
+  type EmailBody,
+  buildLinkEmail,
+  buildRecommendationEmail,
+  buildBookingConfirmationEmail,
+  buildAssessmentRequestReceivedEmail,
+  buildAssessmentRequestAdminEmail,
+  buildCohortInviteEmail,
+  buildCohortConfirmedEmail,
+  buildSessionCancelledEmail,
+  buildAssessmentCompleteEmail,
+  buildEtransferInstructionsEmail,
+  buildPaymentReceivedEmail,
+  buildEtransferPendingAdminEmail,
+} from "../lib/emailBodies";
 
 let failures = 0;
 
@@ -90,27 +107,213 @@ check("sets trimmed location and referrer before config", pushed, [
 ]);
 check("no invite= anywhere in what GA receives", JSON.stringify(pushed).includes("invite="), false);
 
+// ─── CASL sender and unsubscribe lines, in the emails themselves ─────────────
+// Every email to a player carries both lines in HTML and text (invitations
+// with their own unsubscribe wording). The password/activation link email and
+// the emails to Sina carry neither. These render the real bodies, so removing
+// a footer call fails here.
+
+const SENDER_NO_ADDRESS = "Sent by Sina Kassaian (Tennis Bootcamp), info@tennisbootcamp.ca.";
+const UNSUB_GENERAL =
+  "Don't want emails like this? Reply to this email or write to info@tennisbootcamp.ca and we'll stop sending them.";
+const UNSUB_INVITE =
+  "Don't want invitations to groups? Reply to this email or write to info@tennisbootcamp.ca and we'll stop sending them.";
+
 console.log("CASL lines");
+const savedAddress = process.env.BUSINESS_MAILING_ADDRESS;
+delete process.env.BUSINESS_MAILING_ADDRESS;
+check("sender line, BUSINESS_MAILING_ADDRESS unset", senderLine(), SENDER_NO_ADDRESS);
+process.env.BUSINESS_MAILING_ADDRESS = "   ";
+check("sender line, BUSINESS_MAILING_ADDRESS blank", senderLine(), SENDER_NO_ADDRESS);
+process.env.BUSINESS_MAILING_ADDRESS = "  123 Court St, Toronto ON  ";
 check(
-  "sender line without an address",
-  senderLine(""),
-  "Sent by Tennis Bootcamp (Sina Kassaian), info@tennisbootcamp.ca."
+  "sender line, BUSINESS_MAILING_ADDRESS set (trimmed)",
+  senderLine(),
+  "Sent by Sina Kassaian (Tennis Bootcamp), 123 Court St, Toronto ON, info@tennisbootcamp.ca."
 );
-check(
-  "sender line with an address",
-  senderLine("123 Court St, Toronto ON"),
-  "Sent by Tennis Bootcamp (Sina Kassaian), 123 Court St, Toronto ON, info@tennisbootcamp.ca."
-);
-check(
-  "unsubscribe line",
-  unsubscribeLine(),
-  "Don't want invitations to groups? Reply to this email or write to info@tennisbootcamp.ca and we'll stop sending them."
-);
+delete process.env.BUSINESS_MAILING_ADDRESS;
+check("general unsubscribe line", unsubscribeLine("general"), UNSUB_GENERAL);
+check("invitation unsubscribe line", unsubscribeLine("invitation"), UNSUB_INVITE);
 check(
   "text footer carries both",
-  commercialFooterText(""),
-  "Sent by Tennis Bootcamp (Sina Kassaian), info@tennisbootcamp.ca.\nDon't want invitations to groups? Reply to this email or write to info@tennisbootcamp.ca and we'll stop sending them."
+  commercialFooterText("invitation"),
+  `${SENDER_NO_ADDRESS}\n${UNSUB_INVITE}`
 );
+
+const recommendation = {
+  program: { title: "Adult Bootcamps" },
+  score: 1,
+  reason: "",
+} as unknown as Recommendation;
+
+const PLAYER_EMAILS: [string, () => EmailBody, string][] = [
+  [
+    "quiz result",
+    () => buildRecommendationEmail("Maya Chen", [recommendation], "3.0"),
+    UNSUB_GENERAL,
+  ],
+  [
+    "assessment booking confirmation",
+    () =>
+      buildBookingConfirmationEmail({
+        name: "Maya Chen",
+        dateLabel: "Sat Oct 10",
+        timeLabel: "9:00am",
+      }),
+    UNSUB_GENERAL,
+  ],
+  [
+    "assessment request received",
+    () => buildAssessmentRequestReceivedEmail({ name: "Maya Chen", participantName: "Leo Chen" }),
+    UNSUB_GENERAL,
+  ],
+  [
+    "assessment complete",
+    () =>
+      buildAssessmentCompleteEmail({
+        name: "Maya Chen",
+        levelLabel: "3.0",
+        coachNote: "Solid forehand; work on the second serve.",
+      }),
+    UNSUB_GENERAL,
+  ],
+  [
+    "cohort invitation",
+    () =>
+      buildCohortInviteEmail({
+        participantName: null,
+        levelLabel: "3.0",
+        tierNames: ["Deuce"],
+        programTitle: "Adult Bootcamps",
+        cohortLabel: "Fall A",
+        dayTimeLabel: "Saturdays 9–10am",
+        startDateLabel: "Oct 17",
+        weeks: 6,
+        priceCents: 21000,
+        creditCents: 2000,
+        holdHours: 48,
+        enrollUrl: "https://tennisbootcamp.ca/enroll/abc?invite=tok123",
+      }),
+    UNSUB_INVITE,
+  ],
+  [
+    "cohort confirmed",
+    () =>
+      buildCohortConfirmedEmail({
+        cohortLabel: "Fall A",
+        programTitle: "Adult Bootcamps",
+        startDateLabel: "Oct 17",
+        sessionLines: ["Sat Oct 17 · 9–10am"],
+      }),
+    UNSUB_GENERAL,
+  ],
+  [
+    "session cancelled (make-up)",
+    () =>
+      buildSessionCancelledEmail({
+        cohortLabel: "Fall A",
+        dateLabel: "Saturday, October 24",
+        reasonLine: "Rain closed the courts.",
+        makeup: { dateLabel: "Saturday, November 28", newEndDateLabel: "November 28" },
+        makeupMaxWeeks: 2,
+      }),
+    UNSUB_GENERAL,
+  ],
+  [
+    "session cancelled (credit)",
+    () =>
+      buildSessionCancelledEmail({
+        cohortLabel: "Fall A",
+        dateLabel: "Saturday, October 24",
+        reasonLine: "Rain closed the courts.",
+        makeup: null,
+        makeupMaxWeeks: 2,
+      }),
+    UNSUB_GENERAL,
+  ],
+  [
+    "e-transfer instructions",
+    () =>
+      buildEtransferInstructionsEmail({
+        firstName: "Maya",
+        programTitle: "Adult Bootcamps",
+        cohortLabel: "Fall A",
+        priceCents: 21000,
+        creditCents: 0,
+        amountCents: 21000,
+        recipientEmail: "info@tennisbootcamp.ca",
+        memo: "TB-FALLA-MAYA",
+        cardUrl: "https://tennisbootcamp.ca/enroll/abc?invite=tok123",
+      }),
+    UNSUB_GENERAL,
+  ],
+  [
+    "payment received",
+    () =>
+      buildPaymentReceivedEmail({
+        programTitle: "Adult Bootcamps",
+        cohortLabel: "Fall A",
+        amountCents: 21000,
+      }),
+    UNSUB_GENERAL,
+  ],
+];
+
+const NO_FOOTER_EMAILS: [string, () => EmailBody][] = [
+  [
+    "password/activation link",
+    () => buildLinkEmail("Set your password", "https://tennisbootcamp.ca/auth/x", "set your password"),
+  ],
+  [
+    "assessment request → Sina",
+    () =>
+      buildAssessmentRequestAdminEmail({
+        name: "Maya Chen",
+        email: "maya@example.com",
+        preferredTimes: ["Sat am"],
+      }),
+  ],
+  [
+    "e-transfer pending → Sina",
+    () =>
+      buildEtransferPendingAdminEmail({
+        playerName: "Maya Chen",
+        playerEmail: "maya@example.com",
+        cohortLabel: "Fall A",
+        cohortId: "c1",
+        amountCents: 21000,
+        memo: "TB-FALLA-MAYA",
+      }),
+  ],
+];
+
+console.log("Emails to players carry the sender and unsubscribe lines (address unset)");
+for (const [name, build, unsub] of PLAYER_EMAILS) {
+  const { html, text } = build();
+  check(`${name}: HTML sender line`, html.includes(SENDER_NO_ADDRESS), true);
+  check(`${name}: HTML unsubscribe line`, html.includes(unsub), true);
+  check(`${name}: text sender line`, text.includes(SENDER_NO_ADDRESS), true);
+  check(`${name}: text unsubscribe line`, text.includes(unsub), true);
+  check(`${name}: no empty address segment`, /, ,|\(Tennis Bootcamp\), ,/.test(html + text), false);
+}
+
+console.log("Emails to players with BUSINESS_MAILING_ADDRESS set");
+process.env.BUSINESS_MAILING_ADDRESS = "123 Court St, Toronto ON";
+for (const [name, build] of PLAYER_EMAILS) {
+  const { html, text } = build();
+  const withAddress =
+    "Sent by Sina Kassaian (Tennis Bootcamp), 123 Court St, Toronto ON, info@tennisbootcamp.ca.";
+  check(`${name}: address in HTML and text`, html.includes(withAddress) && text.includes(withAddress), true);
+}
+if (savedAddress === undefined) delete process.env.BUSINESS_MAILING_ADDRESS;
+else process.env.BUSINESS_MAILING_ADDRESS = savedAddress;
+
+console.log("Link email and emails to Sina carry no footer");
+for (const [name, build] of NO_FOOTER_EMAILS) {
+  const { html, text } = build();
+  check(`${name}: no sender line`, (html + text).includes("Sent by Sina Kassaian"), false);
+  check(`${name}: no unsubscribe line`, (html + text).includes("Don't want"), false);
+}
 
 if (failures) {
   console.error(`\n${failures} check(s) failed`);

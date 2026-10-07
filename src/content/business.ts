@@ -7,4 +7,8 @@
 export const BUSINESS_NAME = "Tennis Bootcamp";
 export const OWNER_NAME = "Sina Kassaian";
 export const CONTACT_EMAIL = "info@tennisbootcamp.ca";
-export const MAILING_ADDRESS = (process.env.BUSINESS_MAILING_ADDRESS ?? "").trim();
+/** Read at call time, so the tests can set and unset it. */
+export function mailingAddress(): string {
+  return (process.env.BUSINESS_MAILING_ADDRESS ?? "").trim();
+}
+export const MAILING_ADDRESS = mailingAddress();

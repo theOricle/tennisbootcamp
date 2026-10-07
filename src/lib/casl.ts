@@ -2,7 +2,7 @@ import {
   BUSINESS_NAME,
   OWNER_NAME,
   CONTACT_EMAIL,
-  MAILING_ADDRESS,
+  mailingAddress,
 } from "@/content/business";
 
 // The sender and unsubscribe lines every email to a player carries (CASL
@@ -13,7 +13,7 @@ import {
 export type FooterKind = "invitation" | "general";
 
 /** "Sent by Sina Kassaian (Tennis Bootcamp), {address}, info@…" — address only when set. */
-export function senderLine(address: string = MAILING_ADDRESS): string {
+export function senderLine(address: string = mailingAddress()): string {
   const parts = [`${OWNER_NAME} (${BUSINESS_NAME})`, address.trim(), CONTACT_EMAIL].filter(
     Boolean
   );
@@ -29,7 +29,7 @@ export function unsubscribeLine(kind: FooterKind = "general"): string {
 /** Plain-text block for the end of a text body. */
 export function commercialFooterText(
   kind: FooterKind = "general",
-  address: string = MAILING_ADDRESS
+  address: string = mailingAddress()
 ): string {
   return `${senderLine(address)}\n${unsubscribeLine(kind)}`;
 }
