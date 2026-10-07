@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { useBotCheck } from "@/lib/useBotCheck";
 
 export function EmailCapture() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const bot = useBotCheck();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -14,7 +16,7 @@ export function EmailCapture() {
       const res = await fetch("/api/newsletter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, source: "homepage_email_capture" }),
+        body: JSON.stringify({ email, source: "homepage_email_capture", ...bot.payload() }),
       });
       if (res.ok) {
         trackEvent("newsletter_signup", { source: "email_capture" });
@@ -48,6 +50,7 @@ export function EmailCapture() {
             className="mt-4 flex w-full flex-col gap-2 md:mt-0 md:w-auto"
             onSubmit={handleSubmit}
           >
+            {bot.field}
             <div className="flex gap-3">
               <label htmlFor="email-capture" className="sr-only">
                 Email address

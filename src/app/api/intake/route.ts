@@ -12,6 +12,8 @@ import {
   intakeAvailabilitySlots,
 } from "@/lib/intakeRow";
 import { provisionIntakeAccount } from "@/lib/intakeAccount";
+import { bodyTooLarge, logBotDrop, REQUEST_TOO_LARGE } from "@/lib/botCheck";
+import { decideIntake } from "@/lib/intakeGuard";
 import {
   currentUser,
   resolveSubmissionParticipants,
@@ -20,7 +22,22 @@ import {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // Bot protection (backlog #25): size cap, then one pure decision before
+    // anything is read from env, written to the Sheet, provisioned or sent.
+    // A tripped check gets the real success response and nothing else.
+    const raw = await req.text();
+    if (bodyTooLarge(raw, req.headers.get("content-length"))) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    const decision = decideIntake(JSON.parse(raw));
+    if (decision.action === "drop") {
+      logBotDrop("intake", decision.reason);
+      return NextResponse.json({ ok: true });
+    }
+    if (decision.action === "reject") {
+      return NextResponse.json({ error: decision.error }, { status: decision.status });
+    }
+    const body = decision.body;
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;

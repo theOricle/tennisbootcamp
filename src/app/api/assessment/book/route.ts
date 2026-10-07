@@ -13,9 +13,22 @@ import {
   resolveSubmissionParticipant,
   type ParticipantInput,
 } from "@/lib/household";
+import {
+  bodyTooLarge,
+  checkBot,
+  cleanText,
+  isValidEmail,
+  logBotDrop,
+  REQUEST_TOO_LARGE,
+  TEXT_LIMITS,
+} from "@/lib/botCheck";
 
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+function siteOrigin(req: NextRequest): string {
+  return (
+    req.headers.get("origin") ??
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    "https://tennisbootcamp-seven.vercel.app"
+  );
 }
 
 function assessmentPriceCents(): number {
@@ -26,13 +39,40 @@ function assessmentPriceCents(): number {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const blockId = String(body.blockId ?? "").trim();
-    const slotStart = String(body.slotStart ?? "").trim();
-    const name = String(body.name ?? "").trim();
-    const email = String(body.email ?? "").trim();
-    const phone = body.phone ? String(body.phone).trim() : null;
-    const selfLevel = body.selfLevel ? String(body.selfLevel).trim() : null;
+    // Bot protection (backlog #25): size cap, then the bot check before any
+    // participant lookup, booking row, Stripe session or email. A tripped
+    // check gets the same response a real booking gets.
+    const raw = await req.text();
+    if (bodyTooLarge(raw, req.headers.get("content-length"))) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    const body = JSON.parse(raw);
+    const verdict = checkBot(body);
+    if (verdict.bot) {
+      logBotDrop("assessment/book", verdict.reason);
+      return body?.mode === "request"
+        ? NextResponse.json({ requested: true })
+        : NextResponse.json({ url: `${siteOrigin(req)}/assessment/book` });
+    }
+
+    const blockId = String(body.blockId ?? "").trim().slice(0, TEXT_LIMITS.short);
+    const slotStart = String(body.slotStart ?? "").trim().slice(0, TEXT_LIMITS.short);
+    const name = String(body.name ?? "").trim().slice(0, TEXT_LIMITS.name);
+    const email = String(body.email ?? "").trim().slice(0, TEXT_LIMITS.email);
+    const phone = body.phone ? String(body.phone).trim().slice(0, TEXT_LIMITS.phone) : null;
+    const selfLevel = body.selfLevel
+      ? String(body.selfLevel).trim().slice(0, TEXT_LIMITS.short)
+      : null;
+    if (body.participant && typeof body.participant === "object") {
+      const p = body.participant as Record<string, unknown>;
+      body.participant = {
+        ...p,
+        name: cleanText(p.name, TEXT_LIMITS.name),
+        relationship: cleanText(p.relationship, TEXT_LIMITS.short),
+        ageBand: cleanText(p.ageBand, TEXT_LIMITS.short),
+        selfLevel: cleanText(p.selfLevel, TEXT_LIMITS.short),
+      };
+    }
     const availability = body.availability
       ? parseAvailability(body.availability)
       : null;
@@ -68,7 +108,7 @@ export async function POST(req: NextRequest) {
         phone,
         selfLevel: playerSelfLevel,
         availability,
-        requestNote: body.note ? String(body.note).trim().slice(0, 1000) : null,
+        requestNote: body.note ? String(body.note).trim().slice(0, TEXT_LIMITS.note) : null,
         userId: who.accountId,
         participantId: who.participantId,
         accountName: who.accountName,
@@ -104,10 +144,7 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
-    const origin =
-      req.headers.get("origin") ??
-      process.env.NEXT_PUBLIC_SITE_URL ??
-      "https://tennisbootcamp-seven.vercel.app";
+    const origin = siteOrigin(req);
     const successUrl = `${origin}/assessment/booked?booking=${booking.id}`;
     const cancelUrl = `${origin}/assessment/book`;
 
