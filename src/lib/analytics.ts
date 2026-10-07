@@ -1,4 +1,11 @@
-import { sendGAEvent } from "@next/third-parties/google";
+/** Push a gtag command; gtag.js reads `arguments` objects off the dataLayer. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function gtag(..._args: unknown[]) {
+  const w = window as unknown as { dataLayer?: unknown[] };
+  w.dataLayer = w.dataLayer || [];
+  // eslint-disable-next-line prefer-rest-params
+  w.dataLayer.push(arguments);
+}
 
 /**
  * Fire a GA4 event. No-ops in dev/test when NEXT_PUBLIC_GA_ID is unset,
@@ -10,7 +17,7 @@ export function trackEvent(
 ) {
   if (typeof window === "undefined") return;
   if (!process.env.NEXT_PUBLIC_GA_ID) return;
-  sendGAEvent("event", name, params ?? {});
+  gtag("event", name, params ?? {});
 }
 
 // ─── Invite tokens out of GA (backlog #23) ────────────────────────────────────
@@ -44,8 +51,8 @@ export function withoutInvite(url: string): string {
 }
 
 /**
- * Inline script for the root layout, run before gtag's own config so the
- * first page_view already has the trimmed URL and referrer. Mirrors
+ * Trims GA's page_location and page_referrer; gaInitScript runs it before
+ * gtag's config so the first page_view already has the trimmed URL. Mirrors
  * withoutInvite — it has to run before the app bundle loads.
  */
 export const GA_STRIP_QUERY_SCRIPT = `
@@ -71,6 +78,23 @@ window.dataLayer = window.dataLayer || [];
 `;
 
 /**
+ * The whole GA bootstrap as one inline script: trim, then js, then config.
+ * One script, so the trim always lands before the config's page_view. A
+ * separate beforeInteractive script was skipped on notFound() pages (an
+ * invite link to a started, full or cancelled cohort), and the config then
+ * sent the token.
+ */
+export function gaInitScript(gaId: string): string {
+  return `${GA_STRIP_QUERY_SCRIPT}
+(function () {
+  function gtag() { window.dataLayer.push(arguments); }
+  gtag("js", new Date());
+  gtag("config", ${JSON.stringify(gaId)});
+})();
+`;
+}
+
+/**
  * After a client-side navigation (never on the first load, where the config's
  * own page_view already goes out trimmed): keep GA's location and referrer
  * trimmed for later events, and send the page_view ourselves. GA4's own
@@ -84,8 +108,8 @@ export function setGaPageLocation(location: string, referrer: string) {
     page_location: withoutInvite(location),
     page_referrer: withoutInvite(referrer),
   };
-  sendGAEvent("set", page);
-  sendGAEvent("event", "page_view", page);
+  gtag("set", page);
+  gtag("event", "page_view", page);
 }
 
 // ─── Assessment funnel events (Phase 1) ───────────────────────────────────────
