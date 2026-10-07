@@ -11,10 +11,19 @@
 // a real submission and writes and sends nothing. Pure module (no I/O, no
 // Next.js imports) so src/scripts/test-bot-check.ts can pin every rule.
 
-/** Request-body key of the honeypot. Named like a real field so bots fill it. */
-export const HONEYPOT_FIELD = "website";
+/**
+ * Request-body key of the honeypot. Deliberately meaningless: a name like
+ * "website" or "company" matches password-manager and Safari contact autofill
+ * heuristics, which would fill it for a real person and drop their lead
+ * behind a success screen. Bots that fill every input still fill this one.
+ */
+export const HONEYPOT_FIELD = "tb_hp_x";
 
-/** Request-body key of the fill time: milliseconds since the form rendered. */
+/**
+ * Request-body key of the fill time: milliseconds from navigation start to
+ * submit (performance.now()), so typing that happens before hydration on a
+ * slow phone still counts.
+ */
 export const FILL_TIME_FIELD = "fillTime";
 
 /** A submission that arrives less than this long after render is a bot. */

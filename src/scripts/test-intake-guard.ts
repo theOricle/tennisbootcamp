@@ -68,7 +68,7 @@ check(
 );
 check(
   "honeypot filled → drop",
-  decideIntake({ ...human, [HONEYPOT_FIELD]: "http://x" }),
+  decideIntake({ ...human, [HONEYPOT_FIELD]: "http://x", website: "legacy key is just data" }),
   { action: "drop", reason: "honeypot" }
 );
 check(

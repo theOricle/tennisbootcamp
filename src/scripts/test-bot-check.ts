@@ -38,6 +38,11 @@ const human = {
 // ─── Honeypot ─────────────────────────────────────────────────────────────────
 
 console.log("honeypot");
+check(
+  "honeypot name is not an autofill target (no 'website'/'company'/'name'/'email')",
+  /website|company|name|email|phone|url|address/i.test(HONEYPOT_FIELD),
+  false
+);
 check("empty honeypot passes", checkBot(human), { bot: false });
 check(
   "filled honeypot is a bot",
