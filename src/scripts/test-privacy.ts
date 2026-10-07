@@ -2,7 +2,7 @@
 // Pins backlog #23: GA never sees a query string (invite tokens), and every
 // group invitation carries the CASL sender and unsubscribe lines.
 
-import { withoutQuery, GA_STRIP_QUERY_SCRIPT } from "../lib/analytics";
+import { withoutInvite, GA_STRIP_QUERY_SCRIPT } from "../lib/analytics";
 import { senderLine, unsubscribeLine, commercialFooterText } from "../lib/casl";
 
 let failures = 0;
@@ -14,38 +14,76 @@ function check(name: string, actual: unknown, expected: unknown) {
     console.log(`  ✓ ${name}`);
   } else {
     failures++;
-    console.error(`  ✗ ${name}\n      expected ${e}\n      got      ${a}`);
+    console.error(`  ✗ ${name}
+      expected ${e}
+      got      ${a}`);
   }
 }
 
-console.log("withoutQuery");
-check(
-  "invite token dropped",
-  withoutQuery("https://tennisbootcamp.ca/enroll/abc?invite=tok123"),
-  "https://tennisbootcamp.ca/enroll/abc"
-);
-check(
-  "Stripe return params dropped",
-  withoutQuery("https://tennisbootcamp.ca/enroll/abc/confirmed?row=4&session_id=cs_x&invite=1"),
-  "https://tennisbootcamp.ca/enroll/abc/confirmed"
-);
-check("hash dropped", withoutQuery("https://tennisbootcamp.ca/programs#fall"), "https://tennisbootcamp.ca/programs");
-check("empty referrer stays empty", withoutQuery(""), "");
+// Each case: what the browser holds → what GA may see. invite goes, everything
+// else (ad attribution above all) stays byte for byte.
+const URL_CASES: [string, string, string][] = [
+  [
+    "invite token removed, no trailing ?",
+    "https://tennisbootcamp.ca/enroll/abc?invite=tok123",
+    "https://tennisbootcamp.ca/enroll/abc",
+  ],
+  [
+    "utm_source and gclid kept around a removed invite",
+    "https://tennisbootcamp.ca/enroll/abc?utm_source=google&invite=tok123&gclid=Cj0KCQ",
+    "https://tennisbootcamp.ca/enroll/abc?utm_source=google&gclid=Cj0KCQ",
+  ],
+  [
+    "every other parameter kept untouched",
+    "https://tennisbootcamp.ca/intake?utm_source=ig&utm_medium=paid&utm_campaign=fall%20launch&fbclid=IwAR1&program=youth",
+    "https://tennisbootcamp.ca/intake?utm_source=ig&utm_medium=paid&utm_campaign=fall%20launch&fbclid=IwAR1&program=youth",
+  ],
+  [
+    "Stripe return keeps row, drops invite=1",
+    "https://tennisbootcamp.ca/enroll/abc/confirmed?row=4&invite=1",
+    "https://tennisbootcamp.ca/enroll/abc/confirmed?row=4",
+  ],
+  [
+    "encoded and empty invite keys removed",
+    "https://tennisbootcamp.ca/enroll/abc?%69nvite=tok123&invite&gclid=x",
+    "https://tennisbootcamp.ca/enroll/abc?gclid=x",
+  ],
+  [
+    "hash dropped",
+    "https://tennisbootcamp.ca/programs?utm_source=ig#fall",
+    "https://tennisbootcamp.ca/programs?utm_source=ig",
+  ],
+  ["no query stays as is", "https://tennisbootcamp.ca/programs", "https://tennisbootcamp.ca/programs"],
+  ["empty referrer stays empty", "", ""],
+];
+
+console.log("withoutInvite");
+for (const [name, input, expected] of URL_CASES) check(name, withoutInvite(input), expected);
 
 // The inline script runs before the bundle; run it against a fake window and
-// read what it hands gtag.
+// read what it hands gtag. Same cases, so the two copies can't drift.
+function runStripScript(href: string, referrer: string): unknown[][] {
+  const fakeWindow: { dataLayer?: IArguments[]; location: { href: string } } = {
+    location: { href },
+  };
+  new Function("window", "document", GA_STRIP_QUERY_SCRIPT)(fakeWindow, { referrer });
+  return (fakeWindow.dataLayer ?? []).map((args) => Array.from(args));
+}
+
 console.log("GA_STRIP_QUERY_SCRIPT");
-const fakeWindow: { dataLayer?: IArguments[]; location: { href: string } } = {
-  location: { href: "https://tennisbootcamp.ca/enroll/abc?invite=tok123" },
-};
-const fakeDocument = { referrer: "https://tennisbootcamp.ca/legal/waiver?invite=tok123" };
-new Function("window", "document", GA_STRIP_QUERY_SCRIPT)(fakeWindow, fakeDocument);
-const pushed = (fakeWindow.dataLayer ?? []).map((args) => Array.from(args));
+for (const [name, input, expected] of URL_CASES) {
+  const pushed = runStripScript(input || "https://tennisbootcamp.ca/", input);
+  check(`${name} (script, referrer)`, (pushed[0]?.[1] as { page_referrer: string }).page_referrer, expected);
+}
+const pushed = runStripScript(
+  "https://tennisbootcamp.ca/enroll/abc?invite=tok123&utm_source=email",
+  "https://tennisbootcamp.ca/legal/waiver?invite=tok123"
+);
 check("sets trimmed location and referrer before config", pushed, [
   [
     "set",
     {
-      page_location: "https://tennisbootcamp.ca/enroll/abc",
+      page_location: "https://tennisbootcamp.ca/enroll/abc?utm_source=email",
       page_referrer: "https://tennisbootcamp.ca/legal/waiver",
     },
   ],

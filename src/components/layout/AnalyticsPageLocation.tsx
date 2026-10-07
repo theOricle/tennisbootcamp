@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { setGaPageLocation } from "@/lib/analytics";
 
 /**
- * Re-trims GA's page_location and page_referrer on every client-side
- * navigation. The first load is handled by GA_STRIP_QUERY_SCRIPT.
+ * Sends a trimmed page_view on every client-side navigation. The first load
+ * is skipped: GA_STRIP_QUERY_SCRIPT trims it and the config sends it.
  */
 export function AnalyticsPageLocation() {
   const pathname = usePathname();
