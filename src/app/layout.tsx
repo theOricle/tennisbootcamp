@@ -34,6 +34,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={geist.variable}>
       <body>
+        {process.env.NEXT_PUBLIC_GA_ID && (
+          // Before gtag's config: GA never sees an invite token.
+          <Script
+            id="ga-strip-query"
+            strategy="beforeInteractive"
+            dangerouslySetInnerHTML={{ __html: GA_STRIP_QUERY_SCRIPT }}
+          />
+        )}
         <a
           href="#main-content"
           className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:left-4 focus-visible:top-4 focus-visible:z-[200] focus-visible:rounded-lg focus-visible:bg-[#B4E655] focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-semibold focus-visible:text-[#061427] focus-visible:outline-none"
@@ -49,12 +57,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </body>
       {process.env.NEXT_PUBLIC_GA_ID && (
         <>
-          {/* Before gtag's config: GA never sees a query string (invite tokens). */}
-          <Script
-            id="ga-strip-query"
-            strategy="beforeInteractive"
-            dangerouslySetInnerHTML={{ __html: GA_STRIP_QUERY_SCRIPT }}
-          />
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
           <AnalyticsPageLocation />
         </>
