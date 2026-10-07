@@ -3,7 +3,7 @@
 // fbclid reach it untouched, and every email to a player carries the CASL
 // sender and unsubscribe lines (the link email and emails to Sina don't).
 
-import { withoutInvite, GA_STRIP_QUERY_SCRIPT } from "../lib/analytics";
+import { withoutInvite, GA_STRIP_QUERY_SCRIPT, gaInitScript } from "../lib/analytics";
 import { senderLine, unsubscribeLine, commercialFooterText } from "../lib/casl";
 import type { Recommendation } from "../lib/recommend";
 import {
@@ -106,6 +106,21 @@ check("sets trimmed location and referrer before config", pushed, [
   ],
 ]);
 check("no invite= anywhere in what GA receives", JSON.stringify(pushed).includes("invite="), false);
+
+// The live bootstrap: one script, so the trim can't be skipped (a notFound()
+// page dropped the old separate beforeInteractive script and leaked the token).
+console.log("gaInitScript");
+{
+  const fakeWindow: { dataLayer?: IArguments[]; location: { href: string } } = {
+    location: { href: "https://tennisbootcamp.ca/enroll/gone?invite=tok123" },
+  };
+  new Function("window", "document", gaInitScript("G-TEST123"))(fakeWindow, { referrer: "" });
+  const cmds = (fakeWindow.dataLayer ?? []).map((args) => Array.from(args));
+  check("order is set, js, config", cmds.map((c) => c[0]), ["set", "js", "config"]);
+  check("config names the GA id", cmds[2], ["config", "G-TEST123"]);
+  check("trimmed before config", (cmds[0][1] as { page_location: string }).page_location, "https://tennisbootcamp.ca/enroll/gone");
+  check("no invite= in the bootstrap's commands", JSON.stringify(cmds).includes("invite="), false);
+}
 
 // ─── CASL sender and unsubscribe lines, in the emails themselves ─────────────
 // Every email to a player carries both lines in HTML and text (invitations
