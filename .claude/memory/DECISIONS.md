@@ -1,6 +1,6 @@
 # Decisions Log
 
-_Record architectural, design, and product decisions here. Include context and the reasoning so future sessions don't re-litigate settled questions._
+_Decisions still in force (trimmed 2026-10-08, backlog #17; superseded entries moved to `archive/DECISIONS-2026-04-to-07.md`). Record architectural, design, and product decisions here. Include context and the reasoning so future sessions don't re-litigate settled questions._
 
 ---
 
@@ -27,10 +27,12 @@ _Record architectural, design, and product decisions here. Include context and t
 **Why**: Project was started with Tailwind; consistency requires sticking with one system.
 **Alternatives considered**: CSS Modules for complex components — rejected to keep a single styling mental model.
 
-### 2026-04-19 — Google Sheets for intake (no database)
+### 2026-04-19 — Google Sheets for intake (still the lead record)
 **Decision**: Intake form submissions POST to `/api/intake` which writes to a Google Sheet via `googleapis` using a service account JWT.
 **Why**: Simple ops; gives the business owner a familiar spreadsheet interface without running a database.
 **Alternatives considered**: Airtable, Supabase — more setup than needed for MVP.
+
+**Updated since**: no longer "no database". The intake still appends its row to Sheets, and since 2026-09-08 (backlog #13) it also provisions the account in Supabase (`src/lib/intakeAccount.ts`; a failure there is logged and never fails the intake).
 
 ### 2026-04-19 — Automatic priority scoring in intake API
 **Decision**: The API route computes `priority_score` (1–3) and `lead_type` (standard / high-intent / elite) server-side before appending to Google Sheets.
@@ -47,25 +49,12 @@ _Record architectural, design, and product decisions here. Include context and t
 **Why**: Consistent import style; prevents import name drift across the codebase.
 **Alternatives considered**: Default exports — common in Next.js pages (`app/` pages are the exception and still use default exports as required by the framework).
 
-### 2026-04-19 — Figma MCP / Claude Design evaluation deferred
-**Decision**: Not installing Figma plugin yet. Evaluating Claude Design first.
-**Why**: Owner wants to compare options before committing to a design pipeline.
-**Alternatives considered**: Figma Dev Mode MCP — on hold pending evaluation.
-
-### 2026-04-25 — Hero subtitle: "Peak training for serious players."
-**Decision**: Subtitle below the H1 is "Peak training for serious players."
-**Why**: Aspirational, qualifies the audience, doesn't claim a track record we don't have yet.
-**Alternatives considered**: "Made for athletes who want to reach their full potential" — too generic; longer variants — too wordy.
-
-### 2026-04-25 — No "View Programs" CTA in hero
-**Decision**: Hero has only one CTA: "Get Priority Placement" → /intake. The "View Programs" secondary CTA was removed.
-**Why**: Matches the Figma main page; reduces decision-load, focuses visual weight on the primary conversion.
-**Alternatives considered**: Keeping it as outline button — rejected for cleaner hero per Figma.
-
-### 2026-04-25 — Lime accent on "Evolve!" in headline + Spring Intake badge
+### 2026-04-25 — Lime accent on "Evolve!" in headline + hero badge
 **Decision**: Headline reads "Where Athletes [Evolve!]" with #B4E655 lime accent on "Evolve!". A small pulsing-dot pill ("Spring Intake is Live") sits above the headline.
 **Why**: Adds brand-correct color to the hero without overusing lime; the badge creates immediacy.
 **Alternatives considered**: Whole headline in lime — too loud.
+
+**Updated since**: the badge now reads "Assessments Now Open" (`src/components/sections/Hero.tsx`); the "Spring Intake is Live" text is retired.
 
 ### 2026-04-25 — Three.js particle wave hero background (deathfang/WxNVoq port)
 **Decision**: `CourtBackground.tsx` is now a faithful port of the CodePen deathfang/WxNVoq particle-wave demo, using modern Three.js (BufferGeometry + Points + custom shader).
@@ -81,11 +70,6 @@ _Record architectural, design, and product decisions here. Include context and t
 **Decision**: Player image at 640px tablet / 720px desktop, justified to start of right column with negative left margin (md:-ml-16 lg:-ml-24) to pull toward page center.
 **Why**: Matches Figma; the right-column layout felt too "SaaS hero" and the player's court base needed more visual weight.
 **Alternatives considered**: Fully centered overlapping wordmark — too dramatic for current state.
-
-### 2026-04-25 — /login button removed from Navbar
-**Decision**: Removed the Login/Register button entirely. Auth is a much larger rebuild and a stub page would be misleading.
-**Why**: The button linked to /login which 404'd in production. Better to remove than fake it.
-**Alternatives considered**: Build a stub login page — rejected; auth.js scaffolding will come later as part of full registration build.
 
 ### 2026-04-25 — Footer hides "#" social URLs
 **Decision**: Footer.tsx filters site.socials and only renders entries where href !== "#". When real URLs are added, they appear automatically.
@@ -112,11 +96,6 @@ _Record architectural, design, and product decisions here. Include context and t
 **Why**: OneDrive's filesystem behavior was causing intermittent file-truncation and null-byte corruption when files were written from the agent sandbox.
 **Alternatives considered**: Excluding the project folder from OneDrive sync — owner is not signed into OneDrive anyway, the path itself was the issue.
 
-### 2026-05-04 — Use Claude Code as primary driver, Cowork only for browser/design
-**Decision**: Code-only work (components, animations, fixes, refactors) is done via Claude Code in the terminal. Cowork is used only for browser-driven workflows (Vercel UI, Figma reference, design review).
-**Why**: Cowork's browser control and file-mount overhead burns ~10–50× more tokens per turn than Claude Code for equivalent code work.
-**Alternatives considered**: All-Cowork — repeatedly hit usage limits.
-
 ### 2026-05-04 — Analytics: GA4 (not Plausible)
 **Decision**: Wire GA4 via `next/third-parties` GoogleAnalytics component. `NEXT_PUBLIC_GA_ID` env var holds the measurement ID.
 **Why**: Owner is planning Google Ads — GA4 connects natively for conversion tracking, audiences, and quality scoring. Plausible's privacy/UX wins don't matter for a small Toronto business running paid traffic.
@@ -132,31 +111,11 @@ _Record architectural, design, and product decisions here. Include context and t
 **Why**: Lower drop-off at the conversion step. Forced signup at checkout kills conversion across e-commerce.
 **Alternatives considered**: Required account before enrollment — rejected for conversion reasons.
 
-### 2026-05-04 — Auto-provision account + claim flow
-**Decision**: After successful Stripe payment, the webhook auto-creates a User row from the enrollment data (passwordHash null, emailVerified null). User receives an email: "You're enrolled — click to set your password and access your dashboard." Clicking the one-time-token link lets them set a password and log in. Returning customers (existing User with passwordHash) get a normal confirmation email.
-**Why**: Smoothest possible UX — guest checkout up front, account is just there waiting for them to claim it. Common pattern (Eventbrite, etc.). Email is the unique key — no duplicate accounts.
-**Alternatives considered**: Magic-link only (no password) — simpler but less control for users who want regular logins. Strict signup at checkout — rejected.
-
-### 2026-05-04 — Program detail pages built BEFORE auth/payment system
-**Decision**: Build individual `/programs/[slug]` pages first, then the enrollment flow, then auth/payments. "Coming soon" programs get email-capture into a `program_interest` Google Sheet tab. The enrolled-in-now ("Bootcamps") gets an Enroll CTA pointed at `/intake?program=bootcamps` until the real enrollment flow ships.
-**Why**: Logical dependency order. Can't build enrollment without something to enroll into. Also lets Bootcamps capture the next ~6 weeks of leads via the existing intake form while the full payment system gets built.
-**Alternatives considered**: Auth-first then pages — premature; users can't engage with empty program pages.
-
-### 2026-05-04 — Realistic enrollment build estimate (~7–10 hours, not 42)
-**Decision**: With Claude Code driving, the full enrollment + auth + payments build is realistically 7–10 hours of owner wall-clock time across 3–4 sessions, not the 42-hour estimate from the original plan (that was based on a human dev working solo).
-**Why**: Owner approves+tests, Claude Code writes. Real bottlenecks are Neon + Resend + Stripe account setup and the few times Auth.js v5 beta or Stripe webhooks need debugging.
-**Alternatives considered**: N/A — this is a re-estimate, not a fork in the road.
-
-### 2026-05-24 — Primary CTA label changed to "Find My Program"
-**Decision**: The top-level marketing CTA (Hero button, Navbar primary button) is now "Find My Program" → `/intake`. The secondary hero CTA "Browse Programs" → `/programs` is added as an outline button at lower visual weight.
-**Why**: "Find My Program" better describes the intake-as-recommendation-engine flow built in Phase 2. "Get Priority Placement" was the right label when intake was purely a waitlist; now the intake actively recommends a cohort, so the label should match the outcome.
-**Alternatives considered**: Keep "Get Priority Placement" (brand.md default) — rejected because the CTA's promise no longer matches the experience; users now get a matched program recommendation, not just a spot on a list.
-**Scope**: Change applies to Hero and Navbar only. All copy INSIDE the intake flow ("PRIORITY PLACEMENT INTAKE" heading, "You're on the Priority Placement List" success copy) is untouched — that language is correct in context and should stay.
-
 ### 2026-05-23 — /api/intake column contract frozen at 14 + 3 additive (cols 1–17)
 **Decision**: The 14 original Google Sheets columns (`timestamp … follow_up_status`) are permanently frozen — never reorder, rename, or remove them. Phase 2 appended 3 new columns at the end: `preferred_locations` (col 15), `availability` (col 16), `recommended_program` (col 17). Append range widened from `A:N` to `A:Q`. Any future extension must append after col 17.
 **Why**: The sheet may already have rows written under the 14-column layout; reordering would silently corrupt historical data. Additive-only is the only safe migration pattern for a live spreadsheet.
 **Alternatives considered**: Folding `preferredLocationIds` into the existing `area` column only — rejected because it loses the structured array; maintaining two representations (area + preferred_locations) adds redundancy but preserves backward compat for any consumer reading col 9.
+**Extended since** (still additive, still frozen): columns 18–22 household (2026-09-08, backlog #11) and 23–29 lead source, apostrophe-prefixed text (2026-10-03, backlog #26). The row is now 29 columns; `src/lib/intakeRow.ts` is the source of truth. Anything new goes after 29, by owner decision only.
 
 ### 2026-05-24 — Phase 6: Supabase Auth + Postgres supersedes Auth.js + Neon plan
 **Decision**: Accounts and dashboard (Phase 6) is built on Supabase Auth + Supabase Postgres, not Auth.js v5 + Neon + Prisma.
@@ -164,20 +123,11 @@ _Record architectural, design, and product decisions here. Include context and t
 **Alternatives considered**: Auth.js v5 + Neon + Prisma — planned originally; rejected in favour of Supabase's integrated stack. Auth.js would require a separate Neon connection, Prisma migrations, and an adapter, for no real gain at this stage.
 **Scope**: Does NOT change `/api/intake` or the Google Sheets dual-write for enrollments — those continue unchanged. Supabase is additive: it receives a Supabase-schema `enrollments` insert on checkout, and serves the `/dashboard` query. RLS: every table must have RLS enabled; service_role key must only live in server-only files (import 'server-only').
 
-### 2026-05-24 — Stub email with console.log (Resend in Phase 7)
-**Decision**: Activation emails (invite + magic link) are not sent through any SMTP in Phase 6. `issueActivationLink()` calls Supabase Admin's `generateLink` API to produce a signed one-time URL, then `console.log`s it with the prefix `[STUB EMAIL — Phase 7 will replace with Resend]`.
-**Why**: Supabase's built-in SMTP has limits and branding constraints. Resend is the planned email provider but not yet configured. A stub means the core auth flow is exercised end-to-end without email deliverability dependency during development.
-**Alternatives considered**: Using Supabase SMTP for now — rejected because it would send real emails to test users and we'd need to undo it later. Using Resend now — not yet configured; blocked on API key setup.
-
-### 2026-05-23 — Enroll CTA points to /programs/[slug] until Phase 4
-**Decision**: Recommendation cards (and cohort cards on the detail page) link to `/programs/[slug]` for now. The `/enroll/[cohortId]` route does not exist until Phase 4. A `// TODO: link to /enroll/[cohortId] in Phase 4` comment marks every such link.
-**Why**: The recommendation UI needs a working CTA today; Phase 4 hasn't been built yet. Sending users to the program detail page is a valid fallback — they see the cohort cards and can submit intent.
-**Alternatives considered**: Disable the Enroll button until Phase 4 — rejected; a dead button harms conversion and user trust.
-
 ### 2026-07-18 — Assessment-first funnel (major product pivot)
 **Decision**: The funnel becomes: "Book Your Assessment" (primary CTA site-wide) → 5-step intake with structured availability grid → tentative program match → self-serve booking of a 20-minute on-court assessment ($20 CAD, auto-credited to first program enrollment) → coach assigns level + note → player enters the grouping pool. Direct enrollment remains as a demoted secondary path. Master spec: `ops/plans/assessment-restructure.md`.
 **Why**: Self-reported levels are unreliable and one mis-rated player degrades a whole group — the coach-assigned level becomes the placement source of truth. The assessment doubles as the low-friction entry product, and the availability grid turns schedule coordination (Sina's biggest operational pain) into a query instead of phone tag.
 **Alternatives considered**: Pure assessment funnel (no tentative match) — rejected to keep reusing the recommendation engine as a hook. Concierge scheduling ("we'll contact you") — rejected; per-student coordination is the pain being removed. Free assessment — rejected in favour of $20-credited, which filters no-shows while staying effectively free.
+**Superseded in part 2026-10-02 (backlog #22):** the primary CTA is now "Take the 2-minute quiz" → `/intake`; "Book Your Assessment" is the optional $20 assessment button. Coach-assigned level as placement source of truth still stands.
 
 ### 2026-07-18 — Group programs become admin-created private cohorts (Supabase-backed)
 **Decision**: Cohorts move from static `src/content/cohorts.ts` to a Supabase `cohorts` table (seeded from the static file, ids preserved). An admin role on `profiles` gates a mobile-first `/admin` area: assessed-player pool (level + availability), cohort CRUD with `visibility: private`, invite emails with personal tokens and a 48-hour hold, minimum-to-run auto-confirmation, generated session lists, and one-tap session cancellation → make-up appending. Grouping ships layered: admin-driven (Phase 3) → deterministic cluster suggestions (Phase 4) → interest-driven slots explicitly deferred.
@@ -188,6 +138,7 @@ _Record architectural, design, and product decisions here. Include context and t
 **Decision**: Missed sessions: no refund or credit. Sessions cancelled by the business (weather/court/coach): make-up at the same day + time, appended after the final scheduled week, queued in order, recursive if re-cancelled, capped at [2] added weeks then prorated credit; comparable-alternative clause; email notice ≥ [2h] before start; business-cancelled program → full refund or full credit. Existing pre-start withdrawal tiers stay unchanged. Full text: Appendix B of `ops/plans/assessment-restructure.md`. Lawyer review remains a launch gate.
 **Why**: Group sessions run regardless of one absence; appended make-ups are predictable for players and courts; the cap exists because the outdoor season hard-stops ~November.
 **Alternatives considered**: Refunding weather cancellations — replaced by make-ups (protects revenue, keeps groups intact). Uncapped make-ups — collides with season end.
+**Superseded in part by the interim Program Policies (backlog #2a, 2026-10-02):** 10-day no-reason cancellation; make-ups run inside the cohort's make-up window (none for fall 2026 cohorts), else account credit; the old pre-start withdrawal tiers, $25 fee and 50% tier are retired. Values in `src/content/policies.ts`.
 
 ### 2026-07-18 — Club membership is a pass-through
 **Decision**: The venue is a government-owned non-profit community club; membership is $100 for the outdoor season (valid to ~November) and the club wants everyone Sina teaches to be a member. Players register and pay the club directly — membership money never touches our Stripe. Marketed as a value-add ("courts all season"), disclosed before payment. Whether 20-minute assessments can run under guest provisions is pending Sina's check with the club; membership copy ships behind the `NEXT_PUBLIC_CLUB_GUEST_OK` toggle with a neutral default line.
@@ -203,4 +154,3 @@ _Record architectural, design, and product decisions here. Include context and t
 **Decision**: Morning 8:00–12:00, Afternoon 12:00–16:00, Evening 16:00–20:00 live once in `BAND_HOURS` (`src/lib/availability.ts`) and are shown beside every grid. Stored data stays the three-band shape; hours are not persisted.
 **Why**: One definition keeps intake, request-a-time and the dashboard honest with each other; keeping bands (not hours) in the data preserves the frozen col-16 format and the existing recommender.
 **Alternatives considered**: Hour-grid availability (`v: 2`) — heavier to fill on a phone, not needed to build cohorts.
-

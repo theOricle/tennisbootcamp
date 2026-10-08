@@ -1,3 +1,5 @@
+archived 2026-09-29, superseded by CLAUDE.md and git log
+
 # Progress — Living Status
 
 _Update this at the start or end of each working session._

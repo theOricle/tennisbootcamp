@@ -513,10 +513,32 @@ async function findInviteById(cohortId: string, inviteId: string): Promise<Invit
 }
 
 /**
+ * The invite row id for a token, whatever the invite's status. The checkout
+ * route puts this id (never the token) in Stripe metadata (backlog #30), so a
+ * hold that lapses between page load and paying still settles onto its own
+ * invite row instead of the email fallback.
+ */
+export async function findInviteIdByToken(
+  cohortId: string,
+  token: string
+): Promise<string | null> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("cohort_invites")
+    .select("id")
+    .eq("token", token)
+    .eq("cohort_id", cohortId)
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+/**
  * Mark the invite paid and confirm the cohort once paid invites reach
  * capacity_min: status → confirmed, sessions generated, confirmed email to
- * every member. The invite is found by id (admin mark-paid), else by token
- * (Stripe webhook / mock checkout), else the newest live invite for the email.
+ * every member. The invite is found by id (admin mark-paid, and since backlog
+ * #30 the Stripe webhook and mock checkout too), else by token (only a Stripe
+ * session created before the #30 deploy still carries one), else the newest
+ * live invite for the email.
  *
  * `invited` and `expired` both flip to `paid` — paying inside checkout, or an
  * e-transfer landing late, honors a hold that lapsed in the meantime. The
@@ -529,20 +551,34 @@ async function findInviteById(cohortId: string, inviteId: string): Promise<Invit
 export async function markInvitePaidAndMaybeConfirm(params: {
   cohortId: string;
   email?: string;
+  /**
+   * Legacy: a Stripe session created before the backlog #30 deploy. Stripe
+   * sessions live 24 h, so remove this param and its branch below after
+   * 2026-10-10 (24 h after deploy).
+   */
   inviteToken?: string;
   inviteId?: string;
   /** Narrows the email lookup when one account holds several invites. */
   participantId?: string;
   payment?: { method: PaymentMethod; note?: string | null };
+  /**
+   * Admin calls surface a missing or already-paid invite as an error. The
+   * payment rails (Stripe webhook, mock checkout) stay silent and still run
+   * the minimum-to-run check, exactly as they did when they looked the invite
+   * up by token (backlog #30).
+   */
+  strict?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   const { cohortId, email, inviteToken, inviteId, participantId, payment } = params;
+  const strict = params.strict ?? false;
   const supabase = createServiceClient();
 
   let target: InviteRef | null = null;
   if (inviteId) {
     target = await findInviteById(cohortId, inviteId);
-    if (!target) return { ok: false, error: "Invite not found." };
+    if (!target && strict) return { ok: false, error: "Invite not found." };
   } else if (inviteToken) {
+    // Legacy path — remove after 2026-10-10 (24 h after the #30 deploy).
     const { data } = await supabase
       .from("cohort_invites")
       .select("*")
@@ -590,7 +626,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
     if (!plan.ok) {
       // Admin double-tap (or a paid invite re-hit by a duplicate webhook):
       // surface it to the admin, stay silent for the payment rails.
-      if (inviteId) return { ok: false, error: plan.error };
+      if (strict) return { ok: false, error: plan.error };
     } else {
       const { status, ...details } = plan.patch;
       const { data: flipped } = await supabase
@@ -601,7 +637,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
         .select("id")
         .maybeSingle();
       if (!flipped) {
-        if (inviteId) {
+        if (strict) {
           return { ok: false, error: "That invite changed state — refresh and try again." };
         }
       } else {
@@ -676,6 +712,7 @@ export async function adminMarkInvitePaid(
     cohortId,
     inviteId,
     payment: { method: "etransfer", note },
+    strict: true,
   });
   if (!result.ok) return result;
 

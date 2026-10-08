@@ -1,3 +1,5 @@
+archived 2026-09-29, superseded by CLAUDE.md and git log
+
 # Tennis Bootcamp — Project North Star
 
 ## What We're Building
