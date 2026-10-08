@@ -5,6 +5,8 @@ import {
   resolveSubmissionParticipant,
   type ParticipantInput,
 } from "@/lib/household";
+import { getCohortById } from "@/lib/cohortsDb";
+import { resolveEnrollGate } from "@/lib/enrollGate";
 
 const TAB = "enrollments";
 
@@ -53,6 +55,22 @@ type EnrollParticipant = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
+    // Backlog #38: the enroll page's gate, before any row is appended, so a
+    // private cohort never collects stray pending rows from a bare POST.
+    const cohortId = typeof body.cohortId === "string" ? body.cohortId : "";
+    const inviteToken = typeof body.inviteToken === "string" ? body.inviteToken : null;
+    const gate = await resolveEnrollGate(await getCohortById(cohortId), inviteToken, {
+      payable: true,
+    });
+    if (!gate.decision.allowed) {
+      return NextResponse.json(
+        gate.decision.status === 404
+          ? { error: "Cohort not found." }
+          : { error: "This group is invite-only." },
+        { status: gate.decision.status }
+      );
+    }
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;

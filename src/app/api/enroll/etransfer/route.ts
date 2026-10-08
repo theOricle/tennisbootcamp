@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordEtransferIntent } from "@/lib/cohortActions";
 import { getCohortById } from "@/lib/cohortsDb";
-import { resolveEnrollGate } from "@/lib/enrollGate";
+import {
+  COHORT_FULL_ERROR,
+  RECORDS_UNAVAILABLE_ERROR,
+  resolveEnrollGate,
+  scrubParticipantIds,
+  seatsRefuse,
+} from "@/lib/enrollGate";
+import { readEnrollmentSheet, seatsFromSnapshot } from "@/lib/seatCount";
+import { currentUser } from "@/lib/household";
+import { listParticipantsForAccount } from "@/lib/players";
 import {
   saveEnrollmentToSupabase,
   issueActivationLink,
@@ -62,9 +71,8 @@ export async function POST(req: NextRequest) {
 
     // Backlog #38: the enroll page's gate, run again here before any invite
     // row or Sheet write. Same rule as /api/checkout.
-    const gate = await resolveEnrollGate(await getCohortById(cohortId), inviteToken, {
-      payable: true,
-    });
+    const cohort = await getCohortById(cohortId);
+    const gate = await resolveEnrollGate(cohort, inviteToken, { payable: true });
     if (!gate.decision.allowed) {
       return NextResponse.json(
         gate.decision.status === 404
@@ -77,7 +85,7 @@ export async function POST(req: NextRequest) {
     // One player per invite: a parent sending one transfer for two children
     // still ends up with two invites the coach marks paid, and the amounts
     // add up across them (each carries its own $20 credit or none).
-    const players: EnrollParticipant[] =
+    const sent: EnrollParticipant[] =
       enrollmentMeta.participants && enrollmentMeta.participants.length > 0
         ? enrollmentMeta.participants
         : [
@@ -87,6 +95,27 @@ export async function POST(req: NextRequest) {
               isMinor: enrollmentMeta.isMinor,
             },
           ];
+    // Backlog #38: participant ids only for the signed-in account's own
+    // people; a signed-out caller names nobody. Same as /api/checkout.
+    const signedIn = await currentUser();
+    const owned = signedIn
+      ? new Set(
+          (await listParticipantsForAccount(signedIn.id).catch(() => [])).map((p) => p.id)
+        )
+      : null;
+    const players = scrubParticipantIds(sent, owned);
+
+    // Backlog #38: the page's seat rule, for every player on this transfer.
+    const sheet = await readEnrollmentSheet();
+    if (sheet.status === "error") {
+      return NextResponse.json({ error: RECORDS_UNAVAILABLE_ERROR }, { status: 503 });
+    }
+    if (sheet.status === "ok" && cohort) {
+      const seatsRemaining = seatsFromSnapshot(sheet.snapshot, cohort.id, cohort.capacityMax);
+      if (seatsRefuse(seatsRemaining, players.length)) {
+        return NextResponse.json({ error: COHORT_FULL_ERROR }, { status: 409 });
+      }
+    }
 
     let first: Awaited<ReturnType<typeof recordEtransferIntent>> | null = null;
     let amountCents = 0;

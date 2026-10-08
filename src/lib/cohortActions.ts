@@ -43,7 +43,7 @@ import {
   type CohortPaymentMode,
 } from "@/lib/paymentTransitions";
 import { setEnrollmentStatusByEmail, setEnrollmentCredit } from "@/lib/enrollmentSheet";
-import type { CheckoutInviteRow } from "@/lib/checkoutInvite";
+import { DECLINED_INVITE_ERROR, type CheckoutInviteRow } from "@/lib/checkoutInvite";
 
 // Server-side cohort operations (Phase 3): invite flow with expiring holds,
 // minimum-to-run confirmation, session generation, and cancellation → make-up
@@ -572,7 +572,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
    * up by token (backlog #30).
    */
   strict?: boolean;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; matched?: boolean }> {
   const { cohortId, email, inviteToken, inviteId, participantId, payment } = params;
   const strict = params.strict ?? false;
   const supabase = createServiceClient();
@@ -663,7 +663,10 @@ export async function markInvitePaidAndMaybeConfirm(params: {
   }
 
   await maybeConfirmCohort(cohortId);
-  return { ok: true };
+  // `matched`: the lookup landed on an invite row in this cohort (backlog
+  // #38) — the payment rails use it to chain a household's later players and
+  // to flag a payment that settled onto nothing.
+  return { ok: true, matched: Boolean(target) };
 }
 
 // ─── E-transfer rail (backlog #12) ────────────────────────────────────────────
@@ -924,6 +927,12 @@ export async function recordEtransferIntent(params: {
       .eq("cohort_id", cohortId)
       .maybeSingle();
     invite = (data as InviteRef | null) ?? null;
+    // A declined invite is refused here exactly as the card route refuses it
+    // (#34/#38): it never becomes an e-transfer hold, and it never falls
+    // through to a sibling's invite by email.
+    if (invite?.status === "declined") {
+      return { ok: false, error: DECLINED_INVITE_ERROR, status: 409 };
+    }
   }
   if (!invite && params.participantId) {
     // Several players on one account: match this player's own invite first.

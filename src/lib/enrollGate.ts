@@ -92,10 +92,18 @@ export function inviteSettlement(params: {
   legacyInviteToken?: string;
   participantId?: string;
   contactEmail?: string;
-  /** cohort.visibility === "private" */
+  /** cohort.visibility === "private" (or the cohort could not be read). */
   requiresInvite: boolean;
   /** The invite row (id or token) belongs to the first player only. */
   isFirstPlayer: boolean;
+  /**
+   * An earlier player in this same session settled onto an invite row in
+   * this cohort by id or token. The payer has then proved they hold an invite
+   * here, so a later signed-out player with no participant may still settle
+   * by the email fallback on a private cohort (a parent paying for two
+   * children off one invite link).
+   */
+  priorInviteProof?: boolean;
 }): { inviteId?: string; inviteToken?: string; participantId?: string; email?: string } | null {
   const { inviteId, legacyInviteToken, participantId, contactEmail, requiresInvite } = params;
   const email = (contactEmail ?? "").trim() || undefined;
@@ -104,13 +112,88 @@ export function inviteSettlement(params: {
     return { inviteToken: legacyInviteToken, email };
   }
   if (participantId) return { participantId };
-  if (!requiresInvite && email) return { email };
+  if ((!requiresInvite || params.priorInviteProof) && email) return { email };
   return null;
 }
 
-/** Whether a payment on this cohort may settle by email at all. */
+/**
+ * Whether a payment on this cohort may settle by email at all. A cohort that
+ * could not be read fails closed: no email fallback.
+ */
 export function cohortRequiresInvite(cohort: Cohort | null | undefined): boolean {
-  return cohort?.visibility === "private";
+  if (!cohort) return true;
+  return cohort.visibility === "private";
+}
+
+/** Did a settlement by invite id or token land on a row in this cohort? */
+export function settledByInvite(
+  by: { inviteId?: string; inviteToken?: string } | null,
+  matched: boolean
+): boolean {
+  return Boolean(by && (by.inviteId || by.inviteToken) && matched);
+}
+
+// ─── Participant ownership ────────────────────────────────────────────────────
+
+/**
+ * Only the signed-in account's own people may be named on a payment (the
+ * household rule, src/lib/household.ts: `participant.account_id` must equal
+ * the session's account). `owned` is that account's participant ids; null
+ * means nobody is signed in, and then every id is dropped — a signed-out
+ * caller cannot name a participant, so it cannot spend another household's
+ * $20 credit or settle onto their invite.
+ */
+export function scrubParticipantIds<T extends { participantId?: string | null }>(
+  players: T[],
+  owned: ReadonlySet<string> | null
+): T[] {
+  return players.map((p) => {
+    const id = (p.participantId ?? "").trim();
+    const keep = Boolean(id) && owned !== null && owned.has(id);
+    return keep ? { ...p, participantId: id } : { ...p, participantId: null };
+  });
+}
+
+// ─── Enrollment Sheet checks (seats and row ownership) ────────────────────────
+
+/** Sent back with a 409 when the cohort has no seat left for this payment. */
+export const COHORT_FULL_ERROR =
+  "This cohort is full. Email info@tennisbootcamp.ca and we'll find you the next one.";
+
+/** Sent back with a 400 when a row number does not belong to this cohort. */
+export const ROW_MISMATCH_ERROR =
+  "That enrollment doesn't match this cohort — reload the page and try again, or email info@tennisbootcamp.ca.";
+
+/** Sent back with a 503 when the Sheet could not be read to verify the rows. */
+export const RECORDS_UNAVAILABLE_ERROR =
+  "Couldn't reach the enrollment records — please try again in a minute or email info@tennisbootcamp.ca.";
+
+export type EnrollmentSheetSnapshot = { header: string[]; rows: string[][] };
+
+/** The page's seat rule, for a payment covering `playerCount` seats. */
+export function seatsRefuse(seatsRemaining: number | null, playerCount: number): boolean {
+  if (seatsRemaining === null) return false;
+  return seatsRemaining <= 0 || seatsRemaining < Math.max(1, playerCount);
+}
+
+/**
+ * Which of the client-supplied enrollment row numbers are NOT rows of this
+ * cohort on the enrollments tab. The Sheet is the record a paid status is
+ * written onto, so a row number is only trusted once the Sheet says it sits
+ * under this cohort_id. Header row is 1; data rows are 2-based.
+ */
+export function foreignRows(
+  snapshot: EnrollmentSheetSnapshot,
+  cohortId: string,
+  rowNumbers: number[]
+): number[] {
+  const cohortCol = snapshot.header.indexOf("cohort_id");
+  if (cohortCol === -1) return rowNumbers.slice();
+  return rowNumbers.filter((n) => {
+    if (!Number.isInteger(n) || n < 2) return true;
+    const row = snapshot.rows[n - 2];
+    return !row || String(row[cohortCol] ?? "") !== cohortId;
+  });
 }
 
 export type ResolvedEnrollGate = {

@@ -797,3 +797,44 @@ ${adminUrl}`;
 
   return { subject, html: emailLayout(bodyHtml), text, adminUrl };
 }
+
+// ─── Payment settled to no invite → Sina (admin) — no footer ──────────────────
+// Backlog #38: a paid card session whose player matched no invite row (by id,
+// participant or — on a public cohort — email). The money is banked and the
+// Sheet row is paid; only the invite needs the coach's hand.
+
+export function buildPaymentUnmatchedAdminEmail(params: {
+  sessionId: string;
+  cohortLabel: string;
+  cohortId: string;
+  /** 1-based position of the player on the session, and how many it covered. */
+  playerIndex: number;
+  playerCount: number;
+  /** The payer's address, so the coach knows whose invite to mark. */
+  payerEmail: string;
+}): EmailBody & { adminUrl: string } {
+  const { sessionId, cohortLabel, cohortId, playerIndex, playerCount, payerEmail } = params;
+  const subject = `Paid, no invite matched: ${cohortLabel} — player ${playerIndex} of ${playerCount}`;
+  const adminUrl = `${BASE_URL}/admin/cohorts/${cohortId}`;
+  const who = payerEmail || "the payer";
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">A payment landed that no invite claims.</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">
+      ${who} paid for ${cohortLabel}; the enrollment row is marked paid, but player ${playerIndex} of ${playerCount} on that payment matched no invite in the cohort. Find their invite on the cohort page and mark it paid by hand, or send one — the cohort confirms on its own once paid invites reach the minimum.
+    </p>
+    <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.70);">Stripe session: ${sessionId}</p>
+    ${limeButton(adminUrl, "Open the cohort →")}
+  `;
+
+  const text = `A payment landed that no invite claims.
+
+${who} paid for ${cohortLabel}; the enrollment row is marked paid, but player ${playerIndex} of ${playerCount} on that payment matched no invite in the cohort. Find their invite on the cohort page and mark it paid by hand, or send one — the cohort confirms on its own once paid invites reach the minimum.
+
+Stripe session: ${sessionId}
+Cohort: ${cohortLabel}
+
+${adminUrl}`;
+
+  return { subject, html: emailLayout(bodyHtml), text, adminUrl };
+}

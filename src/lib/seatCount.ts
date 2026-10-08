@@ -1,16 +1,25 @@
 import { google } from "googleapis";
+import type { EnrollmentSheetSnapshot } from "@/lib/enrollGate";
 
 const TAB = "enrollments";
 const PAID_STATUSES = new Set(["paid"]);
 
-export async function getSeatsRemaining(
-  cohortId: string,
-  capacityMax: number
-): Promise<number | null> {
+export type EnrollmentSheetRead =
+  | { status: "ok"; snapshot: EnrollmentSheetSnapshot }
+  /** Sheets env vars unset (local dev): nothing to count or verify against. */
+  | { status: "unconfigured" }
+  | { status: "error" };
+
+/**
+ * One read of the enrollments tab (A:P — the frozen columns). The seat count
+ * and the payment routes' row-ownership check (backlog #38) both come from
+ * this so a checkout costs one Sheets read, not two.
+ */
+export async function readEnrollmentSheet(): Promise<EnrollmentSheetRead> {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-  if (!spreadsheetId || !clientEmail || !rawKey) return null;
+  if (!spreadsheetId || !clientEmail || !rawKey) return { status: "unconfigured" };
 
   try {
     const privateKey = rawKey.replace(/\\n/g, "\n").replace(/\r/g, "").trim();
@@ -25,23 +34,38 @@ export async function getSeatsRemaining(
       spreadsheetId,
       range: `${TAB}!A:P`,
     });
-
-    const rows = res.data.values ?? [];
-    if (rows.length < 2) return capacityMax;
-
-    const header = rows[0];
-    const cohortIdCol = header.indexOf("cohort_id");
-    const statusCol = header.indexOf("status");
-    if (cohortIdCol === -1 || statusCol === -1) return null;
-
-    const paid = rows
-      .slice(1)
-      .filter((row) => row[cohortIdCol] === cohortId && PAID_STATUSES.has(row[statusCol]))
-      .length;
-
-    return Math.max(0, capacityMax - paid);
+    const all = (res.data.values ?? []) as string[][];
+    return {
+      status: "ok",
+      snapshot: { header: all[0] ?? [], rows: all.slice(1) },
+    };
   } catch (err) {
-    console.error("getSeatsRemaining error:", err);
-    return null;
+    console.error("readEnrollmentSheet error:", err);
+    return { status: "error" };
   }
+}
+
+/** Seats left from a snapshot: capacity minus this cohort's paid rows. */
+export function seatsFromSnapshot(
+  snapshot: EnrollmentSheetSnapshot,
+  cohortId: string,
+  capacityMax: number
+): number | null {
+  if (snapshot.rows.length === 0) return capacityMax;
+  const cohortIdCol = snapshot.header.indexOf("cohort_id");
+  const statusCol = snapshot.header.indexOf("status");
+  if (cohortIdCol === -1 || statusCol === -1) return null;
+  const paid = snapshot.rows.filter(
+    (row) => row[cohortIdCol] === cohortId && PAID_STATUSES.has(row[statusCol])
+  ).length;
+  return Math.max(0, capacityMax - paid);
+}
+
+export async function getSeatsRemaining(
+  cohortId: string,
+  capacityMax: number
+): Promise<number | null> {
+  const read = await readEnrollmentSheet();
+  if (read.status !== "ok") return null;
+  return seatsFromSnapshot(read.snapshot, cohortId, capacityMax);
 }

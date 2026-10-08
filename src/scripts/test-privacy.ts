@@ -22,6 +22,7 @@ import {
   buildEtransferInstructionsEmail,
   buildPaymentReceivedEmail,
   buildEtransferPendingAdminEmail,
+  buildPaymentUnmatchedAdminEmail,
 } from "../lib/emailBodies";
 
 let failures = 0;
@@ -367,6 +368,18 @@ const NO_FOOTER_EMAILS: [string, () => EmailBody][] = [
         cohortId: "c1",
         amountCents: 21000,
         memo: "TB-FALLA-MAYA",
+      }),
+  ],
+  [
+    "payment matched no invite → Sina",
+    () =>
+      buildPaymentUnmatchedAdminEmail({
+        sessionId: "cs_test_123",
+        cohortLabel: "Fall A",
+        cohortId: "c1",
+        playerIndex: 2,
+        playerCount: 2,
+        payerEmail: "maya@example.com",
       }),
   ],
 ];

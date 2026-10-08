@@ -13,10 +13,21 @@ import {
   markInvitePaidAndMaybeConfirm,
 } from "@/lib/cohortActions";
 import {
+  COHORT_FULL_ERROR,
+  RECORDS_UNAVAILABLE_ERROR,
+  ROW_MISMATCH_ERROR,
   cohortRequiresInvite,
+  foreignRows,
   inviteSettlement,
   resolveEnrollGate,
+  scrubParticipantIds,
+  seatsRefuse,
+  settledByInvite,
 } from "@/lib/enrollGate";
+import { readEnrollmentSheet, seatsFromSnapshot } from "@/lib/seatCount";
+import { currentUser } from "@/lib/household";
+import { listParticipantsForAccount } from "@/lib/players";
+import { sendPaymentUnmatchedAdminEmail } from "@/lib/email";
 import {
   checkoutInviteLink,
   enrollReturnUrls,
@@ -120,7 +131,7 @@ export async function POST(req: NextRequest) {
 
     // Every player this payment covers. A body without the household field is
     // a single-player enrollment — one seat, exactly as before.
-    const players: CheckoutParticipant[] =
+    const sent: CheckoutParticipant[] =
       enrollmentMeta?.participants && enrollmentMeta.participants.length > 0
         ? enrollmentMeta.participants
         : [
@@ -129,10 +140,40 @@ export async function POST(req: NextRequest) {
               rowNumber: enrollmentRowNumber,
             },
           ];
+    // Backlog #38: a participant id is only kept when it belongs to the
+    // signed-in account (the household rule); a signed-out caller names
+    // nobody. Runs before the credit lookup and before Stripe metadata.
+    const signedIn = await currentUser();
+    const owned = signedIn
+      ? new Set(
+          (await listParticipantsForAccount(signedIn.id).catch(() => [])).map((p) => p.id)
+        )
+      : null;
+    const players = scrubParticipantIds(sent, owned);
     const rowNumbers = players
       .map((p) => p.rowNumber ?? null)
       .filter((n): n is number => typeof n === "number" && n > 0);
     const chargeCents = seatCents * players.length;
+
+    // Backlog #38: one read of the enrollments tab answers two questions
+    // before any money moves — is there a seat for every player (the page's
+    // own seat rule), and do the row numbers the browser sent sit under this
+    // cohort (they are what the webhook marks paid). Sheets unconfigured
+    // (local dev) skips both, exactly as the page skips its seat check.
+    const sheet = await readEnrollmentSheet();
+    if (sheet.status === "error") {
+      return NextResponse.json({ error: RECORDS_UNAVAILABLE_ERROR }, { status: 503 });
+    }
+    if (sheet.status === "ok" && cohort) {
+      const seatsRemaining = seatsFromSnapshot(sheet.snapshot, cohort.id, cohort.capacityMax);
+      if (seatsRefuse(seatsRemaining, players.length)) {
+        return NextResponse.json({ error: COHORT_FULL_ERROR }, { status: 409 });
+      }
+      const toVerify = Array.from(new Set([enrollmentRowNumber, ...rowNumbers]));
+      if (foreignRows(sheet.snapshot, cohort.id, toVerify).length > 0) {
+        return NextResponse.json({ error: ROW_MISMATCH_ERROR }, { status: 400 });
+      }
+    }
 
     // The $20 assessment credit is per player: two children assessed under one
     // parent's email bring $40 off between them.
@@ -269,19 +310,40 @@ export async function POST(req: NextRequest) {
         }
       }
       // Same settlement rule as the webhook (backlog #38): invite id, else
-      // the named participant, else email only on a cohort anyone may join.
-      for (const p of players) {
+      // the named participant, else email only on a cohort anyone may join
+      // — or once the first player proved an invite in this cohort. A player
+      // that settles onto nothing is flagged to the inbox for a hand mark.
+      let priorInviteProof = false;
+      for (const [i, p] of players.entries()) {
         const by = inviteSettlement({
           inviteId,
           participantId: p.participantId ?? undefined,
           contactEmail: enrollmentMeta?.contactEmail,
           requiresInvite: cohortRequiresInvite(cohort),
-          isFirstPlayer: p === players[0],
+          isFirstPlayer: i === 0,
+          priorInviteProof,
         });
-        if (!by) continue;
-        await markInvitePaidAndMaybeConfirm({ cohortId, ...by }).catch((err) =>
-          console.error("Invite confirmation failed (non-blocking):", err)
-        );
+        const result = by
+          ? await markInvitePaidAndMaybeConfirm({ cohortId, ...by }).catch((err) => {
+              console.error("Invite confirmation failed (non-blocking):", err);
+              return null;
+            })
+          : null;
+        const matched = Boolean(result?.matched);
+        if (settledByInvite(by, matched)) priorInviteProof = true;
+        if (!matched) {
+          console.warn(
+            `Mock checkout settled to no invite: cohort=${cohortId} player=${i + 1}/${players.length}`
+          );
+          await sendPaymentUnmatchedAdminEmail({
+            sessionId: "mock",
+            cohortLabel: cohort?.label ?? cohortId,
+            cohortId,
+            playerIndex: i + 1,
+            playerCount: players.length,
+            payerEmail: enrollmentMeta?.contactEmail ?? "",
+          });
+        }
       }
     }
 

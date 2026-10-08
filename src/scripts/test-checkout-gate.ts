@@ -6,7 +6,17 @@
 // fallback is for legacy sessions on cohorts anyone may join, never a private
 // cohort.
 
-import { decideEnrollGate, inviteSettlement, cohortRequiresInvite } from "../lib/enrollGate";
+import {
+  decideEnrollGate,
+  inviteSettlement,
+  cohortRequiresInvite,
+  settledByInvite,
+  scrubParticipantIds,
+  seatsRefuse,
+  foreignRows,
+  COHORT_FULL_ERROR,
+} from "../lib/enrollGate";
+import { seatsFromSnapshot } from "../lib/seatCount";
 import type { Cohort } from "../types/cohort";
 
 const TODAY = "2026-10-08";
@@ -226,7 +236,110 @@ console.log("inviteSettlement — how a payment finds its invite");
   );
   check("private cohort requires an invite", cohortRequiresInvite(privateCohort), true);
   check("public cohort does not", cohortRequiresInvite(publicCohort), false);
-  check("missing cohort does not", cohortRequiresInvite(undefined), false);
+  check("cohort that could not be read → requires an invite (fail closed)", cohortRequiresInvite(undefined), true);
+}
+
+console.log("inviteSettlement — later players once the first proved an invite here");
+{
+  check(
+    "signed-out second player on a private cohort, first settled by invite id → email allowed",
+    inviteSettlement({
+      inviteId: INVITE_ID,
+      contactEmail: "parent@example.com",
+      requiresInvite: true,
+      isFirstPlayer: false,
+      priorInviteProof: true,
+    }),
+    { email: "parent@example.com" }
+  );
+  check(
+    "same, but the first player matched nothing → still nothing for the second",
+    inviteSettlement({
+      inviteId: INVITE_ID,
+      contactEmail: "parent@example.com",
+      requiresInvite: true,
+      isFirstPlayer: false,
+      priorInviteProof: false,
+    }),
+    null
+  );
+  check(
+    "a named participant still wins over the chained email",
+    inviteSettlement({
+      participantId: "p_2",
+      contactEmail: "parent@example.com",
+      requiresInvite: true,
+      isFirstPlayer: false,
+      priorInviteProof: true,
+    }),
+    { participantId: "p_2" }
+  );
+  check("settled by id and matched → proof", settledByInvite({ inviteId: INVITE_ID }, true), true);
+  check("settled by legacy token and matched → proof", settledByInvite({ inviteToken: "tok" }, true), true);
+  check("settled by id but no row matched → no proof", settledByInvite({ inviteId: INVITE_ID }, false), false);
+  check("settled by participant → no proof", settledByInvite({ participantId: "p_1" } as { inviteId?: string }, true), false);
+  check("nothing to settle by → no proof", settledByInvite(null, true), false);
+}
+
+console.log("scrubParticipantIds — only the signed-in account's own people");
+{
+  const sent = [
+    { name: "Maya", participantId: "p_mine" },
+    { name: "Leo", participantId: "p_theirs" },
+    { name: "Guest", participantId: null },
+  ];
+  check(
+    "signed in: a foreign participant id is dropped, own id kept, null stays null",
+    scrubParticipantIds(sent, new Set(["p_mine"])).map((p) => p.participantId),
+    ["p_mine", null, null]
+  );
+  check(
+    "signed out: every participant id is dropped",
+    scrubParticipantIds(sent, null).map((p) => p.participantId),
+    [null, null, null]
+  );
+  check("names and the rest of the player survive", scrubParticipantIds(sent, null).map((p) => p.name), [
+    "Maya",
+    "Leo",
+    "Guest",
+  ]);
+  check("whitespace-padded own id is trimmed", scrubParticipantIds([{ participantId: " p_mine " }], new Set(["p_mine"]))[0].participantId, "p_mine");
+  check(
+    "foreign id → null, so the credit lookup can never spend another household's $20",
+    scrubParticipantIds([{ participantId: "p_theirs" }], new Set(["p_mine"]))[0].participantId,
+    null
+  );
+}
+
+console.log("seatsRefuse — the page's seat rule, per player on the payment");
+{
+  check("unknown seat count (Sheets unconfigured) never refuses", seatsRefuse(null, 2), false);
+  check("no seats → refuse", seatsRefuse(0, 1), true);
+  check("one seat, one player → allowed", seatsRefuse(1, 1), false);
+  check("one seat, two players → refuse", seatsRefuse(1, 2), true);
+  check("plenty → allowed", seatsRefuse(6, 2), false);
+  check("message names the way out", COHORT_FULL_ERROR.includes("info@tennisbootcamp.ca"), true);
+}
+
+console.log("foreignRows + seatsFromSnapshot — one Sheet read, two answers");
+{
+  const snapshot = {
+    header: ["timestamp", "cohort_id", "program", "location", "participant_name", "participant_dob", "is_minor", "contact_email", "contact_phone", "guardian_name", "guardian_email", "guardian_phone", "consent_signed_name", "consent_agreed_at", "waiver_version", "status"],
+    rows: [
+      ["t", "coh_private", "", "", "Maya", "", "no", "a@example.com", "", "", "", "", "", "", "", "paid"],   // row 2
+      ["t", "coh_other", "", "", "Leo", "", "no", "b@example.com", "", "", "", "", "", "", "", "pending"],  // row 3
+      ["t", "coh_private", "", "", "Ana", "", "no", "c@example.com", "", "", "", "", "", "", "", "pending"], // row 4
+    ],
+  };
+  check("rows of this cohort pass", foreignRows(snapshot, "coh_private", [2, 4]), []);
+  check("a row of another cohort is foreign", foreignRows(snapshot, "coh_private", [2, 3]), [3]);
+  check("a row past the end of the sheet is foreign", foreignRows(snapshot, "coh_private", [99]), [99]);
+  check("the header row and nonsense numbers are foreign", foreignRows(snapshot, "coh_private", [1, 0, -4, 2.5]), [1, 0, -4, 2.5]);
+  check("no cohort_id column → nothing can be trusted", foreignRows({ header: ["x"], rows: [["y"]] }, "coh_private", [2]), [2]);
+  check("seats: capacity minus this cohort's paid rows", seatsFromSnapshot(snapshot, "coh_private", 6), 5);
+  check("seats: pending rows don't count", seatsFromSnapshot(snapshot, "coh_other", 6), 6);
+  check("seats: empty tab → full capacity", seatsFromSnapshot({ header: [], rows: [] }, "coh_private", 6), 6);
+  check("seats: never below zero", seatsFromSnapshot(snapshot, "coh_private", 1), 0);
 }
 
 if (failures > 0) {
