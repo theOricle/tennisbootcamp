@@ -5,6 +5,7 @@ import {
   saveEnrollmentToSupabase,
   issueActivationLink,
 } from "@/lib/supabase/enrollmentActions";
+import { inviteLinkFromMetadata } from "@/lib/checkoutInvite";
 
 const TAB = "enrollments";
 const STATUS_COL = "P";
@@ -73,7 +74,9 @@ export async function POST(req: NextRequest) {
     const contactEmail = session.metadata?.contactEmail ?? "";
     const supabaseEnrollmentId = session.metadata?.supabaseEnrollmentId ?? null;
     const cohortId = session.metadata?.cohortId ?? "";
-    const inviteToken = session.metadata?.inviteToken ?? "";
+    // Backlog #30: payment → invite by row id. The token fallback only serves
+    // a session created before this deploy.
+    const { inviteId, legacyInviteToken } = inviteLinkFromMetadata(session.metadata);
     const assessmentBookingId = session.metadata?.assessmentBookingId ?? "";
     const assessmentCreditCents = Number(session.metadata?.assessmentCreditCents ?? 0);
 
@@ -115,7 +118,7 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-    if (cohortId && (inviteToken || contactEmail)) {
+    if (cohortId && (inviteId || legacyInviteToken || contactEmail)) {
       const { markInvitePaidAndMaybeConfirm } = await import("@/lib/cohortActions");
       const targets = participantIds.length > 0 ? participantIds : [undefined];
       for (let i = 0; i < targets.length; i++) {
@@ -123,8 +126,9 @@ export async function POST(req: NextRequest) {
           cohortId,
           email: contactEmail || undefined,
           participantId: targets[i],
-          // The single-use token belongs to the first invite only.
-          inviteToken: i === 0 ? inviteToken || undefined : undefined,
+          // The invite row belongs to the first player only.
+          inviteId: i === 0 ? inviteId : undefined,
+          inviteToken: i === 0 ? legacyInviteToken : undefined,
         }).catch((err) =>
           console.error("Invite confirmation failed (non-blocking):", err)
         );

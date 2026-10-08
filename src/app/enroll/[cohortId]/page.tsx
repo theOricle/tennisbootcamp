@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { programs } from "@/content/programs";
@@ -10,6 +11,7 @@ import { levelWithinRange } from "@/lib/tiers";
 import { createClient } from "@/lib/supabase/server";
 import { findUnusedCredit } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
+import { INVITE_RESUME_COOKIE } from "@/lib/checkoutInvite";
 import { EnrollWizard, type EtransferInfo } from "./EnrollWizard";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +63,9 @@ function InviteGate({ expired }: { expired: boolean }) {
                 coach-assigned level. Book a 20-minute assessment and we&apos;ll
                 build your group around your level and your schedule.
               </p>
+              <p className="mt-3 text-sm leading-relaxed text-white/65">
+                Already invited? Open the link in your invitation email.
+              </p>
             </>
           )}
           <div className="mt-6 flex flex-wrap justify-center gap-3">
@@ -95,8 +100,15 @@ function InviteGate({ expired }: { expired: boolean }) {
 export default async function EnrollPage({ params, searchParams }: PageProps) {
   const { cohortId } = await params;
   const sp = await searchParams;
-  const tokenParam =
+  const queryToken =
     typeof sp.invite === "string" && sp.invite.trim() ? sp.invite.trim() : null;
+  // A cancelled Stripe checkout comes back here with no `?invite` (backlog
+  // #30): the token the player arrived with is re-read from the httpOnly
+  // cookie the checkout route set, and validated below like any other.
+  const cookieToken = queryToken
+    ? null
+    : ((await cookies()).get(INVITE_RESUME_COOKIE)?.value?.trim() || null);
+  const tokenParam = queryToken ?? cookieToken;
 
   // Only a cohort a visitor may see is enrollable: in Supabase, inviting or
   // confirmed (never draft or cancelled), and not yet started.
