@@ -14,9 +14,13 @@ Welcoming, serious, athletic, premium. The voice should feel like a world-class 
 The hero should feel dynamic and high-performance. If animation is used, it must feel tennis-related — ball physics, racket motion, court geometry — never abstract tech motion. The hero's job is to communicate elite training at first glance and drive the primary CTA.
 
 ## CTA Hierarchy
-1. **Get Priority Placement** (primary — links to `/intake`)
-2. **View Programs** (secondary — links to program details)
+Updated 2026-10-08 (backlog #17) to the owner's 2026-10-02 CTA decision.
+
+1. **Take the 2-minute quiz** (primary — links to `/intake`)
+2. **Browse Programs** (secondary — links to `/programs`)
 3. **Newsletter signup** (tertiary — low-friction, no competition with primary)
+
+"Book Your Assessment" is the exact label of the optional $20 assessment button (program pages, the quiz's last screen, the dashboard). It is never the primary CTA. "Get Priority Placement" and "Find My Program" are retired labels.
 
 ## Visual Direction
 - Athletic and clean: generous whitespace, strong typography, high-contrast accents
