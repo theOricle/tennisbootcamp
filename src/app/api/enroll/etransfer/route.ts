@@ -4,6 +4,7 @@ import { getCohortById } from "@/lib/cohortsDb";
 import {
   COHORT_FULL_ERROR,
   RECORDS_UNAVAILABLE_ERROR,
+  gateRefusal,
   resolveEnrollGate,
   scrubParticipantIds,
   seatsRefuse,
@@ -73,13 +74,9 @@ export async function POST(req: NextRequest) {
     // row or Sheet write. Same rule as /api/checkout.
     const cohort = await getCohortById(cohortId);
     const gate = await resolveEnrollGate(cohort, inviteToken, { payable: true });
-    if (!gate.decision.allowed) {
-      return NextResponse.json(
-        gate.decision.status === 404
-          ? { error: "Cohort not found." }
-          : { error: "This group is invite-only." },
-        { status: gate.decision.status }
-      );
+    const refused = gateRefusal(gate);
+    if (refused) {
+      return NextResponse.json({ error: refused.error }, { status: refused.status });
     }
 
     // One player per invite: a parent sending one transfer for two children
@@ -100,7 +97,15 @@ export async function POST(req: NextRequest) {
     const signedIn = await currentUser();
     const owned = signedIn
       ? new Set(
-          (await listParticipantsForAccount(signedIn.id).catch(() => [])).map((p) => p.id)
+          (
+            await listParticipantsForAccount(signedIn.id).catch((err) => {
+              console.error(
+                "Participant ownership lookup failed; participant ids dropped (non-blocking):",
+                err instanceof Error ? err.message : err
+              );
+              return [];
+            })
+          ).map((p) => p.id)
         )
       : null;
     const players = scrubParticipantIds(sent, owned);
@@ -130,6 +135,9 @@ export async function POST(req: NextRequest) {
         participantId: player.participantId ?? null,
         // The single-use token belongs to the first invite only.
         inviteToken: i === 0 ? inviteToken || null : null,
+        // A later player with no token and no participant gets an invite row
+        // of their own rather than player one's (backlog #38).
+        playerIndex: i,
       });
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: result.status });

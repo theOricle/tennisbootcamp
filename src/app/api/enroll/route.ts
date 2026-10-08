@@ -6,7 +6,7 @@ import {
   type ParticipantInput,
 } from "@/lib/household";
 import { getCohortById } from "@/lib/cohortsDb";
-import { resolveEnrollGate } from "@/lib/enrollGate";
+import { gateRefusal, resolveEnrollGate } from "@/lib/enrollGate";
 
 const TAB = "enrollments";
 
@@ -63,13 +63,9 @@ export async function POST(req: NextRequest) {
     const gate = await resolveEnrollGate(await getCohortById(cohortId), inviteToken, {
       payable: true,
     });
-    if (!gate.decision.allowed) {
-      return NextResponse.json(
-        gate.decision.status === 404
-          ? { error: "Cohort not found." }
-          : { error: "This group is invite-only." },
-        { status: gate.decision.status }
-      );
+    const refused = gateRefusal(gate);
+    if (refused) {
+      return NextResponse.json({ error: refused.error }, { status: refused.status });
     }
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;

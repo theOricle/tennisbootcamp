@@ -18,11 +18,13 @@ import {
   ROW_MISMATCH_ERROR,
   cohortRequiresInvite,
   foreignRows,
+  gateRefusal,
   inviteSettlement,
   resolveEnrollGate,
   scrubParticipantIds,
   seatsRefuse,
   settledByInvite,
+  unmatchedSignal,
 } from "@/lib/enrollGate";
 import { readEnrollmentSheet, seatsFromSnapshot } from "@/lib/seatCount";
 import { currentUser } from "@/lib/household";
@@ -120,13 +122,9 @@ export async function POST(req: NextRequest) {
     // needs an invite in this cohort that can still be paid (or, tier-gated,
     // a signed-in player inside its level band) — else 403, no Stripe session.
     const gate = await resolveEnrollGate(cohort, inviteToken, { payable: true });
-    if (!gate.decision.allowed) {
-      return NextResponse.json(
-        gate.decision.status === 404
-          ? { error: "Cohort not found." }
-          : { error: "This group is invite-only." },
-        { status: gate.decision.status }
-      );
+    const refused = gateRefusal(gate);
+    if (refused) {
+      return NextResponse.json({ error: refused.error }, { status: refused.status });
     }
 
     // Every player this payment covers. A body without the household field is
@@ -146,7 +144,15 @@ export async function POST(req: NextRequest) {
     const signedIn = await currentUser();
     const owned = signedIn
       ? new Set(
-          (await listParticipantsForAccount(signedIn.id).catch(() => [])).map((p) => p.id)
+          (
+            await listParticipantsForAccount(signedIn.id).catch((err) => {
+              console.error(
+                "Participant ownership lookup failed; participant ids dropped (non-blocking):",
+                err instanceof Error ? err.message : err
+              );
+              return [];
+            })
+          ).map((p) => p.id)
         )
       : null;
     const players = scrubParticipantIds(sent, owned);
@@ -331,10 +337,17 @@ export async function POST(req: NextRequest) {
           : null;
         const matched = Boolean(result?.matched);
         if (settledByInvite(by, matched)) priorInviteProof = true;
-        if (!matched) {
+        const signal = unmatchedSignal({
+          matched,
+          alreadyPaid: Boolean(result?.alreadyPaid),
+          requiresInvite: cohortRequiresInvite(cohort),
+        });
+        if (signal.warn) {
           console.warn(
             `Mock checkout settled to no invite: cohort=${cohortId} player=${i + 1}/${players.length}`
           );
+        }
+        if (signal.email) {
           await sendPaymentUnmatchedAdminEmail({
             sessionId: "mock",
             cohortLabel: cohort?.label ?? cohortId,

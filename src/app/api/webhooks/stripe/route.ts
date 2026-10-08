@@ -120,9 +120,8 @@ export async function POST(req: NextRequest) {
     }
     if (cohortId) {
       const { markInvitePaidAndMaybeConfirm } = await import("@/lib/cohortActions");
-      const { cohortRequiresInvite, inviteSettlement, settledByInvite } = await import(
-        "@/lib/enrollGate"
-      );
+      const { cohortRequiresInvite, inviteSettlement, settledByInvite, unmatchedSignal } =
+        await import("@/lib/enrollGate");
       const { getCohortById } = await import("@/lib/cohortsDb");
       const { sendPaymentUnmatchedAdminEmail } = await import("@/lib/email");
       // Backlog #38: the email fallback only serves a legacy session that
@@ -157,12 +156,21 @@ export async function POST(req: NextRequest) {
           : null;
         const matched = Boolean(result?.matched);
         if (settledByInvite(by, matched)) priorInviteProof = true;
-        if (!matched) {
-          // The money is banked and the Sheet row is paid; only the invite
-          // needs the coach's hand. PII-light here, the address in the inbox.
+        // The money is banked and the Sheet row is paid; only the invite
+        // needs the coach's hand. PII-light here, the address in the inbox —
+        // and only for a cohort that runs on invites, never for a retry of a
+        // session whose invite is already paid.
+        const signal = unmatchedSignal({
+          matched,
+          alreadyPaid: Boolean(result?.alreadyPaid),
+          requiresInvite,
+        });
+        if (signal.warn) {
           console.warn(
             `Payment settled to no invite: session=${session.id} cohort=${cohortId} player=${i + 1}/${targets.length}`
           );
+        }
+        if (signal.email) {
           await sendPaymentUnmatchedAdminEmail({
             sessionId: session.id,
             cohortLabel: cohort?.label ?? cohortId,

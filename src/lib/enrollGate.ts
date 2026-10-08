@@ -16,6 +16,7 @@
 import type { Cohort } from "@/types/cohort";
 import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
 import { levelWithinRange } from "@/lib/tiers";
+import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 
 /** What getInviteByToken reported, as far as the gate cares. */
 export type GateInviteLookup =
@@ -202,7 +203,68 @@ export type ResolvedEnrollGate = {
   lookup: GateInviteLookup | null;
   /** The invited account holder's email when admitted by a valid token. */
   inviteEmail: string | null;
+  /** The token names a declined invite in this cohort (refused with #75's copy). */
+  declined: boolean;
 };
+
+/** Sent back with a 403 when a private cohort has no admitting invite. */
+export const INVITE_ONLY_ERROR =
+  "This cohort is invite-only — email info@tennisbootcamp.ca for an invite.";
+
+/**
+ * The JSON a payment route (or /api/enroll) answers a refused gate with. A
+ * declined token gets #75's own copy and status, not the generic line.
+ */
+export function gateRefusal(
+  gate: Pick<ResolvedEnrollGate, "decision" | "declined">
+): { error: string; status: 403 | 404 | 409 } | null {
+  const { decision } = gate;
+  if (decision.allowed) return null;
+  if (decision.status === 404) return { error: "Cohort not found.", status: 404 };
+  if (gate.declined) return { error: DECLINED_INVITE_ERROR, status: 409 };
+  return { error: INVITE_ONLY_ERROR, status: 403 };
+}
+
+/**
+ * Whether a player that settled onto no invite is worth the coach's inbox.
+ * The console line is always written; the email only when the cohort runs
+ * on invites (a public cohort with no invite is the ordinary case) and the
+ * invite is not simply already paid (a Stripe retry of a settled session).
+ */
+export function unmatchedSignal(params: {
+  matched: boolean;
+  alreadyPaid: boolean;
+  requiresInvite: boolean;
+}): { warn: boolean; email: boolean } {
+  const { matched, alreadyPaid, requiresInvite } = params;
+  if (matched) return { warn: false, email: false };
+  return { warn: true, email: requiresInvite && !alreadyPaid };
+}
+
+// ─── E-transfer rail: which invite row a player's transfer lands on ───────────
+
+export type EtransferRowPlan = "token" | "participant" | "email" | "create";
+
+/**
+ * recordEtransferIntent resolves one invite row per player. The token names
+ * the first player's row; a participant names their own; the newest live
+ * invite for the email serves the FIRST player only — for a later player it
+ * would be player one's row, so they get a row of their own instead (backlog
+ * #38). Mirrors how the rail already creates a row for a level-admitted
+ * player with no invite.
+ */
+export function etransferRowPlan(params: {
+  hasToken: boolean;
+  participantId: string | null | undefined;
+  playerIndex: number;
+}): EtransferRowPlan[] {
+  const steps: EtransferRowPlan[] = [];
+  if (params.hasToken) steps.push("token");
+  if (params.participantId) steps.push("participant");
+  else if (params.playerIndex === 0) steps.push("email");
+  steps.push("create");
+  return steps;
+}
 
 /**
  * Run the gate for a cohort and the token the request carried (query, cookie
@@ -218,7 +280,7 @@ export async function resolveEnrollGate(
   const tokenSent = Boolean(tokenParam);
   const first = decideEnrollGate({ cohort, tokenSent, lookup: null, payable: opts.payable });
   if (!first.allowed && first.status === 404) {
-    return { decision: first, lookup: null, inviteEmail: null };
+    return { decision: first, lookup: null, inviteEmail: null, declined: false };
   }
 
   // The token is looked up whenever one was sent (a public cohort's checkout
@@ -244,7 +306,15 @@ export async function resolveEnrollGate(
     decision.allowed && decision.via === "invite" && lookup?.state === "valid"
       ? lookup.invite.email ?? null
       : null;
-  return { decision, lookup, inviteEmail };
+  // getInviteByToken folds a declined row into "invalid"; the refusal copy
+  // tells a declined player what to do (#75), so look once more when refused.
+  let declined = false;
+  if (!decision.allowed && tokenParam && lookup?.state === "invalid") {
+    const { findInviteRefByToken } = await import("@/lib/cohortActions");
+    const row = await findInviteRefByToken(c.id, tokenParam).catch(() => null);
+    declined = row?.status === "declined";
+  }
+  return { decision, lookup, inviteEmail, declined };
 }
 
 /** The signed-in player's coach-assigned level from their profile, else null. */

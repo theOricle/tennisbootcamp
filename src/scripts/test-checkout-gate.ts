@@ -14,8 +14,13 @@ import {
   scrubParticipantIds,
   seatsRefuse,
   foreignRows,
+  gateRefusal,
+  unmatchedSignal,
+  etransferRowPlan,
   COHORT_FULL_ERROR,
+  INVITE_ONLY_ERROR,
 } from "../lib/enrollGate";
+import { DECLINED_INVITE_ERROR } from "../lib/checkoutInvite";
 import { seatsFromSnapshot } from "../lib/seatCount";
 import type { Cohort } from "../types/cohort";
 
@@ -162,6 +167,81 @@ console.log("decideEnrollGate — the page's rule, re-run by the payment routes"
     "missing cohort → 404",
     decideEnrollGate({ cohort: undefined, tokenSent: false, lookup: null, today: TODAY }),
     { allowed: false, status: 404 }
+  );
+}
+
+console.log("gateRefusal — what a refused route answers");
+{
+  check(
+    "private cohort, no admitting token → 403 with the one invite-only line",
+    gateRefusal({ decision: { allowed: false, status: 403, expired: false }, declined: false }),
+    { error: INVITE_ONLY_ERROR, status: 403 }
+  );
+  check("the line names the way out", INVITE_ONLY_ERROR.includes("info@tennisbootcamp.ca"), true);
+  check(
+    "declined token → #75's declined copy and 409, not the generic line",
+    gateRefusal({ decision: { allowed: false, status: 403, expired: true }, declined: true }),
+    { error: DECLINED_INVITE_ERROR, status: 409 }
+  );
+  check(
+    "cohort not renderable → 404 even if the token was declined",
+    gateRefusal({ decision: { allowed: false, status: 404 }, declined: true }),
+    { error: "Cohort not found.", status: 404 }
+  );
+  check("allowed → nothing to answer", gateRefusal({ decision: { allowed: true, via: "public" }, declined: false }), null);
+}
+
+console.log("unmatchedSignal — when a settled-to-nothing player reaches the inbox");
+{
+  check("matched → silent", unmatchedSignal({ matched: true, alreadyPaid: false, requiresInvite: true }), { warn: false, email: false });
+  check(
+    "unmatched on a private cohort → warn and email",
+    unmatchedSignal({ matched: false, alreadyPaid: false, requiresInvite: true }),
+    { warn: true, email: true }
+  );
+  check(
+    "unmatched on a public cohort → warn only (no invite is the ordinary case)",
+    unmatchedSignal({ matched: false, alreadyPaid: false, requiresInvite: false }),
+    { warn: true, email: false }
+  );
+  check(
+    "invite already paid (Stripe retry) → warn only",
+    unmatchedSignal({ matched: false, alreadyPaid: true, requiresInvite: true }),
+    { warn: true, email: false }
+  );
+}
+
+console.log("etransferRowPlan — one invite row per player on a transfer");
+{
+  check(
+    "first player with the token → token, then the email fallback (unchanged), else create",
+    etransferRowPlan({ hasToken: true, participantId: null, playerIndex: 0 }),
+    ["token", "email", "create"]
+  );
+  check(
+    "first player, no token, no participant → newest live invite for the email, else create",
+    etransferRowPlan({ hasToken: false, participantId: null, playerIndex: 0 }),
+    ["email", "create"]
+  );
+  check(
+    "second player, no token, no participant → never player one's row by email; a row of their own",
+    etransferRowPlan({ hasToken: false, participantId: null, playerIndex: 1 }),
+    ["create"]
+  );
+  check(
+    "third player → same",
+    etransferRowPlan({ hasToken: false, participantId: undefined, playerIndex: 2 }),
+    ["create"]
+  );
+  check(
+    "named participant → their own invite, else create (any index)",
+    etransferRowPlan({ hasToken: false, participantId: "p_2", playerIndex: 1 }),
+    ["participant", "create"]
+  );
+  check(
+    "first player with token and participant → token, participant, create",
+    etransferRowPlan({ hasToken: true, participantId: "p_1", playerIndex: 0 }),
+    ["token", "participant", "create"]
   );
 }
 
