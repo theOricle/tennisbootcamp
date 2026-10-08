@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
+import { findAuthUserByEmail, listAllAuthUsers } from "@/lib/supabase/adminUsers";
 import {
   parseAvailability,
   hasAnyAvailability,
@@ -378,10 +379,20 @@ export async function listAccounts(): Promise<Map<string, AccountInfo>> {
   const supabase = createServiceClient();
   const [profiles, users] = await Promise.all([
     readAllProfiles(supabase).catch(() => [] as RawProfile[]),
-    // Small project — one page of users covers everyone (same as assessments).
-    supabase.auth.admin.listUsers({ page: 1, perPage: 200 }).then(
-      (r) => r.data?.users ?? [],
-      () => []
+    // Every page of users (backlog #37) — a failed page yields what was read,
+    // a thrown call yields none; either way the admin view says so in the
+    // log (counts only, never an address) and still renders.
+    listAllAuthUsers(supabase).then(
+      (r) => {
+        if (!r.complete) {
+          console.warn("[listAccounts] auth user list incomplete —", r.users.length, "users read");
+        }
+        return r.users;
+      },
+      () => {
+        console.warn("[listAccounts] auth user list unavailable — 0 users read");
+        return [];
+      }
     ),
   ]);
   const byId = new Map<string, AccountInfo>();
@@ -450,18 +461,14 @@ export async function getAccount(accountId: string): Promise<AccountInfo | null>
   };
 }
 
-/** Resolve an auth user id from an email (small project — one page covers everyone). */
+/**
+ * Resolve an auth user id from an email (trimmed, case-insensitive). Pages
+ * through the whole user list (backlog #37), so it works past 200 accounts;
+ * null when there is no such user or the list could not be read.
+ */
 export async function findUserIdByEmail(email: string): Promise<string | null> {
   const supabase = createServiceClient();
-  const target = email.trim().toLowerCase();
-  const { data, error } = await supabase.auth.admin.listUsers({
-    page: 1,
-    perPage: 200,
-  });
-  if (error || !data) return null;
-  const match = data.users.find(
-    (u) => (u.email ?? "").trim().toLowerCase() === target
-  );
+  const match = await findAuthUserByEmail(supabase, email);
   return match?.id ?? null;
 }
 
