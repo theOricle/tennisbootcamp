@@ -10,9 +10,13 @@ import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { setEnrollmentCredit } from "@/lib/enrollmentSheet";
 import {
   findInviteIdByToken,
-  getInviteByToken,
   markInvitePaidAndMaybeConfirm,
 } from "@/lib/cohortActions";
+import {
+  cohortRequiresInvite,
+  inviteSettlement,
+  resolveEnrollGate,
+} from "@/lib/enrollGate";
 import {
   checkoutInviteLink,
   enrollReturnUrls,
@@ -100,6 +104,20 @@ export async function POST(req: NextRequest) {
     const cohort = await getCohortById(cohortId);
     const seatCents = cohort?.priceCents ?? priceCents ?? 0;
 
+    // Backlog #38: the enroll page's gate, run again here before anything is
+    // created. A cohort the page would not render is a 404; a private cohort
+    // needs an invite in this cohort that can still be paid (or, tier-gated,
+    // a signed-in player inside its level band) — else 403, no Stripe session.
+    const gate = await resolveEnrollGate(cohort, inviteToken, { payable: true });
+    if (!gate.decision.allowed) {
+      return NextResponse.json(
+        gate.decision.status === 404
+          ? { error: "Cohort not found." }
+          : { error: "This group is invite-only." },
+        { status: gate.decision.status }
+      );
+    }
+
     // Every player this payment covers. A body without the household field is
     // a single-player enrollment — one seat, exactly as before.
     const players: CheckoutParticipant[] =
@@ -150,8 +168,8 @@ export async function POST(req: NextRequest) {
     // cookie only when the gate would still admit the token.
     let inviteId: string | undefined;
     let setResumeCookie = false;
-    if (inviteToken) {
-      const lookup = await getInviteByToken(cohortId, inviteToken);
+    if (inviteToken && gate.lookup) {
+      const lookup = gate.lookup;
       const idByToken =
         lookup.state === "valid"
           ? null
@@ -237,18 +255,20 @@ export async function POST(req: NextRequest) {
           await setEnrollmentCredit(c.rowNumber, (c.cents / 100).toFixed(2));
         }
       }
-      if (inviteToken || enrollmentMeta?.contactEmail) {
-        for (const p of players) {
-          await markInvitePaidAndMaybeConfirm({
-            cohortId,
-            email: enrollmentMeta?.contactEmail,
-            participantId: p.participantId ?? undefined,
-            // The invite row belongs to the first player only.
-            inviteId: p === players[0] ? inviteId : undefined,
-          }).catch((err) =>
-            console.error("Invite confirmation failed (non-blocking):", err)
-          );
-        }
+      // Same settlement rule as the webhook (backlog #38): invite id, else
+      // the named participant, else email only on a cohort anyone may join.
+      for (const p of players) {
+        const by = inviteSettlement({
+          inviteId,
+          participantId: p.participantId ?? undefined,
+          contactEmail: enrollmentMeta?.contactEmail,
+          requiresInvite: cohortRequiresInvite(cohort),
+          isFirstPlayer: p === players[0],
+        });
+        if (!by) continue;
+        await markInvitePaidAndMaybeConfirm({ cohortId, ...by }).catch((err) =>
+          console.error("Invite confirmation failed (non-blocking):", err)
+        );
       }
     }
 

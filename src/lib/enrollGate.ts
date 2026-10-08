@@ -1,0 +1,185 @@
+// Backlog #38: the enroll page's gate, re-checked server-side at payment.
+//
+// /enroll/[cohortId] decides who may enroll: the cohort must be renderable
+// (src/lib/cohortVisibility.ts), and a private cohort admits a valid invite
+// token for that cohort or, when the cohort is tier-gated, a signed-in player
+// whose coach-assigned level sits inside [level_min, level_max]. Before this
+// module /api/checkout and /api/enroll/etransfer trusted whatever the browser
+// posted — cohortId, inviteToken, contactEmail — so the gate could be walked
+// around with one fetch. Both routes now run the same decision as the page,
+// through `resolveEnrollGate`, before a Stripe session or e-transfer row
+// exists.
+//
+// `decideEnrollGate` and `inviteSettlement` are pure (pinned by
+// src/scripts/test-checkout-gate.ts); `resolveEnrollGate` does the I/O.
+
+import type { Cohort } from "@/types/cohort";
+import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
+import { levelWithinRange } from "@/lib/tiers";
+
+/** What getInviteByToken reported, as far as the gate cares. */
+export type GateInviteLookup =
+  | { state: "valid"; invite: { id: string; email?: string; cohort_id?: string } }
+  | { state: "expired" | "invalid" };
+
+export type EnrollGateDecision =
+  | { allowed: true; via: "public" | "invite" | "level" }
+  | { allowed: false; status: 404 }
+  | { allowed: false; status: 403; expired: boolean };
+
+/**
+ * The gate rule itself, shared by the page and both payment routes.
+ *
+ * `payable` is the payment routes' one extension: an invite whose hold lapsed
+ * between page load and paying (`lookup.state === "expired"`, which
+ * getInviteByToken only reports for a row in this cohort) is still admitted,
+ * because PAYABLE_STATUSES includes `expired` and the payment settles onto
+ * that row (backlog #30/#34). The page keeps refusing an expired token.
+ */
+export function decideEnrollGate(input: {
+  cohort: Cohort | null | undefined;
+  /** Whether the request carried a token at all (drives the gate's copy). */
+  tokenSent: boolean;
+  /** getInviteByToken(cohort.id, token), or null when no token was sent. */
+  lookup: GateInviteLookup | null;
+  /** The signed-in player's coach-assigned level, if any. */
+  playerLevel?: number | string | null;
+  payable?: boolean;
+  today?: string;
+}): EnrollGateDecision {
+  const { cohort, tokenSent, lookup, playerLevel } = input;
+  const today = input.today ?? todayIso();
+  if (!cohort || !isCohortRenderable(cohort, today)) {
+    return { allowed: false, status: 404 };
+  }
+  if (cohort.visibility !== "private") return { allowed: true, via: "public" };
+
+  if (lookup?.state === "valid") {
+    // getInviteByToken already pins the cohort; this guards a caller that
+    // looked the token up elsewhere.
+    const sameCohort = !lookup.invite.cohort_id || lookup.invite.cohort_id === cohort.id;
+    if (sameCohort) return { allowed: true, via: "invite" };
+  }
+  if (input.payable && lookup?.state === "expired") {
+    return { allowed: true, via: "invite" };
+  }
+  if (
+    (cohort.levelMin != null || cohort.levelMax != null) &&
+    levelWithinRange(playerLevel, cohort.levelMin, cohort.levelMax)
+  ) {
+    return { allowed: true, via: "level" };
+  }
+  return { allowed: false, status: 403, expired: tokenSent };
+}
+
+/**
+ * How a payment finds the invite it settles onto (webhook and mock checkout).
+ *
+ *   1. The first player's invite row id from session metadata (backlog #30).
+ *   2. The legacy `inviteToken` metadata of a session created before the #30
+ *      deploy — branch intact, removal no earlier than 2026-10-12.
+ *   3. A named participant: that player's own invite in the cohort, never the
+ *      email.
+ *   4. The email fallback, only for a session that names neither an invite nor
+ *      a participant (pre-household sessions), and never on a cohort that
+ *      requires an invite — the email in metadata is the one the payer typed.
+ *
+ * Returns the lookup fields for markInvitePaidAndMaybeConfirm, or null when
+ * there is nothing safe to settle by.
+ */
+export function inviteSettlement(params: {
+  inviteId?: string;
+  legacyInviteToken?: string;
+  participantId?: string;
+  contactEmail?: string;
+  /** cohort.visibility === "private" */
+  requiresInvite: boolean;
+  /** The invite row (id or token) belongs to the first player only. */
+  isFirstPlayer: boolean;
+}): { inviteId?: string; inviteToken?: string; participantId?: string; email?: string } | null {
+  const { inviteId, legacyInviteToken, participantId, contactEmail, requiresInvite } = params;
+  const email = (contactEmail ?? "").trim() || undefined;
+  if (params.isFirstPlayer && inviteId) return { inviteId };
+  if (params.isFirstPlayer && legacyInviteToken) {
+    return { inviteToken: legacyInviteToken, email };
+  }
+  if (participantId) return { participantId };
+  if (!requiresInvite && email) return { email };
+  return null;
+}
+
+/** Whether a payment on this cohort may settle by email at all. */
+export function cohortRequiresInvite(cohort: Cohort | null | undefined): boolean {
+  return cohort?.visibility === "private";
+}
+
+export type ResolvedEnrollGate = {
+  decision: EnrollGateDecision;
+  /** The token's lookup in this cohort, for the invite id and email. */
+  lookup: GateInviteLookup | null;
+  /** The invited account holder's email when admitted by a valid token. */
+  inviteEmail: string | null;
+};
+
+/**
+ * Run the gate for a cohort and the token the request carried (query, cookie
+ * or JSON body). The signed-in player's level is only read when a tier-gated
+ * private cohort has no admitting token, exactly as the page did.
+ */
+export async function resolveEnrollGate(
+  cohort: Cohort | null | undefined,
+  token: string | null | undefined,
+  opts: { payable?: boolean } = {}
+): Promise<ResolvedEnrollGate> {
+  const tokenParam = (token ?? "").trim() || null;
+  const tokenSent = Boolean(tokenParam);
+  const first = decideEnrollGate({ cohort, tokenSent, lookup: null, payable: opts.payable });
+  if (!first.allowed && first.status === 404) {
+    return { decision: first, lookup: null, inviteEmail: null };
+  }
+
+  // The token is looked up whenever one was sent (a public cohort's checkout
+  // still links the payment to its invite row); the level only when a
+  // tier-gated private cohort has nothing else admitting the player.
+  const c = cohort as Cohort;
+  let lookup: GateInviteLookup | null = null;
+  if (tokenParam) {
+    const { getInviteByToken } = await import("@/lib/cohortActions");
+    lookup = await getInviteByToken(c.id, tokenParam);
+  }
+  let decision = decideEnrollGate({ cohort: c, tokenSent, lookup, payable: opts.payable });
+  if (!decision.allowed && (c.levelMin != null || c.levelMax != null)) {
+    decision = decideEnrollGate({
+      cohort: c,
+      tokenSent,
+      lookup,
+      playerLevel: await signedInPlayerLevel(),
+      payable: opts.payable,
+    });
+  }
+  const inviteEmail =
+    decision.allowed && decision.via === "invite" && lookup?.state === "valid"
+      ? lookup.invite.email ?? null
+      : null;
+  return { decision, lookup, inviteEmail };
+}
+
+/** The signed-in player's coach-assigned level from their profile, else null. */
+async function signedInPlayerLevel(): Promise<number | string | null> {
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("level")
+      .eq("id", user.id)
+      .maybeSingle();
+    return (profile as { level?: number | string | null } | null)?.level ?? null;
+  } catch {
+    return null;
+  }
+}

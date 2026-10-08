@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordEtransferIntent } from "@/lib/cohortActions";
+import { getCohortById } from "@/lib/cohortsDb";
+import { resolveEnrollGate } from "@/lib/enrollGate";
 import {
   saveEnrollmentToSupabase,
   issueActivationLink,
@@ -56,6 +58,20 @@ export async function POST(req: NextRequest) {
 
     if (!cohortId || !enrollmentMeta?.contactEmail) {
       return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+    }
+
+    // Backlog #38: the enroll page's gate, run again here before any invite
+    // row or Sheet write. Same rule as /api/checkout.
+    const gate = await resolveEnrollGate(await getCohortById(cohortId), inviteToken, {
+      payable: true,
+    });
+    if (!gate.decision.allowed) {
+      return NextResponse.json(
+        gate.decision.status === 404
+          ? { error: "Cohort not found." }
+          : { error: "This group is invite-only." },
+        { status: gate.decision.status }
+      );
     }
 
     // One player per invite: a parent sending one transfer for two children

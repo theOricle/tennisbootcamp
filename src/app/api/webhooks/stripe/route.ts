@@ -118,18 +118,26 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-    if (cohortId && (inviteId || legacyInviteToken || contactEmail)) {
+    if (cohortId && (inviteId || legacyInviteToken || contactEmail || participantIds.length > 0)) {
       const { markInvitePaidAndMaybeConfirm } = await import("@/lib/cohortActions");
+      const { cohortRequiresInvite, inviteSettlement } = await import("@/lib/enrollGate");
+      const { getCohortById } = await import("@/lib/cohortsDb");
+      // Backlog #38: the email fallback only serves a legacy session that
+      // names neither an invite nor a participant, and never a private cohort.
+      const requiresInvite = cohortRequiresInvite(await getCohortById(cohortId));
       const targets = participantIds.length > 0 ? participantIds : [undefined];
       for (let i = 0; i < targets.length; i++) {
-        await markInvitePaidAndMaybeConfirm({
-          cohortId,
-          email: contactEmail || undefined,
+        const by = inviteSettlement({
+          inviteId,
+          legacyInviteToken,
           participantId: targets[i],
+          contactEmail,
+          requiresInvite,
           // The invite row belongs to the first player only.
-          inviteId: i === 0 ? inviteId : undefined,
-          inviteToken: i === 0 ? legacyInviteToken : undefined,
-        }).catch((err) =>
+          isFirstPlayer: i === 0,
+        });
+        if (!by) continue;
+        await markInvitePaidAndMaybeConfirm({ cohortId, ...by }).catch((err) =>
           console.error("Invite confirmation failed (non-blocking):", err)
         );
       }

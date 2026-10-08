@@ -586,10 +586,12 @@ export async function markInvitePaidAndMaybeConfirm(params: {
       .eq("cohort_id", cohortId)
       .maybeSingle();
     target = (data as InviteRef | null) ?? null;
-  } else if (email) {
+  } else if (participantId || email) {
     // With several players on one account the email alone is ambiguous, so
-    // the participant narrows it. Falling back to the newest live invite
-    // keeps every pre-household caller working.
+    // the participant narrows it. The newest-live-invite-for-the-email
+    // fallback only serves a caller that names no participant (backlog #38);
+    // the payment rails pass email alone solely for legacy sessions on a
+    // cohort anyone may join (src/lib/enrollGate.ts inviteSettlement).
     const byParticipant = participantId
       ? await supabase
           .from("cohort_invites")
@@ -603,7 +605,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
       : null;
     if (byParticipant?.data) {
       target = byParticipant.data as InviteRef;
-    } else {
+    } else if (email && !participantId) {
       const { data } = await supabase
         .from("cohort_invites")
         .select("*")

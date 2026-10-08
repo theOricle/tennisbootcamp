@@ -5,9 +5,8 @@ import Link from "next/link";
 import { programs } from "@/content/programs";
 import { getCohortById } from "@/lib/cohortsDb";
 import { isCohortRenderable } from "@/lib/cohortVisibility";
-import { getInviteByToken } from "@/lib/cohortActions";
+import { resolveEnrollGate } from "@/lib/enrollGate";
 import { getSeatsRemaining } from "@/lib/seatCount";
-import { levelWithinRange } from "@/lib/tiers";
 import { createClient } from "@/lib/supabase/server";
 import { findUnusedCredit } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
@@ -117,37 +116,16 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
 
   // Private cohorts admit a valid unexpired invite token, or — when the cohort
   // is tier-gated — a signed-in player whose coach-assigned level falls inside
-  // [level_min, level_max]. Everyone else gets the friendly gate.
-  let inviteToken: string | null = null;
-  let inviteEmail: string | null = null;
-  if (cohort.visibility === "private") {
-    let allowed = false;
-    if (tokenParam) {
-      const lookup = await getInviteByToken(cohort.id, tokenParam);
-      if (lookup.state === "valid") {
-        allowed = true;
-        inviteToken = tokenParam;
-        inviteEmail = lookup.invite.email;
-      }
-    }
-    if (!allowed && (cohort.levelMin != null || cohort.levelMax != null)) {
-      const supabase = await createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("level")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (levelWithinRange(profile?.level, cohort.levelMin, cohort.levelMax)) {
-          allowed = true;
-        }
-      }
-    }
-    if (!allowed) return <InviteGate expired={Boolean(tokenParam)} />;
+  // [level_min, level_max]. Everyone else gets the friendly gate. The same
+  // decision (src/lib/enrollGate.ts) runs again inside /api/checkout and
+  // /api/enroll/etransfer (backlog #38).
+  const gate = await resolveEnrollGate(cohort, tokenParam);
+  if (!gate.decision.allowed) {
+    if (gate.decision.status === 404) notFound();
+    return <InviteGate expired={gate.decision.expired} />;
   }
+  const inviteToken = gate.decision.via === "invite" ? tokenParam : null;
+  const inviteEmail = gate.inviteEmail;
 
   const seatsRemaining = await getSeatsRemaining(cohort.id, cohort.capacityMax);
   if (seatsRemaining !== null && seatsRemaining <= 0) notFound();
