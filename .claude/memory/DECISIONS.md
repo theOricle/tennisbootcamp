@@ -27,10 +27,12 @@ _Decisions still in force (trimmed 2026-10-08, backlog #17; superseded entries m
 **Why**: Project was started with Tailwind; consistency requires sticking with one system.
 **Alternatives considered**: CSS Modules for complex components — rejected to keep a single styling mental model.
 
-### 2026-04-19 — Google Sheets for intake (no database)
+### 2026-04-19 — Google Sheets for intake (still the lead record)
 **Decision**: Intake form submissions POST to `/api/intake` which writes to a Google Sheet via `googleapis` using a service account JWT.
 **Why**: Simple ops; gives the business owner a familiar spreadsheet interface without running a database.
 **Alternatives considered**: Airtable, Supabase — more setup than needed for MVP.
+
+**Updated since**: no longer "no database". The intake still appends its row to Sheets, and since 2026-09-08 (backlog #13) it also provisions the account in Supabase (`src/lib/intakeAccount.ts`; a failure there is logged and never fails the intake).
 
 ### 2026-04-19 — Automatic priority scoring in intake API
 **Decision**: The API route computes `priority_score` (1–3) and `lead_type` (standard / high-intent / elite) server-side before appending to Google Sheets.
@@ -47,10 +49,12 @@ _Decisions still in force (trimmed 2026-10-08, backlog #17; superseded entries m
 **Why**: Consistent import style; prevents import name drift across the codebase.
 **Alternatives considered**: Default exports — common in Next.js pages (`app/` pages are the exception and still use default exports as required by the framework).
 
-### 2026-04-25 — Lime accent on "Evolve!" in headline + Spring Intake badge
+### 2026-04-25 — Lime accent on "Evolve!" in headline + hero badge
 **Decision**: Headline reads "Where Athletes [Evolve!]" with #B4E655 lime accent on "Evolve!". A small pulsing-dot pill ("Spring Intake is Live") sits above the headline.
 **Why**: Adds brand-correct color to the hero without overusing lime; the badge creates immediacy.
 **Alternatives considered**: Whole headline in lime — too loud.
+
+**Updated since**: the badge now reads "Assessments Now Open" (`src/components/sections/Hero.tsx`); the "Spring Intake is Live" text is retired.
 
 ### 2026-04-25 — Three.js particle wave hero background (deathfang/WxNVoq port)
 **Decision**: `CourtBackground.tsx` is now a faithful port of the CodePen deathfang/WxNVoq particle-wave demo, using modern Three.js (BufferGeometry + Points + custom shader).
