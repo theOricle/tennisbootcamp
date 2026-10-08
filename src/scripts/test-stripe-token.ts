@@ -4,11 +4,17 @@
 // the webhook links a payment to its invite by row id, the resume cookie is
 // httpOnly and scoped to the cohort's enroll page, and every route sends
 // Referrer-Policy: strict-origin-when-cross-origin.
+// Backlog #34 follow-ups: the resume cookie is cleared on the success return
+// (same name, path and flags, expired), a declined invite's id never reaches
+// Stripe metadata, and the success URL's invite flag follows that id.
 
 import nextConfig, { REFERRER_POLICY } from "../../next.config";
 import {
   checkoutInviteLink,
   enrollReturnUrls,
+  enrollSuccessCohortId,
+  inviteIdForStripe,
+  inviteResumeClearCookie,
   inviteResumeCookie,
   inviteLinkFromMetadata,
   INVITE_RESUME_COOKIE,
@@ -213,6 +219,88 @@ console.log("inviteResumeCookie");
   check("lives as long as a Stripe session", cookie.maxAge, INVITE_RESUME_MAX_AGE_SECONDS);
   check("24 hours", INVITE_RESUME_MAX_AGE_SECONDS, 86400);
   check("insecure flag only when asked", inviteResumeCookie("coh_1", TOKEN, { secure: false }).secure, false);
+}
+
+console.log("inviteResumeClearCookie (#34: success return clears the cookie)");
+{
+  const set = inviteResumeCookie("coh_1", TOKEN, { secure: true });
+  const clear = inviteResumeClearCookie("coh_1", { secure: true });
+  check("same name as the cookie that was set", clear.name, set.name);
+  check("same path, so the browser matches the right cookie", clear.path, set.path);
+  check("same flags (httpOnly, sameSite, secure)", [clear.httpOnly, clear.sameSite, clear.secure], [set.httpOnly, set.sameSite, set.secure]);
+  check("expired, not re-issued", clear.maxAge, 0);
+  check("value emptied — the token is not sent back", clear.value, "");
+  check("token never appears in the clearing cookie", JSON.stringify(clear).includes(TOKEN), false);
+  check("dev flags match the dev set cookie", inviteResumeClearCookie("coh_1", { secure: false }).secure, false);
+}
+
+console.log("enrollSuccessCohortId (which path clears it)");
+{
+  check("success return", enrollSuccessCohortId("/enroll/coh_1/confirmed"), "coh_1");
+  check("trailing slash tolerated", enrollSuccessCohortId("/enroll/coh_1/confirmed/"), "coh_1");
+  check("uuid cohort id", enrollSuccessCohortId(`/enroll/${INVITE_ID}/confirmed`), INVITE_ID);
+  check("encoded id decoded", enrollSuccessCohortId("/enroll/coh%201/confirmed"), "coh 1");
+  check("the enroll page itself (cancel return) does not clear", enrollSuccessCohortId("/enroll/coh_1"), null);
+  check("enroll page with trailing slash does not clear", enrollSuccessCohortId("/enroll/coh_1/"), null);
+  check("a deeper path does not clear", enrollSuccessCohortId("/enroll/coh_1/confirmed/x"), null);
+  check("another cohort's confirmed is its own id", enrollSuccessCohortId("/enroll/coh_2/confirmed"), "coh_2");
+  check("unrelated route", enrollSuccessCohortId("/dashboard"), null);
+  check("checkout API route", enrollSuccessCohortId("/api/checkout"), null);
+  check("no cohort segment", enrollSuccessCohortId("/enroll//confirmed"), null);
+}
+
+console.log("inviteIdForStripe (#34: declined invites never reach Stripe)");
+{
+  check("invited → its id", inviteIdForStripe({ id: INVITE_ID, status: "invited" }), INVITE_ID);
+  check("expired mid-checkout → still its id (#30)", inviteIdForStripe({ id: INVITE_ID, status: "expired" }), INVITE_ID);
+  check("paid → its id (webhook double-delivery stays silent)", inviteIdForStripe({ id: INVITE_ID, status: "paid" }), INVITE_ID);
+  check("declined → nothing", inviteIdForStripe({ id: INVITE_ID, status: "declined" }), null);
+  check("no row → nothing", inviteIdForStripe(null), null);
+  check("undefined row → nothing", inviteIdForStripe(undefined), null);
+  // The route: a declined token reads "invalid" at the gate, so the id comes
+  // from findInviteIdByToken, which now returns null; Stripe gets no id and
+  // the webhook falls back to the email's live invite.
+  const declined = checkoutInviteLink({
+    lookup: { state: "invalid" },
+    idByToken: inviteIdForStripe({ id: INVITE_ID, status: "declined" }),
+  });
+  check("declined token → no id for Stripe, no resume cookie", declined, { inviteId: undefined, setResumeCookie: false });
+  const declinedParams = enrollmentSessionParams({
+    cohortId: "coh_1",
+    programTitle: "Adult Bootcamp",
+    priceCents: 21000,
+    enrollmentRowNumber: 3,
+    successUrl: `${ORIGIN}/enroll/coh_1/confirmed?row=3`,
+    cancelUrl: `${ORIGIN}/enroll/coh_1`,
+    ...declined,
+  });
+  check("declined token → empty inviteId in metadata", declinedParams.metadata?.inviteId, "");
+  check("declined token → token not in the Stripe request", JSON.stringify(declinedParams).includes(TOKEN), false);
+  check(
+    "webhook then has nothing to link by id → email fallback",
+    inviteLinkFromMetadata(declinedParams.metadata as Record<string, string>),
+    {}
+  );
+}
+
+console.log("success URL invite flag follows the id Stripe gets (#34)");
+{
+  const url = (inviteId: string | undefined) =>
+    enrollReturnUrls({
+      origin: ORIGIN,
+      cohortId: "coh_1",
+      enrollmentRowNumber: 3,
+      playerCount: 1,
+      hasInvite: Boolean(inviteId),
+    }).successUrl;
+  const valid = checkoutInviteLink({ lookup: { state: "valid", invite: { id: INVITE_ID } }, idByToken: null });
+  const expired = checkoutInviteLink({ lookup: { state: "expired" }, idByToken: INVITE_ID });
+  const declined = checkoutInviteLink({ lookup: { state: "invalid" }, idByToken: null });
+  const none = checkoutInviteLink({ lookup: null, idByToken: null });
+  check("valid invite → invite=1", url(valid.inviteId), `${ORIGIN}/enroll/coh_1/confirmed?row=3&invite=1`);
+  check("expired mid-checkout → invite=1 (still settles on its row)", url(expired.inviteId), `${ORIGIN}/enroll/coh_1/confirmed?row=3&invite=1`);
+  check("declined or unknown token → no invite flag", url(declined.inviteId), `${ORIGIN}/enroll/coh_1/confirmed?row=3`);
+  check("no token → no invite flag", url(none.inviteId), `${ORIGIN}/enroll/coh_1/confirmed?row=3`);
 }
 
 async function headerChecks() {

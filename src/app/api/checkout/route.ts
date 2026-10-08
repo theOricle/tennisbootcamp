@@ -145,8 +145,9 @@ export async function POST(req: NextRequest) {
       "https://tennisbootcamp-seven.vercel.app";
 
     // Backlog #30: Stripe gets the invite's row id, never the token. The id
-    // is resolved whatever the invite's status, so a hold that lapsed since
-    // the page loaded still settles onto its own row; the cancel-return
+    // is resolved for any status but declined (#34), so a hold that lapsed
+    // since the page loaded still settles onto its own row while a declined
+    // invite falls through to the webhook's email fallback; the cancel-return
     // cookie only when the gate would still admit the token.
     let inviteId: string | undefined;
     let setResumeCookie = false;
@@ -164,7 +165,11 @@ export async function POST(req: NextRequest) {
       cohortId,
       enrollmentRowNumber,
       playerCount: players.length,
-      hasInvite: Boolean(inviteToken),
+      // The success flag means "this payment settles onto an invite row", so
+      // it follows the id Stripe is given, not the token the body sent (#34):
+      // a token that matched nothing, or a declined invite, no longer reports
+      // itself as an invited enrollment.
+      hasInvite: Boolean(inviteId),
     });
 
     // Save to Supabase — one enrollment row per player (fire-and-forget on

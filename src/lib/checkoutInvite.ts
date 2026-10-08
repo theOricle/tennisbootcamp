@@ -56,6 +56,45 @@ export function inviteResumeCookie(
   };
 }
 
+/**
+ * Backlog #34: the resume cookie is only for a *cancelled* checkout. Once
+ * Stripe sends the player to the success page the token has done its job, so
+ * the cookie is cleared there instead of lingering for the rest of its 24 h.
+ * A browser only removes a cookie when name, path and flags match the one
+ * that was set, so this mirrors `inviteResumeCookie` attribute for attribute
+ * and expires it (`maxAge: 0`).
+ */
+export function inviteResumeClearCookie(
+  cohortId: string,
+  opts: { secure: boolean }
+): ReturnType<typeof inviteResumeCookie> {
+  return { ...inviteResumeCookie(cohortId, "", opts), maxAge: 0 };
+}
+
+/**
+ * The cohort id when `pathname` is the Stripe success return
+ * (`/enroll/<cohortId>/confirmed`), else null. Pages cannot set cookies, so
+ * the middleware uses this to clear the resume cookie on that one path.
+ */
+export function enrollSuccessCohortId(pathname: string): string | null {
+  const m = /^\/enroll\/([^/]+)\/confirmed\/?$/.exec(pathname);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * Which invite row id may go into Stripe metadata for a token lookup
+ * (backlog #34). A declined invite is never linked: the webhook would only
+ * refuse it, so the payment instead settles through the email fallback onto
+ * the email's live invite — the one sent after the decline. Invited, paid and
+ * expired rows link by id as before (#30).
+ */
+export function inviteIdForStripe(
+  row: { id: string; status: string } | null | undefined
+): string | null {
+  if (!row) return null;
+  return row.status === "declined" ? null : row.id;
+}
+
 /** What the enroll page's token gate reported, as far as checkout cares. */
 export type CheckoutInviteLookup =
   | { state: "valid"; invite: { id: string } }
@@ -86,8 +125,10 @@ export function checkoutInviteLink(params: {
 /**
  * How the webhook finds the invite a payment belongs to. New sessions carry
  * `inviteId`. The `inviteToken` read is legacy: it only serves a Stripe
- * session created before this deploy, and Stripe sessions live 24 h — remove
- * the `legacyInviteToken` branch after 2026-10-10 (24 h after deploy).
+ * session created before the #30 deploy. A session lives 24 h and Stripe
+ * retries a failed webhook delivery for up to ~3 days after that, so remove
+ * the `legacyInviteToken` branch no earlier than 2026-10-12 (≥4 days after
+ * the #30 deploy on 2026-10-08).
  */
 export function inviteLinkFromMetadata(
   metadata: Record<string, string> | null | undefined
