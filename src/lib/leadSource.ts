@@ -264,16 +264,20 @@ export function leadClickId(record: FirstTouch | null): string {
  * with = + - @ (or a tab / carriage return) would be read as a formula. A
  * campaign tag is third-party input that sits in the browser for 90 days
  * and lands in the owner's Sheet; a leading apostrophe makes Sheets store
- * it as text. It also keeps "001" from becoming the number 1.
+ * it as text. USER_ENTERED also coerces "001" to the number 1 and
+ * "2026-10-08" to a date serial, so every non-empty lead cell gets the
+ * apostrophe and all seven columns are literal text; "" stays "" so a
+ * direct visit's blank cells stay blank. Sheets hides the apostrophe.
  */
 export function asSheetText(value: string): string {
-  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return value === "" ? "" : `'${value}`;
 }
 
 /**
  * The seven cells. A missing record (no tag, no external referrer, storage
  * unavailable, or an older client) is a direct visit with everything else
- * blank. Every cell is a string and none can be read as a formula.
+ * blank. Every cell is a string; every non-empty one is apostrophe-prefixed
+ * text, so none can be read as a formula, a number or a date.
  */
 export function buildLeadSourceCells(record: FirstTouch | null): string[] {
   return [

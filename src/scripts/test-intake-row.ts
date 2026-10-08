@@ -294,9 +294,9 @@ check(
   buildIntakeRow({ ...wizard, name: "Maya Chen" }, TS, HOUSEHOLD)
 );
 check(
-  "cells 23–29: /?utm_source=instagram&utm_medium=social&utm_campaign=test",
+  "cells 23–29: /?utm_source=instagram&utm_medium=social&utm_campaign=test (text, apostrophe hidden by Sheets)",
   taggedRow.slice(22),
-  ["instagram", "social", "test", "", "", "/", "2026-10-08"]
+  ["'instagram", "'social", "'test", "", "", "'/", "'2026-10-08"]
 );
 
 const directRow = buildIntakeRow({ ...wizard, name: "Maya Chen" }, TS, HOUSEHOLD, null);
@@ -304,7 +304,7 @@ check("a direct visit still writes 29 cells", directRow.length, 29);
 check(
   "no record → source 'direct', everything else blank",
   directRow.slice(22),
-  ["direct", "", "", "", "", "", ""]
+  ["'direct", "", "", "", "", "", ""]
 );
 check(
   "a direct row's first 22 cells equal the tagged row's",
@@ -317,7 +317,7 @@ check(
   buildIntakeLeadSourceCells({
     utm_source: "google", utm_medium: "cpc", gclid: "Cj0KCQ", landing_path: "/programs", first_seen: "2026-10-08",
   }),
-  ["google", "cpc", "", "", "gclid:Cj0KCQ", "/programs", "2026-10-08"]
+  ["'google", "'cpc", "", "", "'gclid:Cj0KCQ", "'/programs", "'2026-10-08"]
 );
 check(
   "fbclid → click_id 'fbclid:…'; gclid wins when both are present",
@@ -325,26 +325,31 @@ check(
     buildIntakeLeadSourceCells({ fbclid: "IwAR1", landing_path: "/", first_seen: "2026-10-08" })[4],
     buildIntakeLeadSourceCells({ gclid: "g1", fbclid: "f1", landing_path: "/", first_seen: "2026-10-08" })[4],
   ],
-  ["fbclid:IwAR1", "gclid:g1"]
+  ["'fbclid:IwAR1", "'gclid:g1"]
 );
 check(
   "an external referrer with no utm_source → source is the referrer's host",
   buildIntakeLeadSourceCells({
     referrer_origin: "https://www.reddit.com", landing_path: "/intake", first_seen: "2026-10-08",
   }),
-  ["www.reddit.com", "", "", "", "", "/intake", "2026-10-08"]
+  ["'www.reddit.com", "", "", "", "", "'/intake", "'2026-10-08"]
 );
 check(
   "utm_source beats the referrer host",
   buildIntakeLeadSourceCells({
     utm_source: "newsletter", referrer_origin: "https://mail.google.com", landing_path: "/", first_seen: "2026-10-08",
   })[0],
-  "newsletter"
+  "'newsletter"
 );
 check(
   "utm_content lands in column 26",
   buildIntakeLeadSourceCells({ utm_source: "ig", utm_content: "reel-3", landing_path: "/", first_seen: "2026-10-08" })[3],
-  "reel-3"
+  "'reel-3"
+);
+check(
+  "utm_content=001 stays the text 001, not the number 1",
+  buildIntakeLeadSourceCells({ utm_source: "ig", utm_content: "001", landing_path: "/", first_seen: "2026-10-08" })[3],
+  "'001"
 );
 check(
   "every lead-source cell is a string",
