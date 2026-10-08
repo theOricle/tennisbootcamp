@@ -43,6 +43,7 @@ import {
   type CohortPaymentMode,
 } from "@/lib/paymentTransitions";
 import { setEnrollmentStatusByEmail, setEnrollmentCredit } from "@/lib/enrollmentSheet";
+import type { CheckoutInviteRow } from "@/lib/checkoutInvite";
 
 // Server-side cohort operations (Phase 3): invite flow with expiring holds,
 // minimum-to-run confirmation, session generation, and cancellation → make-up
@@ -513,23 +514,25 @@ async function findInviteById(cohortId: string, inviteId: string): Promise<Invit
 }
 
 /**
- * The invite row id for a token, whatever the invite's status. The checkout
- * route puts this id (never the token) in Stripe metadata (backlog #30), so a
+ * The invite row (id + status) for a token, whatever the status. The checkout
+ * route decides from it (`checkoutInviteLink`, src/lib/checkoutInvite.ts):
+ * the id — never the token — goes into Stripe metadata (backlog #30), so a
  * hold that lapses between page load and paying still settles onto its own
- * invite row instead of the email fallback.
+ * invite row instead of the email fallback; a declined row is refused before
+ * any Stripe session is created (backlog #34).
  */
-export async function findInviteIdByToken(
+export async function findInviteRefByToken(
   cohortId: string,
   token: string
-): Promise<string | null> {
+): Promise<CheckoutInviteRow | null> {
   const supabase = createServiceClient();
   const { data } = await supabase
     .from("cohort_invites")
-    .select("id")
+    .select("id, status")
     .eq("token", token)
     .eq("cohort_id", cohortId)
     .maybeSingle();
-  return (data as { id: string } | null)?.id ?? null;
+  return (data as CheckoutInviteRow | null) ?? null;
 }
 
 /**
@@ -552,9 +555,10 @@ export async function markInvitePaidAndMaybeConfirm(params: {
   cohortId: string;
   email?: string;
   /**
-   * Legacy: a Stripe session created before the backlog #30 deploy. Stripe
-   * sessions live 24 h, so remove this param and its branch below after
-   * 2026-10-10 (24 h after deploy).
+   * Legacy: a Stripe session created before the backlog #30 deploy. A session
+   * lives 24 h and Stripe retries a failed webhook delivery for up to ~3 days
+   * after that, so remove this param and its branch below no earlier than
+   * 2026-10-12 (≥4 days after the #30 deploy on 2026-10-08).
    */
   inviteToken?: string;
   inviteId?: string;
@@ -578,7 +582,8 @@ export async function markInvitePaidAndMaybeConfirm(params: {
     target = await findInviteById(cohortId, inviteId);
     if (!target && strict) return { ok: false, error: "Invite not found." };
   } else if (inviteToken) {
-    // Legacy path — remove after 2026-10-10 (24 h after the #30 deploy).
+    // Legacy path — remove no earlier than 2026-10-12 (≥4 days after the #30
+    // deploy on 2026-10-08: a 24 h session plus ~3 days of webhook retries).
     const { data } = await supabase
       .from("cohort_invites")
       .select("*")
