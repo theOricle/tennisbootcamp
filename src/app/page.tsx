@@ -14,7 +14,7 @@ import { events } from "@/content/events";
 export const metadata: Metadata = {
   title: { absolute: "Tennis Bootcamp — Where Athletes Evolve!" },
   description:
-    "Structured six-week tennis cohorts in Toronto. Start with a 20-minute on-court assessment — $20, and it comes off the price when you enroll in a program.",
+    "Weekend group tennis classes in Toronto for juniors, teens and adults. Take the 2-minute quiz and Sina places you in a group; the 20-minute assessment is optional.",
 };
 
 export default function HomePage() {

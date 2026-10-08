@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Coaches } from "@/components/sections/Coaches";
 import { coaches } from "@/content/coaches";
+import { COHORT_LENGTH, COHORT_LENGTH_ADJ, COHORT_WEEKS_WORD } from "@/content/programs";
 
 export const metadata: Metadata = {
   title: "About",
@@ -20,7 +21,7 @@ export default function AboutPage() {
           <p className="mt-5 max-w-2xl text-lg text-white/70">
             Tennis Bootcamp is not a club program or a drop-in clinic. It&apos;s a
             structured, cohort-based training model — a cohort is a fixed group
-            that trains together for six weeks. The training is serious at every
+            that trains together for {COHORT_LENGTH}. The training is serious at every
             level, from your first rally to tournament play, and every block is
             built to move specific, measurable parts of your game: technique,
             tactics, physical conditioning, and the mental game.
@@ -37,9 +38,9 @@ export default function AboutPage() {
         <div className="mt-8 grid gap-8 md:grid-cols-2">
           <div className="space-y-4 text-white/70">
             <p>
-              Each training block runs six weeks. You commit to the full cohort —
+              Each training block runs {COHORT_LENGTH}. You commit to the full cohort —
               not individual sessions — because progress in tennis compounds. Week
-              one builds the foundation that week six builds on. Drop-in attendance
+              one builds the foundation that week {COHORT_WEEKS_WORD} builds on. Drop-in attendance
               breaks that chain.
             </p>
             <p>
@@ -102,7 +103,7 @@ export default function AboutPage() {
               {
                 heading: "Not an ongoing membership class",
                 body:
-                  "Recreational programs keep you comfortable. This program keeps you challenged. Each six-week block has defined objectives — at the end you move to a harder block, not the same one again.",
+                  `Recreational programs keep you comfortable. This program keeps you challenged. Each ${COHORT_LENGTH_ADJ} block has defined objectives — at the end you move to a harder block, not the same one again.`,
               },
               {
                 heading: "Serious at every level",
