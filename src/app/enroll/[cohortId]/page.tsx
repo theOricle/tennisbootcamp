@@ -63,6 +63,9 @@ function InviteGate({ expired }: { expired: boolean }) {
                 coach-assigned level. Book a 20-minute assessment and we&apos;ll
                 build your group around your level and your schedule.
               </p>
+              <p className="mt-3 text-sm leading-relaxed text-white/65">
+                Already invited? Open the link in your invitation email.
+              </p>
             </>
           )}
           <div className="mt-6 flex flex-wrap justify-center gap-3">

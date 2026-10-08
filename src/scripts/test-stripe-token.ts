@@ -7,6 +7,7 @@
 
 import nextConfig, { REFERRER_POLICY } from "../../next.config";
 import {
+  checkoutInviteLink,
   enrollReturnUrls,
   inviteResumeCookie,
   inviteLinkFromMetadata,
@@ -127,6 +128,56 @@ console.log("enrollmentSessionParams");
   });
   check("no invite → empty inviteId, as the webhook expects", noInvite.metadata?.inviteId, "");
   check("unset price → 1 CAD placeholder unchanged", noInvite.line_items?.[0]?.price_data?.unit_amount, 100);
+}
+
+console.log("checkoutInviteLink (what the route sends Stripe and the browser)");
+{
+  check(
+    "valid invite → id in metadata and the cancel-return cookie",
+    checkoutInviteLink({ lookup: { state: "valid", invite: { id: INVITE_ID } }, idByToken: null }),
+    { inviteId: INVITE_ID, setResumeCookie: true }
+  );
+  check(
+    "invite expired between page load and paying → still its own row id, no cookie",
+    checkoutInviteLink({ lookup: { state: "expired" }, idByToken: INVITE_ID }),
+    { inviteId: INVITE_ID, setResumeCookie: false }
+  );
+  check(
+    "token matches no row → nothing for Stripe, webhook falls back to email",
+    checkoutInviteLink({ lookup: { state: "invalid" }, idByToken: null }),
+    { inviteId: undefined, setResumeCookie: false }
+  );
+  check(
+    "no token at all → nothing",
+    checkoutInviteLink({ lookup: null, idByToken: null }),
+    { inviteId: undefined, setResumeCookie: false }
+  );
+  const returnUrls = enrollReturnUrls({
+    origin: ORIGIN,
+    cohortId: "coh_1",
+    enrollmentRowNumber: 3,
+    playerCount: 1,
+    hasInvite: true,
+  });
+  const expiredParams = enrollmentSessionParams({
+    cohortId: "coh_1",
+    programTitle: "Adult Bootcamp",
+    priceCents: 21000,
+    enrollmentRowNumber: 3,
+    successUrl: returnUrls.successUrl,
+    cancelUrl: returnUrls.cancelUrl,
+    ...checkoutInviteLink({ lookup: { state: "expired" }, idByToken: INVITE_ID }),
+  });
+  check(
+    "expired-mid-checkout session still carries the invite id, never the token",
+    [expiredParams.metadata?.inviteId, JSON.stringify(expiredParams).includes(TOKEN)],
+    [INVITE_ID, false]
+  );
+  check(
+    "webhook links that session by id",
+    inviteLinkFromMetadata(expiredParams.metadata as Record<string, string>),
+    { inviteId: INVITE_ID }
+  );
 }
 
 console.log("inviteLinkFromMetadata (webhook linkage)");

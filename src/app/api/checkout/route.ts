@@ -8,8 +8,16 @@ import {
 import { getCohortById } from "@/lib/cohortsDb";
 import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { setEnrollmentCredit } from "@/lib/enrollmentSheet";
-import { getInviteByToken, markInvitePaidAndMaybeConfirm } from "@/lib/cohortActions";
-import { enrollReturnUrls, inviteResumeCookie } from "@/lib/checkoutInvite";
+import {
+  findInviteIdByToken,
+  getInviteByToken,
+  markInvitePaidAndMaybeConfirm,
+} from "@/lib/cohortActions";
+import {
+  checkoutInviteLink,
+  enrollReturnUrls,
+  inviteResumeCookie,
+} from "@/lib/checkoutInvite";
 
 const TAB = "enrollments";
 // "status" is column P (index 15, 1-based col 16)
@@ -136,13 +144,19 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_SITE_URL ??
       "https://tennisbootcamp-seven.vercel.app";
 
-    // Backlog #30: Stripe gets the invite's row id, never the token. A token
-    // that no longer resolves is treated as absent — the page already gated
-    // on it, and the email fallback in markInvitePaidAndMaybeConfirm remains.
+    // Backlog #30: Stripe gets the invite's row id, never the token. The id
+    // is resolved whatever the invite's status, so a hold that lapsed since
+    // the page loaded still settles onto its own row; the cancel-return
+    // cookie only when the gate would still admit the token.
     let inviteId: string | undefined;
+    let setResumeCookie = false;
     if (inviteToken) {
       const lookup = await getInviteByToken(cohortId, inviteToken);
-      if (lookup.state === "valid") inviteId = lookup.invite.id;
+      const idByToken =
+        lookup.state === "valid"
+          ? null
+          : await findInviteIdByToken(cohortId, inviteToken);
+      ({ inviteId, setResumeCookie } = checkoutInviteLink({ lookup, idByToken }));
     }
 
     const { successUrl, cancelUrl } = enrollReturnUrls({
@@ -241,7 +255,7 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({ sessionUrl });
     // A cancelled Stripe checkout returns to /enroll/<cohort> with no token in
     // the URL; this httpOnly cookie lets that page re-admit the invited player.
-    if (inviteToken && inviteId) {
+    if (inviteToken && setResumeCookie) {
       res.cookies.set(
         inviteResumeCookie(cohortId, inviteToken, {
           secure: process.env.NODE_ENV === "production",

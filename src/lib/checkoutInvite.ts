@@ -56,10 +56,38 @@ export function inviteResumeCookie(
   };
 }
 
+/** What the enroll page's token gate reported, as far as checkout cares. */
+export type CheckoutInviteLookup =
+  | { state: "valid"; invite: { id: string } }
+  | { state: "expired" | "invalid" };
+
+/**
+ * What the checkout route sends Stripe and sets on the browser for an invite.
+ *
+ * The metadata id comes from the token + cohort lookup regardless of status
+ * (`idByToken`): an invite that expires between page load and paying must
+ * still settle onto its own row, not fall back to the editable email. The
+ * cancel-return cookie is only worth setting while the gate would still admit
+ * the token, so it needs the lookup to be `valid`.
+ */
+export function checkoutInviteLink(params: {
+  lookup: CheckoutInviteLookup | null;
+  idByToken: string | null;
+}): { inviteId?: string; setResumeCookie: boolean } {
+  const { lookup, idByToken } = params;
+  const inviteId =
+    lookup?.state === "valid" ? lookup.invite.id : idByToken ?? undefined;
+  return {
+    inviteId,
+    setResumeCookie: lookup?.state === "valid",
+  };
+}
+
 /**
  * How the webhook finds the invite a payment belongs to. New sessions carry
- * `inviteId`; a session created before this deploy still carries the token
- * and settles the old way until it expires.
+ * `inviteId`. The `inviteToken` read is legacy: it only serves a Stripe
+ * session created before this deploy, and Stripe sessions live 24 h — remove
+ * the `legacyInviteToken` branch after 2026-10-10 (24 h after deploy).
  */
 export function inviteLinkFromMetadata(
   metadata: Record<string, string> | null | undefined
