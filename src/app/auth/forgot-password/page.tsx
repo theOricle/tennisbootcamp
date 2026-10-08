@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useBotCheck } from "@/lib/useBotCheck";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Bot protection (backlog #29): honeypot field + fill time, same as the
+  // four public forms. The route drops a tripped check silently.
+  const bot = useBotCheck();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -17,7 +21,7 @@ export default function ForgotPasswordPage() {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, ...bot.payload() }),
       });
       if (!res.ok) throw new Error();
       setSent(true);
@@ -56,6 +60,7 @@ export default function ForgotPasswordPage() {
             onSubmit={handleSubmit}
             className="space-y-5 rounded-3xl border border-white/10 bg-white/5 p-8"
           >
+            {bot.field}
             <div className="grid gap-1.5">
               <label htmlFor="fp-email" className="text-sm text-white/70">Email</label>
               <input
