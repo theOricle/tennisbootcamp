@@ -17,6 +17,7 @@ import {
   gateRefusal,
   unmatchedSignal,
   etransferRowPlan,
+  claimCredit,
   COHORT_FULL_ERROR,
   INVITE_ONLY_ERROR,
 } from "../lib/enrollGate";
@@ -205,10 +206,38 @@ console.log("unmatchedSignal — when a settled-to-nothing player reaches the in
     { warn: true, email: false }
   );
   check(
-    "invite already paid (Stripe retry) → warn only",
+    "invite already paid (Stripe retry), single player → warn only",
     unmatchedSignal({ matched: false, alreadyPaid: true, requiresInvite: true }),
     { warn: true, email: false }
   );
+  check(
+    "already paid found by participant on a household session → trusted, warn only",
+    unmatchedSignal({ matched: false, alreadyPaid: true, requiresInvite: true, byParticipant: true, playerCount: 2 }),
+    { warn: true, email: false }
+  );
+  check(
+    "already paid found by EMAIL on a household session → a sibling's paid invite, so still email",
+    unmatchedSignal({ matched: false, alreadyPaid: true, requiresInvite: true, byParticipant: false, playerCount: 2 }),
+    { warn: true, email: true }
+  );
+  check(
+    "already paid found by email, single player → trusted",
+    unmatchedSignal({ matched: false, alreadyPaid: true, requiresInvite: true, byParticipant: false, playerCount: 1 }),
+    { warn: true, email: false }
+  );
+}
+
+console.log("claimCredit — each $20 credit applies to at most one player");
+{
+  const found = { bookingId: "bk_1", creditCents: 2000 };
+  check("first player keeps the credit", claimCredit(found, []), found);
+  check("a later player who finds the same booking gets none", claimCredit(found, ["bk_1"]), null);
+  check("a different booking is still a credit", claimCredit({ bookingId: "bk_2", creditCents: 2000 }, ["bk_1"]), {
+    bookingId: "bk_2",
+    creditCents: 2000,
+  });
+  check("no credit found → none", claimCredit(null, ["bk_1"]), null);
+  check("works with a Set of claimed ids", claimCredit(found, new Set(["bk_1"])), null);
 }
 
 console.log("etransferRowPlan — one invite row per player on a transfer");
@@ -224,14 +253,14 @@ console.log("etransferRowPlan — one invite row per player on a transfer");
     ["email", "create"]
   );
   check(
-    "second player, no token, no participant → never player one's row by email; a row of their own",
+    "second player, no token, no participant → never player one's row by email; reuse a free e-transfer row, else create",
     etransferRowPlan({ hasToken: false, participantId: null, playerIndex: 1 }),
-    ["create"]
+    ["reuse", "create"]
   );
   check(
-    "third player → same",
+    "third player → same (a retry reuses, adds no rows)",
     etransferRowPlan({ hasToken: false, participantId: undefined, playerIndex: 2 }),
-    ["create"]
+    ["reuse", "create"]
   );
   check(
     "named participant → their own invite, else create (any index)",

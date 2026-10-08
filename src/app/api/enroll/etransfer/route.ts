@@ -81,7 +81,8 @@ export async function POST(req: NextRequest) {
 
     // One player per invite: a parent sending one transfer for two children
     // still ends up with two invites the coach marks paid, and the amounts
-    // add up across them (each carries its own $20 credit or none).
+    // add up across them. A $20 assessment credit applies to at most one
+    // player — the same dedupe by booking id as /api/checkout.
     const sent: EnrollParticipant[] =
       enrollmentMeta.participants && enrollmentMeta.participants.length > 0
         ? enrollmentMeta.participants
@@ -126,6 +127,8 @@ export async function POST(req: NextRequest) {
     let amountCents = 0;
     let creditCents = 0;
     let alreadyPaid = true;
+    const claimedInviteIds: string[] = [];
+    const claimedCreditBookingIds: string[] = [];
 
     for (const [i, player] of players.entries()) {
       const result = await recordEtransferIntent({
@@ -135,13 +138,18 @@ export async function POST(req: NextRequest) {
         participantId: player.participantId ?? null,
         // The single-use token belongs to the first invite only.
         inviteToken: i === 0 ? inviteToken || null : null,
-        // A later player with no token and no participant gets an invite row
-        // of their own rather than player one's (backlog #38).
+        // A later player with no token and no participant reuses a free
+        // e-transfer row for this email, else gets one of their own — never
+        // player one's (backlog #38).
         playerIndex: i,
+        claimedInviteIds,
+        claimedCreditBookingIds,
       });
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: result.status });
       }
+      claimedInviteIds.push(result.inviteId);
+      if (result.creditBookingId) claimedCreditBookingIds.push(result.creditBookingId);
       if (!first) first = result;
       amountCents += result.amountCents;
       creditCents += result.creditCents;

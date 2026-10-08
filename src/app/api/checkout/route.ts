@@ -341,6 +341,8 @@ export async function POST(req: NextRequest) {
           matched,
           alreadyPaid: Boolean(result?.alreadyPaid),
           requiresInvite: cohortRequiresInvite(cohort),
+          byParticipant: Boolean(by?.participantId),
+          playerCount: players.length,
         });
         if (signal.warn) {
           console.warn(

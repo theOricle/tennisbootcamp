@@ -70,7 +70,9 @@ export async function setEnrollmentCredit(
 // instead — never by a client-supplied row number. Best-effort.
 
 const STATUS_COL = "P";
-const READ_RANGE = "A:P";
+// A:U — the frozen columns plus the household block, whose `participant_id`
+// (col 21) scopes a flip to one player when the invite names one (#38).
+const READ_RANGE = "A:U";
 
 /**
  * Flip every enrollment row for (cohort_id, contact_email) whose status is in
@@ -82,6 +84,12 @@ export async function setEnrollmentStatusByEmail(params: {
   email: string;
   from: string[];
   to: string;
+  /**
+   * Only this player's rows (the `participant_id` column), so marking one
+   * sibling's invite paid does not flip the whole household. Without it —
+   * or on a tab without the column — every row for the email moves.
+   */
+  participantId?: string | null;
 }): Promise<number[]> {
   try {
     const sheets = getSheets();
@@ -99,6 +107,9 @@ export async function setEnrollmentStatusByEmail(params: {
     const emailCol = header.indexOf("contact_email");
     const statusCol = header.indexOf("status");
     if (cohortCol === -1 || emailCol === -1 || statusCol === -1) return [];
+    const participantCol = header.indexOf("participant_id");
+    const scopeTo =
+      params.participantId && participantCol !== -1 ? params.participantId : null;
 
     const target = params.email.trim().toLowerCase();
     const fromSet = new Set(params.from);
@@ -108,7 +119,8 @@ export async function setEnrollmentStatusByEmail(params: {
       if (
         row[cohortCol] === params.cohortId &&
         String(row[emailCol] ?? "").trim().toLowerCase() === target &&
-        fromSet.has(String(row[statusCol] ?? ""))
+        fromSet.has(String(row[statusCol] ?? "")) &&
+        (scopeTo === null || String(row[participantCol] ?? "").trim() === scopeTo)
       ) {
         changed.push(i + 1); // 1-based sheet row
       }

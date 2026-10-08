@@ -164,6 +164,8 @@ export async function POST(req: NextRequest) {
           matched,
           alreadyPaid: Boolean(result?.alreadyPaid),
           requiresInvite,
+          byParticipant: Boolean(by?.participantId),
+          playerCount: targets.length,
         });
         if (signal.warn) {
           console.warn(

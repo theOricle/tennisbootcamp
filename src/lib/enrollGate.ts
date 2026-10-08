@@ -235,23 +235,48 @@ export function unmatchedSignal(params: {
   matched: boolean;
   alreadyPaid: boolean;
   requiresInvite: boolean;
+  /** The player was looked up by their own participant id. */
+  byParticipant?: boolean;
+  /** How many players the session covered. */
+  playerCount?: number;
 }): { warn: boolean; email: boolean } {
   const { matched, alreadyPaid, requiresInvite } = params;
   if (matched) return { warn: false, email: false };
-  return { warn: true, email: requiresInvite && !alreadyPaid };
+  // `alreadyPaid` found by email is only trusted when it cannot be a sibling's
+  // paid invite: the lookup was by participant, or the session had one player.
+  const trusted =
+    alreadyPaid && (Boolean(params.byParticipant) || (params.playerCount ?? 1) === 1);
+  return { warn: true, email: requiresInvite && !trusted };
+}
+
+/**
+ * The $20 assessment credit applies to at most one player on a payment.
+ * `findUnusedCredit` by email returns the same booking for every player who
+ * names no participant, so a booking already claimed on this request counts
+ * as no credit for the next player — the same dedupe /api/checkout does.
+ */
+export function claimCredit<T extends { bookingId: string }>(
+  found: T | null,
+  claimed: Iterable<string>
+): T | null {
+  if (!found) return null;
+  for (const id of claimed) if (id === found.bookingId) return null;
+  return found;
 }
 
 // ─── E-transfer rail: which invite row a player's transfer lands on ───────────
 
-export type EtransferRowPlan = "token" | "participant" | "email" | "create";
+export type EtransferRowPlan = "token" | "participant" | "email" | "reuse" | "create";
 
 /**
  * recordEtransferIntent resolves one invite row per player. The token names
  * the first player's row; a participant names their own; the newest live
  * invite for the email serves the FIRST player only — for a later player it
- * would be player one's row, so they get a row of their own instead (backlog
- * #38). Mirrors how the rail already creates a row for a level-admitted
- * player with no invite.
+ * would be player one's row, so they first reuse a live e-transfer row for
+ * this email that names no participant and that no earlier player on this
+ * request claimed (a retry adds no rows), and only then get a row of their
+ * own (backlog #38). Mirrors how the rail already creates a row for a
+ * level-admitted player with no invite.
  */
 export function etransferRowPlan(params: {
   hasToken: boolean;
@@ -262,6 +287,7 @@ export function etransferRowPlan(params: {
   if (params.hasToken) steps.push("token");
   if (params.participantId) steps.push("participant");
   else if (params.playerIndex === 0) steps.push("email");
+  else steps.push("reuse");
   steps.push("create");
   return steps;
 }
