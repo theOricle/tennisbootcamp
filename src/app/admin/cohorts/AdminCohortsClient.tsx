@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
-import { listedPrograms as programs } from "@/content/programs";
+import { COHORT_TOTAL, COHORT_WEEKS, listedPrograms as programs } from "@/content/programs";
 import { scheduledEndDate, addDaysISO } from "@/lib/makeup";
 import { TierRangeBadges } from "@/components/tiers";
 import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
@@ -62,13 +62,13 @@ function CreateCohortForm({
   const [levelMax, setLevelMax] = useState("");
   const [locationLabel, setLocationLabel] = useState("");
   const [startDate, setStartDate] = useState("");
-  const [weeks, setWeeks] = useState(6);
+  const [weeks, setWeeks] = useState(COHORT_WEEKS);
   const [slots, setSlots] = useState<SlotDraft[]>([
     { day: "Sat", start: "12:00", end: "13:00" },
   ]);
-  // Weekend offer defaults (backlog #20): $210 for six weeks, one 60-minute
-  // session a week.
-  const [priceDollars, setPriceDollars] = useState("210");
+  // Weekend offer defaults (backlog #20, #27): the cohort total for
+  // COHORT_WEEKS weeks, one 60-minute session a week, from src/content/programs.ts.
+  const [priceDollars, setPriceDollars] = useState(String(COHORT_TOTAL));
   const [capacityMin, setCapacityMin] = useState(3);
   const [capacityMax, setCapacityMax] = useState(6);
   const [visibility, setVisibility] = useState<"private" | "public">("private");

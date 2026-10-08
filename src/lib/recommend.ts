@@ -1,5 +1,5 @@
 import type { Program, TimetableSlot } from "@/types/program";
-import { programs as allPrograms } from "@/content/programs";
+import { COHORT_LENGTH, programs as allPrograms } from "@/content/programs";
 import { AGE_BAND_LABELS, type AgeBand } from "@/lib/ageBand";
 
 // Deterministic, client-side program match for the intake quiz. It ranks
@@ -86,7 +86,7 @@ function buildReason(program: Program, form: IntakeFormSnapshot): string {
       return `${day} classes grouped by level — groundstrokes, serve and return, and net play built into rally and point play.`;
     if (goals.includes("technique"))
       return "One part of the game each week, with corrections from the coach every session.";
-    return `${day} group classes for adults, grouped by level, six weeks that build on each other.`;
+    return `${day} group classes for adults, grouped by level, ${COHORT_LENGTH} that build on each other.`;
   }
 
   return "A strong fit based on your level and goals.";

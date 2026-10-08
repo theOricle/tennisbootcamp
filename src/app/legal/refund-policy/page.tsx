@@ -6,6 +6,13 @@ import {
   EFFECTIVE_DATE,
   MAKEUP_WEEKS_FALL_2026,
 } from "@/content/policies";
+import {
+  COHORT_LENGTH,
+  COHORT_LENGTH_ADJ,
+  COHORT_TOTAL_LABEL,
+  INSTALMENT_LABEL,
+  SESSION_PRICE_LABEL,
+} from "@/content/programs";
 
 export const metadata: Metadata = {
   title: "Program Policies",
@@ -47,9 +54,9 @@ export default function RefundPolicyPage() {
           <section>
             <h2 className="mb-3 text-base font-semibold text-white">What you&apos;re buying</h2>
             <p>
-              A cohort is a fixed group that meets once a week for six weeks. Youth
+              A cohort is a fixed group that meets once a week for {COHORT_LENGTH}. Youth
               Programs, High Performance and Adult Bootcamps: one 60-minute session a
-              week, $35 a session, $210 for the six weeks. Kids&apos; Summer Camp: $499
+              week, {SESSION_PRICE_LABEL} a session, {COHORT_TOTAL_LABEL} for the {COHORT_LENGTH}. Kids&apos; Summer Camp: $499
               per week, summer only. Six players per court is the standard cap and
               eight is the maximum.
             </p>
@@ -109,7 +116,7 @@ export default function RefundPolicyPage() {
             <h2 className="mb-3 text-base font-semibold text-white">Paying in instalments</h2>
             <p>
               You can pay in full, or in two equal monthly instalments at no extra
-              cost: 2 × $105 for a six-week cohort. Tell us at <EmailLink /> when you
+              cost: 2 × {INSTALMENT_LABEL} for a {COHORT_LENGTH_ADJ} cohort. Tell us at <EmailLink /> when you
               enroll and we set it up; once it&apos;s built into checkout you&apos;ll
               pick it there. The total is identical either way. There is no uplift,
               interest, or fee for paying in two parts.
@@ -132,7 +139,7 @@ export default function RefundPolicyPage() {
               We train on the club&apos;s courts. Every player holds a current club
               membership: $100 for the season, paid by you directly to the club. It is
               not part of our price, we never charge it, and it never goes through our
-              checkout. So a $210 cohort costs a non-member $210 to us, plus $100 to
+              checkout. So a {COHORT_TOTAL_LABEL} cohort costs a non-member {COHORT_TOTAL_LABEL} to us, plus $100 to
               the club.
             </p>
           </section>

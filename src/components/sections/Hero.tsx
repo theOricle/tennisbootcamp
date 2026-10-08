@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { trackQuizCtaClick } from "@/lib/analytics";
+import { COHORT_LENGTH_ADJ } from "@/content/programs";
 
 // Code-split Three.js out of the initial bundle; never SSR the WebGL canvas.
 const CourtBackground = dynamic(
@@ -48,7 +49,7 @@ export function Hero() {
           </h1>
 
           <p className="mt-5 max-w-xl text-base text-white/75 md:text-lg">
-            Structured six-week cohorts. A system that makes progress inevitable. Built for athletes who want to compete.
+            Structured {COHORT_LENGTH_ADJ} cohorts. A system that makes progress inevitable. Built for athletes who want to compete.
           </p>
 
           <div className="mt-8 flex flex-col items-start gap-3">
