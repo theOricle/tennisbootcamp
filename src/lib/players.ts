@@ -8,6 +8,7 @@ import {
   type Availability,
   type AvailabilitySource,
 } from "@/lib/availability";
+import { RELATIONSHIPS, isRelationship, type Relationship } from "@/lib/participantInput";
 
 // The one place level + availability are read from and written to.
 //
@@ -30,8 +31,11 @@ import {
 export const PLAYER_TABLE = "profiles";
 export const PARTICIPANT_TABLE = "participants";
 
-export const RELATIONSHIPS = ["self", "child", "spouse", "other"] as const;
-export type Relationship = (typeof RELATIONSHIPS)[number];
+// The relationship vocabulary lives in the pure src/lib/participantInput.ts
+// (backlog #24) so the forms' create rule can be tested without Supabase;
+// re-exported here so every existing caller keeps importing it from players.
+export { RELATIONSHIPS, isRelationship };
+export type { Relationship };
 
 export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
   self: "Myself",
@@ -39,10 +43,6 @@ export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
   spouse: "My spouse or partner",
   other: "Someone else",
 };
-
-export function isRelationship(x: unknown): x is Relationship {
-  return typeof x === "string" && (RELATIONSHIPS as readonly string[]).includes(x);
-}
 
 const PARTICIPANT_COLUMNS =
   "id, account_id, full_name, relationship, is_minor, level, level_assessed_at, " +

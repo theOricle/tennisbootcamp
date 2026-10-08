@@ -13,6 +13,12 @@ import {
   isRelationship,
   type Relationship,
 } from "@/lib/players";
+import {
+  cleanParticipantName,
+  newParticipantInput,
+  plannedAdditions,
+  type ParticipantInput,
+} from "@/lib/participantInput";
 
 // "Who is this for?" resolved on the server (backlog #11).
 //
@@ -22,20 +28,16 @@ import {
 //
 // The rules:
 //   • A signed-in holder may only name a participant on their own account.
+//   • A signed-in holder may also add someone (backlog #24): a typed block
+//     becomes a participant under the session's account — the same create
+//     the guest path uses, and never an account the request body names.
 //   • A guest booking for themselves behaves exactly as it did before — the
 //     participant is resolved (or created) when their account is provisioned.
 //   • A guest booking for someone else needs an account to hang that person
 //     off, so one is created silently here. No email is sent from this module;
 //     each flow keeps its own "set your password" moment.
 
-export type ParticipantInput = {
-  name?: unknown;
-  relationship?: unknown;
-  isMinor?: unknown;
-  /** "adult" | "teen" | "junior", asked per person since backlog #14. */
-  ageBand?: unknown;
-  selfLevel?: unknown;
-};
+export type { ParticipantInput };
 
 export type ResolvedParticipant = {
   accountId: string | null;
@@ -62,9 +64,7 @@ export type ResolvedParticipant = {
   accountCreated: boolean;
 };
 
-function cleanName(v: unknown): string {
-  return typeof v === "string" ? v.trim().slice(0, 120) : "";
-}
+const cleanName = cleanParticipantName;
 
 /** The signed-in user, or null. Never throws — a guest form must still work. */
 export async function currentUser(): Promise<{ id: string; email: string } | null> {
@@ -144,6 +144,40 @@ export async function resolveSubmissionParticipant(input: {
       ? await getParticipant(requested).catch(() => null)
       : null;
     if (participant && participant.account_id !== accountId) participant = null;
+
+    // Adding someone (backlog #24): no id, a typed block naming a person other
+    // than the holder. The create is the guest path's create, and the account
+    // is the session's — `accountId` here is `input.signedInUserId`, never a
+    // value from the body. A create that fails is reported as unresolved
+    // (participantId null, the typed name on the row) rather than quietly
+    // becoming a row about the holder.
+    const addition = requested ? null : newParticipantInput(accountId, block);
+    if (!participant && addition) {
+      await ensureSelfParticipant(accountId, {
+        fullName: account?.name ?? holderName,
+      }).catch(() => null);
+      const created = await createParticipant(addition).catch(() => null);
+      if (created?.ok) {
+        participant = created.participant;
+      } else {
+        console.error(
+          "Could not add a participant from the quiz (non-blocking):",
+          created && !created.ok ? created.error : "unknown"
+        );
+        return {
+          accountId,
+          participantId: null,
+          participantName: addition.fullName,
+          relationship: addition.relationship,
+          accountName: account?.name?.trim() || holderName,
+          accountEmail: account?.email || holderEmail,
+          selfLevel,
+          ...own,
+          accountCreated: false,
+        };
+      }
+    }
+
     if (!participant) {
       participant = await ensureSelfParticipant(accountId, {
         fullName: account?.name ?? holderName,
@@ -210,12 +244,16 @@ export async function resolveSubmissionParticipant(input: {
   }).catch(() => undefined);
   await ensureSelfParticipant(accountId, { fullName: holderName }).catch(() => null);
 
-  const created = await createParticipant({
-    accountId,
-    fullName: blockName || "Player",
-    relationship: blockRelationship,
-    isMinor: block?.isMinor === true,
-  });
+  // The same create the signed-in add uses (backlog #24); the name fallback
+  // and the account it lands on are exactly what they were.
+  const created = await createParticipant(
+    newParticipantInput(accountId, { ...block, name: blockName || "Player" }) ?? {
+      accountId,
+      fullName: blockName || "Player",
+      relationship: blockRelationship,
+      isMinor: block?.isMinor === true,
+    }
+  );
   const account = await getAccount(accountId).catch(() => null);
 
   return {
@@ -264,16 +302,29 @@ export async function resolveSubmissionParticipants(input: {
       !Array.isArray(input.participantProfiles)
         ? (input.participantProfiles as Record<string, ParticipantInput>)
         : {};
-    const list = ids.length > 0 ? ids : [null];
+    // Chosen people first, then anyone the holder is adding (backlog #24).
+    // An addition is a typed block with no id; it is created under
+    // `input.signedInUserId` inside resolveSubmissionParticipant. A block
+    // naming nobody, or naming the holder, adds no one — the holder is picked
+    // from the list, never created twice.
+    const entries: { id: string | null; block: ParticipantInput | null }[] = [
+      // The signed-in branch takes the name and relationship from the
+      // participant row; only the age band and self-estimate come from here.
+      ...ids.map((id) => ({ id, block: profiles[id] ?? null })),
+      ...plannedAdditions(input.signedInUserId, input.participants).map((a) => ({
+        id: null,
+        block: a.block,
+      })),
+    ];
+    if (entries.length === 0) entries.push({ id: null, block: null });
     const out: ResolvedParticipant[] = [];
-    for (const id of list) {
+    // Sequential on purpose: each create lands before the next is attempted.
+    for (const entry of entries) {
       out.push(
         await resolveSubmissionParticipant({
           signedInUserId: input.signedInUserId,
-          participantId: id,
-          // The signed-in branch takes the name and relationship from the
-          // participant row; only the age band and self-estimate come from here.
-          participant: id ? (profiles[id] ?? null) : null,
+          participantId: entry.id,
+          participant: entry.block,
           holderName: input.holderName,
           holderEmail: input.holderEmail,
           holderPhone: input.holderPhone,

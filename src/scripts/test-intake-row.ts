@@ -259,6 +259,46 @@ check(
   [["dana@example.com", "Dana Chen"], ["dana@example.com", "Dana Chen"]]
 );
 
+// A player added from the quiz by a signed-in holder (backlog #24) is just
+// another participant: the route hands buildIntakeRow the same five household
+// values it always has, so the row is shaped exactly like a chosen player's.
+const ADDED_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+const addedChild = buildIntakeRow(
+  { ...wizard, name: "Noah Chen", who: "youth", level: "new" },
+  TS,
+  { ...HOUSEHOLD, participantName: "Noah Chen", participantId: ADDED_ID }
+);
+check("an added player's row has 22 cells", addedChild.length, 22);
+check(
+  "an added player's cells 1–17 are the frozen contract",
+  addedChild.slice(0, 17),
+  buildIntakeRow({ ...wizard, name: "Noah Chen", who: "youth", level: "new" }, TS)
+);
+check("an added player's cells 18–22 are the holder's account and the new participant", addedChild.slice(17), [
+  "dana@example.com",
+  "Dana Chen",
+  "Noah Chen",
+  "child",
+  ADDED_ID,
+]);
+// Same age band and self-estimate as `junior` above, so only the name cells
+// (2, 20) and the participant id (22) can differ.
+check(
+  "an added player and a chosen player differ only in cols 2, 20 and 22",
+  addedChild
+    .map((cell, i) => (cell === junior[i] ? null : i + 1))
+    .filter((i): i is number => i !== null),
+  [2, 20, 22]
+);
+// The route reports a create that failed as participantId null: the typed
+// name still lands on the row and nothing shifts.
+const addFailed = buildIntakeRow(
+  { ...wizard, name: "Noah Chen", who: "youth", level: "new" },
+  TS,
+  { ...HOUSEHOLD, participantName: "Noah Chen", participantId: null }
+);
+check("a failed add still writes 22 cells with an empty participant_id", [addFailed.length, addFailed[21]], [22, ""]);
+
 // No household → exactly the pre-#11 row, unchanged.
 check(
   "omitting the household yields exactly 17 cells",

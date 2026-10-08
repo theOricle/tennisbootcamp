@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npx tsx src/scripts/test-recommend.ts && npx tsx src/scripts/test-makeup.ts && npx tsx src/scripts/test-intake-row.ts && npx tsx src/scripts/test-availability-matrix.ts && npx tsx src/scripts/test-etransfer.ts && npx tsx src/scripts/test-cohort-visibility.ts && npx tsx src/scripts/test-invite-delivery.ts && npx tsx src/scripts/test-privacy.ts && npx tsx src/scripts/test-bot-check.ts && npx tsx src/scripts/test-intake-guard.ts && npx tsx src/scripts/test-lead-source.ts && npx tsx src/scripts/test-cohort-length.ts && npx tsx src/scripts/test-structured-data.ts",
+    "test": "npx tsx src/scripts/test-recommend.ts && npx tsx src/scripts/test-makeup.ts && npx tsx src/scripts/test-intake-row.ts && npx tsx src/scripts/test-availability-matrix.ts && npx tsx src/scripts/test-etransfer.ts && npx tsx src/scripts/test-cohort-visibility.ts && npx tsx src/scripts/test-invite-delivery.ts && npx tsx src/scripts/test-privacy.ts && npx tsx src/scripts/test-bot-check.ts && npx tsx src/scripts/test-intake-guard.ts && npx tsx src/scripts/test-lead-source.ts && npx tsx src/scripts/test-cohort-length.ts && npx tsx src/scripts/test-structured-data.ts && npx tsx src/scripts/test-household-add.ts",
     "agent:run": "node ops/controller/run-task.mjs"
   },
   "dependencies": {

@@ -613,6 +613,7 @@ function IntakePageInner() {
                 onChange={(next) => setForm((s) => ({ ...s, household: next }))}
                 multiple
                 collectProfile
+                addInline
               />
             ) : null}
 
