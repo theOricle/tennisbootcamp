@@ -1,12 +1,12 @@
 ﻿import type { Metadata } from "next";
-import { listedPrograms } from "@/content/programs";
+import { COHORT_LENGTH_ADJ, SESSION_PRICE_LABEL, listedPrograms } from "@/content/programs";
 import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 
 export const metadata: Metadata = {
   title: "Programs",
   description:
-    "Weekend tennis classes in Toronto: Youth Programs, High Performance and Adult Bootcamps. Once a week, 60 minutes, six-week cohorts, $35 a session.",
+    `Weekend tennis classes in Toronto: Youth Programs, High Performance and Adult Bootcamps. Once a week, 60 minutes, ${COHORT_LENGTH_ADJ} cohorts, ${SESSION_PRICE_LABEL} a session.`,
 };
 
 export default function ProgramsPage() {

@@ -2,11 +2,56 @@ import type { Program } from "@/types/program";
 import { AGE_BAND_LABELS } from "@/lib/ageBand";
 
 // Weekend offer (backlog #20, owner decision 2026-10-01): once a week, 60
-// minutes, six-week cohorts. Homepage cards are programs.slice(0, 3), so the
-// order of the first three entries is the order visitors see.
+// minutes, fixed-length cohorts. Homepage cards are programs.slice(0, 3), so
+// the order of the first three entries is the order visitors see.
+
+// Cohort length and price, one setting (backlog #27, owner 2026-10-03). Every
+// page, email, metadata line and the admin new-cohort default reads these.
+/** Price of one weekend class, in whole CAD dollars. */
+export const SESSION_PRICE: number = 35;
+/**
+ * Weeks in one cohort. Changing it changes the Program Policies text
+ * (/legal/refund-policy), so set EFFECTIVE_DATE in src/content/policies.ts to
+ * the merge day in the same PR.
+ */
+export const COHORT_WEEKS: number = 6;
+
+const NUMBER_WORDS = [
+  "zero", "one", "two", "three", "four", "five", "six",
+  "seven", "eight", "nine", "ten", "eleven", "twelve",
+] as const;
+
+/** 1 to 12 in words ("six", "three"); larger numbers fall back to digits. */
+export function numberInWords(n: number): string {
+  return Number.isInteger(n) && n >= 1 && n <= 12 ? NUMBER_WORDS[n] : String(n);
+}
+
+/** Whole dollars as "$210", anything else as "$52.50". */
+export function formatDollars(amount: number): string {
+  return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`;
+}
+
+/** Cohort total in CAD dollars (SESSION_PRICE × COHORT_WEEKS). */
+export const COHORT_TOTAL = SESSION_PRICE * COHORT_WEEKS;
+export const COHORT_TOTAL_CENTS = COHORT_TOTAL * 100;
+/** One of two equal instalments: half the cohort total. */
+export const INSTALMENT_AMOUNT = COHORT_TOTAL / 2;
+
+/** "six" */
+export const COHORT_WEEKS_WORD = numberInWords(COHORT_WEEKS);
+/** "six weeks" */
+export const COHORT_LENGTH = `${COHORT_WEEKS_WORD} week${COHORT_WEEKS === 1 ? "" : "s"}`;
+/** "six-week" (adjective: "six-week cohorts") */
+export const COHORT_LENGTH_ADJ = `${COHORT_WEEKS_WORD}-week`;
+/** "$35" */
+export const SESSION_PRICE_LABEL = formatDollars(SESSION_PRICE);
+/** "$210" */
+export const COHORT_TOTAL_LABEL = formatDollars(COHORT_TOTAL);
+/** "$105" */
+export const INSTALMENT_LABEL = formatDollars(INSTALMENT_AMOUNT);
 
 const PRICE_LINE =
-  "$35 a session, $210 for the six weeks. If you took the $20 assessment, that $20 comes off the price.";
+  `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. If you took the $20 assessment, that $20 comes off the price.`;
 
 // The assessment is optional: Sina places each player (backlog #20 review).
 export const PLACEMENT_LINE =
@@ -19,7 +64,7 @@ export const programs: Program[] = [
     title: "Youth Programs",
     description: "Saturday group classes for juniors and teens, grouped by age and level.",
     longDescription:
-      "Each cohort is a fixed group that trains together for six weeks, one 60-minute class every Saturday. " +
+      `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one 60-minute class every Saturday. ` +
       `${AGE_BAND_LABELS.junior} players train at 12:00 and ${AGE_BAND_LABELS.teen} players at 1:00, and each class is grouped by level, so a first-season player and a club player are not on the same drill. ` +
       "Every class works the fundamentals — forehand, backhand, serve, volley and movement — and puts them into rally and point play the same day. " +
       PLACEMENT_LINE,
@@ -28,8 +73,8 @@ export const programs: Program[] = [
     ctaText: "View Program",
     ctaHref: "/programs/youth-programs",
     imageSrc: "/images/programs/kids-summer-camp.png",
-    schedule: "Once a week · 60 minutes · six-week cohorts · Saturdays 12:00 and 1:00",
-    priceCents: 21000,
+    schedule: `Once a week · 60 minutes · ${COHORT_LENGTH_ADJ} cohorts · Saturdays 12:00 and 1:00`,
+    priceCents: COHORT_TOTAL_CENTS,
     currency: "CAD",
     ageGroup: `${AGE_BAND_LABELS.junior} · ${AGE_BAND_LABELS.teen}`,
     priceLine: PRICE_LINE,
@@ -38,7 +83,7 @@ export const programs: Program[] = [
       { day: "Saturday", time: "1:00–2:00 pm", group: AGE_BAND_LABELS.teen },
     ],
     includes: [
-      "One 60-minute class a week for six weeks",
+      `One 60-minute class a week for ${COHORT_LENGTH}`,
       "Juniors and teens in separate classes",
       "Grouped by level within each class",
       "Forehand, backhand, serve and volley fundamentals",
@@ -52,7 +97,7 @@ export const programs: Program[] = [
     title: "High Performance",
     description: "A Saturday class for competitive and elite players, at any age.",
     longDescription:
-      "One 60-minute class every Saturday at 2:00, in six-week cohorts. This is the competitive tier: players who already compete, or are training to, whatever their age. " +
+      `One 60-minute class every Saturday at 2:00, in ${COHORT_LENGTH_ADJ} cohorts. This is the competitive tier: players who already compete, or are training to, whatever their age. ` +
       "Classes are built around live-ball pattern play, serve plus the next shot, building points on purpose, and match play with the score on. " +
       PLACEMENT_LINE,
     type: "Weekend group class",
@@ -60,8 +105,8 @@ export const programs: Program[] = [
     ctaText: "View Program",
     ctaHref: "/programs/high-performance",
     imageSrc: "/images/programs/bootcamps.png",
-    schedule: "Once a week · 60 minutes · six-week cohorts · Saturdays 2:00",
-    priceCents: 21000,
+    schedule: `Once a week · 60 minutes · ${COHORT_LENGTH_ADJ} cohorts · Saturdays 2:00`,
+    priceCents: COHORT_TOTAL_CENTS,
     currency: "CAD",
     ageGroup: "Competitive and elite players · any age",
     priceLine: PRICE_LINE,
@@ -69,7 +114,7 @@ export const programs: Program[] = [
       { day: "Saturday", time: "2:00–3:00 pm", group: "Competitive and elite players" },
     ],
     includes: [
-      "One 60-minute class a week for six weeks",
+      `One 60-minute class a week for ${COHORT_LENGTH}`,
       "Live-ball pattern play (cross-court, inside-out)",
       "Serve plus the next shot",
       "Second-serve reliability under pressure",
@@ -85,17 +130,17 @@ export const programs: Program[] = [
     title: "Adult Bootcamps",
     description: "Sunday group classes for adults, in three levels back to back.",
     longDescription:
-      "Each cohort is a fixed group that trains together for six weeks, one 60-minute class every Sunday. " +
+      `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one 60-minute class every Sunday. ` +
       "Three levels run back to back: 4:00 for newer players, 5:00 for intermediate, 6:00 for advanced. " +
-      "Each class works one part of the game — groundstrokes, serve and return, net play, rally and point play — and the six weeks build on each other. " +
+      `Each class works one part of the game — groundstrokes, serve and return, net play, rally and point play — and the ${COHORT_LENGTH} build on each other. ` +
       PLACEMENT_LINE,
     type: "Weekend group class",
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/bootcamps",
     imageSrc: "/images/programs/group-lessons.png",
-    schedule: "Once a week · 60 minutes · six-week cohorts · Sundays 4:00, 5:00 and 6:00",
-    priceCents: 21000,
+    schedule: `Once a week · 60 minutes · ${COHORT_LENGTH_ADJ} cohorts · Sundays 4:00, 5:00 and 6:00`,
+    priceCents: COHORT_TOTAL_CENTS,
     currency: "CAD",
     ageGroup: AGE_BAND_LABELS.adult,
     priceLine: PRICE_LINE,
@@ -105,7 +150,7 @@ export const programs: Program[] = [
       { day: "Sunday", time: "6:00–7:00 pm", group: "Advanced" },
     ],
     includes: [
-      "One 60-minute class a week for six weeks",
+      `One 60-minute class a week for ${COHORT_LENGTH}`,
       "Three levels: newer, intermediate, advanced",
       "Groundstrokes, serve and return, net play",
       "Rally and point play every class",
