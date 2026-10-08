@@ -379,10 +379,20 @@ export async function listAccounts(): Promise<Map<string, AccountInfo>> {
   const supabase = createServiceClient();
   const [profiles, users] = await Promise.all([
     readAllProfiles(supabase).catch(() => [] as RawProfile[]),
-    // Every page of users (backlog #37) — a failed page yields what was read.
+    // Every page of users (backlog #37) — a failed page yields what was read,
+    // a thrown call yields none; either way the admin view says so in the
+    // log (counts only, never an address) and still renders.
     listAllAuthUsers(supabase).then(
-      (r) => r.users,
-      () => []
+      (r) => {
+        if (!r.complete) {
+          console.warn("[listAccounts] auth user list incomplete —", r.users.length, "users read");
+        }
+        return r.users;
+      },
+      () => {
+        console.warn("[listAccounts] auth user list unavailable — 0 users read");
+        return [];
+      }
     ),
   ]);
   const byId = new Map<string, AccountInfo>();

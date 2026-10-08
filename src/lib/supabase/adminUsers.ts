@@ -22,8 +22,8 @@ export type AdminUser = {
 };
 
 type ListUsersResult<U extends AdminUser> =
-  | { data: { users: U[] }; error: null }
-  | { data: { users: never[] } | null; error: { status?: number } | null };
+  | { data: { users: U[]; total?: number }; error: null }
+  | { data: { users: never[]; total?: number } | null; error: { status?: number } | null };
 
 /** The one admin call these helpers use, as supabase-js exposes it. */
 export type AdminUsersClient<U extends AdminUser = AdminUser> = {
@@ -47,21 +47,28 @@ export function normalizeEmail(email: string): string {
 
 /**
  * Walks the user list page by page, calling `onPage` for each. Stops when
- * `onPage` returns true, on a short page (the last one), on an error, or at
- * ADMIN_USERS_MAX_PAGES. Logs are PII-free: counts and statuses only.
+ * `onPage` returns true, on a short page (the last one), on an error
+ * response, or at ADMIN_USERS_MAX_PAGES. Logs are PII-free: counts and
+ * statuses only.
+ *
+ * A *thrown* listUsers (network, bad config) propagates, exactly as the
+ * one-page call did on main: provisionIntakeAccount's outer catch turns it
+ * into account:"skipped" (no second set-password email), and every other
+ * caller either catches it or did not catch it before either. Only an error
+ * *response* is swallowed to "incomplete", as before.
+ *
+ * The short page is the stop signal rather than auth-js's `nextPage` (its
+ * parsing of the Link header is unreliable from page 10 on). Backstop: when
+ * the response carries a numeric `total` and the walk ends short of it,
+ * warn — counts only, never an address.
  */
 async function walkUsers<U extends AdminUser>(
   client: AdminUsersClient<U>,
   onPage: (users: U[]) => boolean
 ): Promise<{ complete: boolean; stopped: boolean }> {
+  let seen = 0;
   for (let page = 1; page <= ADMIN_USERS_MAX_PAGES; page++) {
-    let result: ListUsersResult<U>;
-    try {
-      result = await client.auth.admin.listUsers({ page, perPage: ADMIN_USERS_PER_PAGE });
-    } catch {
-      console.error("[adminUsers] listUsers threw on page", page);
-      return { complete: false, stopped: false };
-    }
+    const result = await client.auth.admin.listUsers({ page, perPage: ADMIN_USERS_PER_PAGE });
     if (result.error || !result.data) {
       console.error(
         "[adminUsers] listUsers failed on page",
@@ -73,8 +80,23 @@ async function walkUsers<U extends AdminUser>(
       return { complete: false, stopped: false };
     }
     const users = result.data.users as U[];
+    seen += users.length;
     if (onPage(users)) return { complete: true, stopped: true };
-    if (users.length < ADMIN_USERS_PER_PAGE) return { complete: true, stopped: false };
+    if (users.length < ADMIN_USERS_PER_PAGE) {
+      const total = result.data.total;
+      if (typeof total === "number" && Number.isFinite(total) && seen < total) {
+        console.warn(
+          "[adminUsers] short page",
+          page,
+          "ended the walk at",
+          seen,
+          "users but the server reports",
+          total
+        );
+        return { complete: false, stopped: false };
+      }
+      return { complete: true, stopped: false };
+    }
   }
   console.warn(
     "[adminUsers] page cap reached after",
@@ -86,8 +108,9 @@ async function walkUsers<U extends AdminUser>(
 
 /**
  * The auth user whose email matches (trimmed, case-insensitive), or null
- * when there is none, the email is blank, or a page failed. Pages until
- * found or the list runs out, so the 200-user ceiling is gone.
+ * when there is none, the email is blank, or a page returned an error.
+ * Pages until found or the list runs out, so the 200-user ceiling is gone.
+ * Throws only when listUsers itself throws (see walkUsers).
  */
 export async function findAuthUserByEmail<U extends AdminUser>(
   client: AdminUsersClient<U>,
@@ -103,7 +126,11 @@ export async function findAuthUserByEmail<U extends AdminUser>(
   return found;
 }
 
-/** Every auth user, across all pages. `complete` is false on a cut-off list. */
+/**
+ * Every auth user, across all pages. `complete` is false on a cut-off list
+ * (error response, page cap, or a short page below the server's total).
+ * Throws only when listUsers itself throws (see walkUsers).
+ */
 export async function listAllAuthUsers<U extends AdminUser>(
   client: AdminUsersClient<U>
 ): Promise<ListAllUsersResult<U>> {

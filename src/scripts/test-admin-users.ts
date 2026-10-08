@@ -43,6 +43,8 @@ type FakeOptions = {
   errorOnPage?: number;
   /** Ignore the short-page rule and keep serving full pages forever. */
   endless?: boolean;
+  /** The `total` (x-total-count) to report; omitted = header absent. */
+  total?: number;
 };
 
 function makeUsers(count: number, prefix = "user"): FakeUser[] {
@@ -70,7 +72,9 @@ function fakeClient(all: FakeUser[], opts: FakeOptions = {}) {
             return { data: { users: makeUsers(perPage, `p${page}`) }, error: null };
           }
           const start = (page - 1) * perPage;
-          return { data: { users: all.slice(start, start + perPage) }, error: null };
+          const data: { users: FakeUser[]; total?: number } = { users: all.slice(start, start + perPage) };
+          if (opts.total !== undefined) data.total = opts.total;
+          return { data, error: null };
         },
       },
     },
@@ -160,10 +164,32 @@ async function main() {
     check("the log carries the page and status, not the address", /page 2.*status 500/.test(lines[0]) && !/example\.com/.test(lines[0]), true);
   }
   {
-    const { client } = fakeClient(makeUsers(2350), { throwOnPage: 1 });
-    const { result, lines } = await captureConsole(() => findAuthUserByEmail(client, "user1@example.com"));
-    check("a thrown listUsers → null, nothing escapes", result, null);
-    check("the throw is logged without the address or the error message", lines.length === 1 && !/example\.com|network down/.test(lines[0]), true);
+    // A *thrown* listUsers propagates, as the one-page call did on main —
+    // provisionIntakeAccount's outer catch turns it into account:"skipped".
+    const { client, calls } = fakeClient(makeUsers(2350), { throwOnPage: 2 });
+    const { result, lines } = await captureConsole(() =>
+      findAuthUserByEmail(client, "user2222@example.com").then(
+        () => "resolved",
+        (err: unknown) => (err instanceof Error ? err.message : "rejected")
+      )
+    );
+    check("a thrown listUsers propagates to the caller (main's behaviour)", result, "network down");
+    check("no page read after the throw", calls.map((c) => c.page), [1, 2]);
+    check("the helper logs nothing for a throw (the caller owns that)", lines, []);
+  }
+  {
+    // Backstop for the short-page stop: the server's total says more exist.
+    const { client, calls } = fakeClient(makeUsers(1300), { total: 1300 });
+    const { result, lines } = await captureConsole(() => findAuthUserByEmail(client, "nobody@example.com"));
+    check("short page matching the server total → null, no warning", [result, lines.length], [null, 0]);
+    check("two pages read", calls.map((c) => c.page), [1, 2]);
+  }
+  {
+    // 300 users served but the server says 1300: the short page lied.
+    const { client } = fakeClient(makeUsers(300), { total: 1300 });
+    const { result, lines } = await captureConsole(() => findAuthUserByEmail(client, "nobody@example.com"));
+    check("short page below the server total → still null", result, null);
+    check("the gap is warned about with counts only, no address", lines.length === 1 && /300.*1300/.test(lines[0]) && !/example\.com/.test(lines[0]), true);
   }
   {
     const { client, calls } = fakeClient([], { endless: true });
@@ -200,8 +226,22 @@ async function main() {
   }
   {
     const { client } = fakeClient(makeUsers(2350), { throwOnPage: 1 });
-    const { result: r } = await captureConsole(() => listAllAuthUsers(client));
-    check("throw on page 1 → empty, incomplete, no throw", r, { users: [], complete: false });
+    const outcome = await listAllAuthUsers(client).then(
+      () => "resolved",
+      (err: unknown) => (err instanceof Error ? err.message : "rejected")
+    );
+    check("throw on page 1 propagates (listAccounts catches it to [])", outcome, "network down");
+  }
+  {
+    const { client } = fakeClient(makeUsers(2350), { total: 2350 });
+    const { result: r, lines } = await captureConsole(() => listAllAuthUsers(client));
+    check("short page matching the server total → complete, no warning", [r.users.length, r.complete, lines.length], [2350, true, 0]);
+  }
+  {
+    const { client } = fakeClient(makeUsers(300), { total: 1300 });
+    const { result: r, lines } = await captureConsole(() => listAllAuthUsers(client));
+    check("short page below the server total → what was read, flagged incomplete", [r.users.length, r.complete], [300, false]);
+    check("the backstop warning carries counts only", lines.length === 1 && /300.*1300/.test(lines[0]) && !/example\.com/.test(lines[0]), true);
   }
   {
     const { client, calls } = fakeClient([], { endless: true });
@@ -221,6 +261,21 @@ async function main() {
   check("the reset-password route no longer calls listUsers directly", /listUsers\(/.test(routeSrc), false);
   check("the reset-password route looks up through the helper", /findAuthUserByEmail\(supabase, email\)/.test(routeSrc), true);
   check("the route's lookup still fails open (no early return on !user)", /if \(!user\)/.test(routeSrc), false);
+  check("the route catches a thrown lookup (fail open inside after())", /findAuthUserByEmail\(supabase, email\)\.catch\(\(\) => null\)/.test(routeSrc), true);
+  check("listAccounts warns (counts only) when the list is incomplete", /if \(!r\.complete\)[\s\S]*?console\.warn\([^;]*r\.users\.length/.test(playersSrc), true);
+  check("listAccounts degrades a thrown list to [] with a warning", /\(\) => \{\s*console\.warn\([^;]*\);\s*return \[\];/.test(playersSrc), true);
+  check("no listAccounts log line names a user or an email", /\[listAccounts\][^;]*(?:email|\.name|\.id)/.test(playersSrc), false);
+  const intakeSrc = readFileSync(join(root, "src", "lib", "intakeAccount.ts"), "utf8");
+  check(
+    "intake's lookup sits inside provisionIntakeAccount's try, so a throw becomes account:\"skipped\"",
+    (() => {
+      const tryAt = intakeSrc.indexOf("try {");
+      const lookup = intakeSrc.indexOf("await findUserIdByEmail(email)");
+      const catchAt = intakeSrc.indexOf("} catch", lookup);
+      return tryAt > 0 && lookup > tryAt && catchAt > lookup;
+    })(),
+    true
+  );
   check("the helper's only listUsers calls page at ADMIN_USERS_PER_PAGE", (helperSrc.match(/listUsers\(/g) ?? []).length === 2 && /listUsers\(\{ page, perPage: ADMIN_USERS_PER_PAGE \}\)/.test(helperSrc), true);
   check("the helper is testable outside Next (no server-only import)", /import "server-only"/.test(helperSrc), false);
   check(
