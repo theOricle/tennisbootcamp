@@ -6,7 +6,7 @@
 import type { Program } from "@/types/program";
 import { site } from "@/content/site";
 import { coaches } from "@/content/coaches";
-import { COHORT_WEEKS, SESSION_PRICE } from "@/content/programs";
+import { COHORT_WEEKS, SESSION_MINUTES, SESSION_PRICE } from "@/content/programs";
 import { SITE_URL } from "@/lib/siteUrl";
 
 export type JsonLdObject = { [key: string]: unknown };
@@ -33,28 +33,36 @@ export function organizationJsonLd(): JsonLdObject {
   };
 }
 
+/** Minutes as an ISO 8601 duration: 60 is "PT1H", 360 is "PT6H", 90 is "PT90M". */
+export function isoDuration(minutes: number): string {
+  return minutes % 60 === 0 ? `PT${minutes / 60}H` : `PT${minutes}M`;
+}
+
 /**
- * Course for one /programs/[slug] page. Programs with a weekend timetable
- * carry an Offer (price per session, CAD, for a COHORT_WEEKS-session cohort);
- * coming-soon programs have no stated session price, so they carry none.
+ * Course for one /programs/[slug] page, or null when the program has no
+ * stated session price (coming soon, or no weekend timetable): Course markup
+ * needs an Offer, and we don't invent one.
+ *
+ * The Offer is the price per session, CAD, for a COHORT_WEEKS-session cohort.
+ * The CourseInstance runs weekly, COHORT_WEEKS times, SESSION_MINUTES each.
+ * No location: there is no public venue address.
  */
-export function courseJsonLd(program: Program): JsonLdObject {
+export function courseJsonLd(program: Program): JsonLdObject | null {
+  if (program.comingSoon || !program.timetable?.length) return null;
   const url = `${SITE_URL}/programs/${program.slug}`;
-  const priced = !program.comingSoon && Boolean(program.timetable?.length);
 
   const instance: JsonLdObject = {
     "@type": "CourseInstance",
     courseMode: "onsite",
-    ...(program.schedule ? { courseWorkload: program.schedule } : {}),
-    ...(priced
-      ? {
-          courseSchedule: {
-            "@type": "Schedule",
-            repeatFrequency: "P1W",
-            repeatCount: COHORT_WEEKS,
-          },
-        }
-      : {}),
+    ...(program.schedule ? { description: program.schedule } : {}),
+    courseWorkload: isoDuration(SESSION_MINUTES * COHORT_WEEKS),
+    courseSchedule: {
+      "@type": "Schedule",
+      duration: isoDuration(SESSION_MINUTES),
+      repeatFrequency: "Weekly",
+      repeatCount: COHORT_WEEKS,
+    },
+    ...(headCoach ? { instructor: { "@type": "Person", name: headCoach.name } } : {}),
   };
 
   return {
@@ -65,25 +73,21 @@ export function courseJsonLd(program: Program): JsonLdObject {
     description: program.description,
     url,
     provider: { "@id": ORGANIZATION_ID },
-    ...(priced
-      ? {
-          offers: {
-            "@type": "Offer",
-            category: "Paid",
-            price: SESSION_PRICE,
-            priceCurrency: "CAD",
-            priceSpecification: {
-              "@type": "UnitPriceSpecification",
-              price: SESSION_PRICE,
-              priceCurrency: "CAD",
-              referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitText: "session" },
-            },
-            eligibleQuantity: { "@type": "QuantitativeValue", value: COHORT_WEEKS, unitText: "sessions" },
-            ...(program.priceLine ? { description: program.priceLine } : {}),
-            url,
-          },
-        }
-      : {}),
+    offers: {
+      "@type": "Offer",
+      category: "Paid",
+      price: SESSION_PRICE,
+      priceCurrency: "CAD",
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: SESSION_PRICE,
+        priceCurrency: "CAD",
+        referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitText: "session" },
+      },
+      eligibleQuantity: { "@type": "QuantitativeValue", value: COHORT_WEEKS, unitText: "sessions" },
+      ...(program.priceLine ? { description: program.priceLine } : {}),
+      url,
+    },
     hasCourseInstance: instance,
   };
 }

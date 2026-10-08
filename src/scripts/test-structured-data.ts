@@ -6,12 +6,14 @@
 // invented data (ratings, reviews, street address) appears. Exits non-zero on
 // any failure.
 
-import { COHORT_WEEKS, SESSION_PRICE, listedPrograms } from "../content/programs";
+import { COHORT_WEEKS, SESSION_MINUTES, SESSION_PRICE, listedPrograms } from "../content/programs";
+import { coaches } from "../content/coaches";
 import { site } from "../content/site";
 import { SITE_URL } from "../lib/siteUrl";
 import {
   ORGANIZATION_ID,
   courseJsonLd,
+  isoDuration,
   organizationJsonLd,
   serializeJsonLd,
   type JsonLdObject,
@@ -27,7 +29,7 @@ function check(name: string, ok: boolean, detail = "") {
   }
 }
 
-const BANNED_KEYS = ["aggregateRating", "review", "reviews", "address", "streetAddress", "telephone"];
+const BANNED_KEYS = ["aggregateRating", "review", "reviews", "address", "streetAddress", "telephone", "location"];
 
 function allKeys(value: unknown, out: string[] = []): string[] {
   if (Array.isArray(value)) value.forEach((v) => allKeys(v, out));
@@ -73,9 +75,24 @@ check("logo is the brand logo on SITE_URL", org.logo === `${SITE_URL}/images/bra
 noInventedData("Organization", org);
 
 // ── Course, one per listed program ──────────────────────────────────────────
+const headCoachName = (coaches.find((c) => c.role === "Head Coach") ?? coaches[0]).name;
+const ISO_DURATION = /^P(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?)?$/;
+
+console.log("ISO 8601 durations");
+check("60 minutes is PT1H", isoDuration(60) === "PT1H");
+check("90 minutes is PT90M", isoDuration(90) === "PT90M");
+
 for (const program of listedPrograms) {
   console.log(`Course (/programs/${program.slug})`);
   const course = courseJsonLd(program);
+  if (program.comingSoon || !program.timetable?.length) {
+    check("no stated price: no Course markup at all", course === null);
+    continue;
+  }
+  if (!course) {
+    check("Course is emitted", false);
+    continue;
+  }
   check("@type is Course", course["@type"] === "Course");
   check("name is the program title", course.name === program.title);
   check("description is present", typeof course.description === "string" && (course.description as string).length > 0);
@@ -85,26 +102,34 @@ for (const program of listedPrograms) {
   const instance = course.hasCourseInstance as JsonLdObject | undefined;
   check("CourseInstance is present", instance?.["@type"] === "CourseInstance");
   check("courseMode is onsite", instance?.courseMode === "onsite");
-  check("schedule text is the program's schedule", instance?.courseWorkload === program.schedule);
+  check("schedule text is the CourseInstance description", instance?.description === program.schedule);
+  check("courseWorkload is an ISO 8601 duration",
+    typeof instance?.courseWorkload === "string" && ISO_DURATION.test(instance.courseWorkload as string));
+  check("courseWorkload is SESSION_MINUTES × COHORT_WEEKS",
+    instance?.courseWorkload === isoDuration(SESSION_MINUTES * COHORT_WEEKS));
+  const schedule = instance?.courseSchedule as JsonLdObject | undefined;
+  check("courseSchedule duration is one session", schedule?.duration === isoDuration(SESSION_MINUTES));
+  check("courseSchedule repeats Weekly", schedule?.repeatFrequency === "Weekly");
+  check("courseSchedule repeatCount is COHORT_WEEKS", schedule?.repeatCount === COHORT_WEEKS);
+  check("SESSION_MINUTES matches the schedule copy",
+    (program.schedule ?? "").includes(`${SESSION_MINUTES} minutes`), program.schedule);
+  const instructor = instance?.instructor as JsonLdObject | undefined;
+  check("instructor is the head coach (Person)",
+    instructor?.["@type"] === "Person" && instructor?.name === headCoachName);
+  check("no location on the CourseInstance", instance?.location === undefined);
 
   const offer = course.offers as JsonLdObject | undefined;
-  if (program.comingSoon) {
-    check("coming soon: no Offer (no session price stated)", offer === undefined);
-  } else {
-    check("Offer is present", offer?.["@type"] === "Offer");
-    check("price is SESSION_PRICE", offer?.price === SESSION_PRICE);
-    check("currency is CAD", offer?.priceCurrency === "CAD");
-    const spec = offer?.priceSpecification as JsonLdObject | undefined;
-    check("unit price is SESSION_PRICE per session",
-      spec?.price === SESSION_PRICE &&
-      (spec?.referenceQuantity as JsonLdObject)?.unitText === "session");
-    check("eligible quantity is COHORT_WEEKS sessions",
-      (offer?.eligibleQuantity as JsonLdObject)?.value === COHORT_WEEKS);
-    check("schedule repeats weekly COHORT_WEEKS times",
-      (instance?.courseSchedule as JsonLdObject)?.repeatCount === COHORT_WEEKS &&
-      (instance?.courseSchedule as JsonLdObject)?.repeatFrequency === "P1W");
-    check("offer description is the page's price line", offer?.description === program.priceLine);
-  }
+  check("Offer is present", offer?.["@type"] === "Offer");
+  check("category is Paid", offer?.category === "Paid");
+  check("price is SESSION_PRICE", offer?.price === SESSION_PRICE);
+  check("currency is CAD", offer?.priceCurrency === "CAD");
+  const spec = offer?.priceSpecification as JsonLdObject | undefined;
+  check("unit price is SESSION_PRICE per session",
+    spec?.price === SESSION_PRICE &&
+    (spec?.referenceQuantity as JsonLdObject)?.unitText === "session");
+  check("eligible quantity is COHORT_WEEKS sessions",
+    (offer?.eligibleQuantity as JsonLdObject)?.value === COHORT_WEEKS);
+  check("offer description is the page's price line", offer?.description === program.priceLine);
   noInventedData("Course", course);
 }
 

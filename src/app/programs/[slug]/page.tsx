@@ -63,10 +63,12 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // No public Enroll button yet (backlog #20): a public enroll flow would ask
   // for an e-transfer before the written agreement is delivered (backlog #2b).
   const quizHref = `/intake?program=${program.slug}`;
+  // Null for coming-soon programs: no stated price, so no Course markup.
+  const courseLd = courseJsonLd(program);
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
-      <JsonLd data={courseJsonLd(program)} />
+      {courseLd && <JsonLd data={courseLd} />}
 
       {/* Breadcrumb */}
       <div className="border-b border-white/10 px-6 py-4">

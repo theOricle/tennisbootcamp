@@ -15,6 +15,12 @@ export const SESSION_PRICE: number = 35;
  * the merge day in the same PR.
  */
 export const COHORT_WEEKS: number = 6;
+/**
+ * Length of one weekend class, in minutes. Matches the "60-minute" copy below
+ * (test-structured-data pins it to each schedule line); used for structured
+ * data durations.
+ */
+export const SESSION_MINUTES: number = 60;
 
 const NUMBER_WORDS = [
   "zero", "one", "two", "three", "four", "five", "six",
