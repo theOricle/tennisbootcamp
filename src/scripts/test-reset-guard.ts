@@ -1,8 +1,10 @@
 // Run from project root: npx tsx src/scripts/test-reset-guard.ts
 // Pins the /api/auth/reset-password gate (src/lib/resetGuard.ts, backlog
-// #29): the bot check decides first, a drop and a success share one body,
-// only the request's shape can earn a 400, the route never answers
-// differently for a known and an unknown address, the form sends the two
+// #29 + #36): the bot check decides first, a drop and a success share one
+// body, only the request's shape can earn a 400, the route never answers
+// differently for a known and an unknown address, the response goes out
+// before the lookup / generateLink / send (which run in after()), the
+// per-address cooldown only ever skips a send, the form sends the two
 // protection fields, and no log line can carry an address. Exits non-zero
 // on any failure.
 
@@ -16,9 +18,12 @@ import {
 } from "../lib/botCheck";
 import {
   decideReset,
+  findUserByEmail,
+  RESET_COOLDOWN_MS,
   RESET_INVALID_EMAIL,
   RESET_LOG_ROUTE,
   RESET_RESPONSE,
+  withinResetCooldown,
 } from "../lib/resetGuard";
 
 let failures = 0;
@@ -103,6 +108,63 @@ check(
   "reject"
 );
 
+// ─── Cooldown (backlog #36) ──────────────────────────────────────────────────
+
+console.log("cooldown");
+
+const NOW = Date.parse("2026-10-08T12:00:00.000Z");
+const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
+
+check("the window is 60 seconds", RESET_COOLDOWN_MS, 60_000);
+check("a link generated 5s ago → inside, skip the send", withinResetCooldown(iso(5_000), NOW), true);
+check(
+  "a link generated 59.999s ago → still inside",
+  withinResetCooldown(iso(RESET_COOLDOWN_MS - 1), NOW),
+  true
+);
+check(
+  "a link generated exactly 60s ago → outside, send",
+  withinResetCooldown(iso(RESET_COOLDOWN_MS), NOW),
+  false
+);
+check("a link generated an hour ago → outside, send", withinResetCooldown(iso(3_600_000), NOW), false);
+check("a stamp ahead of now (clock skew) → inside", withinResetCooldown(iso(-2_000), NOW), true);
+check("never sent (undefined) → send", withinResetCooldown(undefined, NOW), false);
+check("never sent (null) → send", withinResetCooldown(null, NOW), false);
+check("empty string → send", withinResetCooldown("", NOW), false);
+check("unparseable stamp → send, never silently skipped", withinResetCooldown("yesterday", NOW), false);
+check(
+  "Supabase's own stamp format (no fractional seconds, offset) parses",
+  withinResetCooldown("2026-10-08T11:59:30+00:00", NOW),
+  true
+);
+
+const users = [
+  { id: "a", email: "Player@Example.com", recovery_sent_at: iso(10_000) },
+  { id: "b", email: "other@example.com" },
+  { id: "c", email: null },
+];
+check("lookup matches case-insensitively", findUserByEmail(users, "player@example.com")?.id, "a");
+check("lookup trims", findUserByEmail(users, "  other@example.com ")?.id, "b");
+check("no match → undefined (falls through to generateLink)", findUserByEmail(users, "nobody@example.com"), undefined);
+check("empty target never matches a user without an email", findUserByEmail(users, ""), undefined);
+check(
+  "found and inside the window → skip",
+  (() => {
+    const u = findUserByEmail(users, "player@example.com");
+    return Boolean(u && withinResetCooldown(u.recovery_sent_at, NOW));
+  })(),
+  true
+);
+check(
+  "found but never sent → send",
+  (() => {
+    const u = findUserByEmail(users, "other@example.com");
+    return Boolean(u && withinResetCooldown((u as { recovery_sent_at?: string }).recovery_sent_at, NOW));
+  })(),
+  false
+);
+
 // ─── The route ───────────────────────────────────────────────────────────────
 
 console.log("route");
@@ -117,9 +179,9 @@ const errorReturns = jsonReturns.filter((r) => !r.includes("RESET_RESPONSE"));
 
 check("the success body is { ok: true }", RESET_RESPONSE, { ok: true });
 check(
-  "every 200 path (drop, no Supabase, generateLink error, email sent) answers the one body",
+  "every 200 path (drop, no Supabase, accepted) answers the one body",
   okReturns.length,
-  4
+  3
 );
 check(
   "the only other responses are the two 400s (body too large, bad email shape)",
@@ -136,7 +198,28 @@ check("the bot check runs before Supabase is touched", (() => {
   const supabase = routeSrc.indexOf("createServiceClient()");
   return guard > 0 && supabase > guard;
 })(), true);
+check("redirect URLs still come from NEXT_PUBLIC_SITE_URL", routeSrc.includes("process.env.NEXT_PUBLIC_SITE_URL"), true);
 check("the route logs through logBotDrop with the route name", RESET_LOG_ROUTE, "reset-password");
+
+// Timing (backlog #36): the response is returned before any of the lookup,
+// generateLink or the send — those run in after(), outside POST.
+check("the route imports after() from next/server", /import \{[^}]*\bafter\b[^}]*\} from "next\/server"/.test(routeSrc), true);
+const postBody = routeSrc.slice(routeSrc.indexOf("export async function POST"), routeSrc.indexOf("async function sendRecovery"));
+check("POST schedules the work with after() and returns the one body right after", (() => {
+  const scheduled = postBody.indexOf("after(() => sendRecovery(");
+  const returned = postBody.indexOf("return NextResponse.json(RESET_RESPONSE)", scheduled);
+  return scheduled > 0 && returned > scheduled;
+})(), true);
+check("POST itself never touches Supabase, generateLink, the lookup or Resend", /createServiceClient\(|generateLink\(|listUsers\(|sendLinkEmail\(/.test(postBody), false);
+check("POST never awaits the post-response work", /await sendRecovery/.test(routeSrc), false);
+check("the cooldown is checked before generateLink", (() => {
+  const cooldown = routeSrc.indexOf("withinResetCooldown(");
+  const link = routeSrc.indexOf("generateLink(");
+  return cooldown > 0 && link > cooldown;
+})(), true);
+check("a lookup that finds nobody still falls through to generateLink (no early return on !user)", /if \(!user\)/.test(routeSrc), false);
+check("the post-response work is wrapped so nothing escapes after()", /async function sendRecovery[\s\S]*?try \{[\s\S]*?\} catch \(err: unknown\)/.test(routeSrc), true);
+check("the error object itself is never logged (Resend echoes the recipient)", /console\.error\([^;]*[(,]\s*err\s*[),]/.test(routeSrc), false);
 check(
   "no log line interpolates the email or an error message (Supabase and Resend echo the address)",
   /console\.(?:log|warn|error)\([^;]*(?:\$\{email\}|[(,]\s*email\b|\.message)/.test(routeSrc),
