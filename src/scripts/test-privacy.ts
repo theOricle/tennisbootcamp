@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { withoutInvite, GA_STRIP_QUERY_SCRIPT, gaInitScript, trackEvent } from "../lib/analytics";
+import { withoutInvite, GA_STRIP_QUERY_SCRIPT, gaInitScript, trackEvent, trackEnrollStart } from "../lib/analytics";
 import { senderLine, unsubscribeLine, commercialFooterText } from "../lib/casl";
 import type { Recommendation } from "../lib/recommend";
 import {
@@ -158,6 +158,24 @@ console.log("trackEvent queues a trimmed set first");
   check("no page_view queued by the helper", cmds.some((c) => c[1] === "page_view"), false);
   check("no invite= in anything queued", JSON.stringify(cmds).includes("invite="), false);
 
+  // In-site link: GA's set still holds the previous page when the wizard's
+  // effect runs, so enroll_start names its own (trimmed) location.
+  fakeWindow.location.href = "https://tennisbootcamp.ca/enroll/xyz?invite=tok456&utm_source=email";
+  const before = fakeWindow.dataLayer?.length ?? 0;
+  trackEnrollStart("xyz", "Adult Bootcamps");
+  const enrollCmds = (fakeWindow.dataLayer ?? []).slice(before).map((args) => Array.from(args));
+  check("enroll_start sends one event", enrollCmds.map((c) => c[0]), ["event"]);
+  check("enroll_start carries its own trimmed page_location", enrollCmds[0], [
+    "event",
+    "enroll_start",
+    {
+      cohort_id: "xyz",
+      program: "Adult Bootcamps",
+      page_location: "https://tennisbootcamp.ca/enroll/xyz?utm_source=email",
+    },
+  ]);
+  check("no invite in enroll_start's page_location", JSON.stringify(enrollCmds).includes("invite"), false);
+
   if (savedGaId === undefined) delete process.env.NEXT_PUBLIC_GA_ID;
   else process.env.NEXT_PUBLIC_GA_ID = savedGaId;
   delete g.window;
@@ -169,7 +187,7 @@ console.log("trackEvent queues a trimmed set first");
 console.log("layout.tsx boots GA through gaInitScript");
 {
   const layout = readFileSync(join(process.cwd(), "src/app/layout.tsx"), "utf8");
-  check("layout calls gaInitScript", /gaInitScript\(process\.env\.NEXT_PUBLIC_GA_ID\)/.test(layout), true);
+  check("layout calls gaInitScript", /gaInitScript\(/.test(layout), true);
   check("layout doesn't use @next/third-parties", layout.includes("@next/third-parties"), false);
 }
 

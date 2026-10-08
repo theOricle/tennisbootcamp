@@ -7,7 +7,7 @@ import type { Program } from "@/types/program";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
 import { VENUE_LINE } from "@/lib/membership";
 import { COOLING_OFF_DAYS } from "@/content/policies";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, trackEnrollStart } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
 import { amountDueCents, etransferMemo } from "@/lib/paymentTransitions";
 import {
@@ -638,10 +638,7 @@ export function EnrollWizard({
   const [savedRows, setSavedRows] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    trackEvent("enroll_start", {
-      cohort_id: cohort.id,
-      program: program?.title ?? cohort.programId,
-    });
+    trackEnrollStart(cohort.id, program?.title ?? cohort.programId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
