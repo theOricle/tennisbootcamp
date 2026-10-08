@@ -263,6 +263,7 @@ function RegistrantStep({
   isMinor,
   signedIn,
   accountEmail,
+  cohortId,
   onEnterSubmit,
 }: {
   form: FormState;
@@ -272,10 +273,14 @@ function RegistrantStep({
   isMinor: boolean;
   signedIn: boolean;
   accountEmail: string;
+  cohortId: string;
   onEnterSubmit: () => void;
 }) {
   return (
+    // An explicit action keeps the invite token out of GA's form_destination
+    // (an action-less form reports the full URL); onSubmit still prevents submission.
     <form
+      action={`/enroll/${cohortId}`}
       onSubmit={(e) => {
         e.preventDefault();
         onEnterSubmit();
@@ -984,6 +989,7 @@ export function EnrollWizard({
               isMinor={isMinor}
               signedIn={household.signedIn}
               accountEmail={household.accountEmail}
+              cohortId={cohort.id}
               onEnterSubmit={() => {
                 if (canContinue() && !submitting) next();
               }}
