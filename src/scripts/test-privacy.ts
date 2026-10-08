@@ -3,7 +3,9 @@
 // fbclid reach it untouched, and every email to a player carries the CASL
 // sender and unsubscribe lines (the link email and emails to Sina don't).
 
-import { withoutInvite, GA_STRIP_QUERY_SCRIPT, gaInitScript } from "../lib/analytics";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { withoutInvite, GA_STRIP_QUERY_SCRIPT, gaInitScript, trackEvent } from "../lib/analytics";
 import { senderLine, unsubscribeLine, commercialFooterText } from "../lib/casl";
 import type { Recommendation } from "../lib/recommend";
 import {
@@ -120,6 +122,55 @@ console.log("gaInitScript");
   check("config names the GA id", cmds[2], ["config", "G-TEST123"]);
   check("trimmed before config", (cmds[0][1] as { page_location: string }).page_location, "https://tennisbootcamp.ca/enroll/gone");
   check("no invite= in the bootstrap's commands", JSON.stringify(cmds).includes("invite="), false);
+}
+
+// The bootstrap runs afterInteractive, so a child effect (enroll_start) can
+// queue an event before it. The helper must put a trimmed set ahead of the
+// first command it sends, whatever the timing.
+console.log("trackEvent queues a trimmed set first");
+{
+  const g = globalThis as unknown as { window?: unknown; document?: unknown };
+  const savedGaId = process.env.NEXT_PUBLIC_GA_ID;
+  const fakeWindow: { dataLayer?: IArguments[]; location: { href: string } } = {
+    location: { href: "https://tennisbootcamp.ca/enroll/abc?invite=tok123&utm_source=email&gclid=Cj0" },
+  };
+  g.window = fakeWindow;
+  g.document = { referrer: "https://tennisbootcamp.ca/legal/waiver?invite=tok123&fbclid=IwAR1" };
+
+  delete process.env.NEXT_PUBLIC_GA_ID;
+  trackEvent("enroll_start", { cohort_id: "abc" });
+  check("no-op when NEXT_PUBLIC_GA_ID is unset", fakeWindow.dataLayer ?? [], []);
+
+  process.env.NEXT_PUBLIC_GA_ID = "G-TEST123";
+  trackEvent("enroll_start", { cohort_id: "abc" });
+  trackEvent("enroll_continue_to_payment", { cohort_id: "abc" });
+  const queued = fakeWindow.dataLayer ?? [];
+  check("each entry is an arguments object", queued.every((a) => Object.prototype.toString.call(a) === "[object Arguments]"), true);
+  const cmds = queued.map((args) => Array.from(args));
+  check("set lands before the first event, once", cmds.map((c) => c[0]), ["set", "event", "event"]);
+  check("trimmed set keeps utm/gclid/fbclid", cmds[0], [
+    "set",
+    {
+      page_location: "https://tennisbootcamp.ca/enroll/abc?utm_source=email&gclid=Cj0",
+      page_referrer: "https://tennisbootcamp.ca/legal/waiver?fbclid=IwAR1",
+    },
+  ]);
+  check("no page_view queued by the helper", cmds.some((c) => c[1] === "page_view"), false);
+  check("no invite= in anything queued", JSON.stringify(cmds).includes("invite="), false);
+
+  if (savedGaId === undefined) delete process.env.NEXT_PUBLIC_GA_ID;
+  else process.env.NEXT_PUBLIC_GA_ID = savedGaId;
+  delete g.window;
+  delete g.document;
+}
+
+// The live layout must boot GA through gaInitScript (trim, js, config in one
+// script), not the third-party component that skipped the trim.
+console.log("layout.tsx boots GA through gaInitScript");
+{
+  const layout = readFileSync(join(process.cwd(), "src/app/layout.tsx"), "utf8");
+  check("layout calls gaInitScript", /gaInitScript\(process\.env\.NEXT_PUBLIC_GA_ID\)/.test(layout), true);
+  check("layout doesn't use @next/third-parties", layout.includes("@next/third-parties"), false);
 }
 
 // ─── CASL sender and unsubscribe lines, in the emails themselves ─────────────

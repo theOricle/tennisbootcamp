@@ -7,7 +7,7 @@ import { setGaPageLocation } from "@/lib/analytics";
 /**
  * Sends a trimmed page_view on every client-side navigation, including one
  * that changes only the query string. The first load is skipped:
- * GA_STRIP_QUERY_SCRIPT trims it and the config sends it.
+ * gaInitScript trims it and the config sends it.
  */
 function PageViewOnNavigation() {
   const pathname = usePathname();

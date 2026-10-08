@@ -1,10 +1,29 @@
-/** Push a gtag command; gtag.js reads `arguments` objects off the dataLayer. */
+/** Push one gtag command as a real `arguments` object, the shape gtag.js reads off the dataLayer. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function gtag(..._args: unknown[]) {
+function push(..._args: unknown[]) {
   const w = window as unknown as { dataLayer?: unknown[] };
   w.dataLayer = w.dataLayer || [];
   // eslint-disable-next-line prefer-rest-params
   w.dataLayer.push(arguments);
+}
+
+let locationTrimmed = false;
+
+/**
+ * Push a gtag command. The first one this module sends is preceded by a
+ * trimmed `set` (page_location and page_referrer without invite): the
+ * bootstrap runs afterInteractive, so a child effect such as enroll_start can
+ * queue an event before the bootstrap's own trim lands.
+ */
+function gtag(...args: unknown[]) {
+  if (!locationTrimmed) {
+    locationTrimmed = true;
+    push("set", {
+      page_location: withoutInvite(window.location.href),
+      page_referrer: withoutInvite(document.referrer),
+    });
+  }
+  push(...args);
 }
 
 /**
