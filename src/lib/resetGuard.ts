@@ -95,8 +95,10 @@ export function withinResetCooldown(
 }
 
 /**
- * The user whose email matches `email` (trimmed, case-insensitive — the same
- * rule as findUserIdByEmail in src/lib/players.ts), or undefined.
+ * The user in `users` whose email matches `email` (trimmed, case-insensitive
+ * — the same rule as findAuthUserByEmail in src/lib/supabase/adminUsers.ts,
+ * which the route itself now uses so the match pages past 200 users), or
+ * undefined.
  */
 export function findUserByEmail<T extends { email?: string | null }>(
   users: readonly T[],

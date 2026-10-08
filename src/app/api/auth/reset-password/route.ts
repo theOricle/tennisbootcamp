@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { findAuthUserByEmail } from "@/lib/supabase/adminUsers";
 import { sendLinkEmail } from "@/lib/email";
 import { bodyTooLarge, logBotDrop, REQUEST_TOO_LARGE } from "@/lib/botCheck";
 import {
   decideReset,
-  findUserByEmail,
   RESET_LOG_ROUTE,
   RESET_RESPONSE,
   withinResetCooldown,
@@ -68,15 +68,10 @@ async function sendRecovery(email: string, siteUrl: string): Promise<void> {
     // when a recovery link is generated. Inside RESET_COOLDOWN_MS of that
     // stamp, stay quiet. Only a *found* user inside the window skips the
     // send — a lookup error or no match falls through to generateLink, which
-    // keeps a real reset from being lost to the lookup (and matches the
-    // one-page convention of findUserIdByEmail in src/lib/players.ts).
-    const list = await supabase.auth.admin
-      .listUsers({ page: 1, perPage: 200 })
-      .catch(() => null);
-    if (list?.error) {
-      console.error("[reset-password] listUsers failed (status", list.error.status ?? "n/a", ")");
-    }
-    const user = list?.data?.users ? findUserByEmail(list.data.users, email) : undefined;
+    // keeps a real reset from being lost to the lookup. The lookup pages the
+    // whole user list (backlog #37; same helper as findUserIdByEmail in
+    // src/lib/players.ts) and logs its own PII-free status line on failure.
+    const user = await findAuthUserByEmail(supabase, email).catch(() => null);
     if (user && withinResetCooldown(user.recovery_sent_at)) {
       console.warn("[reset-password] inside cooldown — no link sent");
       return;
