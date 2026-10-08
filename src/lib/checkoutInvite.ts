@@ -78,21 +78,14 @@ export function inviteResumeClearCookie(
  */
 export function enrollSuccessCohortId(pathname: string): string | null {
   const m = /^\/enroll\/([^/]+)\/confirmed\/?$/.exec(pathname);
-  return m ? decodeURIComponent(m[1]) : null;
-}
-
-/**
- * Which invite row id may go into Stripe metadata for a token lookup
- * (backlog #34). A declined invite is never linked: the webhook would only
- * refuse it, so the payment instead settles through the email fallback onto
- * the email's live invite — the one sent after the decline. Invited, paid and
- * expired rows link by id as before (#30).
- */
-export function inviteIdForStripe(
-  row: { id: string; status: string } | null | undefined
-): string | null {
-  if (!row) return null;
-  return row.status === "declined" ? null : row.id;
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    // A malformed escape (`/enroll/%ZZ/confirmed`) is not a success return;
+    // the middleware must never throw over it.
+    return null;
+  }
 }
 
 /** What the enroll page's token gate reported, as far as checkout cares. */
@@ -100,23 +93,42 @@ export type CheckoutInviteLookup =
   | { state: "valid"; invite: { id: string } }
   | { state: "expired" | "invalid" };
 
+/** The invite row a token resolves to, whatever its status. */
+export type CheckoutInviteRow = { id: string; status: string };
+
+/** Sent back with a 409 when the token belongs to a declined invite. */
+export const DECLINED_INVITE_ERROR =
+  "That invite was declined — email info@tennisbootcamp.ca for a fresh one.";
+
+export type CheckoutInviteDecision =
+  | { kind: "refuse"; status: 409; error: string }
+  | { kind: "proceed"; inviteId?: string; setResumeCookie: boolean };
+
 /**
- * What the checkout route sends Stripe and sets on the browser for an invite.
+ * What the checkout route does with the token it was sent: refuse, or send
+ * Stripe an id and maybe set the browser a cookie.
  *
- * The metadata id comes from the token + cohort lookup regardless of status
- * (`idByToken`): an invite that expires between page load and paying must
- * still settle onto its own row, not fall back to the editable email. The
- * cancel-return cookie is only worth setting while the gate would still admit
- * the token, so it needs the lookup to be `valid`.
+ * A declined invite is refused before any Stripe session exists (backlog
+ * #34): no money is taken, and nothing can settle through the email fallback
+ * onto a sibling's live invite. Otherwise the metadata id comes from the
+ * token + cohort lookup for any status but declined: an invite that expires
+ * between page load and paying must still settle onto its own row, not fall
+ * back to the editable email. The cancel-return cookie is only worth setting
+ * while the gate would still admit the token, so it needs the lookup to be
+ * `valid`.
  */
 export function checkoutInviteLink(params: {
   lookup: CheckoutInviteLookup | null;
-  idByToken: string | null;
-}): { inviteId?: string; setResumeCookie: boolean } {
-  const { lookup, idByToken } = params;
+  rowByToken: CheckoutInviteRow | null;
+}): CheckoutInviteDecision {
+  const { lookup, rowByToken } = params;
+  if (rowByToken?.status === "declined") {
+    return { kind: "refuse", status: 409, error: DECLINED_INVITE_ERROR };
+  }
   const inviteId =
-    lookup?.state === "valid" ? lookup.invite.id : idByToken ?? undefined;
+    lookup?.state === "valid" ? lookup.invite.id : rowByToken?.id ?? undefined;
   return {
+    kind: "proceed",
     inviteId,
     setResumeCookie: lookup?.state === "valid",
   };

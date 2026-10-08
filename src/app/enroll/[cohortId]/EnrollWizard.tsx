@@ -797,6 +797,12 @@ export function EnrollWizard({
         enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
       }),
     });
+    if (checkoutRes.status === 409) {
+      // The route refused before Stripe (a declined invite, backlog #34) and
+      // says why; show that instead of the generic "couldn't reach payment".
+      const body = (await checkoutRes.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(body?.error ? `refused:${body.error}` : "checkout");
+    }
     if (!checkoutRes.ok) throw new Error("checkout");
     const { sessionUrl } = await checkoutRes.json();
     // Redirect to Stripe Checkout or confirmed page (mock)
@@ -805,7 +811,9 @@ export function EnrollWizard({
 
   function reportError(err: unknown) {
     const msg = err instanceof Error ? err.message : "";
-    if (msg === "checkout") {
+    if (msg.startsWith("refused:")) {
+      setSubmitError(msg.slice("refused:".length));
+    } else if (msg === "checkout") {
       setSubmitError(
         "Couldn't reach payment — please try again or email info@tennisbootcamp.ca"
       );

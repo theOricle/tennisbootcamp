@@ -14,8 +14,11 @@ import {
  * with. Every other request passes through untouched.
  */
 function clearInviteResumeCookie(request: NextRequest, response: NextResponse) {
+  // Cookie first: the overwhelming majority of requests carry none, and no
+  // path is parsed for them.
+  if (!request.cookies.has(INVITE_RESUME_COOKIE)) return response;
   const cohortId = enrollSuccessCohortId(request.nextUrl.pathname);
-  if (!cohortId || !request.cookies.has(INVITE_RESUME_COOKIE)) return response;
+  if (!cohortId) return response;
   response.cookies.set(
     inviteResumeClearCookie(cohortId, {
       secure: process.env.NODE_ENV === "production",

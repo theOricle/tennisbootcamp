@@ -43,7 +43,7 @@ import {
   type CohortPaymentMode,
 } from "@/lib/paymentTransitions";
 import { setEnrollmentStatusByEmail, setEnrollmentCredit } from "@/lib/enrollmentSheet";
-import { inviteIdForStripe } from "@/lib/checkoutInvite";
+import type { CheckoutInviteRow } from "@/lib/checkoutInvite";
 
 // Server-side cohort operations (Phase 3): invite flow with expiring holds,
 // minimum-to-run confirmation, session generation, and cancellation → make-up
@@ -514,18 +514,17 @@ async function findInviteById(cohortId: string, inviteId: string): Promise<Invit
 }
 
 /**
- * The invite row id for a token, unless the invite was declined. The checkout
- * route puts this id (never the token) in Stripe metadata (backlog #30), so a
+ * The invite row (id + status) for a token, whatever the status. The checkout
+ * route decides from it (`checkoutInviteLink`, src/lib/checkoutInvite.ts):
+ * the id — never the token — goes into Stripe metadata (backlog #30), so a
  * hold that lapses between page load and paying still settles onto its own
- * invite row instead of the email fallback. A declined row is never linked
- * (backlog #34): the webhook would only refuse it, so the payment goes
- * through the email fallback to the email's live invite instead. The rule
- * itself is `inviteIdForStripe` in src/lib/checkoutInvite.ts.
+ * invite row instead of the email fallback; a declined row is refused before
+ * any Stripe session is created (backlog #34).
  */
-export async function findInviteIdByToken(
+export async function findInviteRefByToken(
   cohortId: string,
   token: string
-): Promise<string | null> {
+): Promise<CheckoutInviteRow | null> {
   const supabase = createServiceClient();
   const { data } = await supabase
     .from("cohort_invites")
@@ -533,7 +532,7 @@ export async function findInviteIdByToken(
     .eq("token", token)
     .eq("cohort_id", cohortId)
     .maybeSingle();
-  return inviteIdForStripe(data as { id: string; status: string } | null);
+  return (data as CheckoutInviteRow | null) ?? null;
 }
 
 /**

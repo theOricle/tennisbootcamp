@@ -9,7 +9,7 @@ import { getCohortById } from "@/lib/cohortsDb";
 import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { setEnrollmentCredit } from "@/lib/enrollmentSheet";
 import {
-  findInviteIdByToken,
+  findInviteRefByToken,
   getInviteByToken,
   markInvitePaidAndMaybeConfirm,
 } from "@/lib/cohortActions";
@@ -144,20 +144,28 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_SITE_URL ??
       "https://tennisbootcamp-seven.vercel.app";
 
-    // Backlog #30: Stripe gets the invite's row id, never the token. The id
-    // is resolved for any status but declined (#34), so a hold that lapsed
-    // since the page loaded still settles onto its own row while a declined
-    // invite falls through to the webhook's email fallback; the cancel-return
-    // cookie only when the gate would still admit the token.
+    // Backlog #30: Stripe gets the invite's row id, never the token, so a
+    // hold that lapsed since the page loaded still settles onto its own row;
+    // the cancel-return cookie only when the gate would still admit the
+    // token. A declined invite is refused here (#34), before the enrollment
+    // rows, the Stripe session and the mock-mode tail: no money is taken and
+    // nothing can settle onto a sibling's invite through the email fallback.
     let inviteId: string | undefined;
     let setResumeCookie = false;
     if (inviteToken) {
       const lookup = await getInviteByToken(cohortId, inviteToken);
-      const idByToken =
+      const rowByToken =
         lookup.state === "valid"
           ? null
-          : await findInviteIdByToken(cohortId, inviteToken);
-      ({ inviteId, setResumeCookie } = checkoutInviteLink({ lookup, idByToken }));
+          : await findInviteRefByToken(cohortId, inviteToken);
+      const decision = checkoutInviteLink({ lookup, rowByToken });
+      if (decision.kind === "refuse") {
+        return NextResponse.json(
+          { error: decision.error },
+          { status: decision.status }
+        );
+      }
+      ({ inviteId, setResumeCookie } = decision);
     }
 
     const { successUrl, cancelUrl } = enrollReturnUrls({
