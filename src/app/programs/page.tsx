@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: "Programs",
   description:
     `Weekend tennis classes in Toronto: Youth Programs, High Performance and Adult Bootcamps. Once a week, 60 minutes, ${COHORT_LENGTH_ADJ} cohorts, ${SESSION_PRICE_LABEL} a session.`,
+  alternates: { canonical: "/programs" },
 };
 
 export default function ProgramsPage() {

@@ -9,6 +9,7 @@ export const metadata: Metadata = {
     description:
       "20 minutes on court with the coach. A real level, a written note, and a group that matches your level and your schedule. $20 — it comes off the price when you enroll in a program.",
   },
+  alternates: { canonical: "/assessment" },
 };
 
 export default function AssessmentLayout({

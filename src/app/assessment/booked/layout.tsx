@@ -4,6 +4,7 @@ export const metadata: Metadata = {
   title: "You're booked",
   description: "Your assessment is confirmed.",
   robots: { index: false, follow: false },
+  alternates: { canonical: "/assessment/booked" },
 };
 
 export default function BookedLayout({

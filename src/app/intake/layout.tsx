@@ -10,6 +10,7 @@ export const metadata: Metadata = {
       "A few questions about your game and your schedule, then Sina places you in a group. The 20-minute assessment is optional.",
   },
   robots: { index: false, follow: false },
+  alternates: { canonical: "/intake" },
 };
 
 export default function IntakeLayout({ children }: { children: React.ReactNode }) {

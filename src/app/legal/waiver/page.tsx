@@ -4,6 +4,7 @@ import { WaiverBackButton } from "./WaiverBackButton";
 export const metadata: Metadata = {
   title: "Terms & Liability Waiver",
   description: "Tennis Bootcamp participation agreement and liability waiver.",
+  alternates: { canonical: "/legal/waiver" },
 };
 
 export default function WaiverPage() {

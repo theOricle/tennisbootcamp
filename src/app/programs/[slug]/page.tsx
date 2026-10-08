@@ -14,6 +14,8 @@ import { getPublicCohorts } from "@/lib/cohortsDb";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { VENUE_LINE } from "@/lib/membership";
 import { TierRangeBadges } from "@/components/tiers";
+import { JsonLd } from "@/components/JsonLd";
+import { courseJsonLd } from "@/lib/structuredData";
 
 function fmtStartDate(iso: string): string {
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -32,6 +34,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: program.title,
     description: program.longDescription.slice(0, 160),
+    alternates: { canonical: `/programs/${program.slug}` },
   };
 }
 
@@ -63,6 +66,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
+      <JsonLd data={courseJsonLd(program)} />
 
       {/* Breadcrumb */}
       <div className="border-b border-white/10 px-6 py-4">

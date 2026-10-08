@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { JsonLd } from "@/components/JsonLd";
+import { organizationJsonLd } from "@/lib/structuredData";
 import { Hero } from "@/components/sections/Hero";
 import { TrustBar } from "@/components/sections/TrustBar";
 import { EmailCapture } from "@/components/sections/EmailCapture";
@@ -15,11 +17,13 @@ export const metadata: Metadata = {
   title: { absolute: "Tennis Bootcamp — Where Athletes Evolve!" },
   description:
     "Weekend group tennis classes in Toronto for juniors, teens and adults. Take the 2-minute quiz and Sina places you in a group; the 20-minute assessment is optional.",
+  alternates: { canonical: "/" },
 };
 
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-[#061427] text-white">
+      <JsonLd data={organizationJsonLd()} />
       <Hero />
 
       <TrustBar />
