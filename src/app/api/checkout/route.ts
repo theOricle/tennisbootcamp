@@ -8,7 +8,8 @@ import {
 import { getCohortById } from "@/lib/cohortsDb";
 import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { setEnrollmentCredit } from "@/lib/enrollmentSheet";
-import { markInvitePaidAndMaybeConfirm } from "@/lib/cohortActions";
+import { getInviteByToken, markInvitePaidAndMaybeConfirm } from "@/lib/cohortActions";
+import { enrollReturnUrls, inviteResumeCookie } from "@/lib/checkoutInvite";
 
 const TAB = "enrollments";
 // "status" is column P (index 15, 1-based col 16)
@@ -135,11 +136,22 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_SITE_URL ??
       "https://tennisbootcamp-seven.vercel.app";
 
-    const successUrl =
-      `${origin}/enroll/${cohortId}/confirmed?row=${enrollmentRowNumber}` +
-      (players.length > 1 ? `&players=${players.length}` : "") +
-      (inviteToken ? "&invite=1" : "");
-    const cancelUrl = `${origin}/enroll/${cohortId}${inviteToken ? `?invite=${inviteToken}` : ""}`;
+    // Backlog #30: Stripe gets the invite's row id, never the token. A token
+    // that no longer resolves is treated as absent — the page already gated
+    // on it, and the email fallback in markInvitePaidAndMaybeConfirm remains.
+    let inviteId: string | undefined;
+    if (inviteToken) {
+      const lookup = await getInviteByToken(cohortId, inviteToken);
+      if (lookup.state === "valid") inviteId = lookup.invite.id;
+    }
+
+    const { successUrl, cancelUrl } = enrollReturnUrls({
+      origin,
+      cohortId,
+      enrollmentRowNumber,
+      playerCount: players.length,
+      hasInvite: Boolean(inviteToken),
+    });
 
     // Save to Supabase — one enrollment row per player (fire-and-forget on
     // error so it never breaks checkout).
@@ -184,7 +196,7 @@ export async function POST(req: NextRequest) {
       participantIds: players
         .map((p) => p.participantId ?? "")
         .filter((id): id is string => Boolean(id)),
-      inviteToken,
+      inviteId,
     });
 
     if (isMockMode) {
@@ -217,8 +229,8 @@ export async function POST(req: NextRequest) {
             cohortId,
             email: enrollmentMeta?.contactEmail,
             participantId: p.participantId ?? undefined,
-            // The single-use token belongs to the first invite only.
-            inviteToken: p === players[0] ? inviteToken : undefined,
+            // The invite row belongs to the first player only.
+            inviteId: p === players[0] ? inviteId : undefined,
           }).catch((err) =>
             console.error("Invite confirmation failed (non-blocking):", err)
           );
@@ -226,7 +238,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ sessionUrl });
+    const res = NextResponse.json({ sessionUrl });
+    // A cancelled Stripe checkout returns to /enroll/<cohort> with no token in
+    // the URL; this httpOnly cookie lets that page re-admit the invited player.
+    if (inviteToken && inviteId) {
+      res.cookies.set(
+        inviteResumeCookie(cohortId, inviteToken, {
+          secure: process.env.NODE_ENV === "production",
+        })
+      );
+    }
+    return res;
   } catch (err) {
     console.error("Checkout API error:", err);
     return NextResponse.json({ error: "Checkout failed." }, { status: 500 });

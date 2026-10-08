@@ -534,14 +534,22 @@ export async function markInvitePaidAndMaybeConfirm(params: {
   /** Narrows the email lookup when one account holds several invites. */
   participantId?: string;
   payment?: { method: PaymentMethod; note?: string | null };
+  /**
+   * Admin calls surface a missing or already-paid invite as an error. The
+   * payment rails (Stripe webhook, mock checkout) stay silent and still run
+   * the minimum-to-run check, exactly as they did when they looked the invite
+   * up by token (backlog #30).
+   */
+  strict?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   const { cohortId, email, inviteToken, inviteId, participantId, payment } = params;
+  const strict = params.strict ?? false;
   const supabase = createServiceClient();
 
   let target: InviteRef | null = null;
   if (inviteId) {
     target = await findInviteById(cohortId, inviteId);
-    if (!target) return { ok: false, error: "Invite not found." };
+    if (!target && strict) return { ok: false, error: "Invite not found." };
   } else if (inviteToken) {
     const { data } = await supabase
       .from("cohort_invites")
@@ -590,7 +598,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
     if (!plan.ok) {
       // Admin double-tap (or a paid invite re-hit by a duplicate webhook):
       // surface it to the admin, stay silent for the payment rails.
-      if (inviteId) return { ok: false, error: plan.error };
+      if (strict) return { ok: false, error: plan.error };
     } else {
       const { status, ...details } = plan.patch;
       const { data: flipped } = await supabase
@@ -601,7 +609,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
         .select("id")
         .maybeSingle();
       if (!flipped) {
-        if (inviteId) {
+        if (strict) {
           return { ok: false, error: "That invite changed state — refresh and try again." };
         }
       } else {
@@ -676,6 +684,7 @@ export async function adminMarkInvitePaid(
     cohortId,
     inviteId,
     payment: { method: "etransfer", note },
+    strict: true,
   });
   if (!result.ok) return result;
 
