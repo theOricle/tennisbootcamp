@@ -76,8 +76,7 @@ export default function RefundPolicyPage() {
               You can cancel for any reason within {COOLING_OFF_DAYS} days and get a
               full refund, with no fee of any kind. The {COOLING_OFF_DAYS} days run
               from the later of two dates: the day you receive the written agreement,
-              and the day of your cohort&apos;s first session. No administration fee
-              applies inside this window.
+              and the day of your cohort&apos;s first session.
             </p>
           </section>
 
