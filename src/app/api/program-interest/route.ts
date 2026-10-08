@@ -1,12 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
+import {
+  bodyTooLarge,
+  checkBot,
+  cleanText,
+  isValidEmail,
+  logBotDrop,
+  REQUEST_TOO_LARGE,
+  TEXT_LIMITS,
+} from "@/lib/botCheck";
 
 const TAB = "program_interest";
 const HEADERS = ["timestamp", "email", "program"];
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // Bot protection (backlog #25): size cap, then the bot check before
+    // anything else. A tripped check gets the real success response.
+    const raw = await req.text();
+    if (bodyTooLarge(raw, req.headers.get("content-length"))) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    const parsed = JSON.parse(raw);
+    const verdict = checkBot(parsed);
+    if (verdict.bot) {
+      logBotDrop("program-interest", verdict.reason);
+      return NextResponse.json({ ok: true });
+    }
+    const body = {
+      email: cleanText(parsed?.email, TEXT_LIMITS.email),
+      program: cleanText(parsed?.program, TEXT_LIMITS.short),
+    };
+    if (!isValidEmail(body.email)) {
+      return NextResponse.json({ error: "Please provide a valid email." }, { status: 400 });
+    }
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -59,7 +86,7 @@ export async function POST(req: NextRequest) {
       requestBody: {
         values: [[
           new Date().toISOString(),
-          body.email ?? "",
+          body.email,
           body.program ?? "",
         ]],
       },

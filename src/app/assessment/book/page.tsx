@@ -20,6 +20,7 @@ import {
   type HouseholdValue,
 } from "@/components/participants/WhoIsThisFor";
 import { isAgeBand } from "@/lib/ageBand";
+import { useBotCheck } from "@/lib/useBotCheck";
 
 type PublicSlot = { slotStart: string; timeLabel: string; taken: boolean };
 type PublicBlock = {
@@ -208,6 +209,9 @@ export default function BookAssessmentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Bot protection (backlog #25): honeypot + time since the page rendered.
+  const bot = useBotCheck();
+
   // Who is this for? (backlog #11) — one booking is one participant, one slot.
   const household = useHousehold();
   const [who, setWho] = useState<HouseholdValue>(EMPTY_HOUSEHOLD);
@@ -316,6 +320,7 @@ export default function BookAssessmentPage() {
           selfLevel: selfLevel || undefined,
           availability: availabilityPayload,
           ...whoPayload(),
+          ...bot.payload(),
         }),
       });
       const data = await res.json();
@@ -364,6 +369,7 @@ export default function BookAssessmentPage() {
           availability,
           note: note.trim() || undefined,
           ...whoPayload(),
+          ...bot.payload(),
         }),
       });
       const data = await res.json();
@@ -453,6 +459,7 @@ export default function BookAssessmentPage() {
           </div>
         ) : showRequestForm ? (
           <form onSubmit={handleRequestSubmit} className="space-y-8">
+            {bot.field}
             <div className="rounded-xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
               {hasSlots ? (
                 <>
@@ -563,6 +570,7 @@ export default function BookAssessmentPage() {
           </form>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-8">
+            {bot.field}
             <section>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
                 1 · Who is this for?

@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { useBotCheck } from "@/lib/useBotCheck";
 
 type Props = { programSlug: string; programTitle: string };
 
 export function ProgramInterestForm({ programSlug, programTitle }: Props) {
+  const bot = useBotCheck();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "ok" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,7 @@ export function ProgramInterestForm({ programSlug, programTitle }: Props) {
       const res = await fetch("/api/program-interest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, program: programSlug }),
+        body: JSON.stringify({ email, program: programSlug, ...bot.payload() }),
       });
       if (!res.ok) throw new Error("Failed to save");
       trackEvent("program_interest_signup", { program: programSlug });
@@ -39,6 +41,7 @@ export function ProgramInterestForm({ programSlug, programTitle }: Props) {
 
   return (
     <form onSubmit={onSubmit} className="flex w-full max-w-md flex-col gap-3 sm:flex-row sm:flex-wrap">
+      {bot.field}
       <div className="flex w-full gap-3">
         <input
           type="email"

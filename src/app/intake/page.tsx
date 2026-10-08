@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { recommendPrograms, type Recommendation } from "@/lib/recommend";
 import { trackEvent, trackAssessmentCtaClick } from "@/lib/analytics";
+import { useBotCheck } from "@/lib/useBotCheck";
 import { tentativeLevelLabel, selfEstimateToLevel, type SelfLevel } from "@/lib/level";
 import { ageBandToWho, type AgeBand } from "@/lib/ageBand";
 import {
@@ -393,6 +394,8 @@ function IntakePageInner() {
   );
 
   const [stepIndex, setStepIndex] = useState(0);
+  // Bot protection (backlog #25): honeypot + time since the quiz rendered.
+  const bot = useBotCheck();
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(false);
@@ -515,6 +518,8 @@ function IntakePageInner() {
               ageBand: g.ageBand,
               selfLevel: g.selfLevel || undefined,
             })),
+          // Read and dropped by the route — never a Sheet column.
+          ...bot.payload(),
         }),
       });
       if (!res.ok) throw new Error("Submission failed");
@@ -624,6 +629,7 @@ function IntakePageInner() {
                 }}
                 className="grid gap-3"
               >
+                {bot.field}
                 <div className="grid gap-2">
                   <label htmlFor="intake-name" className="text-sm text-white/70">Full name</label>
                   <input
