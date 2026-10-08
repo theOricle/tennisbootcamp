@@ -1,18 +1,24 @@
 // Run from project root: npx tsx src/scripts/test-intake-row.ts
 // Pins the /api/intake Google Sheet row shape (src/lib/intakeRow.ts):
 // 17 columns, headers in the frozen order, and cell values for a wizard
-// submission. Exits non-zero on any failure. If this test has to change,
-// the column contract changed — that needs an explicit owner decision.
+// submission; the household block (18–22) and the lead-source block (23–29)
+// appended after them. Exits non-zero on any failure. If this test has to
+// change, the column contract changed — that needs an explicit owner decision.
 
 import {
   INTAKE_HEADERS,
   INTAKE_HOUSEHOLD_HEADERS,
+  INTAKE_HOUSEHOLD_ALL_HEADERS,
+  INTAKE_LEAD_SOURCE_HEADERS,
   INTAKE_ALL_HEADERS,
   INTAKE_APPEND_RANGE_COLUMNS,
   INTAKE_APPEND_RANGE_ALL,
   buildIntakeRow,
   buildIntakeHouseholdCells,
+  buildIntakeLeadSourceCells,
   intakeAvailabilitySlots,
+  intakeHeaderPatch,
+  sheetColumnLetter,
 } from "../lib/intakeRow";
 
 let failures = 0;
@@ -48,13 +54,64 @@ check("appended in order", [...INTAKE_HOUSEHOLD_HEADERS], [
   "account_email", "account_name", "participant_name",
   "participant_relationship", "participant_id",
 ]);
-check("22 columns in total", INTAKE_ALL_HEADERS.length, 22);
+check("22 columns before the lead-source block", INTAKE_HOUSEHOLD_ALL_HEADERS.length, 22);
 check(
   "the frozen 17 are still the first 17 of the full header row",
   INTAKE_ALL_HEADERS.slice(0, 17),
   [...INTAKE_HEADERS]
 );
-check("full append range covers A–V", INTAKE_APPEND_RANGE_ALL, "A:V");
+
+// ─── Appended lead-source block (cols 23–29, backlog #26) ─────────────────────
+
+console.log("lead-source headers");
+check("7 appended columns", INTAKE_LEAD_SOURCE_HEADERS.length, 7);
+check("appended in order", [...INTAKE_LEAD_SOURCE_HEADERS], [
+  "source", "medium", "campaign", "content", "click_id", "landing_page", "first_seen",
+]);
+check("29 columns in total", INTAKE_ALL_HEADERS.length, 29);
+check(
+  "columns 1–22 of the full header row are byte-identical to the pre-#26 row",
+  INTAKE_ALL_HEADERS.slice(0, 22),
+  [
+    "timestamp", "name", "email", "phone", "who", "level",
+    "goals", "programs", "area", "notes", "newsletter",
+    "priority_score", "lead_type", "follow_up_status",
+    "preferred_locations", "availability", "recommended_program",
+    "account_email", "account_name", "participant_name",
+    "participant_relationship", "participant_id",
+  ]
+);
+check("full append range covers A–AC", INTAKE_APPEND_RANGE_ALL, "A:AC");
+check("column letters", [0, 16, 21, 22, 25, 28].map(sheetColumnLetter), ["A", "Q", "V", "W", "Z", "AC"]);
+
+// The route's header-row check: extend, never rewrite what is already right.
+console.log("header patch");
+const PRE_26_HEADERS = INTAKE_ALL_HEADERS.slice(0, 22);
+check(
+  "an empty tab gets the whole header row from A1",
+  intakeHeaderPatch([]),
+  { range: "A1", values: [...INTAKE_ALL_HEADERS] }
+);
+check(
+  "a tab with the 22 pre-#26 headers gets only W1:AC1 — columns 1–22 untouched",
+  intakeHeaderPatch(PRE_26_HEADERS),
+  { range: "W1", values: [...INTAKE_LEAD_SOURCE_HEADERS] }
+);
+check(
+  "a complete header row is left alone",
+  intakeHeaderPatch([...INTAKE_ALL_HEADERS]),
+  null
+);
+check(
+  "a complete row with extra owner columns after AC is left alone",
+  intakeHeaderPatch([...INTAKE_ALL_HEADERS, "owner_notes"]),
+  null
+);
+check(
+  "a tab with only the frozen 17 is extended from R1",
+  intakeHeaderPatch(INTAKE_ALL_HEADERS.slice(0, 17))?.range,
+  "R1"
+);
 
 // ─── Wizard submission (what src/app/intake/page.tsx sends today) ─────────────
 
@@ -218,6 +275,91 @@ check(
   buildIntakeHouseholdCells({}, {}),
   ["", "", "", "", ""]
 );
+
+// ─── Lead-source rows (cols 23–29; the first 22 must not move) ───────────────
+
+console.log("lead-source rows");
+const INSTAGRAM = {
+  utm_source: "instagram",
+  utm_medium: "social",
+  utm_campaign: "test",
+  landing_path: "/",
+  first_seen: "2026-10-08",
+};
+const taggedRow = buildIntakeRow({ ...wizard, name: "Maya Chen" }, TS, HOUSEHOLD, INSTAGRAM);
+check("a tagged row has 29 cells", taggedRow.length, 29);
+check(
+  "cells 1–22 are byte-identical to the pre-#26 household row",
+  taggedRow.slice(0, 22),
+  buildIntakeRow({ ...wizard, name: "Maya Chen" }, TS, HOUSEHOLD)
+);
+check(
+  "cells 23–29: /?utm_source=instagram&utm_medium=social&utm_campaign=test",
+  taggedRow.slice(22),
+  ["instagram", "social", "test", "", "", "/", "2026-10-08"]
+);
+
+const directRow = buildIntakeRow({ ...wizard, name: "Maya Chen" }, TS, HOUSEHOLD, null);
+check("a direct visit still writes 29 cells", directRow.length, 29);
+check(
+  "no record → source 'direct', everything else blank",
+  directRow.slice(22),
+  ["direct", "", "", "", "", "", ""]
+);
+check(
+  "a direct row's first 22 cells equal the tagged row's",
+  directRow.slice(0, 22),
+  taggedRow.slice(0, 22)
+);
+
+check(
+  "gclid → click_id 'gclid:…'",
+  buildIntakeLeadSourceCells({
+    utm_source: "google", utm_medium: "cpc", gclid: "Cj0KCQ", landing_path: "/programs", first_seen: "2026-10-08",
+  }),
+  ["google", "cpc", "", "", "gclid:Cj0KCQ", "/programs", "2026-10-08"]
+);
+check(
+  "fbclid → click_id 'fbclid:…'; gclid wins when both are present",
+  [
+    buildIntakeLeadSourceCells({ fbclid: "IwAR1", landing_path: "/", first_seen: "2026-10-08" })[4],
+    buildIntakeLeadSourceCells({ gclid: "g1", fbclid: "f1", landing_path: "/", first_seen: "2026-10-08" })[4],
+  ],
+  ["fbclid:IwAR1", "gclid:g1"]
+);
+check(
+  "an external referrer with no utm_source → source is the referrer's host",
+  buildIntakeLeadSourceCells({
+    referrer_origin: "https://www.reddit.com", landing_path: "/intake", first_seen: "2026-10-08",
+  }),
+  ["www.reddit.com", "", "", "", "", "/intake", "2026-10-08"]
+);
+check(
+  "utm_source beats the referrer host",
+  buildIntakeLeadSourceCells({
+    utm_source: "newsletter", referrer_origin: "https://mail.google.com", landing_path: "/", first_seen: "2026-10-08",
+  })[0],
+  "newsletter"
+);
+check(
+  "utm_content lands in column 26",
+  buildIntakeLeadSourceCells({ utm_source: "ig", utm_content: "reel-3", landing_path: "/", first_seen: "2026-10-08" })[3],
+  "reel-3"
+);
+check(
+  "every lead-source cell is a string",
+  buildIntakeLeadSourceCells(INSTAGRAM).every((c) => typeof c === "string"),
+  true
+);
+
+// Two players, one submission: the same lead block on each row.
+const sib1 = buildIntakeRow({ ...wizard, name: "Maya Chen" }, TS, HOUSEHOLD, INSTAGRAM);
+const sib2 = buildIntakeRow({ ...wizard, name: "Noah Chen" }, TS, { ...HOUSEHOLD, participantName: "Noah Chen" }, INSTAGRAM);
+check("both rows carry the lead block", [sib1.slice(22), sib2.slice(22)], [sib1.slice(22), sib1.slice(22)]);
+
+// No lead argument → exactly the pre-#26 row, unchanged.
+check("omitting the lead yields exactly 22 cells", buildIntakeRow(wizard, TS, {}).length, 22);
+check("omitting household and lead yields exactly 17 cells", buildIntakeRow(wizard, TS).length, 17);
 
 // ─── Result ───────────────────────────────────────────────────────────────────
 

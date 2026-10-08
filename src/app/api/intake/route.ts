@@ -6,10 +6,10 @@ import { sendRecommendationEmail } from "@/lib/email";
 import { tentativeLevelLabel } from "@/lib/level";
 import { isAgeBand } from "@/lib/ageBand";
 import {
-  INTAKE_ALL_HEADERS,
   INTAKE_APPEND_RANGE_ALL,
   buildIntakeRow,
   intakeAvailabilitySlots,
+  intakeHeaderPatch,
 } from "@/lib/intakeRow";
 import { provisionIntakeAccount } from "@/lib/intakeAccount";
 import { bodyTooLarge, logBotDrop, REQUEST_TOO_LARGE } from "@/lib/botCheck";
@@ -70,24 +70,23 @@ export async function POST(req: NextRequest) {
     const sheets = google.sheets({ version: "v4", auth });
 
     // Ensure header row exists and is complete before appending data.
-    // Columns 1–17 are frozen; 18–22 are the appended household block.
-    // See src/lib/intakeRow.ts.
-    const HEADERS = [...INTAKE_ALL_HEADERS];
-
+    // Columns 1–17 are frozen; 18–22 are the appended household block;
+    // 23–29 are the lead-source block (backlog #26). See src/lib/intakeRow.ts.
+    // Only the missing tail is written: a sheet that already carries the
+    // first 22 headers gets W1:AC1 and nothing in A–V is rewritten.
     const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: `${tabName}!1:1`,
     });
 
-    const existingHeaders = headerRes.data.values?.[0] ?? [];
-    const headersComplete = HEADERS.every((h, i) => existingHeaders[i] === h);
+    const headerPatch = intakeHeaderPatch(headerRes.data.values?.[0] ?? []);
 
-    if (!headersComplete) {
+    if (headerPatch) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${tabName}!A1`,
+        range: `${tabName}!${headerPatch.range}`,
         valueInputOption: "RAW",
-        requestBody: { values: [HEADERS] },
+        requestBody: { values: [headerPatch.values] },
       });
     }
 
@@ -125,6 +124,10 @@ export async function POST(req: NextRequest) {
     // values — for a lone player that is byte for byte what it always was.
     // (An older client that sends neither lands on the fallback for every row,
     // exactly as it did before this change.)
+    // Cols 23–29 (backlog #26): the same first-touch record on every row of
+    // the submission. decideIntake already validated it; no record means a
+    // direct visit. The invite token is never part of it.
+    const lead = body.leadSource ?? null;
     const timestamp = new Date().toISOString();
     const rows =
       people.length > 0
@@ -143,10 +146,11 @@ export async function POST(req: NextRequest) {
                 participantName: p.participantName,
                 participantRelationship: p.relationship,
                 participantId: p.participantId,
-              }
+              },
+              lead
             )
           )
-        : [buildIntakeRow(body, timestamp, {})];
+        : [buildIntakeRow(body, timestamp, {}, lead)];
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,

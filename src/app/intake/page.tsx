@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { recommendPrograms, type Recommendation } from "@/lib/recommend";
 import { trackEvent, trackAssessmentCtaClick } from "@/lib/analytics";
 import { useBotCheck } from "@/lib/useBotCheck";
+import { LEAD_SOURCE_FIELD } from "@/lib/leadSource";
+import { storedFirstTouch } from "@/lib/firstTouchBrowser";
 import { tentativeLevelLabel, selfEstimateToLevel, type SelfLevel } from "@/lib/level";
 import { ageBandToWho, type AgeBand } from "@/lib/ageBand";
 import {
@@ -518,6 +520,9 @@ function IntakePageInner() {
               ageBand: g.ageBand,
               selfLevel: g.selfLevel || undefined,
             })),
+          // Where this visitor came from (cols 23–29, backlog #26): the
+          // first-touch record, or nothing for a direct visit.
+          [LEAD_SOURCE_FIELD]: storedFirstTouch() ?? undefined,
           // Read and dropped by the route — never a Sheet column.
           ...bot.payload(),
         }),
