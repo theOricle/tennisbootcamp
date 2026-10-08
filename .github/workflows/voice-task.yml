@@ -111,15 +111,12 @@ jobs:
 
           ## Standing instructions
 
-          1. Read these first, in order, before touching any code:
-             - `CLAUDE.md`
-             - `.claude/memory/PROGRESS.md`
-             - `.claude/memory/DECISIONS.md`
-             - `.claude/memory/OPEN_QUESTIONS.md`
-             - `ops/briefs/brand.md`
-             - `ops/briefs/project.md`
+          1. Read `CLAUDE.md` before touching any code. If the task touches any
+             user-facing string, email or metadata, also read `ops/briefs/voice.md`
+             and follow it. Read anything else only when CLAUDE.md's Key files
+             table says to.
           2. Match the project's existing patterns: Next.js 16 App Router, TypeScript,
-             Tailwind utility classes, Geist font, the `tb-gradient` and brand color
+             Tailwind utility classes, the `tb-gradient` class and brand color
              `#B4E655`. No SaaS gradients, no glassmorphism.
           3. Run `npm run lint` and `npx tsc --noEmit` before committing. If either
              fails, fix the issues, then re-run until both pass.
