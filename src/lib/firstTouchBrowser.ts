@@ -14,6 +14,20 @@ import {
 /** Hostnames that are the site itself (any subdomain of each counts too). */
 const SITE_HOSTS = ["tennisbootcamp.ca", "tennisbootcamp-seven.vercel.app"];
 
+/**
+ * Hosts the site sends a visitor through and back — Stripe Checkout, the
+ * Supabase auth redirect, Google sign-in — never a source: a player coming
+ * back from paying did not "come from Stripe". Treated exactly like own hosts
+ * (subdomains included).
+ */
+export const PASS_THROUGH_HOSTS = [
+  "checkout.stripe.com",
+  "stripe.com",
+  "supabase.co",
+  "supabase.com",
+  "accounts.google.com",
+];
+
 function storage(): StorageLike | null {
   try {
     const s = window.localStorage;
@@ -24,7 +38,7 @@ function storage(): StorageLike | null {
 }
 
 function ownHosts(): string[] {
-  const hosts = [...SITE_HOSTS];
+  const hosts = [...SITE_HOSTS, ...PASS_THROUGH_HOSTS];
   try {
     hosts.push(new URL(SITE_URL).hostname);
   } catch {

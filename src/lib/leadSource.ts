@@ -62,8 +62,30 @@ export type StorageLike = {
 
 // ─── Dates ────────────────────────────────────────────────────────────────────
 
-/** "YYYY-MM-DD" in UTC — the only date the record carries. */
+/** The owner's calendar: first_seen is "today" as Sina sees it, not UTC. */
+export const FIRST_SEEN_TIME_ZONE = "America/Toronto";
+
+/** Matches the only shape first_seen may have. */
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * "YYYY-MM-DD" on the America/Toronto calendar — the only date the record
+ * carries. en-CA formats as YYYY-MM-DD natively; if Intl lacks the zone
+ * (an old or stripped runtime) the UTC date stands in, so the record is
+ * never left without a date.
+ */
 export function dateStamp(now: Date): string {
+  try {
+    const s = new Intl.DateTimeFormat("en-CA", {
+      timeZone: FIRST_SEEN_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
+    if (DATE_RE.test(s)) return s;
+  } catch {
+    // fall through to UTC
+  }
   return now.toISOString().slice(0, 10);
 }
 
@@ -78,10 +100,22 @@ export function isExpired(record: FirstTouch | null, now: Date): boolean {
 // ─── Validation (shared by the browser read and the route) ───────────────────
 
 /**
+ * Is this value acceptable for this key? Shape rules on top of "a string":
+ * first_seen must be YYYY-MM-DD, landing_path must start with "/", and no
+ * tag or click id may contain "@" (an email address is never a source).
+ */
+function acceptable(key: FirstTouchKey, s: string): boolean {
+  if (key === "first_seen") return DATE_RE.test(s);
+  if (key === "landing_path") return s.startsWith("/");
+  if (key === "referrer_origin") return true;
+  return !s.includes("@");
+}
+
+/**
  * The record with only the known keys, each a trimmed non-empty string cut to
- * LEAD_SOURCE_MAX_LENGTH. Non-strings and unknown keys (an invite token,
- * whatever a script posts) are dropped. Null when nothing valid is left or
- * the input is not an object.
+ * LEAD_SOURCE_MAX_LENGTH and of the right shape for its key. Non-strings,
+ * wrong shapes and unknown keys (an invite token, whatever a script posts)
+ * are dropped. Null when nothing valid is left or the input is not an object.
  */
 export function sanitizeLeadSource(value: unknown): FirstTouch | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -91,7 +125,7 @@ export function sanitizeLeadSource(value: unknown): FirstTouch | null {
     const v = raw[key];
     if (typeof v !== "string") continue;
     const s = v.trim().slice(0, LEAD_SOURCE_MAX_LENGTH);
-    if (s) out[key] = s;
+    if (s && acceptable(key, s)) out[key] = s;
   }
   return Object.keys(out).length > 0 ? out : null;
 }
@@ -143,14 +177,16 @@ export function firstTouchFromVisit(input: CaptureInput): FirstTouch | null {
   const record: FirstTouch = {};
   for (const key of TAG_PARAMS) {
     const v = url.searchParams.get(key);
-    if (v && v.trim()) record[key] = v.trim().slice(0, LEAD_SOURCE_MAX_LENGTH);
+    if (!v) continue;
+    const s = v.trim().slice(0, LEAD_SOURCE_MAX_LENGTH);
+    if (s && acceptable(key, s)) record[key] = s;
   }
 
   const refHost = input.referrer ? hostOf(input.referrer) : null;
   const external = !!refHost && !isOwnHost(refHost, input.ownHosts);
   if (external) {
     try {
-      record.referrer_origin = new URL(input.referrer).origin;
+      record.referrer_origin = new URL(input.referrer).origin.slice(0, LEAD_SOURCE_MAX_LENGTH);
     } catch {
       // unreadable referrer: treated as none
     }
@@ -158,7 +194,7 @@ export function firstTouchFromVisit(input: CaptureInput): FirstTouch | null {
 
   if (Object.keys(record).length === 0) return null;
 
-  record.landing_path = url.pathname || "/";
+  record.landing_path = (url.pathname || "/").slice(0, LEAD_SOURCE_MAX_LENGTH);
   record.first_seen = dateStamp(input.now);
   return record;
 }
@@ -224,9 +260,20 @@ export function leadClickId(record: FirstTouch | null): string {
 }
 
 /**
+ * The route appends with valueInputOption USER_ENTERED, so a cell starting
+ * with = + - @ (or a tab / carriage return) would be read as a formula. A
+ * campaign tag is third-party input that sits in the browser for 90 days
+ * and lands in the owner's Sheet; a leading apostrophe makes Sheets store
+ * it as text. It also keeps "001" from becoming the number 1.
+ */
+export function asSheetText(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
+/**
  * The seven cells. A missing record (no tag, no external referrer, storage
  * unavailable, or an older client) is a direct visit with everything else
- * blank. Every cell is a string.
+ * blank. Every cell is a string and none can be read as a formula.
  */
 export function buildLeadSourceCells(record: FirstTouch | null): string[] {
   return [
@@ -237,5 +284,5 @@ export function buildLeadSourceCells(record: FirstTouch | null): string[] {
     leadClickId(record),
     record?.landing_path ?? "",
     record?.first_seen ?? "",
-  ];
+  ].map(asSheetText);
 }

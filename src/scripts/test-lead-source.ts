@@ -10,7 +10,9 @@ import {
   FIRST_TOUCH_KEYS,
   FIRST_TOUCH_TTL_DAYS,
   LEAD_SOURCE_MAX_LENGTH,
+  asSheetText,
   buildLeadSourceCells,
+  dateStamp,
   firstTouchFromVisit,
   isExpired,
   isOwnHost,
@@ -19,6 +21,7 @@ import {
   sanitizeLeadSource,
   type StorageLike,
 } from "../lib/leadSource";
+import { PASS_THROUGH_HOSTS } from "../lib/firstTouchBrowser";
 
 let failures = 0;
 
@@ -126,6 +129,50 @@ check(
   [isOwnHost("WWW.TennisBootcamp.ca", OWN), isOwnHost("tennisbootcamp.ca.evil.com", OWN), isOwnHost("", OWN)],
   [true, false, false]
 );
+check(
+  "landing_path and referrer_origin are capped at write time",
+  (() => {
+    const r = firstTouchFromVisit({
+      href: `https://tennisbootcamp.ca/${"p".repeat(600)}?utm_source=x`,
+      referrer: `https://${Array.from({ length: 5 }, () => "h".repeat(60)).join(".")}.example.com/`,
+      ownHosts: OWN,
+      now: NOW,
+    });
+    return [r?.landing_path?.length, r?.referrer_origin?.length];
+  })(),
+  [LEAD_SOURCE_MAX_LENGTH, LEAD_SOURCE_MAX_LENGTH]
+);
+check(
+  "a tag containing @ is not captured (no email addresses)",
+  visit("https://tennisbootcamp.ca/?utm_source=sina@example.com&utm_medium=email"),
+  { utm_medium: "email", landing_path: "/", first_seen: "2026-10-08" }
+);
+
+// Hosts the site bounces a visitor through (Stripe Checkout, Supabase auth,
+// Google sign-in) are never a source.
+console.log("pass-through hosts");
+check(
+  "stripe, supabase and google accounts are ignored as referrers, subdomains included",
+  [
+    "checkout.stripe.com", "stripe.com", "abcd1234.supabase.co", "supabase.com", "accounts.google.com",
+  ].map((h) => isOwnHost(h, PASS_THROUGH_HOSTS)),
+  [true, true, true, true, true]
+);
+check(
+  "google search and other vercel sites are still sources",
+  ["www.google.com", "someone-else.vercel.app", "mail.google.com"].map((h) => isOwnHost(h, PASS_THROUGH_HOSTS)),
+  [false, false, false]
+);
+check(
+  "a return from Stripe Checkout stores nothing",
+  firstTouchFromVisit({
+    href: "https://tennisbootcamp.ca/enroll/confirmed?row=3",
+    referrer: "https://checkout.stripe.com/c/pay/cs_test_abc",
+    ownHosts: [...OWN, ...PASS_THROUGH_HOSTS],
+    now: NOW,
+  }),
+  null
+);
 
 // ─── The invite token ────────────────────────────────────────────────────────
 
@@ -194,10 +241,11 @@ const replaced = recordFirstTouch(s1, {
   ownHosts: OWN,
   now: expiredAt,
 });
+// expiredAt is 2027-01-06T00:00Z, which is the evening of Jan 5 in Toronto.
 check(
   "an expired record is replaced by the next tagged visit",
   replaced,
-  { utm_source: "google", gclid: "abc", landing_path: "/", first_seen: "2027-01-06" }
+  { utm_source: "google", gclid: "abc", landing_path: "/", first_seen: "2027-01-05" }
 );
 
 const s2 = fakeStorage();
@@ -241,6 +289,22 @@ check(
 );
 check("a storage that throws reads as null", readFirstTouch(broken, NOW), null);
 
+// ─── The date is the owner's calendar (America/Toronto) ──────────────────────
+
+console.log("date");
+check("midday UTC is the same day in Toronto", dateStamp(new Date("2026-10-08T15:30:00.000Z")), "2026-10-08");
+check(
+  "02:00 UTC on the 9th is still the 8th in Toronto (EDT)",
+  dateStamp(new Date("2026-10-09T02:00:00.000Z")),
+  "2026-10-08"
+);
+check(
+  "04:30 UTC on Jan 2 is still Jan 1 in Toronto (EST)",
+  dateStamp(new Date("2027-01-02T04:30:00.000Z")),
+  "2027-01-01"
+);
+check("the stamp always has the YYYY-MM-DD shape", /^\d{4}-\d{2}-\d{2}$/.test(dateStamp(new Date())), true);
+
 // ─── Expiry arithmetic ────────────────────────────────────────────────────────
 
 console.log("expiry");
@@ -257,6 +321,54 @@ check("non-object → null", [sanitizeLeadSource(null), sanitizeLeadSource("x"),
 check("non-string values dropped", sanitizeLeadSource({ utm_source: 1, gclid: true, first_seen: "2026-10-08" }), { first_seen: "2026-10-08" });
 check("nothing valid → null", sanitizeLeadSource({ utm_source: "", foo: "bar" }), null);
 check("values trimmed and capped", sanitizeLeadSource({ utm_term: `  ${"t".repeat(300)}  ` })?.utm_term?.length, 200);
+check(
+  "first_seen must be YYYY-MM-DD",
+  [
+    sanitizeLeadSource({ first_seen: "yesterday" }),
+    sanitizeLeadSource({ first_seen: "2026-1-8" }),
+    sanitizeLeadSource({ first_seen: "2026-10-08T15:30:00Z" }),
+    sanitizeLeadSource({ first_seen: "2026-10-08" }),
+  ],
+  [null, null, null, { first_seen: "2026-10-08" }]
+);
+check(
+  "landing_path must start with /",
+  [
+    sanitizeLeadSource({ landing_path: "evil" }),
+    sanitizeLeadSource({ landing_path: "https://evil.example/" }),
+    sanitizeLeadSource({ landing_path: "/programs" }),
+  ],
+  [null, null, { landing_path: "/programs" }]
+);
+check(
+  "a tag or click id containing @ is dropped",
+  sanitizeLeadSource({ utm_source: "a@b.com", utm_campaign: "fall", gclid: "x@y", fbclid: "ok" }),
+  { utm_campaign: "fall", fbclid: "ok" }
+);
+
+// ─── Nothing in the new columns can run as a formula ─────────────────────────
+
+console.log("sheet text");
+check(
+  "formula-leading values get a leading apostrophe",
+  ["=HYPERLINK(\"x\")", "+1", "-cmd", "@foo", "=NOW()", "\tx", "\rx"].map(asSheetText),
+  ["'=HYPERLINK(\"x\")", "'+1", "'-cmd", "'@foo", "'=NOW()", "'\tx", "'\rx"]
+);
+check(
+  "ordinary values pass through, 001 and dates included",
+  ["instagram", "001", "2026-10-08", "/", "direct", "", "fall launch"].map(asSheetText),
+  ["instagram", "001", "2026-10-08", "/", "direct", "", "fall launch"]
+);
+check(
+  "a poisoned campaign tag reaches the row as text",
+  buildLeadSourceCells(visit("https://tennisbootcamp.ca/?utm_source=ig&utm_campaign=%3DIMPORTXML(%22https://evil.example%22,%22//a%22)")),
+  ["ig", "", "'=IMPORTXML(\"https://evil.example\",\"//a\")", "", "", "/", "2026-10-08"]
+);
+check(
+  "every lead cell goes through the escape (source, click_id and path too)",
+  buildLeadSourceCells({ utm_source: "=1+1", gclid: "x", landing_path: "/", first_seen: "2026-10-08" })[0],
+  "'=1+1"
+);
 
 // ─── Cells ────────────────────────────────────────────────────────────────────
 
