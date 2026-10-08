@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     "What Tennis Bootcamp collects, why, who processes it for us, and how to see, correct or delete your information.",
 };
 
-const EFFECTIVE_DATE = "October 2, 2026";
+const EFFECTIVE_DATE = "October 8, 2026";
 
 function Email() {
   return (
@@ -64,7 +64,9 @@ export default function PrivacyPolicyPage() {
                   us. This includes household members an account holder adds, such as a child
                   or a spouse. We ask that a child&apos;s details come from their parent or
                   guardian. We use these to place each player, build groups that fit their
-                  schedule, and contact you about training.
+                  schedule, and contact you about training. The site also notes how you found
+                  it, for example the link or ad you came from, and saves that with your quiz
+                  answers.
                 </p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">

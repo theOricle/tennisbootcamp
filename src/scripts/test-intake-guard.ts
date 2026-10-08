@@ -142,9 +142,9 @@ check(
   17
 );
 check(
-  "the full header row still has 22 columns",
+  "the full header row has 29 columns (22 pre-#26 plus the lead-source block)",
   INTAKE_ALL_HEADERS.length,
-  22
+  29
 );
 check(
   "no header mentions the protection fields",
@@ -152,6 +152,56 @@ check(
     (h) => h === HONEYPOT_FIELD || h === FILL_TIME_FIELD
   ),
   false
+);
+
+// ─── Lead source (backlog #26) ───────────────────────────────────────────────
+
+console.log("lead source");
+
+const tagged = decideIntake({
+  ...human,
+  leadSource: {
+    utm_source: " instagram ",
+    utm_medium: "social",
+    utm_campaign: "test",
+    landing_path: "/",
+    first_seen: "2026-10-08",
+    invite: "tok123",
+    gclid: 42,
+    email: "leak@example.com",
+  },
+});
+if (tagged.action !== "accept") throw new Error("expected accept");
+check(
+  "the record is kept with strings only, trimmed, unknown keys dropped (invite above all)",
+  tagged.body.leadSource,
+  { utm_source: "instagram", utm_medium: "social", utm_campaign: "test", landing_path: "/", first_seen: "2026-10-08" }
+);
+check(
+  "each lead-source value is capped at 200 characters",
+  (decideIntake({ ...human, leadSource: { utm_campaign: "c".repeat(500) } }) as { body: { leadSource?: { utm_campaign?: string } } })
+    .body.leadSource?.utm_campaign?.length,
+  200
+);
+check(
+  "a malformed record is dropped from the body",
+  "leadSource" in (decideIntake({ ...human, leadSource: "instagram" }) as { body: object }).body,
+  false
+);
+check(
+  "a record with nothing valid is dropped from the body",
+  "leadSource" in (decideIntake({ ...human, leadSource: { invite: "tok123" } }) as { body: object }).body,
+  false
+);
+check(
+  "no record sent → no key added",
+  "leadSource" in accepted.body,
+  false
+);
+check(
+  "the lead record never changes cells 1–22",
+  buildIntakeRow(tagged.body, ts, {}, tagged.body.leadSource ?? null).slice(0, 22),
+  buildIntakeRow(wizard, ts, {})
 );
 
 // ─── Input limits ─────────────────────────────────────────────────────────────

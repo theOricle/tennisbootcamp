@@ -20,6 +20,7 @@ import {
   type BotReason,
 } from "@/lib/botCheck";
 import type { IntakeFormSnapshot } from "@/lib/recommend";
+import { LEAD_SOURCE_FIELD, sanitizeLeadSource, type FirstTouch } from "@/lib/leadSource";
 
 export const INTAKE_INVALID_EMAIL = "Please provide a valid email.";
 
@@ -34,6 +35,8 @@ export type IntakeAcceptedBody = Record<string, unknown> & {
   phone?: string;
   who?: IntakeFormSnapshot["who"];
   level?: IntakeFormSnapshot["level"];
+  /** Validated first touch (backlog #26); absent when the quiz sent none or it was all invalid. */
+  leadSource?: FirstTouch;
 };
 
 export type IntakeDecision =
@@ -95,6 +98,13 @@ export function sanitizeIntakeBody(raw: Rec): Rec {
         .slice(0, 10)
         .map(([k, v]) => [k, cleanParticipant(v)])
     );
+  }
+  // Lead source (backlog #26): strings only, each capped, unknown keys (an
+  // invite token above all) dropped; an empty or malformed record is removed.
+  if (LEAD_SOURCE_FIELD in body) {
+    const lead = sanitizeLeadSource(body[LEAD_SOURCE_FIELD]);
+    if (lead) body[LEAD_SOURCE_FIELD] = lead;
+    else delete body[LEAD_SOURCE_FIELD];
   }
   // Keys the wizard never sends stay absent — `{...raw}` plus `undefined`
   // assignments would still serialize identically, but keep the shape honest.

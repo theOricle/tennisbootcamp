@@ -6,6 +6,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { PreviewBanner } from "@/components/layout/PreviewBanner";
 import { AnalyticsPageLocation } from "@/components/layout/AnalyticsPageLocation";
+import { FirstTouchCapture } from "@/components/layout/FirstTouchCapture";
 import { SITE_URL } from "@/lib/siteUrl";
 import { gaInitScript } from "@/lib/analytics";
 
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to content
         </a>
         <PreviewBanner />
+        <FirstTouchCapture />
         <Navbar />
         <div id="main-content" tabIndex={-1}>
           {children}
