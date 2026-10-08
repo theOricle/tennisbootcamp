@@ -528,6 +528,22 @@ function IntakePageInner() {
         }),
       });
       if (!res.ok) throw new Error("Submission failed");
+      // Signed in, the route answers with the ids of the people this quiz was
+      // about, including anyone just added (backlog #24). Fold them into the
+      // household so "Book Your Assessment" starts with the new player
+      // selectable, and drop the typed blocks: they are participants now.
+      const data = (await res.json().catch(() => ({}))) as { participantIds?: unknown };
+      if (household.signedIn && Array.isArray(data.participantIds)) {
+        const ids = data.participantIds.filter((x): x is string => typeof x === "string");
+        setForm((s) => ({
+          ...s,
+          household: {
+            ...s.household,
+            selectedIds: Array.from(new Set([...s.household.selectedIds, ...ids])),
+            guests: s.household.guests.filter((g) => g.relationship === "self"),
+          },
+        }));
+      }
       trackEvent("intake_complete", { participants: personResults.length });
       setResults(personResults);
       setSubmitted(true);

@@ -607,6 +607,14 @@ export function WhoIsThisFor({
 }) {
   const { loading, signedIn, participants, reload } = household;
   const [adding, setAdding] = useState(false);
+  // After "+ Add someone", focus lands on the new block's name field so a
+  // keyboard or screen-reader user is not left on a button that just moved.
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusKey) return;
+    document.getElementById(`guest-${focusKey}-name`)?.focus();
+    setFocusKey(null);
+  }, [focusKey]);
 
   // Default the selection to the holder themselves once we know who they are.
   useEffect(() => {
@@ -738,13 +746,20 @@ export function WhoIsThisFor({
             {(multiple || householdCount(value, true) === 0) && (
               <button
                 type="button"
-                onClick={() =>
-                  onChange({ ...value, guests: [...value.guests, emptyGuest("child")] })
-                }
+                onClick={() => {
+                  const guest = emptyGuest("child");
+                  onChange({ ...value, guests: [...value.guests, guest] });
+                  setFocusKey(guest.key);
+                }}
                 className="min-h-[44px] w-full rounded-2xl border border-dashed border-white/20 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#B4E655]/50 hover:text-white"
               >
                 + Add someone
               </button>
+            )}
+            {multiple && participants.some((p) => p.relationship === "self") && (
+              <p className="text-xs text-white/45">
+                If this quiz is only for your child, untick yourself.
+              </p>
             )}
           </>
         ) : adding ? (

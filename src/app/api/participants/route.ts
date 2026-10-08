@@ -6,6 +6,7 @@ import {
   createParticipant,
   isRelationship,
 } from "@/lib/players";
+import { PARTICIPANT_CAP_ERROR } from "@/lib/participantInput";
 
 // The signed-in holder's household: the people they can book, enroll or
 // place. GET lists them ('self' first); POST adds one. Session-gated — a
@@ -99,7 +100,10 @@ export async function POST(req: NextRequest) {
       isMinor: body.isMinor === true,
     });
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
+      // The per-household cap (src/lib/participantInput.ts) is a conflict
+      // with the account's state, not a malformed request.
+      const status = result.error === PARTICIPANT_CAP_ERROR ? 409 : 400;
+      return NextResponse.json({ error: result.error }, { status });
     }
     return NextResponse.json({ ok: true, participant: toPublic(result.participant) });
   } catch (err) {

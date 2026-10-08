@@ -11,6 +11,8 @@
 // path. Nothing in the block can name an account: `accountId`, `account_id`,
 // `participantId` or any other key a client might add are never read.
 
+import { ageBandIsMinor, isAgeBand } from "@/lib/ageBand";
+
 export const RELATIONSHIPS = ["self", "child", "spouse", "other"] as const;
 export type Relationship = (typeof RELATIONSHIPS)[number];
 
@@ -51,9 +53,20 @@ export type NewParticipantInput = {
 };
 
 /**
+ * Under 18, from the block. The age band is the only source of `isMinor`
+ * (backlog #14) whenever a block carries one; a block without a band (the
+ * enroll wizard, an older client) is a minor only when it says exactly `true`.
+ */
+export function blockIsMinor(block: ParticipantInput | null | undefined): boolean {
+  return isAgeBand(block?.ageBand)
+    ? ageBandIsMinor(block.ageBand)
+    : block?.isMinor === true;
+}
+
+/**
  * The create for one block, or null when the block names nobody or names the
  * holder themselves (a form never adds a second "self"; the holder is picked,
- * not created). `isMinor` is true only when the block says exactly `true`.
+ * not created).
  */
 export function newParticipantInput(
   accountId: string,
@@ -65,9 +78,57 @@ export function newParticipantInput(
     accountId,
     fullName,
     relationship: block.relationship,
-    isMinor: block?.isMinor === true,
+    isMinor: blockIsMinor(block),
   };
 }
+
+// ─── Reuse before create ─────────────────────────────────────────────────────
+
+/** Trimmed, lower-cased, inner whitespace collapsed: "Maya  Chen " = "maya chen". */
+export function normalizeParticipantName(name: string | null | undefined): string {
+  return (name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** The subset of a participant row the match reads. */
+export type ExistingParticipant = {
+  id: string;
+  full_name: string | null;
+  relationship: string;
+};
+
+/**
+ * A participant the holder already has with the same normalised name and
+ * the same relationship — a retried or re-run quiz reuses them instead of
+ * creating a twin. The first match in the list (oldest, as
+ * listParticipantsForAccount orders them) wins.
+ */
+export function findExistingParticipant<T extends ExistingParticipant>(
+  existing: readonly T[],
+  create: Pick<NewParticipantInput, "fullName" | "relationship">
+): T | null {
+  const wanted = normalizeParticipantName(create.fullName);
+  if (!wanted) return null;
+  return (
+    existing.find(
+      (p) =>
+        p.relationship === create.relationship &&
+        normalizeParticipantName(p.full_name) === wanted
+    ) ?? null
+  );
+}
+
+// ─── Per-household cap ────────────────────────────────────────────────────────
+
+/** Participants one account may hold, the holder included. */
+export const MAX_PARTICIPANTS_PER_ACCOUNT = 12;
+
+/** True when an account with `count` participants may not take another. */
+export function participantCapReached(count: number): boolean {
+  return count >= MAX_PARTICIPANTS_PER_ACCOUNT;
+}
+
+/** What createParticipant reports at the cap; the routes map it to a 409. */
+export const PARTICIPANT_CAP_ERROR = `An account can hold up to ${MAX_PARTICIPANTS_PER_ACCOUNT} players. Email info@tennisbootcamp.ca to add more.`;
 
 /** A block paired with its create; only blocks that would create someone. */
 export type PlannedAddition = {

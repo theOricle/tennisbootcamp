@@ -7,12 +7,18 @@
 // any failure.
 
 import {
+  MAX_PARTICIPANTS_PER_ACCOUNT,
+  PARTICIPANT_CAP_ERROR,
   PARTICIPANT_NAME_MAX,
   RELATIONSHIPS,
+  blockIsMinor,
   cleanParticipantName,
+  findExistingParticipant,
   isAddedRelationship,
   isRelationship,
   newParticipantInput,
+  normalizeParticipantName,
+  participantCapReached,
   plannedAdditions,
 } from "../lib/participantInput";
 
@@ -112,6 +118,46 @@ check("each pairs the create with its own block (age band + self-estimate ride a
 check("every create is under the session", planned.every((a) => a.create.accountId === SESSION), true);
 check("a non-array adds nobody", [plannedAdditions(SESSION, undefined), plannedAdditions(SESSION, {}), plannedAdditions(SESSION, "x")], [[], [], []]);
 check("an empty array adds nobody", plannedAdditions(SESSION, []), []);
+
+// ─── isMinor comes from the age band ─────────────────────────────────────────
+
+console.log("isMinor follows the age band");
+check("a junior is a minor whatever isMinor says", blockIsMinor({ ageBand: "junior", isMinor: false }), true);
+check("a teen is a minor", blockIsMinor({ ageBand: "teen" }), true);
+check("an adult is not, whatever isMinor says", blockIsMinor({ ageBand: "adult", isMinor: true }), false);
+check("no band: only an exact true counts", [blockIsMinor({ isMinor: true }), blockIsMinor({ isMinor: "true" }), blockIsMinor({})], [true, false, false]);
+check("an unknown band falls back to isMinor", blockIsMinor({ ageBand: "senior", isMinor: true }), true);
+check("the create carries the band's answer", newParticipantInput(SESSION, { name: "Maya", relationship: "child", ageBand: "adult", isMinor: true })?.isMinor, false);
+
+// ─── Reuse before create (a retried or re-run quiz) ───────────────────────────
+
+console.log("an existing twin is reused");
+const existing = [
+  { id: "p-self", full_name: "Dana Chen", relationship: "self" },
+  { id: "p-maya", full_name: "Maya Chen", relationship: "child" },
+  { id: "p-maya-2", full_name: "maya chen", relationship: "child" },
+  { id: "p-sam", full_name: "Sam Chen", relationship: "spouse" },
+  { id: "p-blank", full_name: null, relationship: "other" },
+];
+const maya = newParticipantInput(SESSION, child)!;
+check("same name, same relationship → the oldest match", findExistingParticipant(existing, maya)?.id, "p-maya");
+check("case and surrounding whitespace do not matter", findExistingParticipant(existing, { fullName: "  MAYA   chen ", relationship: "child" })?.id, "p-maya");
+check("the same name under another relationship is someone else", findExistingParticipant(existing, { fullName: "Maya Chen", relationship: "other" }), null);
+check("a different name is nobody", findExistingParticipant(existing, { fullName: "Noah Chen", relationship: "child" }), null);
+check("a blank name never matches a blank row", findExistingParticipant(existing, { fullName: "   ", relationship: "other" }), null);
+check("the holder is never matched by an add", findExistingParticipant(existing, { fullName: "Dana Chen", relationship: "spouse" }), null);
+check("an empty household matches nobody", findExistingParticipant([], maya), null);
+check("normalisation", [normalizeParticipantName("  Maya   Chen "), normalizeParticipantName(null), normalizeParticipantName(undefined)], ["maya chen", "", ""]);
+
+// ─── Per-household cap ────────────────────────────────────────────────────────
+
+console.log("per-household cap");
+check("12 per account", MAX_PARTICIPANTS_PER_ACCOUNT, 12);
+check("eleven may take one more", participantCapReached(11), false);
+check("twelve may not", participantCapReached(12), true);
+check("beyond twelve may not", participantCapReached(40), true);
+check("an empty account may", participantCapReached(0), false);
+check("the message names the number and the way out", [PARTICIPANT_CAP_ERROR.includes("12"), PARTICIPANT_CAP_ERROR.includes("info@tennisbootcamp.ca")], [true, true]);
 
 // ─── Result ───────────────────────────────────────────────────────────────────
 

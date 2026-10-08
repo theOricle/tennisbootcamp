@@ -11,10 +11,12 @@ import {
   findUserIdByEmail,
   fillPlayerContact,
   isRelationship,
+  listParticipantsForAccount,
   type Relationship,
 } from "@/lib/players";
 import {
   cleanParticipantName,
+  findExistingParticipant,
   newParticipantInput,
   plannedAdditions,
   type ParticipantInput,
@@ -101,6 +103,12 @@ export async function resolveSubmissionParticipant(input: {
   holderPhone?: string | null;
   /** Fall back to the holder's own name when the block has none. */
   defaultName?: string;
+  /**
+   * Signed in, let a typed block create someone on the session's account
+   * (backlog #24). Only the quiz's resolveSubmissionParticipants sets this;
+   * booking and enroll leave it off and behave exactly as before.
+   */
+  allowCreate?: boolean;
 }): Promise<ResolvedParticipant> {
   const holderName = input.holderName.trim();
   const holderEmail = input.holderEmail.trim();
@@ -145,18 +153,27 @@ export async function resolveSubmissionParticipant(input: {
       : null;
     if (participant && participant.account_id !== accountId) participant = null;
 
-    // Adding someone (backlog #24): no id, a typed block naming a person other
-    // than the holder. The create is the guest path's create, and the account
-    // is the session's — `accountId` here is `input.signedInUserId`, never a
-    // value from the body. A create that fails is reported as unresolved
-    // (participantId null, the typed name on the row) rather than quietly
-    // becoming a row about the holder.
-    const addition = requested ? null : newParticipantInput(accountId, block);
+    // Adding someone (backlog #24): only when the caller allows it (the quiz
+    // does; booking and enroll never do), no id, and a typed block naming a
+    // person other than the holder. The create is the guest path's create,
+    // and the account is the session's — `accountId` here is
+    // `input.signedInUserId`, never a value from the body. Before creating,
+    // the holder's own people are checked for the same name and relationship
+    // so a retried or re-run quiz reuses them instead of making a twin. A
+    // create that fails (the per-household cap above all) is reported as
+    // unresolved (participantId null, the typed name on the row) rather than
+    // quietly becoming a row about the holder.
+    const addition =
+      input.allowCreate && !requested ? newParticipantInput(accountId, block) : null;
     if (!participant && addition) {
       await ensureSelfParticipant(accountId, {
         fullName: account?.name ?? holderName,
       }).catch(() => null);
-      const created = await createParticipant(addition).catch(() => null);
+      const existing = await listParticipantsForAccount(accountId).catch(() => []);
+      const twin = findExistingParticipant(existing, addition);
+      const created = twin
+        ? { ok: true as const, participant: twin }
+        : await createParticipant(addition).catch(() => null);
       if (created?.ok) {
         participant = created.participant;
       } else {
@@ -328,6 +345,8 @@ export async function resolveSubmissionParticipants(input: {
           holderName: input.holderName,
           holderEmail: input.holderEmail,
           holderPhone: input.holderPhone,
+          // The quiz is the one flow that adds people on the fly.
+          allowCreate: entry.id === null && entry.block !== null,
         })
       );
     }

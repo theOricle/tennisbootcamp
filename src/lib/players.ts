@@ -8,7 +8,13 @@ import {
   type Availability,
   type AvailabilitySource,
 } from "@/lib/availability";
-import { RELATIONSHIPS, isRelationship, type Relationship } from "@/lib/participantInput";
+import {
+  PARTICIPANT_CAP_ERROR,
+  RELATIONSHIPS,
+  isRelationship,
+  participantCapReached,
+  type Relationship,
+} from "@/lib/participantInput";
 
 // The one place level + availability are read from and written to.
 //
@@ -470,6 +476,21 @@ export async function createParticipant(input: {
   { ok: true; participant: PlayerRecord } | { ok: false; error: string }
 > {
   const supabase = createServiceClient();
+
+  // Per-household cap (backlog #24 review): one account holds at most
+  // MAX_PARTICIPANTS_PER_ACCOUNT players, the holder included. Every create —
+  // the quiz, POST /api/participants, a guest registering someone — passes
+  // through here, so this is the one place the cap is enforced. A count that
+  // cannot be read (no table yet) is treated as zero so the insert reports
+  // its own, more specific error.
+  const { count, error: countErr } = await supabase
+    .from(PARTICIPANT_TABLE)
+    .select("id", { count: "exact", head: true })
+    .eq("account_id", input.accountId);
+  if (!countErr && participantCapReached(count ?? 0)) {
+    return { ok: false, error: PARTICIPANT_CAP_ERROR };
+  }
+
   const { data, error } = await supabase
     .from(PARTICIPANT_TABLE)
     .insert({
