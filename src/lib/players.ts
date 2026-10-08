@@ -8,6 +8,13 @@ import {
   type Availability,
   type AvailabilitySource,
 } from "@/lib/availability";
+import {
+  PARTICIPANT_CAP_ERROR,
+  RELATIONSHIPS,
+  isRelationship,
+  participantCapReached,
+  type Relationship,
+} from "@/lib/participantInput";
 
 // The one place level + availability are read from and written to.
 //
@@ -30,8 +37,11 @@ import {
 export const PLAYER_TABLE = "profiles";
 export const PARTICIPANT_TABLE = "participants";
 
-export const RELATIONSHIPS = ["self", "child", "spouse", "other"] as const;
-export type Relationship = (typeof RELATIONSHIPS)[number];
+// The relationship vocabulary lives in the pure src/lib/participantInput.ts
+// (backlog #24) so the forms' create rule can be tested without Supabase;
+// re-exported here so every existing caller keeps importing it from players.
+export { RELATIONSHIPS, isRelationship };
+export type { Relationship };
 
 export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
   self: "Myself",
@@ -39,10 +49,6 @@ export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
   spouse: "My spouse or partner",
   other: "Someone else",
 };
-
-export function isRelationship(x: unknown): x is Relationship {
-  return typeof x === "string" && (RELATIONSHIPS as readonly string[]).includes(x);
-}
 
 const PARTICIPANT_COLUMNS =
   "id, account_id, full_name, relationship, is_minor, level, level_assessed_at, " +
@@ -470,6 +476,21 @@ export async function createParticipant(input: {
   { ok: true; participant: PlayerRecord } | { ok: false; error: string }
 > {
   const supabase = createServiceClient();
+
+  // Per-household cap (backlog #24 review): one account holds at most
+  // MAX_PARTICIPANTS_PER_ACCOUNT players, the holder included. Every create —
+  // the quiz, POST /api/participants, a guest registering someone — passes
+  // through here, so this is the one place the cap is enforced. A count that
+  // cannot be read (no table yet) is treated as zero so the insert reports
+  // its own, more specific error.
+  const { count, error: countErr } = await supabase
+    .from(PARTICIPANT_TABLE)
+    .select("id", { count: "exact", head: true })
+    .eq("account_id", input.accountId);
+  if (!countErr && participantCapReached(count ?? 0)) {
+    return { ok: false, error: PARTICIPANT_CAP_ERROR };
+  }
+
   const { data, error } = await supabase
     .from(PARTICIPANT_TABLE)
     .insert({

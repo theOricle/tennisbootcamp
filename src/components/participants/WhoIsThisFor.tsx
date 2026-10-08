@@ -13,7 +13,11 @@ import {
 // people; this component is the single place that asks which of them a form is
 // about.
 //
-// Signed in  → the holder's participants, plus "Add a person".
+// Signed in  → the holder's participants, plus "Add a person" (saved to the
+//              account at once) — or, with `addInline` (the quiz, backlog
+//              #24), "Add someone": a typed block that /api/intake creates
+//              under the signed-in account when the quiz is submitted, so an
+//              abandoned quiz leaves nothing behind.
 // Signed out → a repeatable participant block; each block becomes its own
 //              participant row (and its own booking / intake row / invite)
 //              under the holder's email once the account is provisioned.
@@ -103,14 +107,27 @@ export const EMPTY_HOUSEHOLD: HouseholdValue = {
   profiles: {},
 };
 
+/**
+ * Signed in, the typed blocks are people being added to the account (backlog
+ * #24): never the holder, who is picked from the list. The untouched "self"
+ * block every form starts with is not one of them.
+ */
+export function addedGuests(value: HouseholdValue): GuestParticipant[] {
+  return value.guests.filter((g) => g.relationship !== "self");
+}
+
+function namedGuests(guests: GuestParticipant[]): GuestParticipant[] {
+  return guests.filter((g) => g.name.trim().length > 0);
+}
+
 /** The people a submission is actually about, signed in or out. */
 export function householdCount(
   value: HouseholdValue,
   signedIn: boolean
 ): number {
   return signedIn
-    ? value.selectedIds.length
-    : value.guests.filter((g) => g.name.trim().length > 0).length;
+    ? value.selectedIds.length + namedGuests(addedGuests(value)).length
+    : namedGuests(value.guests).length;
 }
 
 export function householdReady(
@@ -128,7 +145,11 @@ export function primaryName(
 ): string {
   if (signedIn) {
     const first = participants.find((p) => p.id === value.selectedIds[0]);
-    return first?.name?.trim() ?? "";
+    return (
+      first?.name?.trim() ??
+      namedGuests(addedGuests(value))[0]?.name.trim() ??
+      ""
+    );
   }
   return value.guests.find((g) => g.name.trim())?.name.trim() ?? "";
 }
@@ -151,8 +172,18 @@ export function householdPeople(
   signedIn: boolean,
   participants: ParticipantOption[]
 ): HouseholdPerson[] {
+  const fromGuests = (guests: GuestParticipant[]): HouseholdPerson[] =>
+    namedGuests(guests).map((g) => ({
+      key: g.key,
+      name: g.name.trim(),
+      ageBand: g.ageBand,
+      selfLevel: g.selfLevel,
+    }));
+
   if (signedIn) {
-    return value.selectedIds
+    // Chosen people first, then anyone being added — the same order
+    // /api/intake resolves them in, so result cards and rows pair up.
+    const chosen = value.selectedIds
       .map((id) => participants.find((p) => p.id === id))
       .filter((p): p is ParticipantOption => Boolean(p))
       .map((p) => {
@@ -164,15 +195,9 @@ export function householdPeople(
           selfLevel: profile?.selfLevel ?? "",
         };
       });
+    return [...chosen, ...fromGuests(addedGuests(value))];
   }
-  return value.guests
-    .filter((g) => g.name.trim().length > 0)
-    .map((g) => ({
-      key: g.key,
-      name: g.name.trim(),
-      ageBand: g.ageBand,
-      selfLevel: g.selfLevel,
-    }));
+  return fromGuests(value.guests);
 }
 
 /**
@@ -452,6 +477,8 @@ function GuestBlock({
   requireLevel,
   onChange,
   onRemove,
+  title,
+  relationships = RELATIONSHIPS,
 }: {
   guest: GuestParticipant;
   index: number;
@@ -459,13 +486,17 @@ function GuestBlock({
   requireLevel: boolean;
   onChange: (next: GuestParticipant) => void;
   onRemove: () => void;
+  /** Heading; defaults to "Player" / "Player N". */
+  title?: string;
+  /** The relationships on offer; a signed-in add never offers "Myself". */
+  relationships?: readonly Relationship[];
 }) {
   const id = `guest-${guest.key}`;
   return (
     <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-semibold text-white">
-          {index === 0 ? "Player" : `Player ${index + 1}`}
+          {title ?? (index === 0 ? "Player" : `Player ${index + 1}`)}
         </p>
         {removable && (
           <button
@@ -509,7 +540,7 @@ function GuestBlock({
           }}
           className={inputClass}
         >
-          {RELATIONSHIPS.map((r) => (
+          {relationships.map((r) => (
             <option key={r} value={r} className="bg-[#061427]">
               {RELATIONSHIP_LABELS[r]}
             </option>
@@ -551,6 +582,7 @@ export function WhoIsThisFor({
   onChange,
   multiple = false,
   collectProfile = false,
+  addInline = false,
   intro,
 }: {
   household: Household;
@@ -564,10 +596,25 @@ export function WhoIsThisFor({
    * only need to know who the form is about, so they leave this off.
    */
   collectProfile?: boolean;
+  /**
+   * Signed in, "Add someone" is a typed block sent with the form (as
+   * `participants`) and created by the route under the session's account
+   * (backlog #24) — instead of "Add a person", which saves at once. The quiz
+   * uses it; booking and enroll keep the immediate save.
+   */
+  addInline?: boolean;
   intro?: string;
 }) {
   const { loading, signedIn, participants, reload } = household;
   const [adding, setAdding] = useState(false);
+  // After "+ Add someone", focus lands on the new block's name field so a
+  // keyboard or screen-reader user is not left on a button that just moved.
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusKey) return;
+    document.getElementById(`guest-${focusKey}-name`)?.focus();
+    setFocusKey(null);
+  }, [focusKey]);
 
   // Default the selection to the holder themselves once we know who they are.
   useEffect(() => {
@@ -671,7 +718,51 @@ export function WhoIsThisFor({
           })}
         </div>
 
-        {adding ? (
+        {addInline ? (
+          <>
+            {addedGuests(value).map((g, i) => (
+              <GuestBlock
+                key={g.key}
+                guest={g}
+                index={i}
+                title={i === 0 ? "New player" : `New player ${i + 1}`}
+                relationships={RELATIONSHIPS.filter((r) => r !== "self")}
+                removable
+                requireLevel={collectProfile}
+                onChange={(next) =>
+                  onChange({
+                    ...value,
+                    guests: value.guests.map((x) => (x.key === g.key ? next : x)),
+                  })
+                }
+                onRemove={() =>
+                  onChange({
+                    ...value,
+                    guests: value.guests.filter((x) => x.key !== g.key),
+                  })
+                }
+              />
+            ))}
+            {(multiple || householdCount(value, true) === 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const guest = emptyGuest("child");
+                  onChange({ ...value, guests: [...value.guests, guest] });
+                  setFocusKey(guest.key);
+                }}
+                className="min-h-[44px] w-full rounded-2xl border border-dashed border-white/20 px-4 py-3 text-sm font-semibold text-white/70 transition hover:border-[#B4E655]/50 hover:text-white"
+              >
+                + Add someone
+              </button>
+            )}
+            {multiple && participants.some((p) => p.relationship === "self") && (
+              <p className="text-xs text-white/45">
+                If this quiz is only for your child, untick yourself.
+              </p>
+            )}
+          </>
+        ) : adding ? (
           <AddPersonForm
             requireLevel={collectProfile}
             onAdded={(p, profile) => {

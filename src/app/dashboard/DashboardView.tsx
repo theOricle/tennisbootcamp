@@ -569,12 +569,12 @@ export function DashboardView(props: DashboardViewProps) {
           ))}
         </div>
         <p className="mt-4 text-xs text-white/45">
-          Training someone else too — a child, a partner? Add them when you{" "}
+          Training someone else too — a child, a partner? Add them through{" "}
           <Link
-            href="/assessment/book"
+            href="/intake"
             className="font-semibold text-[#B4E655]/80 underline-offset-2 hover:text-[#B4E655] hover:underline"
           >
-            book their assessment
+            the 2-minute quiz
           </Link>
           .
         </p>

@@ -203,6 +203,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // A signed-in holder gets back the ids of their own people this quiz was
+    // about — chosen and newly added — so the booking form can start with
+    // them (backlog #24). A guest's response is exactly what it always was;
+    // ids are never handed to a session that could not list them anyway.
+    if (signedIn) {
+      const participantIds = Array.from(
+        new Set(
+          people
+            .map((p) => p.participantId)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+      return NextResponse.json({ ok: true, participantIds });
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Intake API error:", err);
