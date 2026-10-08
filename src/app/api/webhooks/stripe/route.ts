@@ -118,20 +118,70 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-    if (cohortId && (inviteId || legacyInviteToken || contactEmail)) {
+    if (cohortId) {
       const { markInvitePaidAndMaybeConfirm } = await import("@/lib/cohortActions");
-      const targets = participantIds.length > 0 ? participantIds : [undefined];
+      const { cohortRequiresInvite, inviteSettlement, settledByInvite, unmatchedSignal } =
+        await import("@/lib/enrollGate");
+      const { getCohortById } = await import("@/lib/cohortsDb");
+      const { sendPaymentUnmatchedAdminEmail } = await import("@/lib/email");
+      // Backlog #38: the email fallback only serves a legacy session that
+      // names neither an invite nor a participant, and never a private
+      // cohort — a cohort that cannot be read counts as private (fail
+      // closed). Once the first player has settled onto an invite row here
+      // by id or token, later players on the same session may use it.
+      const cohort = await getCohortById(cohortId).catch(() => undefined);
+      const requiresInvite = cohortRequiresInvite(cohort);
+      const playerCount = Math.max(1, participantIds.length, paidRows.length);
+      const targets: (string | undefined)[] = Array.from(
+        { length: playerCount },
+        (_, i) => participantIds[i]
+      );
+      let priorInviteProof = false;
       for (let i = 0; i < targets.length; i++) {
-        await markInvitePaidAndMaybeConfirm({
-          cohortId,
-          email: contactEmail || undefined,
+        const by = inviteSettlement({
+          inviteId,
+          legacyInviteToken,
           participantId: targets[i],
+          contactEmail,
+          requiresInvite,
           // The invite row belongs to the first player only.
-          inviteId: i === 0 ? inviteId : undefined,
-          inviteToken: i === 0 ? legacyInviteToken : undefined,
-        }).catch((err) =>
-          console.error("Invite confirmation failed (non-blocking):", err)
-        );
+          isFirstPlayer: i === 0,
+          priorInviteProof,
+        });
+        const result = by
+          ? await markInvitePaidAndMaybeConfirm({ cohortId, ...by }).catch((err) => {
+              console.error("Invite confirmation failed (non-blocking):", err);
+              return null;
+            })
+          : null;
+        const matched = Boolean(result?.matched);
+        if (settledByInvite(by, matched)) priorInviteProof = true;
+        // The money is banked and the Sheet row is paid; only the invite
+        // needs the coach's hand. PII-light here, the address in the inbox —
+        // and only for a cohort that runs on invites, never for a retry of a
+        // session whose invite is already paid.
+        const signal = unmatchedSignal({
+          matched,
+          alreadyPaid: Boolean(result?.alreadyPaid),
+          requiresInvite,
+          byParticipant: Boolean(by?.participantId),
+          playerCount: targets.length,
+        });
+        if (signal.warn) {
+          console.warn(
+            `Payment settled to no invite: session=${session.id} cohort=${cohortId} player=${i + 1}/${targets.length}`
+          );
+        }
+        if (signal.email) {
+          await sendPaymentUnmatchedAdminEmail({
+            sessionId: session.id,
+            cohortLabel: cohort?.label ?? cohortId,
+            cohortId,
+            playerIndex: i + 1,
+            playerCount: targets.length,
+            payerEmail: contactEmail,
+          });
+        }
       }
     }
 

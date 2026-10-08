@@ -43,7 +43,8 @@ import {
   type CohortPaymentMode,
 } from "@/lib/paymentTransitions";
 import { setEnrollmentStatusByEmail, setEnrollmentCredit } from "@/lib/enrollmentSheet";
-import type { CheckoutInviteRow } from "@/lib/checkoutInvite";
+import { DECLINED_INVITE_ERROR, type CheckoutInviteRow } from "@/lib/checkoutInvite";
+import { claimCredit, etransferRowPlan } from "@/lib/enrollGate";
 
 // Server-side cohort operations (Phase 3): invite flow with expiring holds,
 // minimum-to-run confirmation, session generation, and cancellation → make-up
@@ -572,7 +573,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
    * up by token (backlog #30).
    */
   strict?: boolean;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; matched?: boolean; alreadyPaid?: boolean }> {
   const { cohortId, email, inviteToken, inviteId, participantId, payment } = params;
   const strict = params.strict ?? false;
   const supabase = createServiceClient();
@@ -591,10 +592,12 @@ export async function markInvitePaidAndMaybeConfirm(params: {
       .eq("cohort_id", cohortId)
       .maybeSingle();
     target = (data as InviteRef | null) ?? null;
-  } else if (email) {
+  } else if (participantId || email) {
     // With several players on one account the email alone is ambiguous, so
-    // the participant narrows it. Falling back to the newest live invite
-    // keeps every pre-household caller working.
+    // the participant narrows it. The newest-live-invite-for-the-email
+    // fallback only serves a caller that names no participant (backlog #38);
+    // the payment rails pass email alone solely for legacy sessions on a
+    // cohort anyone may join (src/lib/enrollGate.ts inviteSettlement).
     const byParticipant = participantId
       ? await supabase
           .from("cohort_invites")
@@ -608,7 +611,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
       : null;
     if (byParticipant?.data) {
       target = byParticipant.data as InviteRef;
-    } else {
+    } else if (email && !participantId) {
       const { data } = await supabase
         .from("cohort_invites")
         .select("*")
@@ -660,8 +663,25 @@ export async function markInvitePaidAndMaybeConfirm(params: {
     }
   }
 
+  // `matched`: the lookup landed on an invite row in this cohort (backlog
+  // #38) — the payment rails use it to chain a household's later players and
+  // to flag a payment that settled onto nothing. `alreadyPaid`: the lookup
+  // found nothing payable only because this player's invite is paid already
+  // (a Stripe retry of a settled session) — nothing to flag.
+  let alreadyPaid = false;
+  if (!target && !inviteId && !inviteToken && (participantId || email)) {
+    let q = supabase
+      .from("cohort_invites")
+      .select("id")
+      .eq("cohort_id", cohortId)
+      .eq("status", "paid");
+    q = participantId ? q.eq("participant_id", participantId) : q.ilike("email", email!.trim());
+    const { data } = await q.limit(1).maybeSingle();
+    alreadyPaid = Boolean(data);
+  }
+
   await maybeConfirmCohort(cohortId);
-  return { ok: true };
+  return { ok: true, matched: Boolean(target), alreadyPaid };
 }
 
 // ─── E-transfer rail (backlog #12) ────────────────────────────────────────────
@@ -808,11 +828,15 @@ async function settleEtransferEnrollment(
     .ilike("contact_email", email.trim())
     .eq("status", "pending");
 
+  // The Sheet flip is scoped to this player when the invite names one; the
+  // Supabase enrollments table has no participant column, so that update
+  // stays by cohort + email (noted under Known limits on PR #78).
   const rows = await setEnrollmentStatusByEmail({
     cohortId,
     email,
     from: ["pending", "pending_etransfer"],
     to: "paid",
+    participantId,
   });
   if (credit) {
     for (const rowNumber of rows) {
@@ -875,6 +899,10 @@ export type EtransferIntentResult =
       recipientEmail: string;
       memo: string;
       alreadyPaid: boolean;
+      /** The invite row this player's transfer lands on. */
+      inviteId: string;
+      /** The assessment booking whose $20 this player's amount used, if any. */
+      creditBookingId: string | null;
     }
   | { ok: false; error: string; status: number };
 
@@ -894,8 +922,25 @@ export async function recordEtransferIntent(params: {
   participantName: string;
   participantId?: string | null;
   inviteToken?: string | null;
+  /**
+   * 0-based position of this player on the transfer. Only the first player
+   * may land on the newest live invite for the email; a later player with no
+   * token and no participant gets a row of their own (backlog #38), so the
+   * coach has one row per player to mark paid.
+   */
+  playerIndex?: number;
+  /** Invite rows earlier players on this request already landed on. */
+  claimedInviteIds?: string[];
+  /** Assessment bookings earlier players on this request already used. */
+  claimedCreditBookingIds?: string[];
 }): Promise<EtransferIntentResult> {
   const { cohortId, inviteToken } = params;
+  const claimedInvites = params.claimedInviteIds ?? [];
+  const plan = etransferRowPlan({
+    hasToken: Boolean(inviteToken),
+    participantId: params.participantId,
+    playerIndex: params.playerIndex ?? 0,
+  });
   const email = params.contactEmail.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false, error: "Enter a valid email.", status: 400 };
@@ -922,6 +967,12 @@ export async function recordEtransferIntent(params: {
       .eq("cohort_id", cohortId)
       .maybeSingle();
     invite = (data as InviteRef | null) ?? null;
+    // A declined invite is refused here exactly as the card route refuses it
+    // (#34/#38): it never becomes an e-transfer hold, and it never falls
+    // through to a sibling's invite by email.
+    if (invite?.status === "declined") {
+      return { ok: false, error: DECLINED_INVITE_ERROR, status: 409 };
+    }
   }
   if (!invite && params.participantId) {
     // Several players on one account: match this player's own invite first.
@@ -936,7 +987,7 @@ export async function recordEtransferIntent(params: {
       .maybeSingle();
     invite = (data as InviteRef | null) ?? null;
   }
-  if (!invite && !params.participantId) {
+  if (!invite && plan.includes("email")) {
     const { data } = await supabase
       .from("cohort_invites")
       .select("*")
@@ -947,6 +998,24 @@ export async function recordEtransferIntent(params: {
       .limit(1)
       .maybeSingle();
     invite = (data as InviteRef | null) ?? null;
+  }
+  if (!invite && plan.includes("reuse")) {
+    // A later player with no participant: a live e-transfer row for this
+    // email that names nobody and that no earlier player on this request
+    // claimed — so "I've sent it" tapped twice adds no rows.
+    const { data } = await supabase
+      .from("cohort_invites")
+      .select("*")
+      .eq("cohort_id", cohortId)
+      .ilike("email", email)
+      .eq("status", "invited")
+      .eq("payment_method", "etransfer")
+      .is("participant_id", null)
+      .order("invited_at", { ascending: true });
+    const free = ((data as InviteRef[] | null) ?? []).find(
+      (r) => !claimedInvites.includes(r.id)
+    );
+    invite = free ?? null;
   }
   if (!invite) {
     const holdHours = cohort.inviteHoldHours ?? 48;
@@ -959,13 +1028,18 @@ export async function recordEtransferIntent(params: {
       expires_at: new Date(Date.now() + holdHours * 3600 * 1000).toISOString(),
     };
     if (params.participantId) row.participant_id = params.participantId;
+    // The player's name on the row, so sibling rows under one email read
+    // apart in /admin/cohorts/[id].
+    const note = params.participantName.trim().replace(/\s+/g, " ").slice(0, 500);
+    if (note) row.payment_note = note;
     let { data, error } = await supabase
       .from("cohort_invites")
       .insert(row)
       .select("*")
       .single();
-    if (error && /participant_id/i.test(error.message)) {
-      delete row.participant_id;
+    if (error && /participant_id|payment_note/i.test(error.message)) {
+      if (/participant_id/i.test(error.message)) delete row.participant_id;
+      if (/payment_note/i.test(error.message)) delete row.payment_note;
       ({ data, error } = await supabase
         .from("cohort_invites")
         .insert(row)
@@ -978,16 +1052,29 @@ export async function recordEtransferIntent(params: {
     invite = data as InviteRef;
   }
 
-  const credit = await findUnusedCredit(email, {
-    participantId: params.participantId ?? invite.participant_id ?? null,
-  });
+  // The $20 credit applies to at most one player: a booking an earlier
+  // player on this request already used is no credit for this one.
+  const credit = claimCredit(
+    await findUnusedCredit(email, {
+      participantId: params.participantId ?? invite.participant_id ?? null,
+    }),
+    params.claimedCreditBookingIds ?? []
+  );
   const creditCents = Math.min(credit?.creditCents ?? 0, cohort.priceCents);
   const amountCents = amountDueCents(cohort.priceCents, creditCents);
   const recipientEmail = etransferRecipient();
   const memo = etransferMemo(params.participantName, cohort.label);
+  const settled = {
+    amountCents,
+    creditCents,
+    recipientEmail,
+    memo,
+    inviteId: invite.id,
+    creditBookingId: credit?.bookingId ?? null,
+  };
 
   if (invite.status === "paid") {
-    return { ok: true, amountCents, creditCents, recipientEmail, memo, alreadyPaid: true };
+    return { ok: true, ...settled, alreadyPaid: true };
   }
 
   const { error } = await supabase
@@ -1032,7 +1119,7 @@ export async function recordEtransferIntent(params: {
     console.error("E-transfer admin notification failed (non-blocking):", err)
   );
 
-  return { ok: true, amountCents, creditCents, recipientEmail, memo, alreadyPaid: false };
+  return { ok: true, ...settled, alreadyPaid: false };
 }
 
 /** Confirm when paid invites reach the minimum; idempotent. */

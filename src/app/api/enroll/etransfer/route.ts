@@ -1,5 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordEtransferIntent } from "@/lib/cohortActions";
+import { getCohortById } from "@/lib/cohortsDb";
+import {
+  COHORT_FULL_ERROR,
+  RECORDS_UNAVAILABLE_ERROR,
+  gateRefusal,
+  resolveEnrollGate,
+  scrubParticipantIds,
+  seatsRefuse,
+} from "@/lib/enrollGate";
+import { readEnrollmentSheet, seatsFromSnapshot } from "@/lib/seatCount";
+import { currentUser } from "@/lib/household";
+import { listParticipantsForAccount } from "@/lib/players";
 import {
   saveEnrollmentToSupabase,
   issueActivationLink,
@@ -58,10 +70,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
     }
 
+    // Backlog #38: the enroll page's gate, run again here before any invite
+    // row or Sheet write. Same rule as /api/checkout.
+    const cohort = await getCohortById(cohortId);
+    const gate = await resolveEnrollGate(cohort, inviteToken, { payable: true });
+    const refused = gateRefusal(gate);
+    if (refused) {
+      return NextResponse.json({ error: refused.error }, { status: refused.status });
+    }
+
     // One player per invite: a parent sending one transfer for two children
     // still ends up with two invites the coach marks paid, and the amounts
-    // add up across them (each carries its own $20 credit or none).
-    const players: EnrollParticipant[] =
+    // add up across them. A $20 assessment credit applies to at most one
+    // player — the same dedupe by booking id as /api/checkout.
+    const sent: EnrollParticipant[] =
       enrollmentMeta.participants && enrollmentMeta.participants.length > 0
         ? enrollmentMeta.participants
         : [
@@ -71,11 +93,42 @@ export async function POST(req: NextRequest) {
               isMinor: enrollmentMeta.isMinor,
             },
           ];
+    // Backlog #38: participant ids only for the signed-in account's own
+    // people; a signed-out caller names nobody. Same as /api/checkout.
+    const signedIn = await currentUser();
+    const owned = signedIn
+      ? new Set(
+          (
+            await listParticipantsForAccount(signedIn.id).catch((err) => {
+              console.error(
+                "Participant ownership lookup failed; participant ids dropped (non-blocking):",
+                err instanceof Error ? err.message : err
+              );
+              return [];
+            })
+          ).map((p) => p.id)
+        )
+      : null;
+    const players = scrubParticipantIds(sent, owned);
+
+    // Backlog #38: the page's seat rule, for every player on this transfer.
+    const sheet = await readEnrollmentSheet();
+    if (sheet.status === "error") {
+      return NextResponse.json({ error: RECORDS_UNAVAILABLE_ERROR }, { status: 503 });
+    }
+    if (sheet.status === "ok" && cohort) {
+      const seatsRemaining = seatsFromSnapshot(sheet.snapshot, cohort.id, cohort.capacityMax);
+      if (seatsRefuse(seatsRemaining, players.length)) {
+        return NextResponse.json({ error: COHORT_FULL_ERROR }, { status: 409 });
+      }
+    }
 
     let first: Awaited<ReturnType<typeof recordEtransferIntent>> | null = null;
     let amountCents = 0;
     let creditCents = 0;
     let alreadyPaid = true;
+    const claimedInviteIds: string[] = [];
+    const claimedCreditBookingIds: string[] = [];
 
     for (const [i, player] of players.entries()) {
       const result = await recordEtransferIntent({
@@ -85,10 +138,18 @@ export async function POST(req: NextRequest) {
         participantId: player.participantId ?? null,
         // The single-use token belongs to the first invite only.
         inviteToken: i === 0 ? inviteToken || null : null,
+        // A later player with no token and no participant reuses a free
+        // e-transfer row for this email, else gets one of their own — never
+        // player one's (backlog #38).
+        playerIndex: i,
+        claimedInviteIds,
+        claimedCreditBookingIds,
       });
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: result.status });
       }
+      claimedInviteIds.push(result.inviteId);
+      if (result.creditBookingId) claimedCreditBookingIds.push(result.creditBookingId);
       if (!first) first = result;
       amountCents += result.amountCents;
       creditCents += result.creditCents;

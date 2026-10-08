@@ -17,6 +17,7 @@ import {
   buildEtransferInstructionsEmail,
   buildPaymentReceivedEmail,
   buildEtransferPendingAdminEmail,
+  buildPaymentUnmatchedAdminEmail,
   moneyCAD,
   type CohortInviteParams,
 } from "@/lib/emailBodies";
@@ -327,4 +328,24 @@ export async function sendEtransferPendingAdminEmail(params: {
     return;
   }
   await deliver({ to: INBOX, ...email });
+}
+
+/**
+ * Inbox notification (backlog #38): a paid session settled onto no invite for
+ * one of its players, so the coach marks it paid by hand. Never throws — the
+ * webhook has already banked the payment.
+ */
+export async function sendPaymentUnmatchedAdminEmail(
+  params: Parameters<typeof buildPaymentUnmatchedAdminEmail>[0]
+): Promise<void> {
+  try {
+    const { adminUrl, ...email } = buildPaymentUnmatchedAdminEmail(params);
+    if (!process.env.RESEND_API_KEY) {
+      console.log(`[STUB EMAIL — set RESEND_API_KEY] ${email.subject} → ${INBOX}\n  ${adminUrl}`);
+      return;
+    }
+    await deliver({ to: INBOX, ...email });
+  } catch (err) {
+    console.error("Unmatched-payment admin email failed (non-blocking):", err);
+  }
 }

@@ -745,6 +745,7 @@ export function EnrollWizard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         cohortId: cohort.id,
+        inviteToken: inviteToken ?? undefined,
         program: program?.title ?? cohort.programId,
         location: cohort.locationId,
         // One row per player.
@@ -769,6 +770,7 @@ export function EnrollWizard({
         waiverVersion: WAIVER_VERSION,
       }),
     });
+    await throwIfRefused(enrollRes);
     if (!enrollRes.ok) throw new Error("enrollment");
     const enrollData = await enrollRes.json();
     const rows: Record<string, number> = {};
@@ -797,16 +799,22 @@ export function EnrollWizard({
         enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
       }),
     });
-    if (checkoutRes.status === 409) {
-      // The route refused before Stripe (a declined invite, backlog #34) and
-      // says why; show that instead of the generic "couldn't reach payment".
-      const body = (await checkoutRes.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(body?.error ? `refused:${body.error}` : "checkout");
-    }
+    await throwIfRefused(checkoutRes);
     if (!checkoutRes.ok) throw new Error("checkout");
     const { sessionUrl } = await checkoutRes.json();
     // Redirect to Stripe Checkout or confirmed page (mock)
     window.location.href = sessionUrl;
+  }
+
+  /**
+   * A route that refused before anything was created (declined invite #34;
+   * the invite gate, a full cohort or a mismatched row #38) says why in its
+   * JSON. Show that instead of the generic "couldn't reach payment".
+   */
+  async function throwIfRefused(res: Response) {
+    if (res.status !== 400 && res.status !== 403 && res.status !== 409) return;
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    if (body?.error) throw new Error(`refused:${body.error}`);
   }
 
   function reportError(err: unknown) {
@@ -880,6 +888,7 @@ export function EnrollWizard({
           enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
         }),
       });
+      await throwIfRefused(res);
       if (!res.ok) throw new Error("etransfer");
 
       trackEvent("enroll_etransfer_sent", {

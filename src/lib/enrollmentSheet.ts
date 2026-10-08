@@ -1,5 +1,6 @@
 import "server-only";
 import { google, type sheets_v4 } from "googleapis";
+import { enrollmentRowsToFlip } from "@/lib/enrollGate";
 
 // Additive write to the enrollments tab: the `assessment_credit` column (Q,
 // col 17) appended after the frozen 16-column layout that ends at `status` (P).
@@ -70,7 +71,9 @@ export async function setEnrollmentCredit(
 // instead — never by a client-supplied row number. Best-effort.
 
 const STATUS_COL = "P";
-const READ_RANGE = "A:P";
+// A:U — the frozen columns plus the household block, whose `participant_id`
+// (col 21) scopes a flip to one player when the invite names one (#38).
+const READ_RANGE = "A:U";
 
 /**
  * Flip every enrollment row for (cohort_id, contact_email) whose status is in
@@ -82,6 +85,13 @@ export async function setEnrollmentStatusByEmail(params: {
   email: string;
   from: string[];
   to: string;
+  /**
+   * This player's rows first (the `participant_id` column), so marking one
+   * sibling's invite paid does not flip the whole household; when no row
+   * carries that id the flip falls back to every row for the email
+   * (enrollmentRowsToFlip, src/lib/enrollGate.ts).
+   */
+  participantId?: string | null;
 }): Promise<number[]> {
   try {
     const sheets = getSheets();
@@ -92,27 +102,17 @@ export async function setEnrollmentStatusByEmail(params: {
       spreadsheetId,
       range: `${TAB}!${READ_RANGE}`,
     });
-    const rows = res.data.values ?? [];
-    if (rows.length < 2) return [];
-    const header = rows[0];
-    const cohortCol = header.indexOf("cohort_id");
-    const emailCol = header.indexOf("contact_email");
-    const statusCol = header.indexOf("status");
-    if (cohortCol === -1 || emailCol === -1 || statusCol === -1) return [];
-
-    const target = params.email.trim().toLowerCase();
-    const fromSet = new Set(params.from);
-    const changed: number[] = [];
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (
-        row[cohortCol] === params.cohortId &&
-        String(row[emailCol] ?? "").trim().toLowerCase() === target &&
-        fromSet.has(String(row[statusCol] ?? ""))
-      ) {
-        changed.push(i + 1); // 1-based sheet row
+    const all = (res.data.values ?? []) as string[][];
+    if (all.length < 2) return [];
+    const changed = enrollmentRowsToFlip(
+      { header: all[0], rows: all.slice(1) },
+      {
+        cohortId: params.cohortId,
+        email: params.email,
+        from: params.from,
+        participantId: params.participantId,
       }
-    }
+    );
     if (changed.length === 0) return [];
 
     await sheets.spreadsheets.values.batchUpdate({

@@ -46,7 +46,9 @@ export type InviteLike = {
 export type PaidPatch = {
   status: "paid";
   payment_method: PaymentMethod;
-  payment_note: string | null;
+  /** Only when the coach typed one; an empty note keeps what the row has
+   *  (the player's name prefilled at e-transfer intent, backlog #38). */
+  payment_note?: string;
   paid_at: string;
 };
 
@@ -74,7 +76,7 @@ export function planMarkPaid(
     patch: {
       status: "paid",
       payment_method: opts.method,
-      payment_note: note ? note.slice(0, 500) : null,
+      ...(note ? { payment_note: note.slice(0, 500) } : {}),
       paid_at: opts.now.toISOString(),
     },
   };
@@ -83,7 +85,6 @@ export function planMarkPaid(
 export type UnpaidPatch = {
   status: "invited" | "expired";
   paid_at: null;
-  payment_note: null;
 };
 
 export type MarkUnpaidPlan =
@@ -94,8 +95,9 @@ export type MarkUnpaidPlan =
  * Reverse a paid mark without deleting the invite. The row returns to
  * `invited` while its hold is still live, `expired` once the hold has lapsed
  * (matching what the lazy expiry sweep would do on the next read). The
- * player's chosen rail (payment_method) is kept as history; the paid
- * timestamp and note are cleared.
+ * player's chosen rail (payment_method) and the note (the coach's words, or
+ * the player's name prefilled at e-transfer intent) are kept as history; the
+ * paid timestamp is cleared.
  */
 export function planMarkUnpaid(
   invite: Pick<InviteLike, "status" | "expires_at">,
@@ -107,7 +109,7 @@ export function planMarkUnpaid(
   const lapsed = invite.expires_at < now.toISOString();
   return {
     ok: true,
-    patch: { status: lapsed ? "expired" : "invited", paid_at: null, payment_note: null },
+    patch: { status: lapsed ? "expired" : "invited", paid_at: null },
   };
 }
 
