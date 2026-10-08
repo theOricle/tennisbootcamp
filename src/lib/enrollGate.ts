@@ -171,6 +171,53 @@ export const RECORDS_UNAVAILABLE_ERROR =
 
 export type EnrollmentSheetSnapshot = { header: string[]; rows: string[][] };
 
+/**
+ * Which enrollment rows a status flip touches (1-based sheet row numbers):
+ * this cohort, this contact email, status in `from`. With a `participantId`
+ * the pass is first scoped to rows whose `participant_id` column matches,
+ * so marking one sibling paid moves only their rows. If that scoped pass
+ * matches nothing — the column is missing, blank (a signed-out household
+ * writes ""), or holds a different id (the invite resolved to the holder's
+ * self participant while the row names a child) — it falls back to every
+ * row for the email, the pre-#38 behaviour, so a paid invite never leaves a
+ * row stuck on pending.
+ */
+export function enrollmentRowsToFlip(
+  snapshot: EnrollmentSheetSnapshot,
+  params: { cohortId: string; email: string; from: string[]; participantId?: string | null }
+): number[] {
+  const cohortCol = snapshot.header.indexOf("cohort_id");
+  const emailCol = snapshot.header.indexOf("contact_email");
+  const statusCol = snapshot.header.indexOf("status");
+  if (cohortCol === -1 || emailCol === -1 || statusCol === -1) return [];
+  const participantCol = snapshot.header.indexOf("participant_id");
+  const target = params.email.trim().toLowerCase();
+  const fromSet = new Set(params.from);
+
+  const pass = (scopeTo: string | null): number[] => {
+    const hit: number[] = [];
+    snapshot.rows.forEach((row, i) => {
+      if (
+        row[cohortCol] === params.cohortId &&
+        String(row[emailCol] ?? "").trim().toLowerCase() === target &&
+        fromSet.has(String(row[statusCol] ?? "")) &&
+        (scopeTo === null || String(row[participantCol] ?? "").trim() === scopeTo)
+      ) {
+        hit.push(i + 2); // header is row 1
+      }
+    });
+    return hit;
+  };
+
+  const scopeTo =
+    params.participantId && participantCol !== -1 ? params.participantId.trim() : null;
+  if (scopeTo) {
+    const scoped = pass(scopeTo);
+    if (scoped.length > 0) return scoped;
+  }
+  return pass(null);
+}
+
 /** The page's seat rule, for a payment covering `playerCount` seats. */
 export function seatsRefuse(seatsRemaining: number | null, playerCount: number): boolean {
   if (seatsRemaining === null) return false;

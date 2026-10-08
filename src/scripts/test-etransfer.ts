@@ -58,21 +58,21 @@ check(
 );
 
 check(
-  "empty note is stored as null",
+  "empty note leaves the row's note alone (keeps the prefilled player name, #38)",
   (() => {
     const p = planMarkPaid({ status: "invited" }, { method: "etransfer", note: "   ", now: NOW });
-    return p.ok ? p.patch.payment_note : "not ok";
+    return p.ok ? "payment_note" in p.patch : "not ok";
   })(),
-  null
+  false
 );
 
 check(
-  "card payments record method 'card' with no note",
+  "card payments record method 'card' and touch no note",
   (() => {
     const p = planMarkPaid({ status: "invited" }, { method: "card", now: NOW });
-    return p.ok ? [p.patch.payment_method, p.patch.payment_note] : "not ok";
+    return p.ok ? [p.patch.payment_method, "payment_note" in p.patch] : "not ok";
   })(),
-  ["card", null]
+  ["card", false]
 );
 
 check(
@@ -106,15 +106,15 @@ check("PAYABLE_STATUSES guards the database update", PAYABLE_STATUSES, ["invited
 console.log("planMarkUnpaid");
 
 check(
-  "paid → invited while the hold is live; paid_at and note cleared",
+  "paid → invited while the hold is live; paid_at cleared, note kept",
   planMarkUnpaid({ status: "paid", expires_at: LIVE }, NOW),
-  { ok: true, patch: { status: "invited", paid_at: null, payment_note: null } }
+  { ok: true, patch: { status: "invited", paid_at: null } }
 );
 
 check(
   "paid → expired once the hold has lapsed",
   planMarkUnpaid({ status: "paid", expires_at: LAPSED }, NOW),
-  { ok: true, patch: { status: "expired", paid_at: null, payment_note: null } }
+  { ok: true, patch: { status: "expired", paid_at: null } }
 );
 
 check(

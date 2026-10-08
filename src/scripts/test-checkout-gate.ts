@@ -14,6 +14,7 @@ import {
   scrubParticipantIds,
   seatsRefuse,
   foreignRows,
+  enrollmentRowsToFlip,
   gateRefusal,
   unmatchedSignal,
   etransferRowPlan,
@@ -272,6 +273,46 @@ console.log("etransferRowPlan — one invite row per player on a transfer");
     etransferRowPlan({ hasToken: true, participantId: "p_1", playerIndex: 0 }),
     ["token", "participant", "create"]
   );
+}
+
+console.log("enrollmentRowsToFlip — scoped to the player, with the pre-#38 fallback");
+{
+  const header = ["timestamp", "cohort_id", "program", "location", "participant_name", "participant_dob", "is_minor", "contact_email", "contact_phone", "guardian_name", "guardian_email", "guardian_phone", "consent_signed_name", "consent_agreed_at", "waiver_version", "status", "assessment_credit", "account_email", "account_name", "participant_relationship", "participant_id"];
+  const row = (cohort: string, email: string, status: string, participantId: string) => [
+    "t", cohort, "", "", "", "", "no", email, "", "", "", "", "", "", "", status, "", "", "", "", participantId,
+  ];
+  const household = {
+    header,
+    rows: [
+      row("coh_1", "parent@example.com", "pending_etransfer", "p_child_a"), // row 2
+      row("coh_1", "parent@example.com", "pending_etransfer", "p_child_b"), // row 3
+      row("coh_1", "other@example.com", "pending_etransfer", "p_child_a"),  // row 4
+      row("coh_2", "parent@example.com", "pending_etransfer", "p_child_a"), // row 5
+      row("coh_1", "parent@example.com", "paid", "p_child_b"),              // row 6
+    ],
+  };
+  const base = { cohortId: "coh_1", email: "parent@example.com", from: ["pending", "pending_etransfer"] };
+  check("scoped: one sibling's invite flips only their rows", enrollmentRowsToFlip(household, { ...base, participantId: "p_child_b" }), [3]);
+  check("scoped: the other sibling", enrollmentRowsToFlip(household, { ...base, participantId: "p_child_a" }), [2]);
+  check("no participant → every pending row for the email (pre-#38)", enrollmentRowsToFlip(household, base), [2, 3]);
+  check(
+    "a different id on every row (holder's self participant vs the child) → fallback flips the email's rows",
+    enrollmentRowsToFlip(household, { ...base, participantId: "p_self" }),
+    [2, 3]
+  );
+  const signedOut = {
+    header,
+    rows: [
+      row("coh_1", "parent@example.com", "pending_etransfer", ""), // row 2
+      row("coh_1", "parent@example.com", "pending_etransfer", ""), // row 3
+    ],
+  };
+  check("blank col U (signed-out household) → fallback flips the email's rows", enrollmentRowsToFlip(signedOut, { ...base, participantId: "p_self" }), [2, 3]);
+  const noColumn = { header: header.slice(0, 16), rows: [row("coh_1", "parent@example.com", "pending", "x").slice(0, 16)] };
+  check("tab without the column → by email", enrollmentRowsToFlip(noColumn, { ...base, participantId: "p_self" }), [2]);
+  check("email match is case-insensitive and trimmed", enrollmentRowsToFlip(household, { ...base, email: "  Parent@Example.com " }), [2, 3]);
+  check("status outside `from` never flips", enrollmentRowsToFlip(household, { ...base, from: ["pending"] }), []);
+  check("missing core columns → nothing", enrollmentRowsToFlip({ header: ["x"], rows: [["y"]] }, base), []);
 }
 
 console.log("inviteSettlement — how a payment finds its invite");
