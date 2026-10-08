@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Video Lessons",
   description:
     "On-demand video lessons from Tennis Bootcamp coaches. Build technique between sessions from anywhere.",
+  alternates: { canonical: "/video-lessons" },
 };
 
 const PLACEHOLDER_LESSONS = [

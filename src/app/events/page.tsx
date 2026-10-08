@@ -4,6 +4,7 @@ import { EmailCapture } from "@/components/sections/EmailCapture";
 export const metadata: Metadata = {
   title: "Events",
   description: "Upcoming Tennis Bootcamp training sessions and events in Toronto.",
+  alternates: { canonical: "/events" },
 };
 
 export default function EventsPage() {

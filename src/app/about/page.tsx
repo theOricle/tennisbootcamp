@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: "About",
   description:
     "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Sina places every player by level and schedule; High Performance is the competitive tier.",
+  alternates: { canonical: "/about" },
 };
 
 export default function AboutPage() {

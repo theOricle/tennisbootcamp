@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Privacy Policy",
   description:
     "What Tennis Bootcamp collects, why, who processes it for us, and how to see, correct or delete your information.",
+  alternates: { canonical: "/legal/privacy" },
 };
 
 const EFFECTIVE_DATE = "October 8, 2026";

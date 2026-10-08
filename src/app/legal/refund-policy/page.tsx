@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   title: "Program Policies",
   description:
     "Tennis Bootcamp program policies: cancellation, refunds, make-ups, instalments, the $20 assessment and club membership.",
+  alternates: { canonical: "/legal/refund-policy" },
 };
 
 const EMAIL = "info@tennisbootcamp.ca";
