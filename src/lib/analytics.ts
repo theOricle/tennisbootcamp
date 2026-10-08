@@ -131,6 +131,22 @@ export function setGaPageLocation(location: string, referrer: string) {
   gtag("event", "page_view", page);
 }
 
+// ─── Enrollment events ────────────────────────────────────────────────────────
+
+/**
+ * Player opens the enroll wizard. Carries its own trimmed page_location: on an
+ * in-site link this effect runs before AnalyticsPageLocation's, so GA's `set`
+ * still holds the previous page. The invite token never goes with it.
+ */
+export function trackEnrollStart(cohortId: string, program: string) {
+  if (typeof window === "undefined") return;
+  trackEvent("enroll_start", {
+    cohort_id: cohortId,
+    program,
+    page_location: withoutInvite(window.location.href),
+  });
+}
+
 // ─── Assessment funnel events (Phase 1) ───────────────────────────────────────
 
 /** Player submits the assessment booking form. */
