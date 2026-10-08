@@ -1,3 +1,5 @@
+archived 2026-09-29, superseded by CLAUDE.md and git log
+
 # Open Questions
 
 _Unresolved questions that need answers before proceeding with certain work. Close each item by moving the answer to DECISIONS.md and removing it from here._
