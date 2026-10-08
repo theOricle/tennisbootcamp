@@ -11,11 +11,21 @@
 // all get the same RESET_RESPONSE. Only the request's *shape* can earn a 400,
 // and the form's `type="email" required` input never produces one.
 //
-// No per-address cooldown. Vercel runs this route as a serverless function,
-// so an in-memory map lives and dies with one instance and a burst spreads
-// across many — it would cost code and give nothing. A cooldown that works
-// needs shared state (a table or KV), which is out of scope here; Supabase
-// Auth's own `recovery_sent_at` is the cheap place to put one later.
+// Timing (backlog #36): the route answers RESET_RESPONSE *before* it looks
+// the address up, asks Supabase for a link or sends anything — that work runs
+// in Next's `after()` once the response is out. A known address used to wait
+// on generateLink plus the Resend send while an unknown one returned as soon
+// as generateLink failed, which made the response time an account-existence
+// oracle. Now every non-400 path returns in comparable time.
+//
+// Per-address cooldown (backlog #36): Supabase Auth stamps
+// `auth.users.recovery_sent_at` whenever a recovery link is generated, and
+// the admin API returns it on the user. Inside RESET_COOLDOWN_MS of that
+// stamp the route skips the send and says nothing — the response is the
+// same RESET_RESPONSE either way. No table, no KV, no in-memory map (which a
+// serverless burst would spread across instances anyway). The cooldown only
+// ever *skips* a send: a lookup that errors or finds no user falls through
+// to generateLink exactly as before, so a real reset is never lost to it.
 //
 // Pure (no I/O, no Next.js imports) so src/scripts/test-reset-guard.ts can
 // pin every rule.
@@ -60,4 +70,39 @@ export function decideReset(body: unknown): ResetDecision {
     return { action: "reject", status: 400, error: RESET_INVALID_EMAIL };
   }
   return { action: "accept", email };
+}
+
+// ─── Cooldown (backlog #36) ──────────────────────────────────────────────────
+
+/** How long after a recovery link was last generated the route stays quiet. */
+export const RESET_COOLDOWN_MS = 60_000;
+
+/**
+ * True when `recoverySentAt` (Supabase's ISO stamp, or nothing) is less than
+ * RESET_COOLDOWN_MS before `now`. Missing or unparseable → false, so an
+ * account that was never sent a link, or a shape we don't recognise, is
+ * never silently skipped. A stamp *ahead* of `now` (clock skew) counts as
+ * inside the window — it cannot have been a minute ago.
+ */
+export function withinResetCooldown(
+  recoverySentAt: string | null | undefined,
+  now: number = Date.now()
+): boolean {
+  if (typeof recoverySentAt !== "string" || recoverySentAt === "") return false;
+  const sent = Date.parse(recoverySentAt);
+  if (Number.isNaN(sent)) return false;
+  return now - sent < RESET_COOLDOWN_MS;
+}
+
+/**
+ * The user whose email matches `email` (trimmed, case-insensitive — the same
+ * rule as findUserIdByEmail in src/lib/players.ts), or undefined.
+ */
+export function findUserByEmail<T extends { email?: string | null }>(
+  users: readonly T[],
+  email: string
+): T | undefined {
+  const target = email.trim().toLowerCase();
+  if (!target) return undefined;
+  return users.find((u) => (u.email ?? "").trim().toLowerCase() === target);
 }
