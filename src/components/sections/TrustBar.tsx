@@ -1,11 +1,13 @@
+// The funnel is quiz-first (owner 2026-10-02): Sina places every player from
+// the 2-minute quiz, and the on-court assessment is optional.
 const signals = [
   {
-    label: "High-Performance Coaching",
-    body: "Technique, tactics, fitness, and mental game under one structured system.",
+    label: "Structured coaching",
+    body: "Technique, tactics, fitness, and mental game, coached as one system.",
   },
   {
-    label: "Placed by Assessment",
-    body: "Every player hits with the coach before joining a group — levels are assigned on court, not self-reported.",
+    label: "Placed by Sina",
+    body: "Every player is placed by level and schedule from the 2-minute quiz. The 20-minute on-court assessment is optional, if you want your level confirmed first.",
   },
 ];
 

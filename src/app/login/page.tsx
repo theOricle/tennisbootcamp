@@ -113,10 +113,10 @@ export default function LoginPage() {
           <p className="text-center text-sm text-white/60">
             New here?{" "}
             <Link
-              href="/programs"
+              href="/intake"
               className="text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
             >
-              Enroll in a program →
+              Take the 2-minute quiz →
             </Link>
           </p>
         </form>

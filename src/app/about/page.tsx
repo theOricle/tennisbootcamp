@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
-import { Coaches } from "@/components/sections/Coaches";
-import { coaches } from "@/content/coaches";
-import { COHORT_LENGTH, COHORT_LENGTH_ADJ, COHORT_WEEKS_WORD } from "@/content/programs";
+import { Button } from "@/components/ui/Button";
+import {
+  COHORT_LENGTH,
+  COHORT_LENGTH_ADJ,
+  COHORT_WEEKS_WORD,
+  SESSION_MINUTES,
+} from "@/content/programs";
 
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Sina places every player by level and schedule; High Performance is the competitive tier.",
+    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Sina places every player by level and schedule; High Performance is the competitive track.",
   alternates: { canonical: "/about" },
 };
 
@@ -52,25 +56,22 @@ export default function AboutPage() {
             </p>
           </div>
 
+          {/* What a cohort is, from the same constants as every program page
+              and the Program Policies (audit H3): one class a week, one fixed
+              group, six per court and eight at most. */}
           <ul className="space-y-4">
             {[
               {
-                label: "Two on-court sessions per week",
+                label: `One ${SESSION_MINUTES}-minute class a week`,
                 detail:
-                  "Realistic rally play, point-play pressure, and stroke-specific work in every session.",
+                  "Realistic rally play, point-play pressure, and stroke-specific work in every class.",
               },
               {
-                label: "One strength-and-conditioning session per week",
-                detail:
-                  "First-step quickness, change-of-direction, and tennis-specific conditioning — not general fitness.",
+                label: `The same group for all ${COHORT_LENGTH}`,
+                detail: "The players you start with are the players you finish with.",
               },
               {
-                label: "Measured at the start and end",
-                detail:
-                  "You finish every cohort knowing exactly what improved and what the next block should target.",
-              },
-              {
-                label: "Small groups, real feedback",
+                label: "Six players per court, eight at most",
                 detail:
                   "Courts are capped so Sina can coach every player on every ball, not just supervise.",
               },
@@ -109,7 +110,7 @@ export default function AboutPage() {
               {
                 heading: "Serious at every level",
                 body:
-                  "The training methods come from competitive player development, applied at every rung of the ladder — Love through Grand Slam. Sina places every player by level and schedule, and every group trains with structure and intent. High Performance is the explicitly competitive tier; the rest of the ladder builds your game seriously from wherever you start.",
+                  "The training methods come from competitive player development, applied at every rung of the ladder — Love through Grand Slam. Sina places every player by level and schedule, and every group trains with structure and intent. High Performance is the explicitly competitive track; the rest of the ladder builds your game seriously from wherever you start.",
               },
             ].map(({ heading, body }) => (
               <div
@@ -138,7 +139,7 @@ export default function AboutPage() {
           <div className="mt-8 max-w-3xl space-y-5 text-white/70">
             <p>
               Sina Kassaian built Tennis Bootcamp on a single conviction: that the gap
-              between recreational club tennis and real competitive performance is a
+              between recreational club tennis and competitive performance is a
               coaching and structure problem, not a talent problem. Most players who
               want to compete are training in the wrong environment — too casual, too
               unfocused, too comfortable. The bootcamp model exists to close that gap.
@@ -153,8 +154,28 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ── Coaching team (existing component) ───────────────────────────── */}
-      <Coaches coaches={coaches} title="The team" />
+      {/* ── Closing CTA: quiz first, programs second (audit H3) ─────────────── */}
+      <section className="border-t border-white/10">
+        <div className="mx-auto max-w-6xl px-6 py-16">
+          <div className="rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-6 md:flex md:items-center md:justify-between md:gap-10 md:p-10">
+            <div className="max-w-xl">
+              <h2 className="text-2xl font-bold text-white">Not sure where you fit?</h2>
+              <p className="mt-2 text-pretty text-white/70">
+                Tell us each player&apos;s age, level and free time. Sina places
+                them in the class that fits.
+              </p>
+            </div>
+            <div className="mt-6 flex flex-wrap gap-3 md:mt-0 md:shrink-0">
+              <Button variant="primary" href="/intake">
+                Take the 2-minute quiz
+              </Button>
+              <Button variant="secondary" href="/programs">
+                Browse Programs
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

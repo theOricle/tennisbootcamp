@@ -12,15 +12,19 @@ import { PageStack } from "@/components/layout/PageStack";
 import { programs } from "@/content/programs";
 import { coaches } from "@/content/coaches";
 import { events } from "@/content/events";
+import { SITE_DESCRIPTION } from "@/content/site";
 
 export const metadata: Metadata = {
   title: { absolute: "Tennis Bootcamp — Where Athletes Evolve!" },
-  description:
-    "Weekend group tennis classes in Toronto for juniors, teens and adults. Take the 2-minute quiz and Sina places you in a group; the 20-minute assessment is optional.",
+  description: SITE_DESCRIPTION,
   alternates: { canonical: "/" },
 };
 
 export default function HomePage() {
+  // No section for events that don't exist yet (audit M6): it returns with
+  // the first real entry in src/content/events.ts.
+  const hasRealEvents = events.some((e) => !e.placeholder);
+
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <JsonLd data={organizationJsonLd()} />
@@ -34,8 +38,8 @@ export default function HomePage() {
 
       <PageStack>
         <ProgramsGrid programs={programs.slice(0, 3)} title="Our Programs" />
-        <Coaches coaches={coaches} title="Meet the Coaches" />
-        <EventsList events={events} title="Upcoming Events" />
+        <Coaches coaches={coaches} />
+        {hasRealEvents && <EventsList events={events} title="Upcoming Events" />}
       </PageStack>
     </main>
   );

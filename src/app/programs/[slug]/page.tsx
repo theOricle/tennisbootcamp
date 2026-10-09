@@ -33,7 +33,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (!program) return {};
   return {
     title: program.title,
-    description: program.longDescription.slice(0, 160),
+    // Hand-written per program (audit M10); a slice cut words in half.
+    description: program.metaDescription ?? program.description,
     alternates: { canonical: `/programs/${program.slug}` },
   };
 }
@@ -174,9 +175,9 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               </div>
             ) : (
               <div className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
-                <p className="text-sm font-semibold text-white">Registration coming soon</p>
+                <p className="text-sm font-semibold text-white">Not open for enrollment yet</p>
                 <p className="mt-1 text-xs text-white/60">
-                  Enter your email to be notified when spots open.
+                  Leave your email and we&apos;ll tell you when enrollment opens.
                 </p>
                 <div className="mt-3">
                   <ProgramInterestForm programSlug={program.slug} programTitle={program.title} />
@@ -289,9 +290,16 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               <h2 id="cohorts" className="text-xl font-semibold text-white">
                 Upcoming cohorts
               </h2>
+              {/* The timetable above is real; the dated cohorts are not public
+                  yet (fall 2026 runs with Sina's private students). Status
+                  wording follows owner default D11, "Groups forming". */}
               <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
-                The next season&apos;s schedule is being finalized. Leave your email
-                and we&apos;ll send you the schedule before registration opens.
+                Groups are forming. Cohort dates aren&apos;t public yet.{" "}
+                <Link href={quizHref} className="text-[#B4E655] hover:underline">
+                  Take the 2-minute quiz
+                </Link>{" "}
+                and Sina places you in a class by level and schedule, or leave
+                your email and we&apos;ll tell you when a cohort opens.
               </p>
               <div className="-mx-6 mt-2">
                 <EmailCapture />
@@ -315,7 +323,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   />
                 </svg>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white">Registrations coming soon</p>
+                  <p className="font-semibold text-white">Enrollment not open yet</p>
                   <p className="mt-0.5 text-sm text-white/60">
                     Leave your email and we&apos;ll tell you when {program.title} opens.
                   </p>
@@ -328,6 +336,18 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 </div>
               </div>
             </div>
+          )}
+
+          {program.related && (
+            <p className="mt-6 text-sm leading-relaxed text-white/70">
+              {program.related.text}{" "}
+              <Link
+                href={program.related.href}
+                className="font-semibold text-[#B4E655] hover:underline"
+              >
+                {program.related.label} →
+              </Link>
+            </p>
           )}
         </div>
 

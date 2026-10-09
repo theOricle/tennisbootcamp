@@ -16,8 +16,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     })),
     { url: `${BASE_URL}/about`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.7 },
-    { url: `${BASE_URL}/events`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.7 },
-    { url: `${BASE_URL}/video-lessons`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.5 },
+    // /events and /video-lessons are left out (noindex) until they have real
+    // content (audit M6, owner default D24).
     { url: `${BASE_URL}/legal/privacy`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.3 },
     { url: `${BASE_URL}/legal/refund-policy`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.3 },
     { url: `${BASE_URL}/legal/waiver`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.3 },

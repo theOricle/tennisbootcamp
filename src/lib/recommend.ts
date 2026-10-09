@@ -60,7 +60,7 @@ function buildReason(program: Program, form: IntakeFormSnapshot): string {
     const slot = timetable[0];
     const when = slot ? `, every ${slot.day} at ${startOf(slot)}` : "";
     if (level === "elite")
-      return `The competitive tier — pattern play, serve plus the next shot, and match play with the score on${when}.`;
+      return `The competitive track — pattern play, serve plus the next shot, and match play with the score on${when}.`;
     return `Built for players who compete — pattern play and match play with the score on${when}.`;
   }
 

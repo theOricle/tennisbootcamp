@@ -3,19 +3,61 @@ import { Card } from "@/components/ui/Card";
 
 type CoachesProps = {
   coaches: Coach[];
+  /** Defaults to "Your coach" while there is one coach, "Meet the Coaches" after. */
   title?: string;
 };
 
-export function Coaches({ coaches, title = "Meet the Coaches" }: CoachesProps) {
+/** "Sina Kassaian" → "SK": first letter of the first and last name. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  const first = parts[0][0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] ?? "" : "";
+  return `${first}${last}`.toUpperCase();
+}
+
+// Until a consented photo exists, the coach gets a monogram in the tier-badge
+// geometry (the same hexagon field and lime ring as src/components/tiers),
+// not an empty grey circle (audit M16). Decorative: the name sits beside it.
+function CoachMonogram({ name }: { name: string }) {
+  return (
+    <div className="relative h-14 w-14 shrink-0" aria-hidden="true">
+      <svg viewBox="0 0 64 64" className="absolute inset-0 h-full w-full">
+        <polygon
+          points="32,3 57,17.5 57,46.5 32,61 7,46.5 7,17.5"
+          fill="#061427"
+          stroke="#B4E655"
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+        />
+        <polygon
+          points="32,9 51.5,20.25 51.5,43.75 32,55 12.5,43.75 12.5,20.25"
+          fill="none"
+          stroke="#FFFFFF"
+          strokeOpacity={0.12}
+          strokeWidth={1}
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-base font-semibold tracking-wide text-white">
+        {initialsOf(name)}
+      </span>
+    </div>
+  );
+}
+
+export function Coaches({ coaches, title }: CoachesProps) {
+  const heading = title ?? (coaches.length > 1 ? "Meet the Coaches" : "Your coach");
+
   return (
     <section className="mx-auto max-w-6xl px-6 py-12">
-      <h2 className="text-2xl font-semibold text-white">{title}</h2>
+      <h2 className="text-2xl font-semibold text-white">{heading}</h2>
 
       <div className="mt-6 grid gap-6 md:grid-cols-2">
         {coaches.map((c) => (
           <Card key={c.id}>
             <div className="flex gap-4 p-6">
-              <div className="h-14 w-14 shrink-0 rounded-full bg-white/10" aria-hidden />
+              <CoachMonogram name={c.name} />
               <div>
                 <div className="font-semibold text-white">{c.name}</div>
                 <div className="text-sm text-white/60">{c.role}</div>
