@@ -13,7 +13,7 @@ export function Footer() {
               href="/login"
               className="mt-2 inline-block rounded text-white/60 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
             >
-              Log in
+              Sign in
             </Link>
             <span className="mx-2 text-white/30" aria-hidden="true">·</span>
             <Link

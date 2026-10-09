@@ -57,7 +57,7 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
       ? ["Send the e-transfer if you haven't yet — the amount, address, and message are in your email."]
       : []),
     "Check your email — you'll receive an activation link to access your account.",
-    "Set your password to unlock your training dashboard and enrollment history.",
+    "Set your password to open your training dashboard and enrollment history.",
     viaEtransfer
       ? "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email."
       : "We'll send reminders before your first session with court details and what to bring.",
@@ -100,8 +100,8 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
                 ? `${firstName}, your spot is held.`
                 : "Your spot is held."
               : firstName
-              ? `${firstName}, you're enrolled!`
-              : "You're enrolled!"}
+              ? `${firstName}, you're enrolled.`
+              : "You're enrolled."}
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-white/65">
             {viaEtransfer ? (

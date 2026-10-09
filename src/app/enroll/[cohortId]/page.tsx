@@ -58,9 +58,10 @@ function InviteGate({ expired }: { expired: boolean }) {
                 This group is invite-only
               </h1>
               <p className="mt-3 text-sm leading-relaxed text-white/65">
-                Enrollment here opens by email invitation, matched to your
-                coach-assigned level. Book a 20-minute assessment and we&apos;ll
-                build your group around your level and your schedule.
+                Enrollment in this group opens by email invitation. Take the
+                2-minute quiz and Sina places you in a group that fits your
+                level and your schedule. Want your level confirmed on court
+                first? The 20-minute assessment is optional.
               </p>
               <p className="mt-3 text-sm leading-relaxed text-white/65">
                 Already invited? Open the link in your invitation email.
@@ -76,19 +77,30 @@ function InviteGate({ expired }: { expired: boolean }) {
                 Email us →
               </a>
             ) : (
+              // Quiz first, assessment optional (audit M1).
+              <>
+                <Link
+                  href="/intake"
+                  className="inline-flex min-h-[44px] items-center rounded-full bg-[#B4E655] px-6 text-sm font-semibold text-[#061427] transition hover:brightness-110"
+                >
+                  Take the 2-minute quiz
+                </Link>
+                <Link
+                  href="/assessment/book"
+                  className="inline-flex min-h-[44px] items-center rounded-full bg-white/10 px-6 text-sm font-semibold text-white transition hover:bg-white/15"
+                >
+                  Book Your Assessment
+                </Link>
+              </>
+            )}
+            {expired && (
               <Link
-                href="/assessment/book"
-                className="inline-flex min-h-[44px] items-center rounded-full bg-[#B4E655] px-6 text-sm font-semibold text-[#061427] transition hover:brightness-110"
+                href="/programs"
+                className="inline-flex min-h-[44px] items-center rounded-full bg-white/10 px-6 text-sm font-semibold text-white transition hover:bg-white/15"
               >
-                Book Your Assessment →
+                Browse Programs
               </Link>
             )}
-            <Link
-              href="/programs"
-              className="inline-flex min-h-[44px] items-center rounded-full bg-white/10 px-6 text-sm font-semibold text-white transition hover:bg-white/15"
-            >
-              Browse Programs
-            </Link>
           </div>
         </div>
       </div>

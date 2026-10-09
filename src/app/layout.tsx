@@ -8,6 +8,7 @@ import { PreviewBanner } from "@/components/layout/PreviewBanner";
 import { AnalyticsPageLocation } from "@/components/layout/AnalyticsPageLocation";
 import { FirstTouchCapture } from "@/components/layout/FirstTouchCapture";
 import { SITE_URL } from "@/lib/siteUrl";
+import { SITE_DESCRIPTION } from "@/content/site";
 import { gaInitScript } from "@/lib/analytics";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
@@ -18,8 +19,7 @@ export const metadata: Metadata = {
     default: "Tennis Bootcamp",
     template: "%s | Tennis Bootcamp",
   },
-  description:
-    "Tennis training in Toronto for players who want to compete. Every player is placed by a 20-minute on-court assessment: $20, and it comes off the price when you enroll in a program.",
+  description: SITE_DESCRIPTION,
   openGraph: {
     siteName: "Tennis Bootcamp",
     locale: "en_CA",

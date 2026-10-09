@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { membershipNote } from "@/lib/membership";
+import { ASSESSMENT_CREDIT_MONTHS } from "@/content/policies";
 import { TierLadder } from "@/components/tiers";
 
 const LEAVE_WITH = [
@@ -54,14 +55,24 @@ export default function AssessmentLandingPage() {
             The Player Assessment
           </span>
           <h1 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-4xl md:text-5xl">
-            Every player starts with 20 minutes on court.
+            Want your level confirmed on court first?
           </h1>
           <p className="mt-6 text-base leading-relaxed text-white/70 sm:text-lg">
-            No group here is a lucky draw. Before you join a program, you hit
-            with the coach — a short rally, groundstrokes under a little
-            pressure, a few serves. You leave with a real level, a written note
-            on your game, and a group recommendation that matches both your level
-            and your schedule.
+            Sina places every player from the 2-minute quiz. The assessment is
+            optional: 20&nbsp;minutes hitting with the coach — a short rally,
+            groundstrokes under a little pressure, a few serves. You leave with
+            your level, a written note on your game, and a group recommendation
+            that matches both your level and your schedule.
+          </p>
+          <p className="mt-4 text-sm text-white/60">
+            Not sure you need it?{" "}
+            <Link
+              href="/intake"
+              className="font-semibold text-[#B4E655] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
+            >
+              Take the 2-minute quiz
+            </Link>{" "}
+            and Sina places you from your answers.
           </p>
         </section>
 
@@ -71,14 +82,15 @@ export default function AssessmentLandingPage() {
             $20 <span className="text-[#B4E655]">— comes off the price when you enroll</span>
           </p>
           <p className="mt-2 text-sm text-white/60 sm:text-base">
-            The assessment costs $20. Join a program or lesson afterward and
-            that $20 is applied to it — so the assessment ends up free.
+            The assessment is $20. If you enroll in a program in the{" "}
+            {ASSESSMENT_CREDIT_MONTHS} months after it, that $20 comes off the
+            price.
           </p>
           <Link
             href="/assessment/book"
-            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-center text-base font-semibold text-[#061427] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
           >
-            Book my 20-minute assessment
+            Book Your Assessment
           </Link>
         </section>
 
@@ -103,9 +115,9 @@ export default function AssessmentLandingPage() {
             The ladder you&apos;re climbing
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-white/65 sm:text-base">
-            Your level places you on a seven-rung ladder. Every player starts
-            somewhere real and climbs from there — the assessment tells you which
-            rung you&apos;re on.
+            Your level places you on a seven-rung ladder. Every player starts on
+            one rung and climbs from there — the assessment confirms which rung
+            you&apos;re on.
           </p>
           <div className="mt-6">
             <TierLadder />
@@ -137,9 +149,9 @@ export default function AssessmentLandingPage() {
           </p>
           <Link
             href="/assessment/book"
-            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-center text-base font-semibold text-[#061427] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
           >
-            Book my 20-minute assessment
+            Book Your Assessment
           </Link>
         </section>
       </div>

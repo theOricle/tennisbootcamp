@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/browser";
 import { trackQuizCtaClick } from "@/lib/analytics";
 
+// Events and Video Lessons stay out until they have real content (audit M6,
+// owner default D24); their pages still resolve, with noindex.
 const MOBILE_NAV_LINKS = [
   { href: "/programs", label: "Programs" },
   { href: "/about", label: "About" },
-  { href: "/events", label: "Events" },
-  { href: "/video-lessons", label: "Video Lessons" },
 ];
 
 export function Navbar() {
@@ -103,7 +103,7 @@ export function Navbar() {
                 href="/login"
                 className="rounded-full px-5 py-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
               >
-                Log in
+                Sign in
               </Link>
               <Button
                 variant="secondary"
@@ -178,7 +178,7 @@ export function Navbar() {
                   onClick={() => setMenuOpen(false)}
                   className="rounded-xl px-4 py-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
                 >
-                  Log in
+                  Sign in
                 </Link>
                 <Button
                   variant="primary"

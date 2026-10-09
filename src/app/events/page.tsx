@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 
+// No event is scheduled (audit M6, owner default D24): the page stays out of
+// the nav, the home page and the sitemap, carries noindex, and promises
+// nothing. It returns to the nav with the first real entry in
+// src/content/events.ts.
 export const metadata: Metadata = {
   title: "Events",
-  description: "Upcoming Tennis Bootcamp training sessions and events in Toronto.",
+  description:
+    "No Tennis Bootcamp events are scheduled right now. Join the email list and you'll hear when one is.",
   alternates: { canonical: "/events" },
+  robots: { index: false, follow: true },
 };
 
 export default function EventsPage() {
@@ -14,25 +20,12 @@ export default function EventsPage() {
         <div className="mx-auto max-w-6xl px-6 py-14">
           <h1 className="text-3xl font-semibold text-white">Events</h1>
           <p className="mt-3 max-w-2xl text-white/70">
-            Bootcamps, camps, and special training sessions. More dates will be
-            posted soon.
+            No events are scheduled right now. Training runs as weekend
+            classes; join the email list below and you&apos;ll hear when an
+            event is added.
           </p>
         </div>
       </div>
-
-      {/* Coming-soon block */}
-      <section className="mx-auto max-w-6xl px-6 py-20 text-center">
-        <p className="text-sm font-semibold uppercase tracking-widest text-[#B4E655]">
-          Season schedule
-        </p>
-        <h2 className="mt-3 text-3xl font-semibold text-white">
-          The next season&apos;s schedule is being finalized
-        </h2>
-        <p className="mx-auto mt-4 max-w-lg text-white/60">
-          Bootcamps and clinics are scheduled by season. Leave your email and
-          we&apos;ll send you the schedule before registration opens.
-        </p>
-      </section>
 
       <EmailCapture />
     </main>

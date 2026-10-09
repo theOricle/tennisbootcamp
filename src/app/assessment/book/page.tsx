@@ -41,6 +41,12 @@ type Prefill = {
   household?: HouseholdValue;
 };
 
+// Every submit failure offers the human fallback (voice.md, errors).
+const SUBMIT_ERROR =
+  "Something went wrong. Please try again, or email info@tennisbootcamp.ca and we'll set your time by hand.";
+const NETWORK_ERROR =
+  "We couldn't reach the server. Check your connection and try again, or email info@tennisbootcamp.ca.";
+
 const SELF_LEVELS = [
   { value: "", label: "Prefer not to say" },
   { value: "new", label: "Just starting out" },
@@ -176,7 +182,7 @@ function ContactFields({
           ))}
         </select>
         <p className="mt-1.5 text-xs text-white/40">
-          Just a starting point — your real level comes from the court.
+          Just a starting point — the coach sets your level on court.
         </p>
       </div>
     </div>
@@ -325,7 +331,7 @@ export default function BookAssessmentPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Something went wrong. Please try again.");
+        setError(data.error ?? SUBMIT_ERROR);
         setSubmitting(false);
         // A taken slot means our view is stale — refresh the grid.
         if (res.status === 409) {
@@ -338,10 +344,10 @@ export default function BookAssessmentPage() {
         window.location.href = data.url;
         return;
       }
-      setError("Something went wrong. Please try again.");
+      setError(SUBMIT_ERROR);
       setSubmitting(false);
     } catch {
-      setError("Network error. Please try again.");
+      setError(NETWORK_ERROR);
       setSubmitting(false);
     }
   }
@@ -374,13 +380,13 @@ export default function BookAssessmentPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Something went wrong. Please try again.");
+        setError(data.error ?? SUBMIT_ERROR);
         setSubmitting(false);
         return;
       }
       setRequestDone(true);
     } catch {
-      setError("Network error. Please try again.");
+      setError(NETWORK_ERROR);
       setSubmitting(false);
     }
   }

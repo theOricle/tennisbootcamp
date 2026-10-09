@@ -56,6 +56,11 @@ export const COHORT_TOTAL_LABEL = formatDollars(COHORT_TOTAL);
 /** "$105" */
 export const INSTALMENT_LABEL = formatDollars(INSTALMENT_AMOUNT);
 
+/** Kids' Summer Camp, one week, in whole CAD dollars (locked price, voice.md). */
+export const CAMP_WEEK_PRICE: number = 499;
+/** "$499" */
+export const CAMP_WEEK_PRICE_LABEL = formatDollars(CAMP_WEEK_PRICE);
+
 const PRICE_LINE =
   `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. If you took the $20 assessment, that $20 comes off the price.`;
 
@@ -69,6 +74,8 @@ export const programs: Program[] = [
     slug: "youth-programs",
     title: "Youth Programs",
     description: "Saturday group classes for juniors and teens, grouped by age and level.",
+    metaDescription:
+      `Saturday tennis in Toronto for juniors 7–13 and teens 14–17, grouped by level. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts. Take the 2-minute quiz to be placed.`,
     longDescription:
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one 60-minute class every Saturday. ` +
       `${AGE_BAND_LABELS.junior} players train at 12:00 and ${AGE_BAND_LABELS.teen} players at 1:00, and each class is grouped by level, so a first-season player and a club player are not on the same drill. ` +
@@ -78,7 +85,6 @@ export const programs: Program[] = [
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/youth-programs",
-    imageSrc: "/images/programs/kids-summer-camp.png",
     schedule: `Once a week · 60 minutes · ${COHORT_LENGTH_ADJ} cohorts · Saturdays 12:00 and 1:00`,
     priceCents: COHORT_TOTAL_CENTS,
     currency: "CAD",
@@ -102,15 +108,16 @@ export const programs: Program[] = [
     slug: "high-performance",
     title: "High Performance",
     description: "A Saturday class for competitive and elite players, at any age.",
+    metaDescription:
+      `A Saturday tennis class in Toronto for players who compete, or are training to, at any age. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts. Take the 2-minute quiz.`,
     longDescription:
-      `One 60-minute class every Saturday at 2:00, in ${COHORT_LENGTH_ADJ} cohorts. This is the competitive tier: players who already compete, or are training to, whatever their age. ` +
+      `One 60-minute class every Saturday at 2:00, in ${COHORT_LENGTH_ADJ} cohorts. This is the competitive track: players who already compete, or are training to, whatever their age. ` +
       "Classes are built around live-ball pattern play, serve plus the next shot, building points on purpose, and match play with the score on. " +
       PLACEMENT_LINE,
     type: "Weekend group class",
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/high-performance",
-    imageSrc: "/images/programs/bootcamps.png",
     schedule: `Once a week · 60 minutes · ${COHORT_LENGTH_ADJ} cohorts · Saturdays 2:00`,
     priceCents: COHORT_TOTAL_CENTS,
     currency: "CAD",
@@ -135,6 +142,8 @@ export const programs: Program[] = [
     slug: "bootcamps",
     title: "Adult Bootcamps",
     description: "Sunday group classes for adults, in three levels back to back.",
+    metaDescription:
+      `Sunday tennis for adults in Toronto: newer, intermediate and advanced classes, back to back. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts. Take the 2-minute quiz.`,
     longDescription:
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one 60-minute class every Sunday. ` +
       "Three levels run back to back: 4:00 for newer players, 5:00 for intermediate, 6:00 for advanced. " +
@@ -144,7 +153,6 @@ export const programs: Program[] = [
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/bootcamps",
-    imageSrc: "/images/programs/group-lessons.png",
     schedule: `Once a week · 60 minutes · ${COHORT_LENGTH_ADJ} cohorts · Sundays 4:00, 5:00 and 6:00`,
     priceCents: COHORT_TOTAL_CENTS,
     currency: "CAD",
@@ -167,28 +175,27 @@ export const programs: Program[] = [
     id: "kids-summer-camp",
     slug: "kids-summer-camp",
     title: "Kids' Summer Camp",
-    description: "A full-day tennis experience your kid will actually want to come back to.",
+    // Decided facts only (owner D10): ages 7–13, the weekly price, summer.
+    // Days, hours, meals and what each day covers stay off the page until
+    // Sina confirms them.
+    description: `A summer tennis camp for juniors 7–13, ${CAMP_WEEK_PRICE_LABEL} a week. Dates are not set yet.`,
+    metaDescription:
+      `A summer tennis camp in Toronto for juniors 7–13, ${CAMP_WEEK_PRICE_LABEL} a week. Dates are not set yet; leave your email and we'll tell you when it opens.`,
     longDescription:
-      "Running through July and August, every day is a mix of stroke fundamentals, match play, movement games, and team challenges. " +
-      "Kids are grouped by ability so everyone gets the right level of challenge — whether it's their first time on a court or they've been playing for a few years. " +
-      "All skill levels welcome. Lunch and snacks included.",
+      `Kids' Summer Camp is for ${AGE_BAND_LABELS.junior} players. ` +
+      "The weeks, the daily hours and what each day covers will be posted here before enrollment opens.",
     type: "Summer Camp",
     comingSoon: true,
     ctaText: "Notify Me When Open",
     ctaHref: "/programs/kids-summer-camp",
-    imageSrc: "/images/programs/kids-summer-camp.png",
-    schedule: "Weeks running July–August (dates TBA)",
+    schedule: "Summer · dates not set yet",
     ageGroup: "Ages 7–13",
     currency: "CAD",
-    includes: [
-      "Stroke fundamentals (forehand, backhand, serve, volley)",
-      "Movement and agility games",
-      "Daily match play grouped by ability",
-      "Hand-eye & movement drills",
-      "Teamwork challenges and on-court games",
-      "Daily skill tracking",
-      "Lunch & snacks included",
-    ],
+    related: {
+      text: `Looking for something sooner? Youth Programs runs Saturday classes for ${AGE_BAND_LABELS.junior}.`,
+      label: "View Youth Programs",
+      href: "/programs/youth-programs",
+    },
   },
   {
     // Retired 2026-10-01: off every public listing, kept so old rows resolve.
@@ -205,7 +212,6 @@ export const programs: Program[] = [
     unlisted: true,
     ctaText: "Notify Me When Open",
     ctaHref: "/programs/group-lessons",
-    imageSrc: "/images/programs/group-lessons.png",
     schedule: "Weekly evening + weekend slots (schedule TBA)",
     ageGroup: "Adults 18+",
     currency: "CAD",

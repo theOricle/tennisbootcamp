@@ -35,13 +35,11 @@ export function Hero() {
       {/* z-30 — main content */}
       <div className="relative z-30 mx-auto grid max-w-6xl items-center gap-10 px-6 md:grid-cols-2">
         <div>
-          {/* Eyebrow badge — Spring Intake live */}
+          {/* Eyebrow badge: a standing fact, not an "open now" claim (audit M2),
+              so no live-status ping. */}
           <div className="inline-flex items-center gap-2 rounded-full border border-[#B4E655]/40 bg-[#B4E655]/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-[#B4E655]">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#B4E655] opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#B4E655]" />
-            </span>
-            Assessments Now Open
+            <span className="inline-flex h-2 w-2 rounded-full bg-[#B4E655]" aria-hidden="true" />
+            Weekend classes · Toronto
           </div>
 
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white md:text-6xl">
@@ -69,7 +67,7 @@ export function Hero() {
               </Link>
             </div>
             <p className="text-xs text-white/50">
-              20 minutes on court · $20 — join a program after and it comes off the price.
+              The quiz is free. Optional: a 20-minute on-court assessment for $20 — join a program after and it comes off the price.
             </p>
           </div>
         </div>

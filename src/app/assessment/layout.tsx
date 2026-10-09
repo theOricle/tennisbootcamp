@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Book Your Assessment",
+  // Optional, not a gate (audit M1); 155 characters at most (audit M10).
   description:
-    "Every player starts with 20 minutes on court. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price. You leave with a real level, a written read on your game, and a group matched to your level and schedule.",
+    "Want your level confirmed on court first? 20 minutes with the coach in Toronto, $20, and it comes off the price when you enroll in a program afterward.",
   openGraph: {
     title: "Book Your Assessment | Tennis Bootcamp",
     description:
-      "20 minutes on court with the coach. A real level, a written note, and a group that matches your level and your schedule. $20 — it comes off the price when you enroll in a program.",
+      "Optional: 20 minutes on court with the coach, your level and a written note on your game. $20, and it comes off the price when you enroll in a program afterward.",
   },
   alternates: { canonical: "/assessment" },
 };
