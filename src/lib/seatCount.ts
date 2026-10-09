@@ -61,6 +61,21 @@ export function seatsFromSnapshot(
   return Math.max(0, capacityMax - paid);
 }
 
+/**
+ * The cohorts a player may still be pitched (audit M33): every one with a
+ * seat left in the snapshot. A count that cannot be read (missing columns)
+ * keeps the cohort — the enroll page makes the final call.
+ */
+export function cohortsWithSeats<T extends { id: string; capacityMax: number }>(
+  cohorts: T[],
+  snapshot: EnrollmentSheetSnapshot
+): T[] {
+  return cohorts.filter((c) => {
+    const left = seatsFromSnapshot(snapshot, c.id, c.capacityMax);
+    return left === null || left > 0;
+  });
+}
+
 export async function getSeatsRemaining(
   cohortId: string,
   capacityMax: number

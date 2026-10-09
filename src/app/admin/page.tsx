@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAdminUser } from "@/lib/adminAuth";
+import { adminRefusedRedirect, getAdminUser } from "@/lib/adminAuth";
 
 export const metadata: Metadata = {
   title: "Admin",
@@ -31,7 +31,7 @@ const CARDS = [
 
 export default async function AdminHomePage() {
   const admin = await getAdminUser();
-  if (!admin) redirect("/login");
+  if (!admin) redirect(await adminRefusedRedirect("/admin"));
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">

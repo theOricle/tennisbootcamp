@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { scheduledEndDate } from "@/lib/makeup";
 import { tierInCohortRange } from "@/lib/tiers";
 import { isCohortPublic, isCohortRenderable } from "@/lib/cohortVisibility";
+import { cohortsWithSeats, readEnrollmentSheet } from "@/lib/seatCount";
 
 // Supabase-backed cohort reads (Phase 3). Supabase is the only source: when it
 // is unconfigured (build time, fresh dev setup) or the cohorts table is
@@ -192,14 +193,20 @@ export async function getSessionsForCohorts(
 /**
  * Open cohorts matching a player's tier — the dashboard "Open for your tier"
  * list. Includes private tier-gated cohorts: a signed-in player whose level
- * falls in the band is admitted by /enroll without an invite token.
+ * falls in the band is admitted by /enroll without an invite token. A cohort
+ * with no seat left is dropped (audit M33): the list says "still have room",
+ * and /enroll would only show "This group is full". Sheets unconfigured or
+ * unreadable keeps every match, as the enroll page skips its seat check then.
  */
 export async function getOpenCohortsForLevel(
   level: number | string | null | undefined
 ): Promise<Cohort[]> {
   if (level === null || level === undefined || level === "") return [];
   const all = await getAllCohorts();
-  return all.filter(
+  const matching = all.filter(
     (c) => isCohortRenderable(c) && tierInCohortRange(level, c.levelMin, c.levelMax)
   );
+  if (matching.length === 0) return matching;
+  const sheet = await readEnrollmentSheet();
+  return sheet.status === "ok" ? cohortsWithSeats(matching, sheet.snapshot) : matching;
 }

@@ -1,5 +1,8 @@
 import "server-only";
-import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
+import {
+  issueActivationLink,
+  linkEnrollmentsToAccount,
+} from "@/lib/supabase/enrollmentActions";
 import {
   findUserIdByEmail,
   setPlayerAvailability,
@@ -81,6 +84,13 @@ export async function provisionIntakeAccount(input: {
     }
     result.userId = userId;
     if (!userId) return result;
+
+    // Audit H5: an enrollment saved under this email before it had an account
+    // (or before every save path set user_id) becomes the account's now, so
+    // the dashboard shows it. Idempotent; owned rows are never touched.
+    await linkEnrollmentsToAccount(userId, email).catch((err) =>
+      console.error("[intake account] enrollment link failed (non-blocking):", err)
+    );
 
     // Fill a blank name/phone so the admin list reads properly. A player's
     // own profile edits win — this never overwrites.

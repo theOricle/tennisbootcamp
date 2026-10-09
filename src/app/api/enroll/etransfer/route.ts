@@ -4,6 +4,7 @@ import { getCohortById } from "@/lib/cohortsDb";
 import {
   COHORT_FULL_ERROR,
   RECORDS_UNAVAILABLE_ERROR,
+  contactEmailRefusal,
   gateRefusal,
   resolveEnrollGate,
   scrubParticipantIds,
@@ -14,9 +15,11 @@ import { currentUser } from "@/lib/household";
 import { listParticipantsForAccount } from "@/lib/players";
 import {
   saveEnrollmentToSupabase,
-  issueActivationLink,
+  notifyEnrollmentAccount,
+  resolveEnrollmentUserId,
 } from "@/lib/supabase/enrollmentActions";
 import { setEnrollmentStatusByEmail } from "@/lib/enrollmentSheet";
+import { programs } from "@/content/programs";
 
 // "I've sent it" on an e-transfer cohort (backlog #12). Mirrors what the card
 // path does at checkout — Supabase enrollment row + activation link — but no
@@ -96,6 +99,14 @@ export async function POST(req: NextRequest) {
     // Backlog #38: participant ids only for the signed-in account's own
     // people; a signed-out caller names nobody. Same as /api/checkout.
     const signedIn = await currentUser();
+    // Audit H5: a signed-in caller enrolls under the account's own address.
+    // The rows save with the session as owner, so a body naming another
+    // address would hand that address's history to this account — 400,
+    // before any row or Sheet write. Same as /api/checkout.
+    const mismatch = contactEmailRefusal(signedIn, enrollmentMeta.contactEmail);
+    if (mismatch) {
+      return NextResponse.json({ error: mismatch.error }, { status: mismatch.status });
+    }
     const owned = signedIn
       ? new Set(
           (
@@ -110,6 +121,9 @@ export async function POST(req: NextRequest) {
         )
       : null;
     const players = scrubParticipantIds(sent, owned);
+    // Audit H5: the account every row this request saves belongs to — the
+    // signed-in user, else the account that already exists for the email.
+    const ownerId = await resolveEnrollmentUserId(enrollmentMeta.contactEmail, signedIn?.id);
 
     // Backlog #38: the page's seat rule, for every player on this transfer.
     const sheet = await readEnrollmentSheet();
@@ -172,14 +186,30 @@ export async function POST(req: NextRequest) {
           consentAgreedAt: enrollmentMeta.consentAgreedAt,
           waiverVersion: enrollmentMeta.waiverVersion,
           status: "pending",
+          userId: ownerId,
         });
         if (i === 0) {
-          await issueActivationLink(enrollmentMeta.contactEmail, enrollmentId).catch(
-            (err) =>
-              console.error(
-                "Activation link after e-transfer intent failed (non-blocking):",
-                err
-              )
+          // A new email gets the set-password link; an existing account gets
+          // "Your spot is on your account" with the dashboard link (H5). The
+          // e-transfer instructions themselves went out in recordEtransferIntent.
+          await notifyEnrollmentAccount({
+            email: enrollmentMeta.contactEmail,
+            enrollmentId,
+            userId: ownerId,
+            enrolled: {
+              programTitle:
+                programs.find((p) => p.id === cohort?.programId)?.title ??
+                programTitle ??
+                "your program",
+              cohortLabel: cohort?.label ?? cohortId,
+              participantName: player.name ?? enrollmentMeta.participantName ?? null,
+              paid: false,
+            },
+          }).catch((err) =>
+            console.error(
+              "Activation link after e-transfer intent failed (non-blocking):",
+              err
+            )
           );
         }
       }

@@ -17,6 +17,7 @@ import type { Cohort } from "@/types/cohort";
 import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
 import { levelWithinRange } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
+import { emailBelongsToAccount } from "@/lib/enrollmentLink";
 
 /** What getInviteByToken reported, as far as the gate cares. */
 export type GateInviteLookup =
@@ -168,6 +169,28 @@ export const ROW_MISMATCH_ERROR =
 /** Sent back with a 503 when the Sheet could not be read to verify the rows. */
 export const RECORDS_UNAVAILABLE_ERROR =
   "Couldn't reach the enrollment records — please try again in a minute or email info@tennisbootcamp.ca.";
+
+/** Sent back with a 400 when a signed-in caller's contact email is not the account's own. */
+export const CONTACT_EMAIL_MISMATCH_ERROR =
+  "That email isn't the one on your account. Reload the page and try again, or email info@tennisbootcamp.ca.";
+
+/**
+ * The refusal for a signed-in request whose contact email is not the
+ * session's own address (audit H5 review). The wizard sends the account's
+ * address whenever the player is signed in, so a different one is a crafted
+ * body — and the rows it saved would be owned by the session while the
+ * link step attached that other address's history to it. A signed-out
+ * request, or one that names no contact email (so saves nothing), passes.
+ */
+export function contactEmailRefusal(
+  signedIn: { email: string } | null,
+  contactEmail: string | null | undefined
+): { error: string; status: 400 } | null {
+  if (!signedIn || !contactEmail) return null;
+  return emailBelongsToAccount(signedIn.email, contactEmail)
+    ? null
+    : { error: CONTACT_EMAIL_MISMATCH_ERROR, status: 400 };
+}
 
 export type EnrollmentSheetSnapshot = { header: string[]; rows: string[][] };
 
