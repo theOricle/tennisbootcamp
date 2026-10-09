@@ -192,7 +192,7 @@ export const programs: Program[] = [
     ageGroup: "Ages 7–13",
     currency: "CAD",
     related: {
-      text: `Looking for something sooner? Youth Programs runs Saturday classes for ${AGE_BAND_LABELS.junior}.`,
+      text: `Looking for something sooner? Youth Programs runs Saturday classes for ${AGE_BAND_LABELS.junior} players.`,
       label: "View Youth Programs",
       href: "/programs/youth-programs",
     },

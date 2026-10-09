@@ -48,13 +48,13 @@ Not a salesperson. Not a tech company. Not a hype account. The coach has nothing
 
 - **Buttons**: verb-first, outcome-named. "Book Your Assessment" (the one label for every assessment button, /assessment included), "Continue to payment", "Request a time". No "Submit"-style labels on marketing surfaces (wizard-final "Submit" inside the quiz is acceptable chrome).
 - **Validation & errors**: state what's wrong and the one way out. Always offer info@tennisbootcamp.ca as the human fallback on submit failures. Never blame the user.
-- **Empty states**: say what's true and what happens next ("Sessions for the upcoming season are being scheduled — check back soon."). Never a dead end.
+- **Empty states**: say what's true and what happens next ("Groups are forming. Cohort dates aren't public yet." then the next step: take the 2-minute quiz, or leave your email). Never a dead end.
 - **Emails**: greet by first name, one idea per paragraph, sign off "See you on the court, — Sina Kassaian, Head Coach". Subjects state the fact ("You're booked: {date} at {time}"), not the pitch. HTML and plain-text bodies must say the same thing.
 - **Metadata / OG descriptions**: one or two sentences, geography + mechanic, no scarcity theatrics. These are the coach's handshake in a search result.
 
 ## Before → after (from this site)
 
-Every pair below is an actual string from the codebase; the "after" is the shipped or 2026-08-02-pass rewrite.
+Every pair below is an actual string from the codebase; the "after" is the shipped or 2026-08-02-pass rewrite. A row marked **SUPERSEDED** is no longer on the site: keep it for the "why", never copy its "after" back.
 
 | # | Before | After | Why |
 |---|--------|-------|-----|
@@ -65,8 +65,8 @@ Every pair below is an actual string from the codebase; the "after" is the shipp
 | 5 | Where are you in your tennis journey? (quiz step) | Where's your game right now? | "Journey" is lifestyle/SaaS-speak; the coach asks about your game. Also matches the booking form's identical question. |
 | 6 | Athletes who complete the intake are placed first as programs form. (trust bar) | Every player is placed by level and schedule from the 2-minute quiz. The 20-minute on-court assessment is optional, if you want your level confirmed first. | Stale promise; Sina places every player from the quiz, and the assessment is optional. The 2026-08 rewrite ("Every player hits with the coach before joining a group") described an assessment-first funnel that no longer exists. |
 | 7 | Adult group lessons that actually move the needle. (program card) | Adult lessons capped at six per court — more reps, more feedback, week-over-week progression. | "Actually move the needle" is cliché plus filler intensifier; the cap and cadence are the concrete facts underneath it. |
-| 8 | Next batch being finalized now (events heading) | The next season's schedule is being finalized | "Batch" is factory vocabulary, not coaching vocabulary. |
-| 9 | drop your email and we'll send you the lineup before public registration opens (events body) | leave your email and we'll send you the schedule before registration opens | "Drop your email" is casual startup diction; the commitment stays, the slang goes. |
+| 8 | Next batch being finalized now (events heading) | ~~The next season's schedule is being finalized~~ **SUPERSEDED 2026-10-09** (audit L14): now "Groups are forming. Cohort dates aren't public yet." | "Batch" is factory vocabulary, not coaching vocabulary. The 2026-08 "after" went stale: program pages publish a timetable, so "being finalized" contradicted it. |
+| 9 | drop your email and we'll send you the lineup before public registration opens (events body) | ~~leave your email and we'll send you the schedule before registration opens~~ **SUPERSEDED 2026-10-09** (audit L14): now "leave your email and we'll tell you when a cohort opens." | "Drop your email" is casual startup diction; the commitment stays, the slang goes. The 2026-08 "after" also used "registration", which rule 7 bans. |
 | 10 | You've got a strong profile (recommendation email, no-match fallback) | Thanks for telling us about your game | Empty flattery — the coach hasn't seen you play yet, so the claim is unearned. |
 | 11 | If weather cancels your slot, you rebook free — no charge lost. (assessment FAQ) | If weather cancels your slot, you rebook free — your $20 stays with your booking. | "No charge lost" is awkward and vague; the rewrite says exactly where the money sits. |
 | 12 | Camps near you (dashboard column of training venues) | Where we train | The column lists venues, not camps — the label was making a claim the content doesn't. |
