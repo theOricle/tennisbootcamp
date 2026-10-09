@@ -31,7 +31,7 @@ function statusLabel(s: string): string {
 function statusClass(s: string): string {
   if (s === "paid") return "bg-[#B4E655]/15 text-[#B4E655]";
   if (s === "test_paid") return "bg-yellow-400/15 text-yellow-300";
-  return "bg-white/10 text-white/50";
+  return "bg-white/10 text-white/60";
 }
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ function ProfileSkeleton() {
 function ProfileErrorState() {
   return (
     <div className="py-20 text-center">
-      <p className="text-sm text-white/50">Couldn&apos;t load your profile right now.</p>
+      <p className="text-sm text-white/60">Couldn&apos;t load your profile right now.</p>
       <Link
         href="/profile"
         className="mt-4 inline-block rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
@@ -178,7 +178,7 @@ async function ProfileContent({
                       {program?.title ?? e.program ?? e.cohort_id}
                     </p>
                     {cohort && (
-                      <p className="mt-0.5 text-sm text-white/50">
+                      <p className="mt-0.5 text-sm text-white/60">
                         {fmtDate(cohort.startDate)} – {fmtDate(cohort.endDate)}
                       </p>
                     )}

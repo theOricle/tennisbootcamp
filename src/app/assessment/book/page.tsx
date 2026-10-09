@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   trackAssessmentBookStart,
@@ -16,11 +16,34 @@ import {
   useHousehold,
   EMPTY_HOUSEHOLD,
   defaultAgeBand,
-  householdReady,
+  householdIssues,
   type HouseholdValue,
 } from "@/components/participants/WhoIsThisFor";
 import { isAgeBand } from "@/lib/ageBand";
 import { useBotCheck } from "@/lib/useBotCheck";
+import {
+  FIELD_MESSAGES,
+  emailError,
+  firstIssueId,
+  issuesById,
+  phoneError,
+  requiredError,
+  withHumanFallback,
+  type FieldIssue,
+} from "@/lib/formValidation";
+import { arrowStep, nextEnabledIndex, tabStopIndex } from "@/lib/rovingIndex";
+import { Container } from "@/components/layout/Container";
+import {
+  FieldError,
+  FormAlert,
+  INPUT_CLASS,
+  LABEL_CLASS,
+  LiveStatus,
+  errorIdFor,
+  fieldA11y,
+} from "@/components/ui/Input";
+import { FOCUS_RING } from "@/components/ui/focus";
+import { TEXT_LINK_LIME, TextLink } from "@/components/ui/TextLink";
 
 type PublicSlot = { slotStart: string; timeLabel: string; taken: boolean };
 type PublicBlock = {
@@ -41,35 +64,131 @@ type Prefill = {
   household?: HouseholdValue;
 };
 
+type Selected = { blockId: string; slotStart: string };
+
 // Every submit failure offers the human fallback (voice.md, errors).
 const SUBMIT_ERROR =
   "Something went wrong. Please try again, or email info@tennisbootcamp.ca and we'll set your time by hand.";
 const NETWORK_ERROR =
   "We couldn't reach the server. Check your connection and try again, or email info@tennisbootcamp.ca.";
 
-const SELF_LEVELS = [
-  { value: "", label: "Prefer not to say" },
-  { value: "new", label: "Just starting out" },
-  { value: "rally", label: "I can rally" },
-  { value: "competitive", label: "I play competitively" },
-  { value: "unsure", label: "Not sure" },
-];
-
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
+/** Field ids, so a press of the primary button can focus the first problem. */
+const IDS = {
+  slot: "booking-slot",
+  availability: "booking-availability",
+  name: "booking-name",
+  email: "booking-email",
+  phone: "booking-phone",
+} as const;
 
 function hasAnyAvailability(a: Availability): boolean {
   return Object.values(a.days).some((bands) => bands && bands.length > 0);
 }
 
-const inputClass =
-  "w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-base text-white placeholder-white/35 " +
-  "focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
+const SECTION_HEADING = "text-sm font-semibold uppercase tracking-wide text-[#B4E655]";
+
+// ─── Slot picker (audit M22) ──────────────────────────────────────────────────
+
+/**
+ * One radio group per day: role="radio" with aria-checked, a tick as well as
+ * colour, arrow keys that move and choose, one tab stop per day, and taken
+ * times announced as booked (WCAG 1.3.1, 1.4.1, 4.1.2).
+ */
+function SlotPicker({
+  blocks,
+  selected,
+  onSelect,
+  error,
+}: {
+  blocks: PublicBlock[];
+  selected: Selected | null;
+  onSelect: (next: Selected) => void;
+  error?: string;
+}) {
+  const refs = useRef(new Map<string, HTMLButtonElement>());
+  const key = (blockId: string, slotStart: string) => `${blockId}|${slotStart}`;
+  // The first day that has an open time takes the field id, for focus.
+  const firstOpenBlock = blocks.findIndex((b) => b.slots.some((s) => !s.taken));
+
+  return (
+    <div className="space-y-6">
+      {blocks.map((b, bi) => {
+        const disabled = b.slots.map((s) => s.taken);
+        const checked = b.slots.findIndex(
+          (s) => selected?.blockId === b.blockId && selected.slotStart === s.slotStart
+        );
+        const stop = tabStopIndex(disabled, checked);
+        const dayId = `slot-day-${b.blockId}`;
+        return (
+          <div key={b.blockId}>
+            <p id={dayId} className="text-sm font-semibold text-white">
+              {b.dateLabel}
+            </p>
+            {b.locationLabel && (
+              <p className="mt-0.5 text-xs text-white/60">{b.locationLabel}</p>
+            )}
+            <div
+              role="radiogroup"
+              aria-labelledby={dayId}
+              aria-required="true"
+              aria-describedby={error ? errorIdFor(IDS.slot) : undefined}
+              className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4"
+            >
+              {b.slots.map((s, i) => {
+                const isSel = i === checked;
+                return (
+                  <button
+                    key={s.slotStart}
+                    ref={(el) => {
+                      if (el) refs.current.set(key(b.blockId, s.slotStart), el);
+                      else refs.current.delete(key(b.blockId, s.slotStart));
+                    }}
+                    id={bi === firstOpenBlock && i === stop ? IDS.slot : undefined}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSel}
+                    disabled={s.taken}
+                    tabIndex={i === stop ? 0 : -1}
+                    onClick={() => onSelect({ blockId: b.blockId, slotStart: s.slotStart })}
+                    onKeyDown={(e) => {
+                      const step = arrowStep(e.key);
+                      if (step === null) return;
+                      e.preventDefault();
+                      const j = nextEnabledIndex(disabled, i, step);
+                      if (j < 0) return;
+                      const target = b.slots[j];
+                      onSelect({ blockId: b.blockId, slotStart: target.slotStart });
+                      refs.current.get(key(b.blockId, target.slotStart))?.focus();
+                    }}
+                    className={[
+                      "inline-flex min-h-[44px] items-center justify-center gap-1 rounded-xl border px-2 py-2 text-sm font-medium transition",
+                      FOCUS_RING,
+                      isSel
+                        ? "border-[#B4E655] bg-[#B4E655] text-[#061427]"
+                        : "border-white/35 bg-white/5 text-white/85 hover:border-[#B4E655]/60 hover:text-white",
+                      "disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-transparent disabled:text-white/30 disabled:line-through",
+                    ].join(" ")}
+                  >
+                    {isSel && <span aria-hidden="true">✓</span>}
+                    {s.timeLabel}
+                    {s.taken && <span className="sr-only">, booked</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Contact fields ───────────────────────────────────────────────────────────
 
 // Account-holder contact fields, shared by the slot-booking and request-a-time
 // forms. One holder, one inbox — the players they book for come from the
-// "Who is this for?" chooser above.
+// "Who is this for?" chooser above. The player's own level is asked once, in
+// their block, never again here (audit M21).
 function ContactFields({
   name,
   setName,
@@ -77,10 +196,11 @@ function ContactFields({
   setEmail,
   phone,
   setPhone,
-  selfLevel,
-  setSelfLevel,
+  askName,
   signedIn,
   accountEmail,
+  errors,
+  onBlurField,
 }: {
   name: string;
   setName: (v: string) => void;
@@ -88,119 +208,103 @@ function ContactFields({
   setEmail: (v: string) => void;
   phone: string;
   setPhone: (v: string) => void;
-  selfLevel: string;
-  setSelfLevel: (v: string) => void;
+  /** False when the player is "Myself": their name is already above. */
+  askName: boolean;
   signedIn: boolean;
   accountEmail: string;
+  errors: Record<string, string>;
+  onBlurField: (id: string, value: string) => void;
 }) {
+  const phoneField = (
+    <div className="grid gap-1.5">
+      <label htmlFor={IDS.phone} className={LABEL_CLASS}>
+        Phone <span className="text-white/60">(optional)</span>
+      </label>
+      <input
+        id={IDS.phone}
+        type="tel"
+        value={phone}
+        onChange={(e) => setPhone(e.target.value)}
+        onBlur={(e) => onBlurField(IDS.phone, e.target.value)}
+        autoComplete="tel"
+        inputMode="tel"
+        placeholder="(647) 555-1234"
+        className={INPUT_CLASS}
+        {...fieldA11y(IDS.phone, { error: errors[IDS.phone] })}
+      />
+      <FieldError fieldId={IDS.phone} message={errors[IDS.phone]} />
+    </div>
+  );
+
   if (signedIn) {
     return (
       <div className="space-y-4">
-        <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+        <p className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
           Booking on your account —{" "}
           <span className="font-semibold text-white">{accountEmail}</span>.
           Confirmations come here.
         </p>
-        <div>
-          <label htmlFor="phone" className="mb-1.5 block text-sm text-white/70">
-            Phone <span className="text-white/35">(optional)</span>
-          </label>
-          <input
-            id="phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            autoComplete="tel"
-            inputMode="tel"
-            className={inputClass}
-          />
-        </div>
+        {phoneField}
       </div>
     );
   }
   return (
     <div className="space-y-4">
-      <div>
-        <label htmlFor="name" className="mb-1.5 block text-sm text-white/70">
-          Your full name{" "}
-          <span className="text-white/35">(the account holder)</span>
-        </label>
-        <input
-          id="name"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoComplete="name"
-          className={inputClass}
-          required
-        />
-      </div>
-      <div>
-        <label htmlFor="email" className="mb-1.5 block text-sm text-white/70">
+      {askName && (
+        <div className="grid gap-1.5">
+          <label htmlFor={IDS.name} className={LABEL_CLASS}>
+            Your full name <span className="text-white/60">(the account holder)</span>
+          </label>
+          <input
+            id={IDS.name}
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={(e) => onBlurField(IDS.name, e.target.value)}
+            autoComplete="name"
+            className={INPUT_CLASS}
+            required
+            {...fieldA11y(IDS.name, { error: errors[IDS.name] })}
+          />
+          <FieldError fieldId={IDS.name} message={errors[IDS.name]} />
+        </div>
+      )}
+      <div className="grid gap-1.5">
+        <label htmlFor={IDS.email} className={LABEL_CLASS}>
           Email
         </label>
         <input
-          id="email"
+          id={IDS.email}
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          onBlur={(e) => onBlurField(IDS.email, e.target.value)}
           autoComplete="email"
           inputMode="email"
-          className={inputClass}
+          placeholder="you@email.com"
+          className={INPUT_CLASS}
           required
+          {...fieldA11y(IDS.email, { error: errors[IDS.email] })}
         />
+        <FieldError fieldId={IDS.email} message={errors[IDS.email]} />
       </div>
-      <div>
-        <label htmlFor="phone" className="mb-1.5 block text-sm text-white/70">
-          Phone <span className="text-white/35">(optional)</span>
-        </label>
-        <input
-          id="phone"
-          type="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          autoComplete="tel"
-          inputMode="tel"
-          className={inputClass}
-        />
-      </div>
-      <div>
-        <label htmlFor="selfLevel" className="mb-1.5 block text-sm text-white/70">
-          Where&apos;s your game right now?{" "}
-          <span className="text-white/35">(optional)</span>
-        </label>
-        <select
-          id="selfLevel"
-          value={selfLevel}
-          onChange={(e) => setSelfLevel(e.target.value)}
-          className={inputClass}
-        >
-          {SELF_LEVELS.map((o) => (
-            <option key={o.value} value={o.value} className="bg-[#061427]">
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1.5 text-xs text-white/40">
-          Just a starting point — the coach sets your level on court.
-        </p>
-      </div>
+      {phoneField}
     </div>
   );
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function BookAssessmentPage() {
   const [blocks, setBlocks] = useState<PublicBlock[] | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [selected, setSelected] = useState<{
-    blockId: string;
-    slotStart: string;
-  } | null>(null);
+  const [selected, setSelected] = useState<Selected | null>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [selfLevel, setSelfLevel] = useState("");
+  // The quiz's self-estimate, carried as the fallback for the booking row.
+  const [prefillLevel, setPrefillLevel] = useState("");
   const [availability, setAvailability] = useState<Availability>({
     days: {},
     v: 1,
@@ -214,6 +318,8 @@ export default function BookAssessmentPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Field ids whose problems are on screen (pressed, or a filled field left).
+  const [shown, setShown] = useState<Set<string>>(() => new Set());
 
   // Bot protection (backlog #25): honeypot + time since the page rendered.
   const bot = useBotCheck();
@@ -221,6 +327,9 @@ export default function BookAssessmentPage() {
   // Who is this for? (backlog #11) — one booking is one participant, one slot.
   const household = useHousehold();
   const [who, setWho] = useState<HouseholdValue>(EMPTY_HOUSEHOLD);
+  // Signed out with several players carried over from the quiz: the one this
+  // slot is for (audit M21). Null means the first named player.
+  const [slotForKey, setSlotForKey] = useState<string | null>(null);
 
   // Load open slots. All state updates happen in async callbacks so this is safe
   // to call from an effect as well as from event handlers.
@@ -250,13 +359,14 @@ export default function BookAssessmentPage() {
         if (p.name) setName(p.name);
         if (p.email) setEmail(p.email);
         if (p.phone) setPhone(p.phone);
-        if (p.selfLevel) setSelfLevel(p.selfLevel);
+        if (p.selfLevel) setPrefillLevel(p.selfLevel);
         if (p.availability) setAvailability(parseAvailability(p.availability));
         // A prefill written before backlog #14 has no age bands and no
-        // profiles map; fill both in so the chooser renders.
+        // profiles map; fill both in so the chooser renders. One booking is
+        // one player, so a signed-in household starts on its first person.
         if (p.household?.guests?.length) {
           setWho({
-            selectedIds: p.household.selectedIds ?? [],
+            selectedIds: (p.household.selectedIds ?? []).slice(0, 1),
             profiles: p.household.profiles ?? {},
             guests: p.household.guests.map((g) => ({
               ...g,
@@ -276,22 +386,46 @@ export default function BookAssessmentPage() {
   const showRequestForm =
     blocks !== null && !loadError && (!hasSlots || requestMode);
 
+  // Signed out: several named players means a "Who is this slot for?" choice;
+  // the chooser below then shows only that player's block.
+  const namedGuests = who.guests.filter((g) => g.name.trim());
+  const choosingAmongGuests = !household.signedIn && namedGuests.length > 1;
+  const slotGuest =
+    (choosingAmongGuests
+      ? namedGuests.find((g) => g.key === slotForKey) ?? namedGuests[0]
+      : who.guests[0]) ?? null;
+  const chooserValue: HouseholdValue = household.signedIn
+    ? who
+    : { ...who, guests: slotGuest ? [slotGuest] : who.guests };
+  function onChooserChange(next: HouseholdValue) {
+    if (household.signedIn || !slotGuest) {
+      setWho(next);
+      return;
+    }
+    const edited = next.guests[0];
+    setWho({
+      ...next,
+      guests: who.guests.map((g) => (g.key === slotGuest.key && edited ? edited : g)),
+    });
+  }
+
+  // "Myself": the player's name is the holder's name, asked once (audit M21).
+  const selfBooking = !household.signedIn && slotGuest?.relationship === "self";
+  const holderName = selfBooking ? slotGuest?.name.trim() ?? "" : name.trim();
+  const playerName = household.signedIn
+    ? household.participants.find((p) => p.id === who.selectedIds[0])?.name?.trim() ?? ""
+    : slotGuest?.name.trim() ?? "";
+
   const availabilityPayload = hasAnyAvailability(availability)
     ? availability
     : undefined;
-
-  // Signed in the account supplies the holder's name and email; signed out the
-  // contact fields do.
-  const contactOk =
-    household.signedIn || (name.trim().length > 0 && isValidEmail(email.trim()));
-  const whoOk = householdReady(who, household.signedIn);
 
   /** The one person this booking is for, in the shape the API expects. */
   function whoPayload() {
     if (household.signedIn) {
       return { participantId: who.selectedIds[0] };
     }
-    const guest = who.guests.find((g) => g.name.trim());
+    const guest = slotGuest && slotGuest.name.trim() ? slotGuest : undefined;
     return {
       participant: guest
         ? {
@@ -304,11 +438,61 @@ export default function BookAssessmentPage() {
     };
   }
 
-  const canSubmit = !!selected && contactOk && whoOk && !submitting;
+  /** The booking row's self-estimate: the player's own answer, else the quiz's. */
+  const selfLevelPayload =
+    (!household.signedIn && slotGuest?.selfLevel) || prefillLevel || undefined;
+
+  /** Everything that stops this form, one issue per field, in screen order. */
+  function formIssues(mode: "slots" | "request"): FieldIssue[] {
+    const out: FieldIssue[] = [
+      ...householdIssues(chooserValue, household.signedIn, household.participants),
+    ];
+    if (mode === "slots" && !selected) {
+      out.push({ id: IDS.slot, message: FIELD_MESSAGES.slotMissing });
+    }
+    if (mode === "request" && !hasAnyAvailability(availability)) {
+      out.push({ id: IDS.availability, message: "Tap at least one time that usually works." });
+    }
+    if (!household.signedIn) {
+      if (!selfBooking) {
+        const n = requiredError(name);
+        if (n) out.push({ id: IDS.name, message: n });
+      }
+      const e = emailError(email);
+      if (e) out.push({ id: IDS.email, message: e });
+    }
+    const ph = phoneError(phone, { required: false });
+    if (ph) out.push({ id: IDS.phone, message: ph });
+    return out;
+  }
+
+  const mode = showRequestForm ? "request" : "slots";
+  const issues = formIssues(mode);
+  const errors = issuesById(issues.filter((i) => shown.has(i.id)));
+
+  function onBlurField(id: string, value: string) {
+    if (!value.trim()) return;
+    setShown((s) => (s.has(id) ? s : new Set(s).add(id)));
+  }
+
+  /** Show every problem and focus the first; false when the form is fine. */
+  function blockOnIssues(): boolean {
+    const found = formIssues(mode);
+    if (found.length === 0) return false;
+    setShown((s) => {
+      const out = new Set(s);
+      for (const i of found) out.add(i.id);
+      return out;
+    });
+    const id = firstIssueId(found);
+    if (id) requestAnimationFrame(() => document.getElementById(id)?.focus());
+    return true;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit || !selected) return;
+    if (submitting) return;
+    if (blockOnIssues() || !selected) return;
     setSubmitting(true);
     setError(null);
     trackAssessmentBookStart();
@@ -320,10 +504,10 @@ export default function BookAssessmentPage() {
         body: JSON.stringify({
           blockId: selected.blockId,
           slotStart: selected.slotStart,
-          name: name.trim(),
+          name: holderName,
           email: email.trim(),
           phone: phone.trim() || undefined,
-          selfLevel: selfLevel || undefined,
+          selfLevel: selfLevelPayload,
           availability: availabilityPayload,
           ...whoPayload(),
           ...bot.payload(),
@@ -331,7 +515,7 @@ export default function BookAssessmentPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? SUBMIT_ERROR);
+        setError(withHumanFallback(data.error ?? SUBMIT_ERROR));
         setSubmitting(false);
         // A taken slot means our view is stale — refresh the grid.
         if (res.status === 409) {
@@ -341,7 +525,7 @@ export default function BookAssessmentPage() {
         return;
       }
       if (data.url) {
-        window.location.href = data.url;
+        window.location.assign(data.url);
         return;
       }
       setError(SUBMIT_ERROR);
@@ -352,12 +536,10 @@ export default function BookAssessmentPage() {
     }
   }
 
-  const canSubmitRequest =
-    contactOk && whoOk && hasAnyAvailability(availability) && !submitting;
-
   async function handleRequestSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmitRequest) return;
+    if (submitting) return;
+    if (blockOnIssues()) return;
     setSubmitting(true);
     setError(null);
     trackAssessmentRequestSubmit(hasSlots ? "prefer-direct" : "no-slots");
@@ -368,10 +550,10 @@ export default function BookAssessmentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode: "request",
-          name: name.trim(),
+          name: holderName,
           email: email.trim(),
           phone: phone.trim() || undefined,
-          selfLevel: selfLevel || undefined,
+          selfLevel: selfLevelPayload,
           availability,
           note: note.trim() || undefined,
           ...whoPayload(),
@@ -380,7 +562,7 @@ export default function BookAssessmentPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? SUBMIT_ERROR);
+        setError(withHumanFallback(data.error ?? SUBMIT_ERROR));
         setSubmitting(false);
         return;
       }
@@ -391,330 +573,354 @@ export default function BookAssessmentPage() {
     }
   }
 
+  const selectedBlock = blocks?.find((b) => b.blockId === selected?.blockId);
+  const selectedSlot = selectedBlock?.slots.find((s) => s.slotStart === selected?.slotStart);
+  const selectedLabel =
+    selectedBlock && selectedSlot ? `${selectedBlock.dateLabel} · ${selectedSlot.timeLabel}` : "";
+
+  const whoSection = (
+    <section aria-labelledby="book-who">
+      <h2 id="book-who" className={SECTION_HEADING}>
+        1 · Who is this for?
+      </h2>
+      <div className="mt-4 space-y-4">
+        {choosingAmongGuests && (
+          <fieldset>
+            <legend className={LABEL_CLASS}>Who is this slot for?</legend>
+            <p className="mt-1 text-xs text-white/60">
+              One assessment, one player. Book the next player after this one.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {namedGuests.map((g) => {
+                const on = g.key === slotGuest?.key;
+                return (
+                  <label
+                    key={g.key}
+                    className={[
+                      "flex min-h-[44px] cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold transition",
+                      on
+                        ? "border-[#B4E655]/60 bg-[#B4E655]/10 text-white"
+                        : "border-white/15 bg-white/5 text-white/85 hover:bg-white/10",
+                    ].join(" ")}
+                  >
+                    <input
+                      type="radio"
+                      name="slot-for"
+                      checked={on}
+                      onChange={() => setSlotForKey(g.key)}
+                      className={`h-4 w-4 shrink-0 accent-[#B4E655] ${FOCUS_RING}`}
+                    />
+                    {g.name.trim()}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
+        <WhoIsThisFor
+          household={household}
+          value={chooserValue}
+          onChange={onChooserChange}
+          errors={errors}
+          intro={
+            choosingAmongGuests
+              ? undefined
+              : household.signedIn
+                ? "One assessment, one player. Booking for two of your people? Book the first, then come back for the next."
+                : "One assessment, one player. Your own details come next — they stay the account everything is booked under."
+          }
+        />
+      </div>
+    </section>
+  );
+
+  const contactSection = (
+    <section aria-labelledby="book-details">
+      <h2 id="book-details" className={SECTION_HEADING}>
+        3 · Your details
+      </h2>
+      <div className="mt-4">
+        <ContactFields
+          name={name}
+          setName={setName}
+          email={email}
+          setEmail={setEmail}
+          phone={phone}
+          setPhone={setPhone}
+          askName={!selfBooking}
+          signedIn={household.signedIn}
+          accountEmail={household.accountEmail}
+          errors={errors}
+          onBlurField={onBlurField}
+        />
+        {showRequestForm && (
+          <div className="mt-4 grid gap-1.5">
+            <label htmlFor="note" className={LABEL_CLASS}>
+              Anything we should know? <span className="text-white/60">(optional)</span>
+            </label>
+            <textarea
+              id="note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              maxLength={1000}
+              placeholder="Injuries, preferred courts, a tight week…"
+              className={INPUT_CLASS}
+            />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+
+  const primaryClass = `min-h-[48px] w-full rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 ${FOCUS_RING}`;
+
   return (
     <main className="min-h-screen bg-[#061427] text-white">
-      <div className="mx-auto max-w-lg px-6 py-12 sm:py-16">
-        <div className="mb-8">
-          <Link
-            href="/assessment"
-            className="text-sm text-white/50 transition-colors hover:text-white/80"
-          >
-            ← The assessment
-          </Link>
-          <h1 className="mt-4 text-2xl font-semibold text-white sm:text-3xl">
-            Book your 20-minute assessment
-          </h1>
-          <p className="mt-2 text-sm text-white/60">
-            The assessment is $20 — enroll in a program afterward and that $20
-            comes off the price. Pick a time that works, then a couple of
-            details.
-          </p>
-          <p className="mt-3 text-sm text-white/45">
-            Not sure where you stand?{" "}
-            <Link
-              href="/intake"
-              className="font-semibold text-[#B4E655]/80 underline-offset-2 transition-colors hover:text-[#B4E655] hover:underline"
-            >
-              Take the 2-minute quiz first
-            </Link>
-            .
-          </p>
-        </div>
-
-        {requestDone ? (
-          <div className="rounded-2xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-6">
-            <h2 className="text-lg font-semibold text-white">
-              Request received.
-            </h2>
-            <p className="mt-2 text-sm text-white/70">
-              We&apos;ll reach out within a day to set your time around the
-              availability you gave us. Watch your inbox.
-            </p>
-            <p className="mt-3 text-sm text-white/60">
-              No payment now — we&apos;ll confirm your time first. The
-              assessment is $20, and if you enroll in a program afterward that
-              $20 comes off the price.
-            </p>
-            <Link
-              href="/"
-              className="mt-5 inline-flex min-h-[44px] items-center text-sm font-semibold text-[#B4E655] underline-offset-2 hover:underline"
-            >
-              Back to the homepage →
-            </Link>
-          </div>
-        ) : blocks === null ? (
-          <p className="text-sm text-white/50">Loading open times…</p>
-        ) : loadError ? (
-          <div className="rounded-xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
-            We couldn&apos;t load times right now.{" "}
-            <button
-              type="button"
-              onClick={loadSlots}
-              className="font-semibold text-[#B4E655] underline-offset-2 hover:underline"
-            >
-              Try again
-            </button>
-            {" or "}
-            <Link
-              href="/programs"
-              className="font-semibold text-[#B4E655] underline-offset-2 hover:underline"
-            >
-              browse programs
-            </Link>
-            .
-          </div>
-        ) : showRequestForm ? (
-          <form onSubmit={handleRequestSubmit} className="space-y-8">
-            {bot.field}
-            <div className="rounded-xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
-              {hasSlots ? (
-                <>
-                  <p>
-                    Tell us when you play and we&apos;ll coordinate your time
-                    directly.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setRequestMode(false)}
-                    className="mt-2 inline-flex min-h-[44px] items-center text-sm font-semibold text-[#B4E655] underline-offset-2 hover:underline"
-                  >
-                    ← Back to open times
-                  </button>
-                </>
-              ) : (
-                <p>
-                  No open times are posted right now. Tell us when you play and
-                  we&apos;ll coordinate your time directly.
-                </p>
-              )}
-            </div>
-
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                1 · Who is this for?
-              </h2>
-              <div className="mt-4">
-                <WhoIsThisFor
-                  household={household}
-                  value={who}
-                  onChange={setWho}
-                  intro={
-                    household.signedIn
-                      ? "One assessment, one player. Booking for two of your people? Book the first, then come back for the next."
-                      : "One assessment, one player. Your own details come next — they stay the account everything is booked under."
-                  }
-                />
-              </div>
-            </section>
-
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                2 · When can they play?
-              </h2>
-              <p className="mt-2 text-sm text-white/55">
-                Tap every time of week that usually works for you.
+      <Container className="py-10 sm:py-16">
+        {/* Two columns from lg (audit M21): the form, and a summary that
+            follows the choices. One column on phones. */}
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-16">
+          <div className="min-w-0 max-w-2xl">
+            <div className="mb-8">
+              <TextLink href="/assessment">← The assessment</TextLink>
+              <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
+                Book your 20-minute assessment
+              </h1>
+              <p className="mt-2 text-sm text-white/70">
+                The assessment is $20 — enroll in a program afterward and that $20
+                comes off the price. Pick a time that works, then a couple of
+                details.
               </p>
-              <AvailabilityHoursLegend className="mt-2" />
-              <div className="mt-4">
-                <AvailabilityGrid value={availability} onChange={setAvailability} />
-              </div>
-            </section>
-
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                3 · Your details
-              </h2>
-              <div className="mt-4">
-                <ContactFields
-                  name={name}
-                  setName={setName}
-                  email={email}
-                  setEmail={setEmail}
-                  phone={phone}
-                  setPhone={setPhone}
-                  selfLevel={selfLevel}
-                  setSelfLevel={setSelfLevel}
-                  signedIn={household.signedIn}
-                  accountEmail={household.accountEmail}
-                />
-                <div className="mt-4">
-                  <label htmlFor="note" className="mb-1.5 block text-sm text-white/70">
-                    Anything we should know?{" "}
-                    <span className="text-white/35">(optional)</span>
-                  </label>
-                  <textarea
-                    id="note"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    rows={3}
-                    maxLength={1000}
-                    placeholder="Injuries, preferred courts, a tight week…"
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-            </section>
-
-            {error && (
-              <p className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-200">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={!canSubmitRequest}
-              className="min-h-[48px] w-full rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-            >
-              {submitting ? "Sending…" : "Request a time"}
-            </button>
-            <p className="text-center text-xs text-white/40">
-              No payment now — we&apos;ll confirm your time first. The
-              assessment is $20, and if you enroll in a program afterward that
-              $20 comes off the price.
-            </p>
-          </form>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-8">
-            {bot.field}
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                1 · Who is this for?
-              </h2>
-              <div className="mt-4">
-                <WhoIsThisFor
-                  household={household}
-                  value={who}
-                  onChange={setWho}
-                  intro={
-                    household.signedIn
-                      ? "One assessment, one player. Booking for two of your people? Book the first, then come back for the next."
-                      : "One assessment, one player. Your own details come next — they stay the account everything is booked under."
-                  }
-                />
-              </div>
-            </section>
-
-            {/* Slot picker */}
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                2 · Pick a slot
-              </h2>
-
-              <div className="mt-4 space-y-6">
-                {blocks
-                  .filter((b) => b.slots.length > 0)
-                  .map((b) => (
-                    <div key={b.blockId}>
-                      <p className="text-sm font-semibold text-white">
-                        {b.dateLabel}
-                      </p>
-                      {b.locationLabel && (
-                        <p className="mt-0.5 text-xs text-white/45">
-                          {b.locationLabel}
-                        </p>
-                      )}
-                      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                        {b.slots.map((s) => {
-                          const isSel =
-                            selected?.blockId === b.blockId &&
-                            selected?.slotStart === s.slotStart;
-                          return (
-                            <button
-                              key={s.slotStart}
-                              type="button"
-                              disabled={s.taken}
-                              onClick={() =>
-                                setSelected({
-                                  blockId: b.blockId,
-                                  slotStart: s.slotStart,
-                                })
-                              }
-                              className={[
-                                "min-h-[44px] rounded-xl border px-2 py-2 text-sm font-medium transition",
-                                s.taken
-                                  ? "cursor-not-allowed border-white/5 bg-white/[0.02] text-white/25 line-through"
-                                  : isSel
-                                    ? "border-[#B4E655] bg-[#B4E655] text-[#061427]"
-                                    : "border-white/15 bg-white/5 text-white/80 hover:border-[#B4E655]/50",
-                              ].join(" ")}
-                            >
-                              {s.timeLabel}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-
-              <p className="mt-4 text-sm text-white/45">
-                Prefer to coordinate directly?{" "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRequestMode(true);
-                    setError(null);
-                  }}
-                  className="font-semibold text-[#B4E655]/80 underline-offset-2 transition-colors hover:text-[#B4E655] hover:underline"
+              <p className="mt-3 text-sm text-white/70">
+                Not sure where you stand?{" "}
+                <Link
+                  href="/intake"
+                  className="font-semibold text-[#B4E655] underline-offset-2 hover:underline"
                 >
-                  Request a time instead
-                </button>
+                  Take the 2-minute quiz first
+                </Link>
                 .
               </p>
-            </section>
+            </div>
 
-            {/* Contact */}
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#B4E655]">
-                3 · Your details
-              </h2>
-              <div className="mt-4">
-                <ContactFields
-                  name={name}
-                  setName={setName}
-                  email={email}
-                  setEmail={setEmail}
-                  phone={phone}
-                  setPhone={setPhone}
-                  selfLevel={selfLevel}
-                  setSelfLevel={setSelfLevel}
-                  signedIn={household.signedIn}
-                  accountEmail={household.accountEmail}
-                />
+            {requestDone ? (
+              <div role="status" className="rounded-2xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-6">
+                <h2 className="text-lg font-semibold text-white">
+                  Request received.
+                </h2>
+                <p className="mt-2 text-sm text-white/70">
+                  We&apos;ll reach out within a day to set your time around the
+                  availability you gave us. Watch your inbox.
+                </p>
+                <p className="mt-3 text-sm text-white/70">
+                  No payment now — we&apos;ll confirm your time first. The
+                  assessment is $20, and if you enroll in a program afterward that
+                  $20 comes off the price.
+                </p>
+                <Link href="/" className={`mt-5 ${TEXT_LINK_LIME}`}>
+                  Back to the homepage →
+                </Link>
               </div>
-            </section>
-
-            {error && (
-              <p className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-200">
-                {error}
+            ) : blocks === null ? (
+              <p role="status" className="text-sm text-white/60">
+                Loading open times…
               </p>
-            )}
+            ) : loadError ? (
+              <div role="alert" className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
+                <p>
+                  We couldn&apos;t load times right now. Try again, or email
+                  info@tennisbootcamp.ca and we&apos;ll set your time by hand.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-x-4">
+                  <button type="button" onClick={loadSlots} className={TEXT_LINK_LIME}>
+                    Try again
+                  </button>
+                  <Link href="/programs" className={TEXT_LINK_LIME}>
+                    Browse Programs
+                  </Link>
+                </div>
+              </div>
+            ) : showRequestForm ? (
+              <form noValidate onSubmit={handleRequestSubmit} className="space-y-8">
+                {bot.field}
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/75">
+                  {hasSlots ? (
+                    <>
+                      <p>
+                        Tell us when you play and we&apos;ll coordinate your time
+                        directly.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRequestMode(false);
+                          setError(null);
+                        }}
+                        className={`mt-1 ${TEXT_LINK_LIME}`}
+                      >
+                        ← Back to open times
+                      </button>
+                    </>
+                  ) : (
+                    <p>
+                      No open times are posted right now. Tell us when you play and
+                      we&apos;ll coordinate your time directly.
+                    </p>
+                  )}
+                </div>
 
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className="min-h-[48px] w-full rounded-full bg-[#B4E655] px-8 py-3 text-base font-semibold text-[#061427] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-            >
-              {submitting ? "Booking…" : "Continue to payment"}
-            </button>
-            <p className="text-center text-xs text-white/40">
-              You&apos;ll confirm your $20 payment on the next step. Cancel anytime
-              before you pay.
+                {whoSection}
+
+                <section aria-labelledby="book-when">
+                  <h2 id="book-when" className={SECTION_HEADING}>
+                    2 · When can they play?
+                  </h2>
+                  <p className="mt-2 text-sm text-white/70">
+                    Tap every time of week that usually works for you.
+                  </p>
+                  <AvailabilityHoursLegend className="mt-2" />
+                  <div className="mt-4">
+                    <AvailabilityGrid
+                      value={availability}
+                      onChange={setAvailability}
+                      label="Times that usually work"
+                      firstCellId={IDS.availability}
+                      describedBy={errors[IDS.availability] ? errorIdFor(IDS.availability) : undefined}
+                    />
+                  </div>
+                  <div className="mt-2">
+                    <FieldError fieldId={IDS.availability} message={errors[IDS.availability]} />
+                  </div>
+                </section>
+
+                {contactSection}
+
+                {error && <FormAlert>{error}</FormAlert>}
+                <LiveStatus message={submitting ? "Sending your request…" : ""} />
+
+                <button
+                  type="submit"
+                  aria-disabled={submitting || undefined}
+                  className={`${primaryClass} ${submitting ? "cursor-wait" : ""}`}
+                >
+                  {submitting ? "Sending…" : "Request a time"}
+                </button>
+                <p className="text-center text-xs text-white/60">
+                  No payment now — we&apos;ll confirm your time first. The
+                  assessment is $20, and if you enroll in a program afterward that
+                  $20 comes off the price.
+                </p>
+              </form>
+            ) : (
+              <form noValidate onSubmit={handleSubmit} className="space-y-8">
+                {bot.field}
+                {whoSection}
+
+                <section aria-labelledby="book-slot">
+                  <h2 id="book-slot" className={SECTION_HEADING}>
+                    2 · Pick a slot
+                  </h2>
+                  <div className="mt-4">
+                    <SlotPicker
+                      blocks={blocks.filter((b) => b.slots.length > 0)}
+                      selected={selected}
+                      onSelect={setSelected}
+                      error={errors[IDS.slot]}
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <FieldError fieldId={IDS.slot} message={errors[IDS.slot]} />
+                  </div>
+                  <p className="mt-3 text-sm text-white/70">
+                    Prefer to coordinate directly?{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRequestMode(true);
+                        setError(null);
+                      }}
+                      className={TEXT_LINK_LIME}
+                    >
+                      Request a time instead
+                    </button>
+                  </p>
+                </section>
+
+                {contactSection}
+
+                {error && <FormAlert>{error}</FormAlert>}
+                <LiveStatus message={submitting ? "Booking your slot…" : ""} />
+
+                <button
+                  type="submit"
+                  aria-disabled={submitting || undefined}
+                  className={`${primaryClass} ${submitting ? "cursor-wait" : ""}`}
+                >
+                  {submitting ? "Booking…" : "Continue to payment"}
+                </button>
+                <p className="text-center text-xs text-white/60">
+                  You&apos;ll confirm your $20 payment on the next step. Cancel anytime
+                  before you pay.
+                </p>
+              </form>
+            )}
+            <p className="mt-6 text-center text-xs text-white/60 lg:hidden">
+              Refunds, weather rebooking and the $20 credit are set out in our{" "}
+              <Link
+                href="/legal/refund-policy"
+                className="text-[#B4E655] underline-offset-2 hover:underline"
+              >
+                Program Policies
+              </Link>
+              .
             </p>
-          </form>
-        )}
-        <p className="mt-6 text-center text-xs text-white/40">
-          Refunds, weather rebooking and the $20 credit are set out in our{" "}
-          <Link
-            href="/legal/refund-policy"
-            className="text-[#B4E655] underline-offset-2 hover:underline"
-          >
-            Program Policies
-          </Link>
-          .
-        </p>
-      </div>
+          </div>
+
+          {/* Desktop summary: what you're booking, as you choose it. */}
+          <aside aria-label="Your assessment" className="hidden lg:block">
+            <div className="sticky top-28 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#B4E655]">
+                Your assessment
+              </p>
+              <dl className="mt-5 space-y-4">
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">On court</dt>
+                  <dd className="mt-1 text-sm text-white/90">20 minutes with the coach</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">Price</dt>
+                  <dd className="mt-1 text-sm text-white/90">
+                    $20 — enroll in a program afterward and that $20 comes off the price.
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">Player</dt>
+                  <dd className="mt-1 text-sm text-white/90">{playerName || "Not chosen yet"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">Time</dt>
+                  <dd className="mt-1 text-sm tabular-nums text-white/90">
+                    {showRequestForm
+                      ? "We'll set it with you"
+                      : selectedLabel || "Pick a slot"}
+                  </dd>
+                </div>
+              </dl>
+              <p className="mt-6 border-t border-white/10 pt-4 text-xs leading-relaxed text-white/60">
+                Refunds, weather rebooking and the $20 credit are set out in our{" "}
+                <Link
+                  href="/legal/refund-policy"
+                  className="text-[#B4E655] underline-offset-2 hover:underline"
+                >
+                  Program Policies
+                </Link>
+                .
+              </p>
+            </div>
+          </aside>
+        </div>
+      </Container>
     </main>
   );
 }

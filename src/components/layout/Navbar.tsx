@@ -6,15 +6,11 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Container } from "@/components/layout/Container";
-import { createClient } from "@/lib/supabase/browser";
+import { FOCUS_RING as FOCUS } from "@/components/ui/focus";
 import { trackQuizCtaClick } from "@/lib/analytics";
 import { NAV_LINKS, type NavLink } from "@/content/site";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
-import { useAuthState } from "@/lib/useAuthState";
-
-const FOCUS =
-  "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 " +
-  "focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
+import { signOut, useAuthState } from "@/lib/useAuthState";
 
 /** "page" on the link's own page, "true" inside its section (a program page under Programs). */
 function currentState(pathname: string, href: string): "page" | "true" | undefined {
@@ -52,6 +48,9 @@ export function Navbar() {
   }
 
   const links: NavLink[] = isAdmin ? [...NAV_LINKS, { href: "/admin", label: "Admin" }] : [...NAV_LINKS];
+  // Inside the quiz the header carries no quiz CTA (audit L12): the page's
+  // own Next button is the only primary.
+  const inQuiz = pathname === "/intake" || pathname.startsWith("/intake/");
 
   const closeMenu = useCallback((returnFocus: boolean) => {
     setMenuOpen(false);
@@ -101,10 +100,9 @@ export function Navbar() {
     };
   }, [menuOpen, closeMenu]);
 
-  async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    window.location.href = "/";
+  // The Supabase SDK loads only when someone signs out (audit M40).
+  function handleSignOut() {
+    void signOut();
   }
 
   return (
@@ -157,7 +155,7 @@ export function Navbar() {
             {signedIn ? (
               <button
                 type="button"
-                onClick={() => void handleSignOut()}
+                onClick={handleSignOut}
                 className={`inline-flex min-h-[44px] items-center rounded-full px-3 text-sm font-semibold text-white/70 transition-colors hover:text-white ${FOCUS}`}
               >
                 Sign out
@@ -178,7 +176,7 @@ export function Navbar() {
             <Button variant="secondary" size="compact" href="/dashboard" className="hidden md:inline-flex">
               Dashboard
             </Button>
-          ) : (
+          ) : inQuiz ? null : (
             <Button
               variant="primary"
               size="compact"
@@ -260,7 +258,7 @@ export function Navbar() {
                     type="button"
                     onClick={() => {
                       setMenuOpen(false);
-                      void handleSignOut();
+                      handleSignOut();
                     }}
                     className={`-mx-4 flex min-h-[48px] items-center rounded-xl px-4 text-left text-base text-white/70 transition-colors hover:bg-white/5 hover:text-white ${FOCUS}`}
                   >
@@ -276,17 +274,19 @@ export function Navbar() {
                   >
                     Sign in
                   </Link>
-                  <Button
-                    variant="primary"
-                    href="/intake"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      trackQuizCtaClick("navbar");
-                    }}
-                    className="w-full"
-                  >
-                    {QUIZ_CTA_LABEL}
-                  </Button>
+                  {!inQuiz && (
+                    <Button
+                      variant="primary"
+                      href="/intake"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        trackQuizCtaClick("navbar");
+                      }}
+                      className="w-full"
+                    >
+                      {QUIZ_CTA_LABEL}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

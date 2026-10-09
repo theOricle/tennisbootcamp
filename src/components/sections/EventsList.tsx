@@ -17,7 +17,7 @@ export function EventsList({ events, title = "Upcoming events" }: EventsListProp
       <Heading id="events-title">{title}</Heading>
 
       {real.length === 0 ? (
-        <p className="mt-6 text-sm text-white/50">
+        <p className="mt-6 text-sm text-white/60">
           Sessions for the upcoming season are being scheduled — check back soon.
         </p>
       ) : (

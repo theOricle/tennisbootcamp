@@ -72,7 +72,14 @@ export function courseJsonLd(program: Program): JsonLdObject | null {
     name: program.title,
     description: program.description,
     url,
-    provider: { "@id": ORGANIZATION_ID },
+    // Inlined, not only referenced (audit M10): a program page carries no
+    // Organization node of its own, so the @id alone left the provider nameless.
+    provider: {
+      "@type": "Organization",
+      "@id": ORGANIZATION_ID,
+      name: site.name,
+      url: SITE_URL,
+    },
     offers: {
       "@type": "Offer",
       category: "Paid",

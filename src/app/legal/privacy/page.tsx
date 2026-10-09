@@ -44,7 +44,7 @@ export default function PrivacyPolicyPage() {
         </div>
 
         <h1 className="text-2xl font-bold text-white">Privacy Policy</h1>
-        <p className="mt-1 text-sm text-white/40">Effective {EFFECTIVE_DATE}</p>
+        <p className="mt-1 text-sm text-white/60">Effective {EFFECTIVE_DATE}</p>
 
         <div className="mt-8 space-y-8 text-sm leading-relaxed text-white/75">
           <section>

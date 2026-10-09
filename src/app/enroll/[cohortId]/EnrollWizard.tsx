@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import type { Program } from "@/types/program";
@@ -14,9 +14,31 @@ import {
   WhoIsThisFor,
   useHousehold,
   EMPTY_HOUSEHOLD,
-  householdReady,
+  householdIssues,
   type HouseholdValue,
 } from "@/components/participants/WhoIsThisFor";
+import {
+  FIELD_MESSAGES,
+  emailError,
+  firstIssueId,
+  issuesById,
+  phoneError,
+  requiredError,
+  type FieldIssue,
+} from "@/lib/formValidation";
+import { useFocusOnChange } from "@/lib/useFocusOnChange";
+import {
+  FieldError,
+  FormAlert,
+  HINT_CLASS,
+  INPUT_CLASS,
+  LABEL_CLASS,
+  LiveStatus,
+  fieldA11y,
+  hintIdFor,
+} from "@/components/ui/Input";
+import { FOCUS_RING } from "@/components/ui/focus";
+import { TEXT_LINK_MUTED, TextLink } from "@/components/ui/TextLink";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -58,56 +80,106 @@ function computeAge(dob: string): number | null {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function ProgressBar({ value }: { value: number }) {
+function ProgressBar({ step, total }: { step: number; total: number }) {
+  const value = Math.round((step / total) * 100);
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+    <div
+      role="progressbar"
+      aria-label="Enrollment progress"
+      aria-valuemin={1}
+      aria-valuemax={total}
+      aria-valuenow={step}
+      aria-valuetext={`Step ${step} of ${total}`}
+      className="h-2 w-full overflow-hidden rounded-full bg-white/10"
+    >
       <div
-        className="h-full rounded-full bg-[#B4E655] transition-all"
+        className="h-full rounded-full bg-[#B4E655] motion-safe:transition-all"
         style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
       />
     </div>
   );
 }
 
+/** One labelled field with its problem underneath (audit M19). */
 function FieldGroup({
+  id,
   label,
+  error,
+  hint,
   children,
 }: {
+  id: string;
   label: string;
+  error?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-1.5">
-      <span className="text-sm text-white/70">{label}</span>
+    <div className="grid gap-1.5">
+      <label htmlFor={id} className={LABEL_CLASS}>
+        {label}
+      </label>
       {children}
-    </label>
+      {hint && (
+        <p id={hintIdFor(id)} className={HINT_CLASS}>
+          {hint}
+        </p>
+      )}
+      <FieldError fieldId={id} message={error} />
+    </div>
   );
 }
 
 function TextInput({
+  id,
   value,
   onChange,
   placeholder,
   type = "text",
   required,
+  autoComplete,
+  inputMode,
+  error,
+  hint = false,
 }: {
+  id: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
   required?: boolean;
+  autoComplete?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  error?: string;
+  hint?: boolean;
 }) {
   return (
     <input
+      id={id}
       type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       required={required}
-      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
+      autoComplete={autoComplete}
+      inputMode={inputMode}
+      className={INPUT_CLASS}
+      {...fieldA11y(id, { error, hint })}
     />
   );
 }
+
+/** Field ids, so a press of Continue can focus the first problem. */
+const FIELD_IDS = {
+  dob: (key: string) => `enroll-dob-${key}`,
+  email: "enroll-email",
+  phone: "enroll-phone",
+  guardianName: "enroll-guardian-name",
+  guardianEmail: "enroll-guardian-email",
+  guardianPhone: "enroll-guardian-phone",
+  consent: "enroll-consent",
+  signature: "enroll-signature",
+} as const;
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
@@ -168,7 +240,7 @@ function OrderSummary({
           {program?.title ?? cohort.programId}
         </p>
         {program?.ageGroup && (
-          <p className="mt-0.5 text-sm text-white/50">{program.ageGroup}</p>
+          <p className="mt-0.5 text-sm text-white/60">{program.ageGroup}</p>
         )}
         <TierRangeBadges
           levelMin={cohort.levelMin}
@@ -202,14 +274,14 @@ function OrderSummary({
       {/* Schedule */}
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-          <p className="text-xs text-white/40 uppercase tracking-wide font-semibold">Dates</p>
+          <p className="text-xs text-white/60 uppercase tracking-wide font-semibold">Dates</p>
           <p className="mt-1 text-sm text-[#B4E655]">{formatDateRange(cohort)}</p>
-          <p className="mt-0.5 text-xs text-white/50">{cohort.weeks} weeks</p>
+          <p className="mt-0.5 text-xs text-white/60">{cohort.weeks} weeks</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-          <p className="text-xs text-white/40 uppercase tracking-wide font-semibold">Sessions</p>
+          <p className="text-xs text-white/60 uppercase tracking-wide font-semibold">Sessions</p>
           <p className="mt-1 text-sm text-[#B4E655]">{formatDaysTimes(cohort)}</p>
-          <p className="mt-0.5 text-xs text-white/50">
+          <p className="mt-0.5 text-xs text-white/60">
             {cohort.capacityMin}–{cohort.capacityMax} players
           </p>
         </div>
@@ -218,16 +290,16 @@ function OrderSummary({
       {/* Price + availability */}
       <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-white/60">Total</p>
+          <p className="text-sm text-white/70">Total</p>
           <p className="text-base font-semibold text-white">{price}</p>
         </div>
         {cohort.priceCents === 0 && (
-          <p className="mt-1 text-xs text-white/40">
+          <p className="mt-1 text-xs text-white/60">
             Price will be confirmed before payment is collected.
           </p>
         )}
         {cohort.priceCents > 0 && (
-          <p className="mt-1 text-xs text-white/40">
+          <p className="mt-1 text-xs text-white/60">
             Completed your $20 assessment? It comes off this price automatically
             at payment.
           </p>
@@ -240,7 +312,7 @@ function OrderSummary({
       </div>
 
       {/* Refund reassurance */}
-      <p className="text-xs text-white/50">
+      <p className="text-xs text-white/60">
         {COOLING_OFF_COPY}{" "}
         <Link
           href="/legal/refund-policy"
@@ -265,6 +337,7 @@ function RegistrantStep({
   accountEmail,
   cohortId,
   onEnterSubmit,
+  errors,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
@@ -275,11 +348,13 @@ function RegistrantStep({
   accountEmail: string;
   cohortId: string;
   onEnterSubmit: () => void;
+  errors: Record<string, string>;
 }) {
   return (
     // An explicit action keeps the invite token out of GA's form_destination
     // (an action-less form reports the full URL); onSubmit still prevents submission.
     <form
+      noValidate
       action={`/enroll/${cohortId}`}
       onSubmit={(e) => {
         e.preventDefault();
@@ -287,21 +362,27 @@ function RegistrantStep({
       }}
       className="space-y-5"
     >
-      {/* One block per player — a seat each. */}
+      {/* One block per player — a seat each, each its own fieldset (audit M19). */}
       <div className="space-y-4">
         <p className="text-sm font-semibold text-white">
           {players.length > 1 ? "Players" : "Player"}
         </p>
         {players.map((player) => (
-          <div
+          <fieldset
             key={player.key}
             className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4"
           >
-            <p className="text-sm font-semibold text-[#B4E655]">
+            <legend className="sr-only">{player.name || "This player"}</legend>
+            <p aria-hidden="true" className="text-sm font-semibold text-[#B4E655]">
               {player.name || "This player"}
             </p>
-            <FieldGroup label="Date of birth">
+            <FieldGroup
+              id={FIELD_IDS.dob(player.key)}
+              label="Date of birth"
+              error={errors[FIELD_IDS.dob(player.key)]}
+            >
               <TextInput
+                id={FIELD_IDS.dob(player.key)}
                 type="date"
                 value={player.dob}
                 onChange={(v) =>
@@ -312,81 +393,102 @@ function RegistrantStep({
                   )
                 }
                 required
+                error={errors[FIELD_IDS.dob(player.key)]}
               />
             </FieldGroup>
-          </div>
+          </fieldset>
         ))}
       </div>
 
       {/* Account holder — the payer, and the guardian for anyone under 18. */}
-      <div>
-        <p className="mb-3 text-sm font-semibold text-white">Account holder</p>
+      <fieldset>
+        <legend className="mb-3 text-sm font-semibold text-white">Account holder</legend>
         <div className="space-y-3">
           {signedIn ? (
-            <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+            <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
               Enrolling on your account —{" "}
               <span className="font-semibold text-white">{accountEmail}</span>.
             </p>
           ) : (
-            <FieldGroup label="Email">
+            <FieldGroup id={FIELD_IDS.email} label="Email" error={errors[FIELD_IDS.email]}>
               <TextInput
+                id={FIELD_IDS.email}
                 type="email"
+                inputMode="email"
+                autoComplete="email"
                 value={form.contactEmail}
                 onChange={(v) => setForm((s) => ({ ...s, contactEmail: v }))}
                 placeholder="email@example.com"
                 required
+                error={errors[FIELD_IDS.email]}
               />
             </FieldGroup>
           )}
-          <FieldGroup label="Phone">
+          <FieldGroup id={FIELD_IDS.phone} label="Phone" error={errors[FIELD_IDS.phone]}>
             <TextInput
+              id={FIELD_IDS.phone}
               type="tel"
+              inputMode="tel"
+              autoComplete="tel"
               value={form.contactPhone}
               onChange={(v) => setForm((s) => ({ ...s, contactPhone: v }))}
               placeholder="(647) 555-1234"
               required
+              error={errors[FIELD_IDS.phone]}
             />
           </FieldGroup>
         </div>
-      </div>
+      </fieldset>
 
       {/* Guardian section — shown when any player is under 18 */}
       {isMinor && (
-        <div className="rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-5 py-4">
-          <p className="mb-1 text-sm font-semibold text-[#B4E655]">Parent / Guardian</p>
-          <p className="mb-3 text-xs text-white/55">
+        <fieldset className="rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-5 py-4">
+          <legend className="sr-only">Parent or guardian</legend>
+          <p aria-hidden="true" className="mb-1 text-sm font-semibold text-[#B4E655]">Parent / Guardian</p>
+          <p className="mb-3 text-xs text-white/70">
             The guardian is the account holder and will sign the waiver for
             every player under 18.
           </p>
           <div className="space-y-3">
-            <FieldGroup label="Full name">
+            <FieldGroup id={FIELD_IDS.guardianName} label="Full name" error={errors[FIELD_IDS.guardianName]}>
               <TextInput
+                id={FIELD_IDS.guardianName}
+                autoComplete="name"
                 value={form.guardianName}
                 onChange={(v) => setForm((s) => ({ ...s, guardianName: v }))}
                 placeholder="Guardian's full name"
                 required
+                error={errors[FIELD_IDS.guardianName]}
               />
             </FieldGroup>
-            <FieldGroup label="Email">
+            <FieldGroup id={FIELD_IDS.guardianEmail} label="Email" error={errors[FIELD_IDS.guardianEmail]}>
               <TextInput
+                id={FIELD_IDS.guardianEmail}
                 type="email"
+                inputMode="email"
+                autoComplete="email"
                 value={form.guardianEmail}
                 onChange={(v) => setForm((s) => ({ ...s, guardianEmail: v }))}
                 placeholder="guardian@example.com"
                 required
+                error={errors[FIELD_IDS.guardianEmail]}
               />
             </FieldGroup>
-            <FieldGroup label="Phone">
+            <FieldGroup id={FIELD_IDS.guardianPhone} label="Phone" error={errors[FIELD_IDS.guardianPhone]}>
               <TextInput
+                id={FIELD_IDS.guardianPhone}
                 type="tel"
+                inputMode="tel"
+                autoComplete="tel"
                 value={form.guardianPhone}
                 onChange={(v) => setForm((s) => ({ ...s, guardianPhone: v }))}
                 placeholder="(647) 555-1234"
                 required
+                error={errors[FIELD_IDS.guardianPhone]}
               />
             </FieldGroup>
           </div>
-        </div>
+        </fieldset>
       )}
       {/* Enables Enter-to-advance from any field; the visible CTA lives in the footer */}
       <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
@@ -400,10 +502,12 @@ function ConsentStep({
   form,
   setForm,
   isMinor,
+  errors,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   isMinor: boolean;
+  errors: Record<string, string>;
 }) {
   const signerLabel = isMinor ? "guardian" : "participant";
 
@@ -414,7 +518,7 @@ function ConsentStep({
           Before we can process payment, {isMinor ? "the guardian" : "you"} must read and
           agree to the Terms &amp; Liability Waiver and Program Policies.
         </p>
-        <p className="mt-2 text-xs text-white/50">
+        <p className="mt-2 text-xs text-white/60">
           How we handle your information:{" "}
           <Link
             href="/legal/privacy"
@@ -428,57 +532,72 @@ function ConsentStep({
       </div>
 
       {/* Checkbox */}
-      <label
-        className={cn(
-          "flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition",
-          form.consentChecked
-            ? "border-[#B4E655]/40 bg-[#B4E655]/5"
-            : "border-white/10 bg-white/5"
-        )}
-      >
-        <input
-          type="checkbox"
-          checked={form.consentChecked}
-          onChange={(e) => setForm((s) => ({ ...s, consentChecked: e.target.checked }))}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-[#B4E655]"
-        />
-        <span className="text-sm text-white/80">
-          I have read and agree to the{" "}
-          <Link
-            href="/legal/waiver"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#B4E655] underline-offset-2 hover:underline"
-          >
-            Terms &amp; Liability Waiver
-          </Link>{" "}
-          and{" "}
-          <Link
-            href="/legal/refund-policy"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#B4E655] underline-offset-2 hover:underline"
-          >
-            Program Policies
-          </Link>
-          {isMinor && (
-            <span className="ml-1 text-white/50">
-              (guardian agrees on behalf of the minor participant)
-            </span>
+      <div className="grid gap-1.5">
+        <label
+          className={cn(
+            "flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition",
+            form.consentChecked
+              ? "border-[#B4E655]/40 bg-[#B4E655]/5"
+              : errors[FIELD_IDS.consent]
+                ? "border-red-400 bg-white/5"
+                : "border-white/35 bg-white/5"
           )}
-        </span>
-      </label>
+        >
+          <input
+            id={FIELD_IDS.consent}
+            type="checkbox"
+            required
+            checked={form.consentChecked}
+            onChange={(e) => setForm((s) => ({ ...s, consentChecked: e.target.checked }))}
+            className={`mt-0.5 h-4 w-4 shrink-0 accent-[#B4E655] ${FOCUS_RING}`}
+            {...fieldA11y(FIELD_IDS.consent, { error: errors[FIELD_IDS.consent] })}
+          />
+          <span className="text-sm text-white/80">
+            I have read and agree to the{" "}
+            <Link
+              href="/legal/waiver"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#B4E655] underline-offset-2 hover:underline"
+            >
+              Terms &amp; Liability Waiver
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="/legal/refund-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#B4E655] underline-offset-2 hover:underline"
+            >
+              Program Policies
+            </Link>
+            {isMinor && (
+              <span className="ml-1 text-white/70">
+                (guardian agrees on behalf of the minor participant)
+              </span>
+            )}
+          </span>
+        </label>
+        <FieldError fieldId={FIELD_IDS.consent} message={errors[FIELD_IDS.consent]} />
+      </div>
 
       {/* Typed-name signature */}
-      <FieldGroup label={`Type your full name to sign (${signerLabel})`}>
+      <FieldGroup
+        id={FIELD_IDS.signature}
+        label={`Type your full name to sign (${signerLabel})`}
+        hint="By typing your name above you are providing an electronic signature."
+        error={errors[FIELD_IDS.signature]}
+      >
         <TextInput
+          id={FIELD_IDS.signature}
+          autoComplete="name"
           value={form.consentSignedName}
           onChange={(v) => setForm((s) => ({ ...s, consentSignedName: v }))}
           placeholder={`${isMinor ? "Guardian's" : "Your"} full name`}
+          required
+          error={errors[FIELD_IDS.signature]}
+          hint
         />
-        <p className="text-xs text-white/40">
-          By typing your name above you are providing an electronic signature.
-        </p>
       </FieldGroup>
     </div>
   );
@@ -496,14 +615,18 @@ function CopyButton({ value, label }: { value: string; label: string }) {
     }
   }
   return (
-    <button
-      type="button"
-      onClick={() => void copy()}
-      aria-label={`Copy ${label}`}
-      className="min-h-[44px] shrink-0 rounded-full border border-white/20 px-3 text-xs font-semibold text-white/70 transition hover:border-[#B4E655]/50 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50"
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label={`Copy ${label}`}
+        className={`min-h-[44px] shrink-0 rounded-full border border-white/35 px-4 text-sm font-semibold text-white/80 transition hover:border-[#B4E655]/50 hover:text-white ${FOCUS_RING}`}
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+      {/* The change of words is announced, not only shown (audit M19). */}
+      <LiveStatus message={copied ? `${label[0].toUpperCase()}${label.slice(1)} copied` : ""} />
+    </>
   );
 }
 
@@ -535,10 +658,10 @@ function EtransferStep({
 
       <div className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">
         <div className="px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-white/40">Amount</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Amount</p>
           <p className="mt-1 text-xl font-semibold text-white">{moneyCAD(due)} CAD</p>
           {(seats > 1 || info.creditCents > 0) && (
-            <p className="mt-0.5 text-xs text-white/50">
+            <p className="mt-0.5 text-xs text-white/70">
               {seats > 1
                 ? `${moneyCAD(cohort.priceCents)} × ${seats} players`
                 : moneyCAD(cohort.priceCents)}
@@ -550,21 +673,21 @@ function EtransferStep({
         </div>
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/40">Send to</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Send to</p>
             <p className="mt-1 break-all font-medium text-[#B4E655]">{info.recipientEmail}</p>
           </div>
           <CopyButton value={info.recipientEmail} label="email address" />
         </div>
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/40">Message</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Message</p>
             <p className="mt-1 font-medium text-white">{memo}</p>
           </div>
           <CopyButton value={memo} label="message" />
         </div>
       </div>
 
-      <p className="text-xs text-white/50">
+      <p className="text-xs text-white/70">
         Put the message on the transfer exactly as shown — it&apos;s how we match
         your payment to your spot. We&apos;ve also emailed you these details.
       </p>
@@ -573,7 +696,7 @@ function EtransferStep({
         type="button"
         onClick={onPayByCard}
         disabled={submitting}
-        className="text-sm text-white/60 underline-offset-2 hover:text-white hover:underline disabled:opacity-40"
+        className={`${TEXT_LINK_MUTED} underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-white/30`}
       >
         Prefer to pay by card? Pay by card instead
       </button>
@@ -627,6 +750,13 @@ export function EnrollWizard({
   const [dobs, setDobs] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Field ids whose problems are on screen, added when Continue is pressed
+  // (audit M19); the list under the button follows the same press.
+  const [shown, setShown] = useState<Set<string>>(() => new Set());
+  const [pressedWithGaps, setPressedWithGaps] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Continue and Back land on the new step's heading (audit M19).
+  useFocusOnChange(headingRef, step);
   // The Sheet row written by /api/enroll, kept so the e-transfer step can
   // offer card checkout (or re-send) without appending a second row.
   const [saved, setSaved] = useState<{
@@ -680,31 +810,49 @@ export function EnrollWizard({
   const isMinor = players.some(
     (p) => p.isMinor || ((a) => a !== null && a < 18)(computeAge(p.dob))
   );
-  const progress = Math.round(((step + 1) / totalSteps) * 100);
-
-  function canContinue(): boolean {
-    if (step === 0) return true;
-    if (step === 1) return householdReady(who, household.signedIn);
+  /** What stops the current step, one issue per field, in screen order. */
+  function stepIssues(): FieldIssue[] {
+    if (step === 1) {
+      return householdIssues(who, household.signedIn, household.participants);
+    }
     if (step === 2) {
-      const base =
-        players.length > 0 &&
-        players.every(
-          (p) => p.name.trim().length > 0 && p.dob.length > 0 && computeAge(p.dob) !== null
-        ) &&
-        (household.signedIn || form.contactEmail.trim().length > 0) &&
-        form.contactPhone.trim().length > 0;
-      const guardian =
-        !isMinor ||
-        (form.guardianName.trim().length > 0 &&
-          form.guardianEmail.trim().length > 0 &&
-          form.guardianPhone.trim().length > 0);
-      return base && guardian;
+      const out: FieldIssue[] = [];
+      for (const p of players) {
+        const id = FIELD_IDS.dob(p.key);
+        if (!p.dob) out.push({ id, message: FIELD_MESSAGES.dobMissing });
+        else if (computeAge(p.dob) === null) out.push({ id, message: FIELD_MESSAGES.dobInvalid });
+      }
+      if (!household.signedIn) {
+        const e = emailError(form.contactEmail);
+        if (e) out.push({ id: FIELD_IDS.email, message: e });
+      }
+      const ph = phoneError(form.contactPhone);
+      if (ph) out.push({ id: FIELD_IDS.phone, message: ph });
+      if (isMinor) {
+        const gn = requiredError(form.guardianName, "Add the guardian's full name.");
+        if (gn) out.push({ id: FIELD_IDS.guardianName, message: gn });
+        const ge = form.guardianEmail.trim()
+          ? emailError(form.guardianEmail)
+          : "Add the guardian's email address.";
+        if (ge) out.push({ id: FIELD_IDS.guardianEmail, message: ge });
+        const gp = phoneError(form.guardianPhone);
+        if (gp) out.push({ id: FIELD_IDS.guardianPhone, message: gp });
+      }
+      return out;
     }
     if (step === 3) {
-      return form.consentChecked && form.consentSignedName.trim().length > 0;
+      const out: FieldIssue[] = [];
+      if (!form.consentChecked) out.push({ id: FIELD_IDS.consent, message: FIELD_MESSAGES.consentMissing });
+      if (!form.consentSignedName.trim()) {
+        out.push({ id: FIELD_IDS.signature, message: FIELD_MESSAGES.signatureMissing });
+      }
+      return out;
     }
-    return true;
+    return [];
   }
+
+  const visibleIssues = stepIssues().filter((i) => shown.has(i.id));
+  const errors = issuesById(visibleIssues);
 
   const contactEmail = household.signedIn
     ? household.accountEmail || form.contactEmail
@@ -905,8 +1053,23 @@ export function EnrollWizard({
     }
   }
 
+  // Continue is always enabled (audit M19): pressing it with gaps shows each
+  // problem by its field, lists them under the button and focuses the first.
   function next() {
-    if (!canContinue()) return;
+    if (submitting) return;
+    const found = stepIssues();
+    if (found.length > 0) {
+      setShown((s) => {
+        const out = new Set(s);
+        for (const i of found) out.add(i.id);
+        return out;
+      });
+      setPressedWithGaps(true);
+      const id = firstIssueId(found);
+      if (id) requestAnimationFrame(() => document.getElementById(id)?.focus());
+      return;
+    }
+    setPressedWithGaps(false);
     if (etransfer) {
       if (step === CARD_STEPS - 1) void continueToEtransfer();
       else if (step === ETRANSFER_STEPS - 1) void sendEtransfer();
@@ -923,6 +1086,7 @@ export function EnrollWizard({
   const seatCount = Math.max(1, players.length);
 
   function back() {
+    setPressedWithGaps(false);
     setStep((s) => Math.max(s - 1, 0));
   }
 
@@ -949,24 +1113,28 @@ export function EnrollWizard({
       <div className="mx-auto max-w-2xl px-6 py-10 md:py-14">
         {/* Top bar */}
         <div className="mb-8 flex items-center justify-between">
-          <Link
-            href={`/programs/${program?.slug ?? cohort.programId}`}
-            className="text-sm text-white/60 hover:text-white"
-          >
+          <TextLink href={`/programs/${program?.slug ?? cohort.programId}`}>
             ← Back to program
-          </Link>
-          <div className="text-sm text-white/60">
+          </TextLink>
+          <p className="text-sm text-white/70" aria-hidden="true">
             Step {step + 1} of {totalSteps}
-          </div>
+          </p>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)] md:p-8">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 md:p-8">
           {/* Header */}
           <div className="mb-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]/90">
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
               ENROLLMENT — {cohort.label}
             </div>
-            <h1 className="mt-2 text-2xl font-semibold md:text-3xl">
+            <h1
+              ref={headingRef}
+              tabIndex={-1}
+              className="mt-2 text-2xl font-semibold focus:outline-none md:text-3xl"
+            >
+              <span className="sr-only">
+                Step {step + 1} of {totalSteps}:{" "}
+              </span>
               {STEP_TITLES[step]}
             </h1>
             <p className="mt-2 text-sm text-white/70">{STEP_SUBTITLES[step]}</p>
@@ -974,7 +1142,7 @@ export function EnrollWizard({
 
           {/* Progress */}
           <div className="mb-6">
-            <ProgressBar value={progress} />
+            <ProgressBar step={step + 1} total={totalSteps} />
           </div>
 
           {/* Step content */}
@@ -992,6 +1160,7 @@ export function EnrollWizard({
               onChange={setWho}
               multiple
               intro="Every player takes their own seat. Add everyone now and pay once."
+              errors={errors}
             />
           )}
           {step === 2 && (
@@ -1004,13 +1173,12 @@ export function EnrollWizard({
               signedIn={household.signedIn}
               accountEmail={household.accountEmail}
               cohortId={cohort.id}
-              onEnterSubmit={() => {
-                if (canContinue() && !submitting) next();
-              }}
+              onEnterSubmit={next}
+              errors={errors}
             />
           )}
           {step === 3 && (
-            <ConsentStep form={form} setForm={setForm} isMinor={isMinor} />
+            <ConsentStep form={form} setForm={setForm} isMinor={isMinor} errors={errors} />
           )}
           {step === 4 && etransfer && (
             <EtransferStep
@@ -1025,18 +1193,23 @@ export function EnrollWizard({
 
           {/* Navigation */}
           <div className="mt-6 flex flex-col gap-2">
+            {pressedWithGaps && visibleIssues.length > 1 && (
+              <div id="enroll-missing" className="text-sm text-red-400">
+                <p className="font-semibold">To continue:</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {visibleIssues.map((i) => (
+                    <li key={i.id}>{i.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3">
               {step > 0 && (
                 <button
                   type="button"
                   onClick={back}
                   disabled={submitting}
-                  className={cn(
-                    "rounded-full px-5 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-                    submitting
-                      ? "bg-white/5 text-white/30"
-                      : "bg-white/10 text-white hover:bg-white/15"
-                  )}
+                  className={`min-h-[44px] rounded-full bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:bg-white/5 disabled:text-white/30 ${FOCUS_RING}`}
                 >
                   Back
                 </button>
@@ -1044,18 +1217,18 @@ export function EnrollWizard({
               <button
                 type="button"
                 onClick={next}
-                disabled={!canContinue() || submitting}
+                aria-disabled={submitting || undefined}
+                aria-describedby={
+                  pressedWithGaps && visibleIssues.length > 1 ? "enroll-missing" : undefined
+                }
                 className={cn(
-                  "ml-auto inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]",
-                  !canContinue() && !submitting
-                    ? "bg-[#B4E655]/30 text-[#061427]/50"
-                    : submitting
-                    ? "cursor-wait bg-[#B4E655] text-[#061427]"
-                    : "bg-[#B4E655] text-[#061427] hover:brightness-110"
+                  "ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] transition",
+                  FOCUS_RING,
+                  submitting ? "cursor-wait" : "hover:brightness-110"
                 )}
               >
                 {submitting && (
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <svg className="h-4 w-4 motion-safe:animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
@@ -1064,8 +1237,7 @@ export function EnrollWizard({
               </button>
             </div>
             {isConsentStep && (
-
-              <p className="text-right text-xs text-white/50">
+              <p className="text-right text-xs text-white/60">
                 {COOLING_OFF_COPY}{" "}
                 <Link
                   href="/legal/refund-policy"
@@ -1077,9 +1249,16 @@ export function EnrollWizard({
                 </Link>
               </p>
             )}
-            {submitError && (
-              <p className="text-right text-sm text-red-400">{submitError}</p>
-            )}
+            {submitError && <FormAlert>{submitError}</FormAlert>}
+            <LiveStatus
+              message={
+                submitting
+                  ? etransfer && isLastStep
+                    ? "Recording your e-transfer…"
+                    : "Saving your enrollment…"
+                  : ""
+              }
+            />
           </div>
         </div>
       </div>

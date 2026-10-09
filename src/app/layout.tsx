@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -31,6 +31,13 @@ export const metadata: Metadata = {
   },
 };
 
+// The browser chrome matches the navy page (audit M38); the icons come from
+// src/app/icon.svg, apple-icon.png and favicon.ico by file convention.
+export const viewport: Viewport = {
+  themeColor: "#061427",
+  colorScheme: "dark",
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={geist.variable}>
@@ -58,9 +65,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             strategy="afterInteractive"
             dangerouslySetInnerHTML={{ __html: gaInitScript(process.env.NEXT_PUBLIC_GA_ID) }}
           />
+          {/* The gtag library loads once the page is idle (audit M40); the
+              init above queues events on the dataLayer until it arrives. */}
           <Script
             id="ga-src"
-            strategy="afterInteractive"
+            strategy="lazyOnload"
             src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID}`}
           />
           <AnalyticsPageLocation />

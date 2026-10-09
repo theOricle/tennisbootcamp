@@ -8,8 +8,8 @@ import { ProgramInterestForm } from "@/components/sections/ProgramInterestForm";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { QuizBand } from "@/components/sections/QuizBand";
 import { Container } from "@/components/layout/Container";
-import { Button } from "@/components/ui/Button";
 import { Heading } from "@/components/ui/Heading";
+import { TrackedButton } from "@/components/ui/TrackedButton";
 import {
   formatDateRange,
   formatDaysTimes,
@@ -43,7 +43,16 @@ function summaryFacts(program: Program): string[] {
   return [program.ageGroup ?? "", days.join(" and "), `${SESSION_PRICE_LABEL} a session`].filter(Boolean);
 }
 
-export const dynamic = "force-dynamic";
+// Incremental static regeneration (audit M39): the page is served from the
+// edge and rebuilt at most once a minute, so a cohort that has started drops
+// off within a minute even with no admin change. The admin cohort actions
+// also revalidate it at once (src/lib/cohortRevalidate.ts).
+export const revalidate = 60;
+
+/** Every listed program is built ahead; a retired slug still redirects on demand. */
+export function generateStaticParams() {
+  return programs.filter((p) => !p.unlisted).map((p) => ({ slug: p.slug }));
+}
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -105,7 +114,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 Our Programs
               </Link>
             </li>
-            <li aria-hidden="true" className="text-white/40">›</li>
+            <li aria-hidden="true" className="text-white/60">›</li>
             <li>
               <span aria-current="page" className="text-white">{program.title}</span>
             </li>
@@ -142,10 +151,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               <span className="font-semibold text-[#B4E655]">{program.type}</span>
               {program.ageGroup && (
                 // On phones the age moves into the summary row under the H1.
-                <span className={`text-white/50 ${summary.length > 0 ? "max-md:hidden" : ""}`}>· {program.ageGroup}</span>
+                <span className={`text-white/70 ${summary.length > 0 ? "max-md:hidden" : ""}`}>· {program.ageGroup}</span>
               )}
               {program.comingSoon && (
-                <span className="ml-1 rounded-full border border-yellow-400/30 bg-yellow-400/10 px-2 py-0.5 text-[10px] font-medium text-yellow-200">
+                // The neutral Coming Soon chip: 12px, dashed, no warning yellow (audit L3).
+                <span className="ml-1 inline-flex min-h-6 items-center rounded-full border border-dashed border-white/25 bg-[#061427] px-2.5 py-1 text-xs font-medium text-white/85">
                   Coming Soon
                 </span>
               )}
@@ -197,18 +207,31 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 )}
                 {/* Primary, then the optional assessment as an outline pill
                     at 44px, not 12px grey text (audit M12). */}
-                <Button variant="primary" href={quizHref} className="mt-4 w-full" data-quiz-cta>
+                <TrackedButton
+                  variant="primary"
+                  href={quizHref}
+                  track="quiz"
+                  source="program-detail"
+                  className="mt-4 w-full"
+                  data-quiz-cta
+                >
                   Take the 2-minute quiz
-                </Button>
-                <Button variant="secondary" href="/assessment/book" className="mt-3 w-full">
+                </TrackedButton>
+                <TrackedButton
+                  variant="secondary"
+                  href="/assessment/book"
+                  track="assessment"
+                  source="program-detail"
+                  className="mt-3 w-full"
+                >
                   Book Your Assessment
-                </Button>
+                </TrackedButton>
               </div>
             ) : (
               // The one notify form on the page (audit H8), anchored at #notify.
               <div id="notify" className="mt-6 scroll-mt-24 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
                 <p className="text-sm font-semibold text-white">Not open for enrollment yet</p>
-                <p className="mt-1 text-xs text-white/60">
+                <p className="mt-1 text-sm text-white/70">
                   Leave your email and we&apos;ll tell you when enrollment opens.
                 </p>
                 <div className="mt-3">
@@ -280,7 +303,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                           <p className="mt-0.5 text-sm text-white/60">
                             {formatDaysTimes(cohort)}
                           </p>
-                          <p className="mt-0.5 text-sm text-white/50">
+                          <p className="mt-0.5 text-sm text-white/60">
                             {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
                           </p>
                         </div>
@@ -289,10 +312,10 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                             {formatCohortPrice(cohort)}
                           </p>
                           <span
-                            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            className={`mt-1 inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
                               isFull
-                                ? "bg-white/10 text-white/40"
-                                : "bg-[#B4E655]/15 text-[#B4E655]"
+                                ? "border border-white/15 bg-white/5 text-white/85"
+                                : "bg-[#B4E655]/10 text-[#B4E655]"
                             }`}
                           >
                             {isFull

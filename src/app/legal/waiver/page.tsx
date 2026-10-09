@@ -19,7 +19,7 @@ export default function WaiverPage() {
         </div>
 
         <h1 className="text-2xl font-bold text-white">Terms &amp; Liability Waiver</h1>
-        <p className="mt-1 text-sm text-white/40">Version: v0-placeholder-2026-05-24</p>
+        <p className="mt-1 text-sm text-white/60">Version: v0-placeholder-2026-05-24</p>
 
         <div className="mt-8 space-y-6 text-sm leading-relaxed text-white/75">
           <section>

@@ -3,18 +3,32 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useBotCheck } from "@/lib/useBotCheck";
+import { emailError } from "@/lib/formValidation";
+import { FieldError, FormAlert, INPUT_CLASS, LABEL_CLASS, LiveStatus, fieldA11y } from "@/components/ui/Input";
+import { FOCUS_RING } from "@/components/ui/focus";
+import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The email's problem, shown on press or when a filled field loses focus
+  // (audit M19); the button stays enabled.
+  const [emailProblem, setEmailProblem] = useState<string | null>(null);
   // Bot protection (backlog #29): honeypot field + fill time, same as the
   // four public forms. The route drops a tripped check silently.
   const bot = useBotCheck();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
+    const problem = emailError(email);
+    setEmailProblem(problem);
+    if (problem) {
+      document.getElementById("fp-email")?.focus();
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -38,7 +52,7 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-semibold">Reset your password</h1>
-          <p className="mt-2 text-sm text-white/60">
+          <p className="mt-2 text-sm text-white/70">
             Enter your email and we&apos;ll send a reset link.
           </p>
         </div>
@@ -55,58 +69,60 @@ export default function ForgotPasswordPage() {
               If an account exists for <strong>{email}</strong>, a reset link is on its way.
               Check your spam folder too.
             </p>
-            <p className="mt-3 text-sm text-white/60">
+            <p className="mt-3 text-sm text-white/70">
               Nothing after a few minutes? Try again, or email{" "}
               <a href="mailto:info@tennisbootcamp.ca" className="text-[#B4E655] hover:underline">
                 info@tennisbootcamp.ca
               </a>
               .
             </p>
-            <Link
-              href="/login"
-              className="mt-6 inline-block text-sm text-[#B4E655] hover:underline"
-            >
+            <Link href="/login" className={`mt-4 ${TEXT_LINK_LIME}`}>
               ← Back to sign in
             </Link>
           </div>
         ) : (
           <form
+            noValidate
             onSubmit={handleSubmit}
             className="space-y-5 rounded-3xl border border-white/10 bg-white/5 p-8"
           >
             {bot.field}
             <div className="grid gap-1.5">
-              <label htmlFor="fp-email" className="text-sm text-white/70">Email</label>
+              <label htmlFor="fp-email" className={LABEL_CLASS}>Email</label>
               <input
                 id="fp-email"
                 type="email"
+                inputMode="email"
+                autoComplete="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (emailProblem && !emailError(e.target.value)) setEmailProblem(null);
+                }}
+                onBlur={(e) => {
+                  if (e.target.value.trim()) setEmailProblem(emailError(e.target.value));
+                }}
                 placeholder="you@example.com"
                 required
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
+                className={INPUT_CLASS}
+                {...fieldA11y("fp-email", { error: emailProblem })}
               />
+              <FieldError fieldId="fp-email" message={emailProblem} />
             </div>
 
-            {error && (
-              <p role="alert" className="text-sm text-red-400">
-                {error}
-              </p>
-            )}
+            {error && <FormAlert>{error}</FormAlert>}
+            <LiveStatus message={loading ? "Sending your reset link…" : ""} />
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+              aria-disabled={loading || undefined}
+              className={`min-h-[44px] w-full rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 ${loading ? "cursor-wait opacity-80" : ""} ${FOCUS_RING}`}
             >
               {loading ? "Sending…" : "Send reset link"}
             </button>
 
-            <p className="text-center text-sm text-white/60">
-              <Link
-                href="/login"
-                className="text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
-              >
+            <p className="text-center text-sm">
+              <Link href="/login" className={TEXT_LINK_LIME}>
                 ← Back to sign in
               </Link>
             </p>

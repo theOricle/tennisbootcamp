@@ -98,6 +98,7 @@ for (const program of listedPrograms) {
   check("description is present", typeof course.description === "string" && (course.description as string).length > 0);
   check("url is the program page on SITE_URL", course.url === `${SITE_URL}/programs/${program.slug}`);
   check("provider is the Organization by @id", (course.provider as JsonLdObject)?.["@id"] === ORGANIZATION_ID);
+  check("provider carries its name and url inline (audit M10)", (course.provider as JsonLdObject)?.name === "Tennis Bootcamp" && typeof (course.provider as JsonLdObject)?.url === "string" && (course.provider as JsonLdObject)?.["@type"] === "Organization");
 
   const instance = course.hasCourseInstance as JsonLdObject | undefined;
   check("CourseInstance is present", instance?.["@type"] === "CourseInstance");

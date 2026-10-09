@@ -49,8 +49,8 @@ const LEVELS: string[] = Array.from({ length: 13 }, (_, i) =>
 );
 
 const inputClass =
-  "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-base text-white " +
-  "placeholder-white/35 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
+  "w-full rounded-lg border border-white/35 bg-white/5 px-3 py-2.5 text-base text-white " +
+  "placeholder:text-white/45 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
 
 const chipClass = (active: boolean) =>
   `min-h-[44px] shrink-0 snap-start rounded-full px-4 text-sm font-semibold transition ${
@@ -139,23 +139,23 @@ function PlayerCard({
           <p className="truncate font-semibold text-white">
             {player.name || player.email || "Player"}
             {player.isMinor && (
-              <span className="ml-2 rounded-full border border-white/15 px-1.5 py-0.5 text-[10px] font-medium text-white/50">
+              <span className="ml-2 rounded-full border border-white/15 px-1.5 py-0.5 text-xs font-medium text-white/60">
                 Under 18
               </span>
             )}
           </p>
           {/* Account: two players with the same name under different holders
               are told apart here. */}
-          <p className="truncate text-xs text-white/50">
-            <span className="text-white/35">Account: </span>
+          <p className="truncate text-xs text-white/60">
+            <span className="text-white/60">Account: </span>
             {player.account.name || player.account.email || "—"}
             {player.account.email ? ` · ${player.account.email}` : ""}
           </p>
           {player.relationship !== "self" && player.relationshipLabel && (
-            <p className="text-[11px] text-white/40">{player.relationshipLabel}</p>
+            <p className="text-xs text-white/60">{player.relationshipLabel}</p>
           )}
-          {player.phone && <p className="text-xs text-white/50">{player.phone}</p>}
-          <p className="mt-1 text-[11px] text-white/40">{availabilityStatus(player)}</p>
+          {player.phone && <p className="text-xs text-white/60">{player.phone}</p>}
+          <p className="mt-1 text-xs text-white/60">{availabilityStatus(player)}</p>
         </div>
         <div className="shrink-0 text-right">
           <div className="flex items-center justify-end gap-2">
@@ -165,13 +165,13 @@ function PlayerCard({
             {player.level != null ? (
               <TierChip level={player.level} />
             ) : (
-              <span className="rounded-full border border-yellow-400/30 bg-yellow-400/10 px-2 py-0.5 text-[10px] font-medium text-yellow-200">
+              <span className="rounded-full border border-yellow-400/30 bg-yellow-400/10 px-2 py-0.5 text-xs font-medium text-yellow-200">
                 Unleveled
               </span>
             )}
           </div>
           {player.level_assessed_at && (
-            <p className="mt-1 text-[11px] text-white/40">
+            <p className="mt-1 text-xs text-white/60">
               Assessed {fmtDate(player.level_assessed_at)}
             </p>
           )}
@@ -185,7 +185,7 @@ function PlayerCard({
               {player.availability_chips.map((chip) => (
                 <span
                   key={chip}
-                  className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/70"
+                  className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/70"
                 >
                   {chip}
                 </span>
@@ -331,7 +331,7 @@ export function AdminPlayersClient() {
             className={chipClass(view === v)}
           >
             {VIEW_LABELS[v]}
-            <span className={`ml-1.5 text-xs ${view === v ? "text-[#061427]/70" : "text-white/40"}`}>
+            <span className={`ml-1.5 text-xs ${view === v ? "text-[#061427]/70" : "text-white/60"}`}>
               {counts[v]}
             </span>
           </button>
@@ -339,7 +339,7 @@ export function AdminPlayersClient() {
       </div>
 
       {/* Sort */}
-      <div className="flex flex-wrap items-center gap-2 text-xs text-white/50">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
         <span>Sort by</span>
         <button
           type="button"
@@ -380,10 +380,10 @@ export function AdminPlayersClient() {
         </div>
       )}
 
-      {loading && <p className="text-sm text-white/50">Loading…</p>}
+      {loading && <p className="text-sm text-white/60">Loading…</p>}
       {loadError && <p className="text-sm text-red-300">{loadError}</p>}
       {!loading && !loadError && filtered.length === 0 && (
-        <p className="text-sm text-white/50">
+        <p className="text-sm text-white/60">
           {view === "unleveled"
             ? "Nobody is waiting for a level. New quiz sign-ups and assessment requests land here."
             : view === "leveled"

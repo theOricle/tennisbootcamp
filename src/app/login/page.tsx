@@ -6,6 +6,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/browser";
 import { trackEvent } from "@/lib/analytics";
 import { PasswordToggleIcon } from "@/components/ui/PasswordToggleIcon";
+import { FieldError, INPUT_CLASS, LABEL_CLASS, LiveStatus, fieldA11y } from "@/components/ui/Input";
+import { FOCUS_RING } from "@/components/ui/focus";
+import { TEXT_LINK_CLASS } from "@/components/ui/TextLink";
+import { FIELD_MESSAGES, emailError } from "@/lib/formValidation";
 import {
   AFTER_LOGIN_DEFAULT,
   callbackNotice,
@@ -13,8 +17,8 @@ import {
   safeNextPath,
 } from "@/lib/authFlow";
 
-const linkClass =
-  "rounded text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
+// Standalone links are 44px targets (audit L4).
+const linkClass = `${TEXT_LINK_CLASS} text-[#B4E655] hover:underline`;
 
 // The page reads `?error=` (an auth-callback refusal) and `?next=` (where to
 // land after signing in — audit M20, L21). useSearchParams needs a Suspense
@@ -45,9 +49,22 @@ function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: stri
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Checked when Sign in is pressed (and the email when it loses focus); the
+  // button stays enabled (audit M19).
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
+    const nextErrors = {
+      email: emailError(email) ?? undefined,
+      password: password ? undefined : FIELD_MESSAGES.passwordMissing,
+    };
+    setFieldErrors(nextErrors);
+    if (nextErrors.email || nextErrors.password) {
+      document.getElementById(nextErrors.email ? "login-email" : "login-password")?.focus();
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -84,34 +101,48 @@ function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: stri
             className="mb-5 rounded-2xl border border-yellow-200/30 bg-yellow-200/5 px-5 py-4 text-sm text-white/80"
           >
             <p>{notice}</p>
-            <Link href="/auth/forgot-password" className={`mt-2 inline-block font-semibold ${linkClass}`}>
+            <Link href="/auth/forgot-password" className={`mt-1 font-semibold ${linkClass}`}>
               Send a new link →
             </Link>
           </div>
         )}
 
         <form
+          noValidate
           onSubmit={handleSubmit}
           className="space-y-5 rounded-3xl border border-white/10 bg-white/5 p-8"
         >
           <div className="grid gap-1.5">
-            <label htmlFor="login-email" className="text-sm text-white/70">Email</label>
+            <label htmlFor="login-email" className={LABEL_CLASS}>Email</label>
             <input
               id="login-email"
               type="email"
+              inputMode="email"
               autoComplete="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (fieldErrors.email && !emailError(e.target.value)) {
+                  setFieldErrors((f) => ({ ...f, email: undefined }));
+                }
+              }}
+              onBlur={(e) => {
+                if (e.target.value.trim()) {
+                  setFieldErrors((f) => ({ ...f, email: emailError(e.target.value) ?? undefined }));
+                }
+              }}
               placeholder="you@example.com"
               required
-              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
+              className={INPUT_CLASS}
+              {...fieldA11y("login-email", { error: fieldErrors.email })}
             />
+            <FieldError fieldId="login-email" message={fieldErrors.email} />
           </div>
 
           <div className="grid gap-1.5">
             <div className="flex items-center justify-between">
-              <label htmlFor="login-password" className="text-sm text-white/70">Password</label>
-              <Link href="/auth/forgot-password" className={`text-xs ${linkClass}`}>
+              <label htmlFor="login-password" className={LABEL_CLASS}>Password</label>
+              <Link href="/auth/forgot-password" className={`-my-2 text-sm ${linkClass}`}>
                 Forgot password?
               </Link>
             </div>
@@ -121,20 +152,27 @@ function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: stri
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (fieldErrors.password && e.target.value) {
+                    setFieldErrors((f) => ({ ...f, password: undefined }));
+                  }
+                }}
                 placeholder="••••••••"
                 required
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 pr-12 text-base text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
+                className={`${INPUT_CLASS} pr-12`}
+                {...fieldA11y("login-password", { error: fieldErrors.password })}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute inset-y-0 right-0 flex items-center rounded-r-2xl px-3 text-white/50 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+                className={`absolute inset-y-0 right-0 flex items-center rounded-r-2xl px-3 text-white/70 hover:text-white ${FOCUS_RING}`}
               >
                 <PasswordToggleIcon visible={showPassword} />
               </button>
             </div>
+            <FieldError fieldId="login-password" message={fieldErrors.password} />
           </div>
 
           {error && (
@@ -143,13 +181,14 @@ function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: stri
             </p>
           )}
 
+          <LiveStatus message={loading ? "Signing you in…" : ""} />
           <button
             type="submit"
-            disabled={loading}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 disabled:cursor-wait disabled:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+            aria-disabled={loading || undefined}
+            className={`inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] hover:brightness-110 ${loading ? "cursor-wait opacity-80" : ""} ${FOCUS_RING}`}
           >
             {loading && (
-              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+              <svg className="h-4 w-4 motion-safe:animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
@@ -157,7 +196,7 @@ function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: stri
             {loading ? "Signing in…" : "Sign in"}
           </button>
 
-          <p className="text-center text-sm text-white/60">
+          <p className="text-center text-sm text-white/70">
             New here?{" "}
             <Link href="/intake" className={linkClass}>
               Take the 2-minute quiz →

@@ -139,15 +139,15 @@ check("newsletter takes a source prop and sends it", /source\s*:\s*string/.test(
 check("newsletter field id is per form", capture.includes("useId()") && !capture.includes('id="email-capture"'));
 check("newsletter button never wraps", capture.includes("shrink-0 whitespace-nowrap"));
 check("every EmailCapture call names its source", ["src/app/page.tsx", "src/app/programs/page.tsx", "src/app/programs/[slug]/page.tsx", "src/app/events/page.tsx", "src/app/video-lessons/page.tsx"].every((f) => !read(f).includes("<EmailCapture />")));
-check("detail: Book Your Assessment is an outline pill", /<Button variant="secondary" href="\/assessment\/book"[^>]*>\s*Book Your Assessment\s*<\/Button>/.test(detail));
+check("detail: Book Your Assessment is an outline pill", /<(?:Tracked)?Button\s+variant="secondary"\s+href="\/assessment\/book"[^>]*>\s*Book Your Assessment\s*<\/(?:Tracked)?Button>/.test(detail));
 check("detail: no 'Or Book Your Assessment' grey link", !detail.includes("Or Book Your Assessment"));
 check("detail: closes on the quiz band (M13)", detail.includes("<QuizBand href={quizHref}"));
-check("detail: timetable quiz CTA is marked for the bar", /<Button variant="primary" href=\{quizHref\}[^>]*data-quiz-cta/.test(detail));
+check("detail: timetable quiz CTA is marked for the bar", /<(?:Tracked)?Button\s+variant="primary"\s+href=\{quizHref\}[^>]*data-quiz-cta/.test(detail));
 const button = read("src/components/ui/Button.tsx");
 check("one primary hover (brightness-110)", button.includes('primary: "bg-[#B4E655] text-[#061427] hover:brightness-110"'));
 check("buttons are 44px or taller", button.includes("min-h-[44px]"));
 const notFound = read("src/app/not-found.tsx");
-check("404: the quiz is the lime primary", /<Button\s+variant="primary"\s+href="\/intake"/.test(notFound));
+check("404: the quiz is the lime primary", /<(?:Tracked)?Button\s+variant="primary"\s+href="\/intake"/.test(notFound));
 check("404: the quiz label never wraps", notFound.includes("whitespace-nowrap"));
 check("404: links sit in a nav", notFound.includes('<nav aria-label="Helpful links"'));
 const band = read("src/components/sections/QuizBand.tsx");

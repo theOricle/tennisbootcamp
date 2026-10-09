@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { buttonClass } from "@/components/ui/Button";
 
 export default function Error({
   reset,
@@ -17,21 +18,24 @@ export default function Error({
         <h1 className="mt-3 text-2xl font-semibold text-white">
           Something went wrong
         </h1>
-        <p className="mt-3 text-sm text-white/60">
-          We hit an unexpected error. Try again, or head back home.
+        {/* The human fallback, as on every failure (audit L12, voice.md). */}
+        <p className="mt-3 text-sm text-white/70">
+          We hit an unexpected error. Try again, or head back home. If it keeps
+          happening, email{" "}
+          <a
+            href="mailto:info@tennisbootcamp.ca"
+            className="text-[#B4E655] underline-offset-2 hover:underline"
+          >
+            info@tennisbootcamp.ca
+          </a>
+          .
         </p>
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <button
-            onClick={reset}
-            className="rounded-full bg-[#B4E655] px-6 py-2.5 text-sm font-semibold text-[#061427] hover:brightness-110"
-          >
+          <button type="button" onClick={reset} className={buttonClass("primary")}>
             Try again
           </button>
-          <Link
-            href="/"
-            className="rounded-full bg-white/10 px-6 py-2.5 text-sm font-semibold text-white hover:bg-white/15"
-          >
+          <Link href="/" className={buttonClass("secondary")}>
             Back to Home
           </Link>
         </div>

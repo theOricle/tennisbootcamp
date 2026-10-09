@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { membershipNote } from "@/lib/membership";
 import { ASSESSMENT_CREDIT_MONTHS } from "@/content/policies";
 import { TierLadder } from "@/components/tiers";
+import { TrackedLink } from "@/components/ui/TrackedButton";
 
 const LEAVE_WITH = [
   "Your level, assigned by the coach",
@@ -66,12 +66,14 @@ export default function AssessmentLandingPage() {
           </p>
           <p className="mt-4 text-sm text-white/60">
             Not sure you need it?{" "}
-            <Link
+            <TrackedLink
+              track="quiz"
+              source="assessment-page"
               href="/intake"
               className="font-semibold text-[#B4E655] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
             >
               Take the 2-minute quiz
-            </Link>{" "}
+            </TrackedLink>{" "}
             and Sina places you from your answers.
           </p>
         </section>
@@ -86,12 +88,14 @@ export default function AssessmentLandingPage() {
             {ASSESSMENT_CREDIT_MONTHS} months after it, that $20 comes off the
             price.
           </p>
-          <Link
+          <TrackedLink
+            track="assessment"
+            source="assessment-price"
             href="/assessment/book"
             className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-center text-base font-semibold text-[#061427] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
           >
             Book Your Assessment
-          </Link>
+          </TrackedLink>
         </section>
 
         {/* What you leave with */}
@@ -137,7 +141,7 @@ export default function AssessmentLandingPage() {
               </div>
             ))}
           </dl>
-          <p className="mt-6 text-sm leading-relaxed text-white/45">
+          <p className="mt-6 text-sm leading-relaxed text-white/60">
             {membershipNote()}
           </p>
         </section>
@@ -147,12 +151,14 @@ export default function AssessmentLandingPage() {
           <p className="text-lg font-medium text-white">
             Twenty minutes decides the next season of your game.
           </p>
-          <Link
+          <TrackedLink
+            track="assessment"
+            source="assessment-closing"
             href="/assessment/book"
             className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-center text-base font-semibold text-[#061427] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
           >
             Book Your Assessment
-          </Link>
+          </TrackedLink>
         </section>
       </div>
     </main>

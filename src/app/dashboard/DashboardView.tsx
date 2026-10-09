@@ -159,7 +159,7 @@ function SessionRow({ row, replaces, muted = false }: SessionWithMakeup & { mute
       </span>
       <span>{fmtSlot(row.start_time, row.end_time)}</span>
       {row.makeup_for && (
-        <span className="rounded-full bg-sky-400/15 px-2 py-0.5 text-[11px] font-semibold text-sky-200">
+        <span className="rounded-full bg-sky-400/15 px-2 py-0.5 text-xs font-semibold text-sky-200">
           Make-up{replaces ? ` · replaces ${fmtSessionDate(replaces.session_date)}` : ""}
         </span>
       )}
@@ -506,7 +506,7 @@ export function DashboardView(props: DashboardViewProps) {
                       <p className="text-sm font-semibold text-white">
                         {player.full_name?.trim() || "Unnamed player"}
                       </p>
-                      <p className="text-xs text-white/45">{relationshipLine(player)}</p>
+                      <p className="text-xs text-white/60">{relationshipLine(player)}</p>
                     </div>
                     {player.id !== self?.id &&
                       (hasLevel(player.level) ? (
@@ -554,7 +554,7 @@ export function DashboardView(props: DashboardViewProps) {
                 <p className="text-base font-semibold text-white">
                   {player.full_name?.trim() || "Unnamed player"}
                 </p>
-                <p className="text-xs text-white/45">{relationshipLine(player)}</p>
+                <p className="text-xs text-white/60">{relationshipLine(player)}</p>
               </div>
               <AvailabilityEditor
                 participantId={player.id}
@@ -568,7 +568,7 @@ export function DashboardView(props: DashboardViewProps) {
             </div>
           ))}
         </div>
-        <p className="mt-4 text-xs text-white/45">
+        <p className="mt-4 text-xs text-white/60">
           Training someone else too — a child, a partner? Add them through{" "}
           <Link
             href="/intake"

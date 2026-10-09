@@ -159,6 +159,26 @@ export function trackAssessmentBookComplete() {
   trackEvent("assessment_book_complete");
 }
 
+type CountStore = Pick<Storage, "getItem" | "setItem">;
+
+/**
+ * True the first time a booking id is seen in this browser, false after, so a
+ * reload or a revisit of /assessment/booked never counts the booking twice
+ * (audit L13). No id, no count: a direct visit is not a booking. Storage that
+ * throws (private mode) counts once per page load.
+ */
+export function firstSightOfBooking(bookingId: string | null | undefined, store: CountStore | null): boolean {
+  if (!bookingId) return false;
+  const key = `tb-booking-counted:${bookingId}`;
+  try {
+    if (store?.getItem(key)) return false;
+    store?.setItem(key, "1");
+  } catch {
+    // Storage blocked: fall through and count it.
+  }
+  return true;
+}
+
 /** Admin marks a booking complete with a level. */
 export function trackAssessmentCompletedAdmin() {
   trackEvent("assessment_completed_admin");
@@ -167,8 +187,9 @@ export function trackAssessmentCompletedAdmin() {
 // ─── Funnel-flip events (Phase 2) ─────────────────────────────────────────────
 
 /**
- * A player taps a "Book Your Assessment" CTA. `source` distinguishes where:
- * "hero" | "navbar" | "intake-result".
+ * A player taps a "Book Your Assessment" CTA. `source` distinguishes where
+ * (audit L13): "intake-result" | "program-detail" | "assessment-price" |
+ * "assessment-closing".
  */
 export function trackAssessmentCtaClick(source: string) {
   trackEvent("assessment_cta_click", { source });
@@ -177,8 +198,9 @@ export function trackAssessmentCtaClick(source: string) {
 // ─── Quiz-first events (backlog #22) ──────────────────────────────────────────
 
 /**
- * A player taps a "Take the 2-minute quiz" CTA. `source` distinguishes where:
- * "hero" | "navbar" | "not-found".
+ * A player taps a "Take the 2-minute quiz" CTA. `source` distinguishes where
+ * (audit L13): "hero" | "navbar" | "not-found" | "program-detail" |
+ * "assessment-page" | a QuizBand's own source ("home-closing", "program-closing").
  */
 export function trackQuizCtaClick(source: string) {
   trackEvent("quiz_cta_click", { source });
