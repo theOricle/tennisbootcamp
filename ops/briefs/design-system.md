@@ -32,6 +32,44 @@ Concrete tokens and patterns. Apply these before inventing new styles.
 - Controls keep a 3:1 boundary (WCAG 1.4.11): inputs, selects and unselected toggle cells use `border-white/35`.
 - `npm test` (`test-forms-a11y.ts`) fails on `text-white/20`–`/50`, a placeholder below `/45` or `text-[10px]`/`text-[11px]` anywhere under `src`, outside `disabled:` variants and the tier components.
 
+## Tier tokens (audit H6, owner D1)
+
+The level system has one colour ramp, slate → lime → platinum → gold, held as `Tier.color` in `src/lib/tiers.ts` and read everywhere else from there. Tier colours live only in graphics (emblems, pips, connectors, the RankCard's top rule); tier names are white text. Gold is a new token used nowhere but tier graphics. `npm test` (`test-tiers.ts`) asserts every colour is at least 4.5:1 on the navy and on a card, that navy on gold is at least 4.5:1, and that the seven are distinct.
+
+| id | Tier | `color` | Hue family |
+|---|---|---|---|
+| 1 | Love | `#7D8CA3` slate | chalk |
+| 2 | Rally | `#AEBBCD` light slate | chalk |
+| 3 | Deuce | `#8CC63F` (lime secondary) | lime |
+| 4 | Break | `#B4E655` (lime primary) | lime |
+| 5 | Ace | `#D2F28A` bright lime | lime |
+| 6 | Match Point | `#E6EBF0` platinum | platinum |
+| 7 | Grand Slam | `#E3C46F` gold | gold |
+
+- Unlit pip: `bg-white/[0.10]`. Future-state emblem ink: `#6A727D` (flat white/40 on navy). Field tints: lime `#1E312D`, platinum `#253243`, gold `#E3C46F`. Graphics only, never text.
+- Class literals live in `src/lib/tierStyle.ts` (`TIER_PIP`, `TIER_PIP_OUTLINE`, `TIER_RULE`, `TIER_FRAME`, `tierStyle()`); every class is a complete literal so the JIT keeps it, and the test checks each hex against `TIERS[id].color`.
+- No-gold fallback (if D1 is ever reversed): Grand Slam takes a solid platinum field with a navy motif and gold appears nowhere.
+
+### Emblem frames
+
+The motif inside each emblem is unchanged; the **frame** escalates, so the rank reads without colour (every adjacent pair differs in at least one feature; pinned by the test).
+
+| Tier | Outer ring | Studs | Inner ring | Corners | Bevel | Field | Motif ink |
+|---|---|---|---|---|---|---|---|
+| 1 Love | 2 | – | faint white .12 | plain hex | – | navy | tier colour |
+| 2 Rally | 2.5 | ✓ | faint | plain | – | navy | tier colour |
+| 3 Deuce | 2.5 | ✓ | faint | plain | – | lime tint | tier colour |
+| 4 Break | 2.5 | ✓ | 1.5 in tier colour | plain | – | lime tint | tier colour |
+| 5 Ace | 3 | – | 1.5 | notched | – | lime tint | tier colour |
+| 6 Match Point | 3 | – | 1.5 | notched | 1.5 | platinum tint | tier colour, white details |
+| 7 Grand Slam | 3 | – | navy hairline .35 | notched | 1.5 | solid gold | navy |
+
+- States: `earned` (the table), `future` (all ink `#6A727D`, outer ring only), `provisional` (dashed ring in the tier colour, motif at .6), `ghost` (dashed grey hexagon, no motif).
+- Sizes: 20px minimum. 20–27px is the **mark** (outer shape only, stroke 5, no motif) and always sits beside the tier name in text. Standard sizes: 20 (chips), 28/40 (compact ladder), 32–44 (ladder), 56 (quiz result), 64/80 (RankCard), 128 (email PNG). The 16px chip glyph is retired.
+- One primitive per job: `TierEmblem` (one tier), `TierLine` (`rail` and `ladder`), `RankCard` (a player's rank), `TierChip` / `TierRangeBadges` (inline tier text). No surface draws its own tier UI, and the line is never a horizontal scroller.
+- Words banned in tier UI: "unlock", "level up", "rank up", "next level", "journey", "Requires {tier}". Programs say who they are for; tiers above a player read as future, never locked.
+- Text in tier UI follows the floor: white/55 minimum, white/60 at `text-xs`, nothing below 12px.
+
 ## Spacing
 
 - **One Container rule** (audit H2): `Container` (`src/components/layout/Container.tsx`) is `mx-auto w-full max-w-6xl px-6`, and it is the only thing that sets a page's horizontal padding and max-width. The header, the footer, a breadcrumb and the page content all use it, so they share one left edge.

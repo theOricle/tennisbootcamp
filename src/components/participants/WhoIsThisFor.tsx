@@ -458,7 +458,7 @@ function relationshipNote(p: ParticipantOption): string {
   const rel = (RELATIONSHIPS as readonly string[]).includes(p.relationship)
     ? RELATIONSHIP_LABELS[p.relationship as Relationship]
     : "";
-  const level = p.level != null ? `Level ${p.level.toFixed(1)}` : "Not leveled yet";
+  const level = p.level != null ? `Level ${p.level.toFixed(1)}` : "Unranked";
   return [rel, level].filter(Boolean).join(" · ");
 }
 

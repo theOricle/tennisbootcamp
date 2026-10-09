@@ -5,7 +5,8 @@ import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import { COHORT_TOTAL, COHORT_WEEKS, listedPrograms as programs } from "@/content/programs";
 import { scheduledEndDate, addDaysISO } from "@/lib/makeup";
-import { TierRangeBadges } from "@/components/tiers";
+import { TierLine, TierRangeBadges } from "@/components/tiers";
+import { LEVEL_OPTIONS, formatLevelBand, formatTierSpan } from "@/lib/tiers";
 import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
 import type { MatrixPlayer } from "@/lib/availabilityMatrix";
 import type { SessionSlot } from "@/types/cohort";
@@ -16,11 +17,8 @@ const inputClass =
   "w-full rounded-lg border border-white/35 bg-white/5 px-3 py-2.5 text-base text-white " +
   "placeholder:text-white/45 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
 
-// Numeric NTRP halves for the level band — the form stays numeric; tiers are
-// derived for display only.
-const LEVELS: string[] = Array.from({ length: 13 }, (_, i) =>
-  (1 + i * 0.5).toFixed(1)
-);
+// The level band stays numeric; tier names are display only (LEVEL_OPTIONS
+// reads "3.0 · Deuce", audit M29).
 
 const DAYS: SessionSlot["day"][] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -184,8 +182,8 @@ function CreateCohortForm({
             className={inputClass}
           >
             <option value="" className="bg-[#061427]">—</option>
-            {LEVELS.map((l) => (
-              <option key={l} value={l} className="bg-[#061427]">{l}</option>
+            {LEVEL_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value} className="bg-[#061427]">{o.label}</option>
             ))}
           </select>
         </div>
@@ -197,11 +195,26 @@ function CreateCohortForm({
             className={inputClass}
           >
             <option value="" className="bg-[#061427]">—</option>
-            {LEVELS.map((l) => (
-              <option key={l} value={l} className="bg-[#061427]">{l}</option>
+            {LEVEL_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value} className="bg-[#061427]">{o.label}</option>
             ))}
           </select>
         </div>
+      </div>
+      {/* The band as the players will see it (audit M29): the span rail and
+          its words, live as the selects change. */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+        <p className="text-xs font-semibold text-white" aria-live="polite">
+          {levelMin || levelMax
+            ? `${formatTierSpan(levelMin || null, levelMax || null)} · ${formatLevelBand(levelMin || null, levelMax || null)}`
+            : "Not tier-gated"}
+        </p>
+        <TierLine
+          variant="rail"
+          size="sm"
+          span={levelMin || levelMax ? { min: levelMin || null, max: levelMax || null } : null}
+          className="mt-2"
+        />
       </div>
       {/* Who's free in this band — read-only, counts per day-part, names on tap */}
       <AvailabilityMatrix

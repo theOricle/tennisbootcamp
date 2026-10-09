@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { TierLine } from "@/components/tiers";
+import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import {
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
@@ -124,6 +127,23 @@ export default function AboutPage() {
                 />
               </div>
             ))}
+          </div>
+
+          {/* The ladder itself, right after the card that names it (audit
+              M36): vertical on phones, the seven emblems in a row from md. */}
+          <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+              <p className="text-sm font-semibold text-white">The seven tiers, Love to Grand Slam</p>
+              <Link href="/assessment#ladder" className={TEXT_LINK_LIME}>
+                How tiers work →
+              </Link>
+            </div>
+            <TierLine
+              variant="ladder"
+              orientation="responsive"
+              density="compact"
+              className="mt-4"
+            />
           </div>
         </div>
       </section>

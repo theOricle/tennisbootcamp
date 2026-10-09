@@ -27,6 +27,11 @@ const CARDS = [
     title: "Cohorts",
     body: "Build private groups, send invites, manage sessions and make-ups.",
   },
+  {
+    href: "/admin/tiers",
+    title: "Tiers",
+    body: "The tier system in one place: every emblem, rail, ladder and rank card, for checking.",
+  },
 ];
 
 export default async function AdminHomePage() {

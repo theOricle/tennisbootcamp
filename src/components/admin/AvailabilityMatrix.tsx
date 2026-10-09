@@ -14,7 +14,7 @@ import {
   aggregateAvailabilityMatrix,
   type MatrixPlayer,
 } from "@/lib/availabilityMatrix";
-import { formatTierRange } from "@/lib/tiers";
+import { formatLevelBand, formatTierSpan } from "@/lib/tiers";
 
 // Read-only level × availability matrix for the cohort form. Counts the
 // leveled players inside the selected band per day-part cell; tap a cell to
@@ -38,10 +38,12 @@ export function AvailabilityMatrix({
     [players, levelMin, levelMax]
   );
 
+  // "Deuce · 3.0–3.5" (audit M29): the tier words and the numeric band.
   const bandLabel = matrix.unbanded
     ? "all leveled players"
-    : formatTierRange(levelMin, levelMax) ||
-      `${levelMin ?? "—"}–${levelMax ?? "—"}`;
+    : [formatTierSpan(levelMin, levelMax), formatLevelBand(levelMin, levelMax)]
+        .filter(Boolean)
+        .join(" · ") || `${levelMin ?? "—"}–${levelMax ?? "—"}`;
 
   const open = openCell ? matrix.cells[openCell.day][openCell.band] : null;
 
