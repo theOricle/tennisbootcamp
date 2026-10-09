@@ -145,9 +145,9 @@ console.log("loginErrorMessage — plain words and the one way out");
   check("rate-limit line names the inbox", LOGIN_ERROR_COPY.rateLimited.includes("info@tennisbootcamp.ca"), true);
   for (const [key, copy] of Object.entries(LOGIN_ERROR_COPY)) {
     check(`${key}: no exclamation mark`, copy.includes("!"), false);
-    // The mismatch line's way out is "Forgot password?" (pinned above); every
-    // other failure offers the inbox (voice.md).
-    if (key !== "credentials") check(`${key}: offers the inbox`, copy.includes("info@tennisbootcamp.ca"), true);
+    // Every sign-in failure offers the inbox (voice.md), the mismatch line
+    // included — its "Forgot password?" way out is pinned above as well.
+    check(`${key}: offers the inbox`, copy.includes("info@tennisbootcamp.ca"), true);
   }
 }
 

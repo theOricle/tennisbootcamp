@@ -86,14 +86,13 @@ export function callbackNotice(code: string | null | undefined): string | null {
 // ─── Sign-in errors → plain copy ─────────────────────────────────────────────
 // Supabase's messages ("Invalid login credentials") name the mechanism, not
 // the way out. Each one maps to what is wrong and the one thing to do next,
-// with the inbox as the human fallback (voice.md: every submit failure
-// offers info@); the mismatch line's way out is "Forgot password?", which
-// the inbox cannot improve on. Anything unrecognised gets the generic line,
-// never the raw text.
+// and every line ends with the inbox as the human fallback (voice.md: a
+// submit failure always offers info@). Anything unrecognised gets the
+// generic line, never the raw text.
 
 export const LOGIN_ERROR_COPY = {
   credentials:
-    "That email and password don't match. Check both, or use “Forgot password?” to set a new one.",
+    "That email and password don't match. Check both, or use “Forgot password?” to set a new one, or email info@tennisbootcamp.ca.",
   unconfirmed:
     "That email isn't confirmed yet. Use “Forgot password?” and we'll send you a fresh link, or email info@tennisbootcamp.ca.",
   rateLimited:
