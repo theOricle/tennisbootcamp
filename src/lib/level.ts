@@ -8,6 +8,39 @@
 
 export type SelfLevel = "new" | "rally" | "competitive" | "elite";
 
+/** A self-estimate answer: a level, "unsure", or "" (prefer not to say). */
+export type SelfLevelValue = SelfLevel | "unsure" | "";
+
+export type SelfLevelOption = {
+  value: SelfLevelValue;
+  /** First person, for the player answering about themselves. */
+  label: string;
+  /** Third person, for a parent or partner answering about someone else. */
+  labelOther: string;
+};
+
+/**
+ * The one self-estimate list (audit M21), shared by the quiz, the booking
+ * form and the admin. "elite" is the high-performance track; every list that
+ * offers it passes it through unchanged. The coach's on-court level is the
+ * source of truth; this is only a starting point.
+ */
+export const SELF_LEVELS: readonly SelfLevelOption[] = [
+  { value: "", label: "Prefer not to say", labelOther: "Prefer not to say" },
+  { value: "new", label: "Just starting out", labelOther: "Just starting out" },
+  { value: "rally", label: "I can rally", labelOther: "They can rally" },
+  { value: "competitive", label: "I play competitively", labelOther: "They play competitively" },
+  { value: "elite", label: "Elite — high-performance track", labelOther: "Elite — high-performance track" },
+  { value: "unsure", label: "Not sure", labelOther: "Not sure" },
+];
+
+/** The option's words for whoever is answering. Empty for an unknown value. */
+export function selfLevelLabel(value: string, { self }: { self: boolean }): string {
+  const option = SELF_LEVELS.find((o) => o.value === value);
+  if (!option) return "";
+  return self ? option.label : option.labelOther;
+}
+
 /** Tentative NTRP-style band derived from the intake self-report. */
 export function tentativeLevelLabel(level?: string): string {
   switch (level) {

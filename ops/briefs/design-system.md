@@ -11,14 +11,26 @@ Concrete tokens and patterns. Apply these before inventing new styles.
 | Lime secondary — gradient stops | `#8CC63F` |
 | Body text on dark | `rgba(255,255,255,0.92)` / `text-white/90` |
 | Muted body | `text-white/70` |
-| Subtle / labels | `text-white/50` |
-| Disabled | `text-white/30` |
+| Subtle / labels / captions | `text-white/60` (the floor, see below) |
+| Disabled | `disabled:text-white/30` (disabled states only) |
 | Card background | `bg-white/[0.03]` (`Card`; inputs and chips keep `bg-white/5`) |
 | Card border | `border-white/10` |
 | Lime tint chip | `bg-[#B4E655]/10 text-[#B4E655]` |
-| Yellow warn chip | `bg-yellow-400/10 border-yellow-400/30 text-yellow-200` |
+| Neutral chip (age, forming, invite only, full) | `border border-white/15 bg-white/5 text-white/85` |
+| Coming Soon chip | `border border-dashed border-white/25 bg-[#061427] text-white/85` (never the warn yellow) |
+| Info chip (make-up session, completed) | `bg-sky-400/15 text-sky-200` |
+| Yellow warn chip (a real warning, e.g. "2 spots left") | `bg-yellow-400/10 border-yellow-400/30 text-yellow-200` |
 | Error text | `text-red-400` |
+| Control border (inputs, selects, unselected cells) | `border-white/35` (about 3.1:1 on the navy) |
 | Page gradient overlay | `tb-gradient` (lime and navy glow, fades out at the bottom; `globals.css`) |
+
+### Contrast floor (audit M23)
+
+- Text that is not disabled is `text-white/55` or brighter; at 12px (`text-xs`) and below it is `text-white/60` or brighter. In practice: `/60` for labels, captions and hints, `/70` for muted body.
+- Placeholders are `placeholder:text-white/45` or brighter, and never carry information the label does not (a format example is fine; the requirement goes in the label or hint).
+- The only exceptions are disabled states (written as `disabled:` variants), decorative glyphs that are `aria-hidden`, and the tier graphics and email templates, which have their own rules.
+- Controls keep a 3:1 boundary (WCAG 1.4.11): inputs, selects and unselected toggle cells use `border-white/35`.
+- `npm test` (`test-forms-a11y.ts`) fails on `text-white/20`–`/50`, a placeholder below `/45` or `text-[10px]`/`text-[11px]` anywhere under `src`, outside `disabled:` variants and the tier components.
 
 ## Spacing
 
@@ -77,21 +89,36 @@ Lime-tinted highlight:
 ```
 
 ### Form inputs
+Use `INPUT_CLASS`, `LABEL_CLASS` and `HINT_CLASS` from `src/components/ui/Input.tsx` (audit L1, M19, M23):
 ```
-rounded-2xl border border-white/10 bg-white/5 px-4 py-3
-text-base text-white placeholder:text-white/30
+rounded-2xl border border-white/35 bg-white/5 px-4 py-3
+text-base text-white placeholder:text-white/45 hover:border-white/50
+aria-[invalid=true]:border-red-400
 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50
 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]
 md:text-sm
 ```
 Note: use `text-base` on mobile to prevent iOS auto-zoom; `md:text-sm` for desktop.
 
+### Forms: validation and announcements (audit M18, M19)
+- Every field has a real `<label htmlFor>`. A group of fields about one player is a `<fieldset>` with a `<legend>` naming them; a Remove button names who it removes ("Remove Player 2").
+- The primary button stays enabled. Pressing it checks the form: each problem shows under its field (`FieldError`, wired with `fieldA11y(id, { error })` for `aria-invalid` and `aria-describedby`), focus moves to the first problem, and a wizard lists what is missing under its button. A filled field is also checked when it loses focus; nothing turns red while a person types.
+- The words come from `src/lib/formValidation.ts`: what is wrong and the one way out. A submit failure is a `FormAlert` (`role="alert"`) and always ends with info@tennisbootcamp.ca (`withHumanFallback`).
+- Loading, saved and copied states are announced through `LiveStatus` (`role="status"`); a success that replaces the form takes focus.
+- A multi-step wizard moves focus to the new step's `h1` (`tabIndex={-1}`, `useFocusOnChange`), and its progress bar is a `role="progressbar"`.
+- A radio choice that is not a native radio (the booking slot picker) is `role="radiogroup"`/`role="radio"` with `aria-checked`, arrow keys and a ✓ as well as colour.
+
+### Standalone links
+Use `TextLink` or `TEXT_LINK_MUTED` / `TEXT_LINK_LIME` (`src/components/ui/TextLink.tsx`, audit L4): `inline-flex min-h-[44px] items-center` with the focus ring. Links inside running text stay inline.
+
 ### Focus states (all interactive elements)
+`FOCUS_RING` from `src/components/ui/focus.ts` (audit L7):
 ```
 focus:outline-none
 focus-visible:ring-2 focus-visible:ring-[#B4E655]/50
 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]
 ```
+Never `focus:outline-none` without the ring, a read-only field included.
 
 ### Section accent rule (dashboard / profile style)
 ```
@@ -100,8 +127,8 @@ border-l-2 border-[#B4E655] pl-4
 
 ### Chips / badges
 ```
-rounded-full px-2 py-0.5 text-[10px] font-medium
-(apply color tokens from table above)
+inline-flex min-h-6 items-center rounded-full px-2.5 py-1 text-xs font-medium
+(apply color tokens from table above; 12px is the floor, never text-[10px] or text-[11px])
 ```
 
 ### Coming-soon / alert blocks

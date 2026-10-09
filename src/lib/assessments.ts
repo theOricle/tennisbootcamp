@@ -399,6 +399,41 @@ async function getBookingWithBlock(
   return { booking: booking as BookingRow, block: block as BlockRow };
 }
 
+/** The slot a booking holds, as the confirmation page shows it (audit L13). */
+export type BookedSlotSummary = {
+  dateLabel: string;
+  timeLabel: string;
+  locationLabel: string | null;
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Date, time and venue label for /assessment/booked?booking=<id>. Nothing
+ * about the player or the account: only a held or booked slot, read by its
+ * unguessable id. Null for anything else, or when Supabase is unconfigured.
+ */
+export async function getBookedSlotSummary(
+  bookingId: string | null | undefined
+): Promise<BookedSlotSummary | null> {
+  if (!bookingId || !UUID.test(bookingId)) return null;
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return null;
+  }
+  try {
+    const found = await getBookingWithBlock(bookingId);
+    if (!found || !["pending", "booked"].includes(found.booking.status)) return null;
+    return {
+      dateLabel: formatBlockDate(found.block.block_date),
+      timeLabel: formatSlotTime(found.booking.slot_start ?? ""),
+      locationLabel: found.block.location_label,
+    };
+  } catch (err) {
+    console.error("getBookedSlotSummary failed:", err);
+    return null;
+  }
+}
+
 /**
  * Mark a pending booking booked + paid, dual-write the Sheet, and send the
  * confirmation email. Idempotent-ish: re-confirming an already-booked row is a

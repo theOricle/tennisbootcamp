@@ -6,7 +6,7 @@ export function VideoLessonsTeaser() {
         Members-only video lessons are coming soon. We&apos;ll publish free previews and unlock full
         lessons for enrolled athletes.
       </p>
-      <p className="mt-4 text-sm text-white/50">
+      <p className="mt-4 text-sm text-white/60">
         Check back soon — lessons are being recorded for the upcoming season.
       </p>
     </section>

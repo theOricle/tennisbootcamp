@@ -8,6 +8,9 @@ import { Container } from "@/components/layout/Container";
 import { trackQuizCtaClick } from "@/lib/analytics";
 import { COHORT_LENGTH_ADJ } from "@/content/programs";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
+// A static import (audit L24): the file gets a content-hashed URL that is
+// cached for a year, instead of a public/ path revalidated on every visit.
+import playerImage from "../../../public/images/hero/player.png";
 
 // Code-split Three.js out of the initial bundle; never SSR the WebGL canvas.
 const CourtBackground = dynamic(
@@ -118,12 +121,14 @@ export function Hero() {
             so no transparent headroom pushes the court down; the -ml-24 pull
             keeps the outstretched arm on screen at 768px. */}
         <div className="flex justify-center md:-ml-24 md:justify-start">
+          {/* The LCP image: preloaded at high fetch priority (audit L24). */}
           <Image
-            src="/images/hero/player.png"
+            src={playerImage}
             alt="Tennis player mid-swing on court"
             width={1280}
             height={446}
-            priority
+            preload
+            fetchPriority="high"
             sizes="(max-width: 767px) 380px, (max-width: 1023px) 640px, 720px"
             className={`h-auto w-full max-w-[380px] md:w-[640px] md:max-w-none lg:w-[720px] ${FEATHER}`}
           />
@@ -132,7 +137,7 @@ export function Hero() {
 
       <div className="relative z-30 mt-6 flex justify-center" aria-hidden="true">
         <svg
-          className="h-5 w-5 text-white/50 motion-safe:animate-bounce"
+          className="h-5 w-5 text-white/60 motion-safe:animate-bounce"
           fill="none"
           stroke="currentColor"
           strokeWidth={2}

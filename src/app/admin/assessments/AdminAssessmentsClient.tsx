@@ -91,8 +91,8 @@ function fmtDate(dateStr: string): string {
 }
 
 const inputClass =
-  "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-base text-white " +
-  "placeholder-white/35 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
+  "w-full rounded-lg border border-white/35 bg-white/5 px-3 py-2.5 text-base text-white " +
+  "placeholder:text-white/45 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "bg-amber-400/15 text-amber-200",
@@ -330,13 +330,13 @@ function BookingCard({
           <p className="truncate font-semibold text-white">
             {booking.participant_name || booking.name}
           </p>
-          <p className="truncate text-xs text-white/50">
-            <span className="text-white/35">Account: </span>
+          <p className="truncate text-xs text-white/60">
+            <span className="text-white/60">Account: </span>
             {booking.account_name || booking.email}
             {booking.account_email ? ` · ${booking.account_email}` : ` · ${booking.email}`}
           </p>
           {booking.phone && (
-            <p className="text-xs text-white/50">{booking.phone}</p>
+            <p className="text-xs text-white/60">{booking.phone}</p>
           )}
         </div>
         <div className="shrink-0 text-right">
@@ -344,7 +344,7 @@ function BookingCard({
             {fmtTime(booking.slot_start)}
           </p>
           <span
-            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
               STATUS_STYLE[booking.status] ?? "bg-white/10 text-white/60"
             }`}
           >
@@ -356,10 +356,10 @@ function BookingCard({
               disabled={busy}
               onClick={() => void togglePaid()}
               title={booking.paid ? "Undo: mark as unpaid" : "Paid at court or by e-transfer"}
-              className={`mt-1.5 block min-h-[28px] w-full rounded-full px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-40 ${
+              className={`mt-1.5 block min-h-[28px] w-full rounded-full px-2 py-0.5 text-xs font-semibold transition disabled:opacity-40 ${
                 booking.paid
                   ? "bg-[#B4E655]/15 text-[#B4E655]"
-                  : "bg-white/10 text-white/50 hover:text-white/80"
+                  : "bg-white/10 text-white/70 hover:text-white"
               }`}
             >
               {booking.paid ? "paid ✓" : "mark paid"}
@@ -370,7 +370,7 @@ function BookingCard({
       </div>
 
       {booking.self_level && (
-        <p className="mt-2 text-xs text-white/40">
+        <p className="mt-2 text-xs text-white/60">
           Self-estimate: {booking.self_level}
         </p>
       )}
@@ -495,27 +495,27 @@ function RequestCard({
           <p className="truncate font-semibold text-white">
             {request.participant_name || request.name}
           </p>
-          <p className="truncate text-xs text-white/50">
-            <span className="text-white/35">Account: </span>
+          <p className="truncate text-xs text-white/60">
+            <span className="text-white/60">Account: </span>
             {request.account_name || request.email}
             {request.account_email ? ` · ${request.account_email}` : ` · ${request.email}`}
           </p>
           {request.phone && (
-            <p className="text-xs text-white/50">{request.phone}</p>
+            <p className="text-xs text-white/60">{request.phone}</p>
           )}
         </div>
         <div className="shrink-0 text-right">
-          <span className="inline-block rounded-full bg-violet-400/15 px-2 py-0.5 text-[11px] font-semibold text-violet-200">
+          <span className="inline-block rounded-full bg-violet-400/15 px-2 py-0.5 text-xs font-semibold text-violet-200">
             requested
           </span>
           <button
             type="button"
             disabled={busy}
             onClick={() => void post({ action: "set_paid", paid: !request.paid })}
-            className={`mt-1.5 block min-h-[28px] w-full rounded-full px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-40 ${
+            className={`mt-1.5 block min-h-[28px] w-full rounded-full px-2 py-0.5 text-xs font-semibold transition disabled:opacity-40 ${
               request.paid
                 ? "bg-[#B4E655]/15 text-[#B4E655]"
-                : "bg-white/10 text-white/50 hover:text-white/80"
+                : "bg-white/10 text-white/70 hover:text-white"
             }`}
           >
             {request.paid ? "paid ✓" : "mark paid"}
@@ -524,7 +524,7 @@ function RequestCard({
       </div>
 
       {request.self_level && (
-        <p className="mt-2 text-xs text-white/40">
+        <p className="mt-2 text-xs text-white/60">
           Self-estimate: {request.self_level}
         </p>
       )}
@@ -534,7 +534,7 @@ function RequestCard({
           {request.availability_chips.map((chip) => (
             <span
               key={chip}
-              className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/70"
+              className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/70"
             >
               {chip}
             </span>
@@ -574,7 +574,7 @@ function RequestCard({
       {mode === "assign" && (
         <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
           {openSlots.length === 0 ? (
-            <p className="text-sm text-white/50">
+            <p className="text-sm text-white/60">
               No open slots — record a coordinated time instead.
             </p>
           ) : (
@@ -622,7 +622,7 @@ function RequestCard({
 
       {mode === "schedule" && (
         <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-white/60">
             Already coordinated by phone or email? Record the agreed date and
             time — they&apos;ll get the confirmation email.
           </p>
@@ -732,7 +732,7 @@ export function AdminAssessmentsClient() {
     <div className="space-y-10">
       {/* Blocks */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
           Assessment blocks
         </h2>
         <CreateBlock onCreated={refresh} />
@@ -749,7 +749,7 @@ export function AdminAssessmentsClient() {
                   <p className="text-sm font-semibold text-white">
                     {fmtDate(b.block_date)}
                   </p>
-                  <p className="text-xs text-white/50">
+                  <p className="text-xs text-white/60">
                     {fmtTime(b.start_time)}–{fmtTime(b.end_time)} · {b.slot_minutes}
                     -min slots
                     {b.location_label ? ` · ${b.location_label}` : ""}
@@ -763,11 +763,11 @@ export function AdminAssessmentsClient() {
 
       {/* Requests — coordinate-directly queue */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
           Requests
         </h2>
         {!loading && requests.length === 0 && (
-          <p className="text-sm text-white/50">No open requests.</p>
+          <p className="text-sm text-white/60">No open requests.</p>
         )}
         {requests.map((r) => (
           <RequestCard
@@ -781,12 +781,12 @@ export function AdminAssessmentsClient() {
 
       {/* Bookings */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
           Bookings
         </h2>
-        {loading && <p className="text-sm text-white/50">Loading…</p>}
+        {loading && <p className="text-sm text-white/60">Loading…</p>}
         {!loading && bookings.length === 0 && (
-          <p className="text-sm text-white/50">No bookings yet.</p>
+          <p className="text-sm text-white/60">No bookings yet.</p>
         )}
         {days.map((day) => (
           <div key={day} className="space-y-3">

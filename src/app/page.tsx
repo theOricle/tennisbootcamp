@@ -15,6 +15,12 @@ import { coaches } from "@/content/coaches";
 import { events } from "@/content/events";
 import { SITE_DESCRIPTION } from "@/content/site";
 
+// Incremental static regeneration (audit M39): the program grid's "next
+// cohort" line is rebuilt at most once a minute, and at once when an admin
+// changes a cohort (src/lib/cohortRevalidate.ts), instead of being frozen at
+// build time.
+export const revalidate = 60;
+
 export const metadata: Metadata = {
   title: { absolute: "Tennis Bootcamp — Where Athletes Evolve!" },
   description: SITE_DESCRIPTION,

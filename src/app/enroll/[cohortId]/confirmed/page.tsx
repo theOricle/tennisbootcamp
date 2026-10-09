@@ -136,27 +136,27 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
           {/* Enrollment detail box */}
           <div className="mt-6 divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">
             <div className="flex justify-between gap-4 px-4 py-3">
-              <span className="text-white/50">Program</span>
+              <span className="text-white/60">Program</span>
               <span className="text-right font-medium text-white">{program?.title ?? cohort.programId}</span>
             </div>
             <div className="flex justify-between gap-4 px-4 py-3">
-              <span className="text-white/50">Cohort</span>
+              <span className="text-white/60">Cohort</span>
               <span className="text-right font-medium text-white">{cohort.label}</span>
             </div>
             <div className="flex justify-between gap-4 px-4 py-3">
-              <span className="text-white/50">Dates</span>
+              <span className="text-white/60">Dates</span>
               <span className="text-right font-medium text-[#B4E655]">{formatDateRange(cohort)}</span>
             </div>
             <div className="flex justify-between gap-4 px-4 py-3">
-              <span className="text-white/50">Schedule</span>
+              <span className="text-white/60">Schedule</span>
               <span className="text-right font-medium text-white">{formatDaysTimes(cohort)}</span>
             </div>
             <div className="flex justify-between gap-4 px-4 py-3">
-              <span className="text-white/50">Location</span>
+              <span className="text-white/60">Location</span>
               <span className="max-w-[60%] text-right text-white/70">{VENUE_LINE}</span>
             </div>
             <div className="flex justify-between gap-4 px-4 py-3">
-              <span className="text-white/50">Duration</span>
+              <span className="text-white/60">Duration</span>
               <span className="text-right font-medium text-white">{cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players</span>
             </div>
           </div>
@@ -167,7 +167,7 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
             <ol className="space-y-2 text-sm text-white/70">
               {nextSteps.map((text, i) => (
                 <li key={i} className="flex gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-[11px] font-bold text-[#B4E655]">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-xs font-bold text-[#B4E655]">
                     {i + 1}
                   </span>
                   <span>{text}</span>

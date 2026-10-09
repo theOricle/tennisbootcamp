@@ -22,7 +22,7 @@ export default async function AdminCohortsPage() {
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-12">
         <header className="mb-8">
-          <Link href="/admin" className="text-sm text-white/50 hover:text-white">
+          <Link href="/admin" className="text-sm text-white/60 hover:text-white">
             ← Admin
           </Link>
           <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">

@@ -90,7 +90,7 @@ function DashboardSkeleton() {
 function DashboardErrorState() {
   return (
     <div className="py-20 text-center">
-      <p className="text-sm text-white/50">Couldn&apos;t load your dashboard right now.</p>
+      <p className="text-sm text-white/60">Couldn&apos;t load your dashboard right now.</p>
       <Link
         href="/dashboard"
         className="mt-4 inline-block rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"

@@ -48,13 +48,13 @@ type Detail = {
 };
 
 const inputClass =
-  "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-base text-white " +
-  "placeholder-white/35 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
+  "w-full rounded-lg border border-white/35 bg-white/5 px-3 py-2.5 text-base text-white " +
+  "placeholder:text-white/45 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
 
 const INVITE_STYLE: Record<string, string> = {
   invited: "bg-amber-400/15 text-amber-200",
   paid: "bg-[#B4E655]/15 text-[#B4E655]",
-  expired: "bg-white/10 text-white/50",
+  expired: "bg-white/10 text-white/60",
   declined: "bg-red-400/15 text-red-200",
 };
 
@@ -179,20 +179,20 @@ function InviteItem({
             {invite.participant_name || invite.email}
           </p>
           {/* Two players under one payer read as two rows, told apart here. */}
-          <p className="truncate text-[11px] text-white/45">
-            <span className="text-white/30">Account: </span>
+          <p className="truncate text-xs text-white/60">
+            <span className="text-white/60">Account: </span>
             {invite.account_name && invite.account_name !== invite.email
               ? `${invite.account_name} · ${invite.email}`
               : invite.email}
           </p>
-          {meta && <p className="mt-0.5 text-[11px] text-white/45">{meta}</p>}
+          {meta && <p className="mt-0.5 text-xs text-white/60">{meta}</p>}
           {invite.payment_note && (
-            <p className="mt-0.5 text-[11px] text-white/60">{invite.payment_note}</p>
+            <p className="mt-0.5 text-xs text-white/60">{invite.payment_note}</p>
           )}
           {receipt && (
             <p
-              className={`mt-0.5 text-[11px] ${
-                receipt.status === "failed" ? "text-red-300" : "text-white/45"
+              className={`mt-0.5 text-xs ${
+                receipt.status === "failed" ? "text-red-300" : "text-white/60"
               }`}
             >
               {receiptLine(receipt)}
@@ -201,7 +201,7 @@ function InviteItem({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span
-            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
               INVITE_STYLE[invite.status] ?? "bg-white/10 text-white/60"
             }`}
           >
@@ -220,7 +220,7 @@ function InviteItem({
             <button
               type="button"
               onClick={() => setMode("undoing")}
-              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/50 transition hover:border-red-400/50 hover:text-red-200"
+              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/60 transition hover:border-red-400/50 hover:text-red-200"
             >
               Undo
             </button>
@@ -344,7 +344,7 @@ function PaymentSettings({
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
         Payment
       </h2>
       <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
@@ -357,7 +357,7 @@ function PaymentSettings({
           <option value="card" className="bg-[#061427]">Card (Stripe Checkout)</option>
           <option value="etransfer" className="bg-[#061427]">E-transfer (you mark invites paid)</option>
         </select>
-        <p className="text-xs text-white/50">
+        <p className="text-xs text-white/60">
           {mode === "etransfer"
             ? "Players get e-transfer instructions in the enroll wizard and tap “I've sent it”; you mark each invite paid below when the money lands. Card checkout stays available as a secondary link."
             : "Players pay by card at checkout; Stripe marks the invite paid."}
@@ -443,7 +443,7 @@ function InviteSection({
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
         Invites
       </h2>
       {canInvite ? (
@@ -470,14 +470,14 @@ function InviteSection({
           </button>
         </div>
       ) : (
-        <p className="text-sm text-white/50">
+        <p className="text-sm text-white/60">
           Invites go out while the cohort is draft or inviting. Re-invite from
           those states; an expired invite gets a fresh link the same way.
         </p>
       )}
 
       {invites.length === 0 ? (
-        <p className="text-sm text-white/50">No invites yet.</p>
+        <p className="text-sm text-white/60">No invites yet.</p>
       ) : (
         <ul className="space-y-2">
           {invites.map((i) => (
@@ -543,11 +543,11 @@ function SessionRowItem({
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className={`text-sm font-semibold ${cancelled ? "text-white/50 line-through" : "text-white"}`}>
+          <p className={`text-sm font-semibold ${cancelled ? "text-white/60 line-through" : "text-white"}`}>
             {dayNameForDate(session.session_date)} {fmtDate(session.session_date)} ·{" "}
             {fmtTime(session.start_time)}–{fmtTime(session.end_time)}
           </p>
-          <div className="mt-0.5 flex flex-wrap gap-2 text-[11px]">
+          <div className="mt-0.5 flex flex-wrap gap-2 text-xs">
             {session.makeup_for && (
               <span className="rounded-full bg-sky-400/15 px-2 py-0.5 font-semibold text-sky-200">
                 Make-up
@@ -684,7 +684,7 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
   }
 
   if (loadError) return <p className="text-sm text-red-300">{loadError}</p>;
-  if (!detail) return <p className="text-sm text-white/50">Loading…</p>;
+  if (!detail) return <p className="text-sm text-white/60">Loading…</p>;
 
   const { cohort, invites, sessions, paidCount } = detail;
   const dbStatus = cohort.dbStatus ?? "draft";
@@ -702,10 +702,10 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />
-          <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/70">
+          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-white/70">
             {dbStatus}
           </span>
-          <span className="text-[11px] text-white/40">
+          <span className="text-xs text-white/60">
             {paidCount}/{cohort.capacityMin} paid to run
           </span>
         </div>
@@ -754,7 +754,7 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
 
       {/* Who's free in this cohort's band — read it, then invite below */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
           Who&apos;s free
         </h2>
         <AvailabilityMatrix
@@ -781,11 +781,11 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
 
       {/* Sessions */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
           Sessions
         </h2>
         {sessions.length === 0 ? (
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-white/60">
             Sessions are generated when the cohort confirms (paid invites reach
             the minimum).
           </p>

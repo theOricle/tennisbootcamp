@@ -12,6 +12,12 @@ import { Container } from "@/components/layout/Container";
 import { PageStack } from "@/components/layout/PageStack";
 import { Heading } from "@/components/ui/Heading";
 
+// Incremental static regeneration (audit M39): the program grid's "next
+// cohort" line is rebuilt at most once a minute, and at once when an admin
+// changes a cohort (src/lib/cohortRevalidate.ts), instead of being frozen at
+// build time.
+export const revalidate = 60;
+
 export const metadata: Metadata = {
   title: "Programs",
   description:

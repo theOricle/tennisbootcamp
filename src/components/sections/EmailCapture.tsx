@@ -1,10 +1,13 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { useBotCheck } from "@/lib/useBotCheck";
+import { emailError } from "@/lib/formValidation";
 import { buttonClass } from "@/components/ui/Button";
 import { CARD_CLASS } from "@/components/ui/Card";
+import { FieldError, LiveStatus, fieldA11y } from "@/components/ui/Input";
+import { FOCUS_RING } from "@/components/ui/focus";
 
 type EmailCaptureProps = {
   /**
@@ -23,12 +26,26 @@ type EmailCaptureProps = {
 export function EmailCapture({ source }: EmailCaptureProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [problem, setProblem] = useState<string | null>(null);
   const bot = useBotCheck();
   const inputId = useId();
   const titleId = useId();
+  // The success line replaces the form, so focus moves onto it instead of
+  // falling to the page (audit M19).
+  const doneRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (status === "done") doneRef.current?.focus();
+  }, [status]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (status === "loading") return;
+    const err = emailError(email);
+    setProblem(err);
+    if (err) {
+      document.getElementById(inputId)?.focus();
+      return;
+    }
     setStatus("loading");
     try {
       const res = await fetch("/api/newsletter", {
@@ -60,11 +77,17 @@ export function EmailCapture({ source }: EmailCaptureProps) {
         </div>
 
         {status === "done" ? (
-          <p className="mt-4 text-sm font-semibold text-[#B4E655] md:mt-0 md:shrink-0">
+          <p
+            ref={doneRef}
+            role="status"
+            tabIndex={-1}
+            className="mt-4 text-sm font-semibold text-[#B4E655] focus:outline-none md:mt-0 md:shrink-0"
+          >
             Got it — we&apos;ll be in touch.
           </p>
         ) : (
           <form
+            noValidate
             className="mt-4 flex w-full min-w-0 flex-col gap-2 md:mt-0 md:w-auto md:shrink-0"
             onSubmit={handleSubmit}
           >
@@ -76,26 +99,32 @@ export function EmailCapture({ source }: EmailCaptureProps) {
               <input
                 id={inputId}
                 name="email"
-                className="min-h-[44px] w-full min-w-0 rounded-xl border border-white/10 bg-[#061427] px-4 py-3 text-base text-white placeholder:text-white/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] sm:w-72 md:text-sm"
+                className={`min-h-[44px] w-full min-w-0 rounded-xl border border-white/35 bg-[#061427] px-4 py-3 text-base text-white placeholder:text-white/45 aria-[invalid=true]:border-red-400 ${FOCUS_RING} sm:w-72 md:text-sm`}
                 type="email"
                 autoComplete="email"
                 inputMode="email"
                 required
                 placeholder="Your email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={status === "loading"}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (problem && !emailError(e.target.value)) setProblem(null);
+                }}
+                readOnly={status === "loading"}
+                {...fieldA11y(inputId, { error: problem })}
               />
               <button
                 className={`${buttonClass("secondary")} shrink-0 whitespace-nowrap`}
                 type="submit"
-                disabled={status === "loading"}
+                aria-disabled={status === "loading" || undefined}
               >
-                {status === "loading" ? "…" : "Notify me"}
+                {status === "loading" ? "Sending…" : "Notify me"}
               </button>
             </div>
+            <FieldError fieldId={inputId} message={problem} />
+            <LiveStatus message={status === "loading" ? "Signing you up…" : ""} />
             {status === "error" && (
-              <p className="text-xs text-red-400">
+              <p role="alert" className="text-sm text-red-400">
                 Something went wrong — try again or email us at info@tennisbootcamp.ca
               </p>
             )}

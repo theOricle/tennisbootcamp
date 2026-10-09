@@ -47,7 +47,7 @@ export function ProgramCard({
             <div className="flex items-center justify-between gap-3">
               <div className="text-base font-semibold text-white">{p.title}</div>
               {p.comingSoon ? (
-                <span className="rounded-full border border-yellow-400/30 bg-yellow-400/10 px-2 py-1 text-[10px] text-yellow-200">
+                <span className="inline-flex min-h-6 items-center rounded-full border border-dashed border-white/25 bg-[#061427] px-2.5 py-1 text-xs font-medium text-white/85">
                   Coming Soon
                 </span>
               ) : null}
@@ -66,7 +66,7 @@ export function ProgramCard({
       {/* Schedule strip — inline on mobile, hover-reveal on md+ */}
       {scheduleStrip && (
         <div className="px-4 pb-2 pt-2 md:max-h-0 md:overflow-hidden md:opacity-0 md:group-hover:max-h-20 md:group-hover:opacity-100 md:transition-all md:duration-200">
-          <p className="text-xs text-white/50 leading-relaxed">{scheduleStrip}</p>
+          <p className="text-xs text-white/60 leading-relaxed">{scheduleStrip}</p>
         </div>
       )}
 

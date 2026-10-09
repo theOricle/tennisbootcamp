@@ -2,6 +2,7 @@ import "server-only";
 import { randomBytes } from "crypto";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getCohortById } from "@/lib/cohortsDb";
+import { revalidateCohortPages } from "@/lib/cohortRevalidate";
 import type { Cohort } from "@/types/cohort";
 import {
   generateSessionDates,
@@ -353,6 +354,8 @@ export async function createInvites(
 
   if (sent > 0 && cohort.dbStatus === "draft") {
     await supabase.from("cohorts").update({ status: "inviting" }).eq("id", cohortId);
+    // An inviting public cohort now renders on the program pages (audit M39).
+    revalidateCohortPages();
   }
 
   return { sent, emailed, errors };
@@ -1145,6 +1148,7 @@ export async function maybeConfirmCohort(cohortId: string): Promise<void> {
     .select("id")
     .maybeSingle();
   if (!flipped) return;
+  revalidateCohortPages();
 
   await ensureCohortSessions(cohortId);
   const sessions = await listSessions(cohortId);
@@ -1255,6 +1259,9 @@ export async function cancelSession(
       .eq("id", row.cohort_id);
   }
 
+  // A make-up can move the cohort's end date on the program page (audit M39).
+  revalidateCohortPages();
+
   const after = await listSessions(row.cohort_id);
   const newEnd = currentEndDate(
     cohort.startDate,
@@ -1340,6 +1347,7 @@ export async function createCohort(
     ...(input.paymentMode === "etransfer" ? { payment_mode: "etransfer" } : {}),
   });
   if (error) return { ok: false, error: error.message };
+  revalidateCohortPages();
   return { ok: true, id };
 }
 
@@ -1369,5 +1377,7 @@ export async function updateCohort(
 
   const { error } = await supabase.from("cohorts").update(patch).eq("id", id);
   if (error) return { ok: false, error: error.message };
+  // Status, visibility, dates and price all show on the public pages (audit M39).
+  revalidateCohortPages();
   return { ok: true };
 }

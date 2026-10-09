@@ -13,8 +13,8 @@ import type { SessionSlot } from "@/types/cohort";
 type AdminCohort = Cohort & { paidCount: number };
 
 const inputClass =
-  "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-base text-white " +
-  "placeholder-white/35 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
+  "w-full rounded-lg border border-white/35 bg-white/5 px-3 py-2.5 text-base text-white " +
+  "placeholder:text-white/45 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
 
 // Numeric NTRP halves for the level band — the form stays numeric; tiers are
 // derived for display only.
@@ -29,7 +29,7 @@ const STATUS_STYLE: Record<string, string> = {
   inviting: "bg-amber-400/15 text-amber-200",
   confirmed: "bg-[#B4E655]/15 text-[#B4E655]",
   running: "bg-sky-400/15 text-sky-200",
-  completed: "bg-white/10 text-white/50",
+  completed: "bg-white/10 text-white/60",
   cancelled: "bg-red-400/15 text-red-200",
 };
 
@@ -278,7 +278,7 @@ function CreateCohortForm({
                 <button
                   type="button"
                   onClick={() => setSlots((s) => s.filter((_, idx) => idx !== i))}
-                  className="min-h-[44px] min-w-[44px] rounded-full text-white/50 hover:text-red-200"
+                  className="min-h-[44px] min-w-[44px] rounded-full text-white/60 hover:text-red-200"
                   aria-label="Remove session slot"
                 >
                   ✕
@@ -473,9 +473,9 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
         onCreated={refresh}
       />
 
-      {loading && <p className="text-sm text-white/50">Loading…</p>}
+      {loading && <p className="text-sm text-white/60">Loading…</p>}
       {!loading && dbReady && cohorts.length === 0 && (
-        <p className="text-sm text-white/50">No cohorts yet.</p>
+        <p className="text-sm text-white/60">No cohorts yet.</p>
       )}
 
       {cohorts.map((c) => (
@@ -487,7 +487,7 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate font-semibold text-white">{c.label}</p>
-              <p className="mt-0.5 text-xs text-white/50">
+              <p className="mt-0.5 text-xs text-white/60">
                 {c.programId} · starts {fmtDate(c.startDate)} · {c.weeks} wk
                 {c.visibility === "private" ? " · private" : ""}
                 {c.paymentMode === "etransfer" ? " · e-transfer" : ""}
@@ -496,17 +496,17 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
             </div>
             <div className="shrink-0 text-right">
               <span
-                className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
                   STATUS_STYLE[c.dbStatus ?? "draft"] ?? "bg-white/10 text-white/60"
                 }`}
               >
                 {c.dbStatus ?? "?"}
               </span>
-              <p className="mt-1 text-[11px] text-white/40">
+              <p className="mt-1 text-xs text-white/60">
                 {c.paidCount}/{c.capacityMin} paid to run
               </p>
               {c.creditFollowup && (
-                <p className="mt-1 text-[11px] font-semibold text-yellow-200">
+                <p className="mt-1 text-xs font-semibold text-yellow-200">
                   credit follow-up
                 </p>
               )}

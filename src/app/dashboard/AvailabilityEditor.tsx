@@ -115,7 +115,7 @@ export function AvailabilityEditor({
 
       <div className="grid gap-1.5">
         <label htmlFor={noteId} className="text-sm text-white/70">
-          Anything your coach should know? <span className="text-white/40">(optional)</span>
+          Anything your coach should know? <span className="text-white/60">(optional)</span>
         </label>
         <input
           id={noteId}
@@ -124,11 +124,11 @@ export function AvailabilityEditor({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Away the first two weeks of October"
-          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
+          className="w-full rounded-2xl border border-white/35 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] md:text-sm"
         />
       </div>
 
-      {statusLine && <p className="text-xs text-white/50">{statusLine}</p>}
+      {statusLine && <p className="text-xs text-white/60">{statusLine}</p>}
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <button
