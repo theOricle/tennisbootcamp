@@ -4,10 +4,11 @@
 // parent registering a 9-year-old and a 15-year-old could only answer once.
 // The band now lives on the participant, next to their name.
 //
-// The bands are the ones the programs themselves are written for:
-//   junior  7–13   Kids' Summer Camp
-//   teen    14–17  Bootcamps (Ages 14+)
-//   adult   18+    Bootcamps and Group Lessons (Adults 18+)
+// The bands are the ones the programs are written for (src/content/programs.ts
+// carries each program's `ageBands`; audit M37):
+//   junior  7–13   Youth Programs (Saturday 12:00), Kids' Summer Camp, High Performance
+//   teen    14–17  Youth Programs (Saturday 1:00), High Performance
+//   adult   18+    Adult Bootcamps, High Performance
 //
 // Pure and server-safe: `src/lib/household.ts` reads it, so nothing here may
 // depend on React or on a "use client" module.
@@ -36,4 +37,54 @@ export function ageBandIsMinor(band: AgeBand): boolean {
  */
 export function ageBandToWho(band: AgeBand): "adult" | "youth" {
   return band === "adult" ? "adult" : "youth";
+}
+
+// ── Display order and labels for program surfaces (audit M37) ───────────────
+
+/** Youngest first: the order chips and labels list bands in. */
+export const AGE_BAND_DISPLAY_ORDER: readonly AgeBand[] = ["junior", "teen", "adult"];
+
+/** The band's step on the three-bar age glyph (AgeBandChips): 0 lowest. */
+export const AGE_BAND_STEP: Record<AgeBand, 0 | 1 | 2> = { junior: 0, teen: 1, adult: 2 };
+
+/** What a program for all three bands says instead of listing them. */
+export const ANY_AGE_LABEL = "Any age";
+
+/** The given bands, deduplicated, in display order. */
+export function orderAgeBands(bands: readonly AgeBand[]): AgeBand[] {
+  return AGE_BAND_DISPLAY_ORDER.filter((band) => bands.includes(band));
+}
+
+/** True when every band is present: the program is for any age. */
+export function isAnyAge(bands: readonly AgeBand[]): boolean {
+  return AGE_BAND_DISPLAY_ORDER.every((band) => bands.includes(band));
+}
+
+/**
+ * "Junior (7–13) · Teen (14–17)", "Adult (18+)", "Any age" (all three) or ""
+ * (none). The exact AGE_BAND_LABELS text, joined with a middle dot.
+ */
+export function ageBandsLabel(bands: readonly AgeBand[]): string {
+  if (isAnyAge(bands)) return ANY_AGE_LABEL;
+  return orderAgeBands(bands)
+    .map((band) => AGE_BAND_LABELS[band])
+    .join(" · ");
+}
+
+const AUDIENCE_WORD: Record<AgeBand, string> = {
+  junior: "juniors",
+  teen: "teens",
+  adult: "adults",
+};
+
+/**
+ * Who the program is for, in words: "Juniors and teens", "Adults", "Any age"
+ * (all three bands), "" for none.
+ */
+export function audienceLabel(bands: readonly AgeBand[]): string {
+  if (isAnyAge(bands)) return ANY_AGE_LABEL;
+  const words = orderAgeBands(bands).map((band) => AUDIENCE_WORD[band]);
+  if (words.length === 0) return "";
+  const joined = words.length === 1 ? words[0] : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+  return joined.charAt(0).toUpperCase() + joined.slice(1);
 }

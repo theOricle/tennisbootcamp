@@ -32,6 +32,11 @@ const CARDS = [
     title: "Tiers",
     body: "The tier system in one place: every emblem, rail, ladder and rank card, for checking.",
   },
+  {
+    href: "/admin/art",
+    title: "Program art",
+    body: "The Court Plates gallery — one court diagram per program, in every frame and state.",
+  },
 ];
 
 export default async function AdminHomePage() {

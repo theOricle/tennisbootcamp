@@ -1,14 +1,14 @@
-import Image from "next/image";
 import Link from "next/link";
 import type { Program } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
 import { formatCohortSchedule } from "@/lib/cohorts";
+import { ProgramPlate } from "@/components/plates/ProgramPlate";
 
-// The one program card: image with the title over it, a one-line description,
-// "Learn more" into the detail page, the next cohort's schedule strip when a
-// public cohort exists, and the program's CTA. Rendered by the homepage grid,
-// /programs, and the dashboard's "Suggested for you" row, so all three stay
-// identical.
+// The one program card: the program's Court Plate (decorative; audit H1), the
+// title, a one-line description, "Learn more" into the detail page, the next
+// cohort's schedule strip when a public cohort exists, and the program's CTA.
+// Rendered by the homepage grid, /programs, and the dashboard's "Suggested for
+// you" row, so all three stay identical.
 export function ProgramCard({
   program: p,
   nextCohort,
@@ -23,40 +23,26 @@ export function ProgramCard({
 
   return (
     <div className="group overflow-hidden rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition flex flex-col">
-      {/* Image + title → detail page */}
+      {/* Plate + title → detail page. The plate is text-free and decorative;
+          nothing is drawn over it (design specs rule 2). */}
       <Link
         href={`/programs/${p.slug}`}
         className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded-2xl"
       >
-        <div className="relative h-40 w-full sm:h-44">
-          {p.imageSrc ? (
-            <Image
-              src={p.imageSrc}
-              alt={p.title}
-              fill
-              className="object-cover"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            />
-          ) : (
-            <div className="h-full w-full bg-white/10" />
-          )}
-
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-black/0" />
-
-          <div className="absolute bottom-3 left-4 right-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-base font-semibold text-white">{p.title}</div>
-              {p.comingSoon ? (
-                <span className="inline-flex min-h-6 items-center rounded-full border border-dashed border-white/25 bg-[#061427] px-2.5 py-1 text-xs font-medium text-white/85">
-                  Coming Soon
-                </span>
-              ) : null}
-            </div>
-          </div>
+        <div className="relative aspect-[2/1] w-full overflow-hidden border-b border-white/10 bg-[#061427]">
+          <ProgramPlate plate={p.plate} frame="band" density="compact" comingSoon={p.comingSoon} interactive />
         </div>
 
-        <div className="px-4 pt-3">
-          <p className="text-sm text-white/70 line-clamp-2">{p.description}</p>
+        <div className="px-4 pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-base font-semibold text-white">{p.title}</h3>
+            {p.comingSoon ? (
+              <span className="inline-flex min-h-6 shrink-0 items-center rounded-full border border-dashed border-white/25 bg-[#061427] px-2.5 py-1 text-xs font-medium text-white/85">
+                Coming Soon
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1.5 text-sm text-white/70 line-clamp-2">{p.description}</p>
           <div className="mt-2 text-sm font-semibold text-[#B4E655] group-hover:underline">
             Learn more →
           </div>

@@ -1,6 +1,5 @@
 import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { SESSION_PRICE_LABEL, programs } from "@/content/programs";
 import type { Program } from "@/types/program";
@@ -21,6 +20,7 @@ import { VENUE_LINE } from "@/lib/membership";
 import { TierRangeBadges } from "@/components/tiers";
 import { JsonLd } from "@/components/JsonLd";
 import { courseJsonLd } from "@/lib/structuredData";
+import { ProgramPlate } from "@/components/plates/ProgramPlate";
 
 function fmtStartDate(iso: string): string {
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -122,27 +122,30 @@ export default async function ProgramDetailPage({ params }: PageProps) {
         </Container>
       </div>
 
-      {/* Hero: image left + content right */}
+      {/* Hero: Court Plate left + content right (audit H1, design specs §4.8).
+          On phones the plate sits above the title; from md it stays put while
+          the content scrolls. */}
       <Container className="py-10 md:py-14">
         <div className="flex flex-col gap-8 md:flex-row md:gap-12">
 
-          {/* Image */}
-          <div className="w-full md:w-[38%] shrink-0">
-            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl">
-              {program.imageSrc ? (
-                <Image
-                  src={program.imageSrc}
-                  alt={program.title}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 100vw, 38vw"
-                  priority
-                />
-              ) : (
-                <div className="h-full w-full bg-white/10" />
-              )}
+          {/* Plate: the program's own court diagram, drawn in code. Text-free;
+              the figcaption and plateAlt carry the meaning. Draws once on
+              load, motion-safe only. */}
+          <figure className="w-full shrink-0 md:sticky md:top-24 md:w-[38%] md:self-start">
+            <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-white/10 bg-[#061427]">
+              <ProgramPlate
+                plate={program.plate}
+                frame="master"
+                density="hero"
+                comingSoon={program.comingSoon}
+                label={program.plateAlt}
+                animate
+              />
             </div>
-          </div>
+            {program.plateCaption && (
+              <figcaption className="mt-2 text-xs text-white/60">{program.plateCaption}</figcaption>
+            )}
+          </figure>
 
           {/* Content */}
           <div className="flex flex-col justify-center md:flex-1">
