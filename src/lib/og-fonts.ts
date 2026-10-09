@@ -22,16 +22,21 @@ async function loadGoogleFont(family: string, weight: 600 | 700): Promise<ArrayB
   }
 }
 
-let cached: Promise<OgFont[]> | null = null;
+let cached: Promise<OgFont[] | undefined> | null = null;
 
-/** Geist 600 and 700, whichever loaded; [] means the bundled face. */
-export function ogFonts(): Promise<OgFont[]> {
+/**
+ * Geist 600 and 700, whichever loaded. When neither did this is undefined,
+ * never []: next/og falls back to its bundled face only when `fonts` is
+ * unset (`options.fonts || defaultFonts`), and an empty array makes satori
+ * throw "No fonts are loaded", which would fail `next build`.
+ */
+export function ogFonts(): Promise<OgFont[] | undefined> {
   cached ??= Promise.all([loadGoogleFont("Geist", 600), loadGoogleFont("Geist", 700)]).then(
     ([semibold, bold]) => {
       const out: OgFont[] = [];
       if (semibold) out.push({ name: "Geist", data: semibold, weight: 600, style: "normal" });
       if (bold) out.push({ name: "Geist", data: bold, weight: 700, style: "normal" });
-      return out;
+      return out.length ? out : undefined;
     }
   );
   return cached;

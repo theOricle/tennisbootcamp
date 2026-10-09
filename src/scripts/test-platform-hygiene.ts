@@ -81,7 +81,7 @@ async function main() {
   check("the 404 is a server component", !notFound.includes('"use client"'));
   check("the 404 has its own title", notFound.includes('title: "Page not found"'));
   check("the 404 quiz CTA is still tracked", notFound.includes('track="quiz"') && notFound.includes('source="not-found"'));
-  check("the Course provider is named inline", read("src/lib/structuredData.ts").includes("name: site.name,\n      url: SITE_URL,"));
+  check("the Course provider is named inline", /name: site\.name,\s*url: SITE_URL,/.test(read("src/lib/structuredData.ts")));
   check("the error page offers info@", read("src/app/error.tsx").includes("info@tennisbootcamp.ca"));
 
   // ── L13: source-tagged funnel events ──────────────────────────────────────
@@ -101,7 +101,7 @@ async function main() {
   console.log("Hero image (L24)");
   const hero = read("src/components/sections/Hero.tsx");
   check("the hero image is a static import", hero.includes('import playerImage from "../../../public/images/hero/player.png"') && hero.includes("src={playerImage}"));
-  check("the hero image preloads at high priority", hero.includes("preload") && hero.includes('fetchPriority="high"') && !/\bpriority\n/.test(hero));
+  check("the hero image preloads at high priority", hero.includes("preload") && hero.includes('fetchPriority="high"') && !/\bpriority\r?\n/.test(hero));
   check("AVIF and WebP are served", JSON.stringify(nextConfig.images?.formats) === JSON.stringify(["image/avif", "image/webp"]));
   check("optimized images are cached for a month", nextConfig.images?.minimumCacheTTL === IMAGE_CACHE_TTL_SECONDS && IMAGE_CACHE_TTL_SECONDS >= 60 * 60 * 24 * 30);
   check("static image imports type-check without next-env.d.ts", read("src/types/static-images.d.ts").includes('/// <reference types="next/image-types/global" />'));
@@ -127,6 +127,15 @@ async function main() {
   check("/intake has its own card", exists("src/app/intake/opengraph-image.tsx"));
   check("the cards carry the brand mark", read("src/lib/og-image.tsx").includes("brandMarkDataUrl()"));
   check("program cards are built ahead", read("src/app/programs/[slug]/opengraph-image.tsx").includes("export function generateStaticParams()"));
+  // next/og uses `options.fonts || defaultFonts`: [] skips the bundled face
+  // and satori throws, so a Google Fonts outage must yield undefined.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new Error("simulated font outage");
+  }) as typeof fetch;
+  const { ogFonts } = await import("../lib/og-fonts");
+  check("a font outage falls back to the bundled face (undefined, never [])", (await ogFonts()) === undefined);
+  globalThis.fetch = realFetch;
 
   // ── L26: security headers ─────────────────────────────────────────────────
   console.log("Security headers (L26)");
