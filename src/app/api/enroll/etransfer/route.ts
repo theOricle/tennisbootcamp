@@ -4,6 +4,7 @@ import { getCohortById } from "@/lib/cohortsDb";
 import {
   COHORT_FULL_ERROR,
   RECORDS_UNAVAILABLE_ERROR,
+  contactEmailRefusal,
   gateRefusal,
   resolveEnrollGate,
   scrubParticipantIds,
@@ -98,6 +99,14 @@ export async function POST(req: NextRequest) {
     // Backlog #38: participant ids only for the signed-in account's own
     // people; a signed-out caller names nobody. Same as /api/checkout.
     const signedIn = await currentUser();
+    // Audit H5: a signed-in caller enrolls under the account's own address.
+    // The rows save with the session as owner, so a body naming another
+    // address would hand that address's history to this account — 400,
+    // before any row or Sheet write. Same as /api/checkout.
+    const mismatch = contactEmailRefusal(signedIn, enrollmentMeta.contactEmail);
+    if (mismatch) {
+      return NextResponse.json({ error: mismatch.error }, { status: mismatch.status });
+    }
     const owned = signedIn
       ? new Set(
           (

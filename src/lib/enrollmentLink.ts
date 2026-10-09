@@ -22,6 +22,33 @@ export function enrollmentOwner(
   return sessionUserId || lookupUserId || null;
 }
 
+/**
+ * Whether `email`'s rows may be attached to the account whose own address
+ * is `accountEmail`: only when they are the same address (trimmed, case
+ * aside). The account id and the email reach the link helper separately —
+ * in the payment routes the email is the request body's, which the client
+ * writes — so the helper never takes it on trust that they belong together.
+ * Any other address's rows stay where they are.
+ */
+export function emailBelongsToAccount(
+  accountEmail: string | null | undefined,
+  email: string | null | undefined
+): boolean {
+  const target = normalizeEmail(email ?? "");
+  return Boolean(target) && normalizeEmail(accountEmail ?? "") === target;
+}
+
+/**
+ * The `ilike` pattern that matches exactly `literal` (case aside): `%`, `_`
+ * and the escape character itself are escaped, so an address carrying one
+ * reads only its own rows instead of every unowned row in the table. `*` is
+ * left alone — PostgREST turns it into `%`, and escaping it would match a
+ * literal `%` instead; the exact re-check below still picks the right row.
+ */
+export function ilikePattern(literal: string): string {
+  return literal.replace(/[\\%_]/g, "\\$&");
+}
+
 export type UnownedEnrollmentRow = {
   id: string;
   contact_email: string | null;
@@ -30,9 +57,9 @@ export type UnownedEnrollmentRow = {
 
 /**
  * Ids of the rows that belong to `email` and no account owns yet. The
- * candidates come from a case-insensitive `ilike` on contact_email, in which
- * `_` is a one-character wildcard, so the exact (trimmed, lowercased) match
- * is re-checked here before anything is written.
+ * candidates come from a case-insensitive `ilike` on contact_email (its
+ * wildcards escaped by ilikePattern), and the exact (trimmed, lowercased)
+ * match is re-checked here before anything is written.
  */
 export function enrollmentRowsToLink(rows: UnownedEnrollmentRow[], email: string): string[] {
   const target = normalizeEmail(email);

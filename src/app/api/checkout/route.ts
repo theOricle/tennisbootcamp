@@ -19,6 +19,7 @@ import {
   RECORDS_UNAVAILABLE_ERROR,
   ROW_MISMATCH_ERROR,
   cohortRequiresInvite,
+  contactEmailRefusal,
   foreignRows,
   gateRefusal,
   inviteSettlement,
@@ -144,6 +145,15 @@ export async function POST(req: NextRequest) {
     // signed-in account (the household rule); a signed-out caller names
     // nobody. Runs before the credit lookup and before Stripe metadata.
     const signedIn = await currentUser();
+    // Audit H5: a signed-in caller enrolls under the account's own address.
+    // The rows save with the session as owner, so a body naming another
+    // address would hand that address's history to this account — 400,
+    // before any row, credit or Stripe session. A body with no contact
+    // email saves nothing and passes.
+    const mismatch = contactEmailRefusal(signedIn, enrollmentMeta?.contactEmail);
+    if (mismatch) {
+      return NextResponse.json({ error: mismatch.error }, { status: mismatch.status });
+    }
     const owned = signedIn
       ? new Set(
           (

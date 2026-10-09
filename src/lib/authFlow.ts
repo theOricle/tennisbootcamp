@@ -53,17 +53,22 @@ export function isCallbackError(code: string): code is CallbackError {
 
 /**
  * The code the callback sends for a Supabase refusal. verifyOtp answers a
- * used or stale token with 403 and "Token has expired or is invalid"; that
- * is the expired case. Anything else (a 5xx, a PKCE exchange that produced
- * no session) is reported as a failed link, so "expired" is never claimed
- * for an outage.
+ * used or stale token with 403 and "Token has expired or is invalid"; the
+ * verify endpoint's wording is "Email link is invalid or has expired". Those
+ * are the expired case. Anything else — a 5xx, a PKCE exchange that produced
+ * no session, a misconfiguration such as "Invalid API key" or "invalid JWT"
+ * — is reported as a failed link, so "expired" is never claimed for an
+ * outage. The wording match is exact phrases, not loose words: "invalid" on
+ * its own would turn a bad key into "that link has expired".
  */
 export function callbackErrorFor(error: {
   status?: number | null;
   message?: string | null;
 }): CallbackError {
   if (error.status === 403) return "link_expired";
-  if (/expired|invalid|already/i.test(error.message ?? "")) return "link_expired";
+  if (/token has expired|invalid or has expired|already (been )?used/i.test(error.message ?? "")) {
+    return "link_expired";
+  }
   return "link_failed";
 }
 
@@ -80,16 +85,19 @@ export function callbackNotice(code: string | null | undefined): string | null {
 
 // ─── Sign-in errors → plain copy ─────────────────────────────────────────────
 // Supabase's messages ("Invalid login credentials") name the mechanism, not
-// the way out. Each one maps to what is wrong and the one thing to do next;
-// anything unrecognised gets the generic line with the inbox, never the raw
-// text.
+// the way out. Each one maps to what is wrong and the one thing to do next,
+// with the inbox as the human fallback (voice.md: every submit failure
+// offers info@); the mismatch line's way out is "Forgot password?", which
+// the inbox cannot improve on. Anything unrecognised gets the generic line,
+// never the raw text.
 
 export const LOGIN_ERROR_COPY = {
   credentials:
     "That email and password don't match. Check both, or use “Forgot password?” to set a new one.",
   unconfirmed:
-    "That email isn't confirmed yet. Use “Forgot password?” and we'll send you a fresh link.",
-  rateLimited: "Too many tries in a row. Wait a minute, then try again.",
+    "That email isn't confirmed yet. Use “Forgot password?” and we'll send you a fresh link, or email info@tennisbootcamp.ca.",
+  rateLimited:
+    "Too many tries in a row. Wait a minute, then try again, or email info@tennisbootcamp.ca.",
   network:
     "Couldn't reach the sign-in service. Check your connection and try again, or email info@tennisbootcamp.ca.",
   generic: "Couldn't sign you in. Try again, or email info@tennisbootcamp.ca.",

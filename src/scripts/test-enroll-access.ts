@@ -2,9 +2,11 @@
 //
 // Pins audit PR B (2026-10-09, "Accounts, auth and enroll access"):
 //   H5  an enrollment row belongs to the session's account, else the account
-//       for its contact email; unowned rows are linked by exact email; an
-//       existing account hears "You're enrolled" with a dashboard link, never
-//       a second set-password email; migration 0008 backfills history.
+//       for its contact email; unowned rows are linked by exact email, and
+//       only to the account that owns that email (a signed-in caller naming
+//       another address is refused with 400); an existing account hears
+//       "You're enrolled" with a dashboard link, never a second set-password
+//       email; migration 0008 backfills history.
 //   M20 /login reads ?error as a code and ?next as a site-relative path only;
 //       Supabase's own words never reach the player.
 //   M33 a full cohort is a "This group is full" page, not a 404, and the
@@ -25,10 +27,13 @@ import {
   safeNextPath,
 } from "../lib/authFlow";
 import {
+  emailBelongsToAccount,
   enrollmentNoticeKind,
   enrollmentOwner,
   enrollmentRowsToLink,
+  ilikePattern,
 } from "../lib/enrollmentLink";
+import { CONTACT_EMAIL_MISMATCH_ERROR, contactEmailRefusal } from "../lib/enrollGate";
 import { buildEnrolledEmail } from "../lib/emailBodies";
 import { cohortsWithSeats } from "../lib/seatCount";
 import { SITE_URL } from "../lib/siteUrl";
@@ -98,7 +103,15 @@ console.log("callbackErrorFor — expired is claimed only for a refused token");
     callbackErrorFor({ message: "Email link is invalid or has expired" }),
     "link_expired"
   );
+  check(
+    "no status, verifyOtp's expired wording → link_expired",
+    callbackErrorFor({ message: "Token has expired or is invalid" }),
+    "link_expired"
+  );
   check("a 5xx → link_failed, never 'expired' for an outage", callbackErrorFor({ status: 500, message: "boom" }), "link_failed");
+  check("a bad key is an outage, not an expired link", callbackErrorFor({ status: 401, message: "Invalid API key" }), "link_failed");
+  check("a bad JWT is an outage, not an expired link", callbackErrorFor({ message: "invalid JWT" }), "link_failed");
+  check("'invalid' alone never claims expired", callbackErrorFor({ message: "Invalid request" }), "link_failed");
   check("nothing known → link_failed", callbackErrorFor({}), "link_failed");
 }
 
@@ -128,8 +141,13 @@ console.log("loginErrorMessage — plain words and the one way out");
   check("…which never echoes Supabase", loginErrorMessage(raw).includes("Database"), false);
   check("nothing → generic line", loginErrorMessage(null), LOGIN_ERROR_COPY.generic);
   check("generic line names the inbox", LOGIN_ERROR_COPY.generic.includes("info@tennisbootcamp.ca"), true);
+  check("unconfirmed line names the inbox", LOGIN_ERROR_COPY.unconfirmed.includes("info@tennisbootcamp.ca"), true);
+  check("rate-limit line names the inbox", LOGIN_ERROR_COPY.rateLimited.includes("info@tennisbootcamp.ca"), true);
   for (const [key, copy] of Object.entries(LOGIN_ERROR_COPY)) {
     check(`${key}: no exclamation mark`, copy.includes("!"), false);
+    // The mismatch line's way out is "Forgot password?" (pinned above); every
+    // other failure offers the inbox (voice.md).
+    if (key !== "credentials") check(`${key}: offers the inbox`, copy.includes("info@tennisbootcamp.ca"), true);
   }
 }
 
@@ -141,6 +159,46 @@ console.log("enrollmentOwner — the session first, then the email's account");
   check("signed out, email has an account → that account", enrollmentOwner(null, "u_lookup"), "u_lookup");
   check("nobody → null until the invite creates one", enrollmentOwner(null, null), null);
   check("blank session id counts as signed out", enrollmentOwner("", undefined), null);
+}
+
+console.log("emailBelongsToAccount — rows link only to the account that owns the address");
+{
+  check("same address → yes", emailBelongsToAccount("maya@example.com", "maya@example.com"), true);
+  check("case and padding ignored", emailBelongsToAccount("Maya@Example.com", "  maya@example.com "), true);
+  check("another address → no (the cross-household link)", emailBelongsToAccount("alice@example.com", "bob@example.com"), false);
+  check("account has no address → no", emailBelongsToAccount(null, "bob@example.com"), false);
+  check("blank account address → no", emailBelongsToAccount("", "bob@example.com"), false);
+  check("blank target → no", emailBelongsToAccount("maya@example.com", "  "), false);
+  check("missing target → no", emailBelongsToAccount("maya@example.com", undefined), false);
+}
+
+console.log("contactEmailRefusal — a signed-in caller enrolls under the account's own address");
+{
+  const alice = { email: "Alice@Example.com" };
+  check("signed out → never refused", contactEmailRefusal(null, "bob@example.com"), null);
+  check("signed in, own address → passes", contactEmailRefusal(alice, "alice@example.com"), null);
+  check("signed in, own address with padding → passes", contactEmailRefusal(alice, " alice@example.com "), null);
+  check(
+    "signed in, another address → 400",
+    contactEmailRefusal(alice, "bob@example.com"),
+    { error: CONTACT_EMAIL_MISMATCH_ERROR, status: 400 }
+  );
+  check("signed in, no contact email (nothing saved) → passes", contactEmailRefusal(alice, undefined), null);
+  check("signed in, blank contact email → passes", contactEmailRefusal(alice, ""), null);
+  check("a session with no address can vouch for none", contactEmailRefusal({ email: "" }, "bob@example.com")?.status, 400);
+  check("the line names the way out", CONTACT_EMAIL_MISMATCH_ERROR.includes("info@tennisbootcamp.ca"), true);
+  check("the line says what to do first", CONTACT_EMAIL_MISMATCH_ERROR.includes("Reload the page"), true);
+  check("no exclamation mark", CONTACT_EMAIL_MISMATCH_ERROR.includes("!"), false);
+}
+
+console.log("ilikePattern — an address reads only its own rows");
+{
+  check("a plain address is unchanged", ilikePattern("maya@example.com"), "maya@example.com");
+  check("`_` is escaped", ilikePattern("a_b@example.com"), "a\\_b@example.com");
+  check("`%` is escaped", ilikePattern("a%b@example.com"), "a\\%b@example.com");
+  check("the escape character is escaped", ilikePattern("a\\b@example.com"), "a\\\\b@example.com");
+  check("all three together", ilikePattern("%_\\"), "\\%\\_\\\\");
+  check("`*` is left for PostgREST (the exact re-check picks the row)", ilikePattern("a*b@example.com"), "a*b@example.com");
 }
 
 console.log("enrollmentRowsToLink — unowned rows for exactly this email");
@@ -282,11 +340,29 @@ console.log("Source: enrollment rows carry their owner (H5)");
 {
   const actions = read("src/lib/supabase/enrollmentActions.ts");
   check("insert writes user_id", actions.includes("user_id: data.userId"), true);
+  check("the owner rule in use is enrollmentOwner", actions.includes("return enrollmentOwner(sessionUserId, lookup)"), true);
+  check("the link helper asks Supabase whose address it is", actions.includes("auth.admin.getUserById(userId)"), true);
+  check("…and refuses another account's address", actions.includes("emailBelongsToAccount(owner.user.email, target)"), true);
+  check("the ilike read escapes its wildcards", actions.includes('.ilike("contact_email", ilikePattern(target))'), true);
+  const ownerWrites = actions.match(/\.update\(\{ user_id: \w+ \}\)[^;]*;/g) ?? [];
+  check("owner writes found", ownerWrites.length, 3);
+  for (const [i, write] of ownerWrites.entries()) {
+    check(`owner write ${i + 1} only touches an unowned row`, write.includes('.is("user_id", null)'), true);
+  }
   for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
     const src = read(route);
     check(`${route}: resolves the owner`, src.includes("resolveEnrollmentUserId("), true);
     check(`${route}: notifies through notifyEnrollmentAccount`, src.includes("notifyEnrollmentAccount("), true);
     check(`${route}: no direct issueActivationLink`, src.includes("issueActivationLink("), false);
+  }
+  for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts"]) {
+    const src = read(route);
+    check(`${route}: refuses a signed-in caller's foreign contact email`, src.includes("contactEmailRefusal(signedIn, enrollmentMeta"), true);
+    check(
+      `${route}: …before the owner is resolved`,
+      src.indexOf("contactEmailRefusal(") < src.indexOf("resolveEnrollmentUserId("),
+      true
+    );
   }
   check("the dashboard still reads by user_id", read("src/app/dashboard/page.tsx").includes('.eq("user_id", userId)'), true);
   check("/profile still reads by user_id", read("src/app/profile/page.tsx").includes('.eq("user_id", userId)'), true);

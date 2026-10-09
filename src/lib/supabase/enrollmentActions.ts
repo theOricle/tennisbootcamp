@@ -1,7 +1,13 @@
 import "server-only";
 import { sendEnrolledEmail, sendLinkEmail } from "@/lib/email";
 import { findUserIdByEmail } from "@/lib/players";
-import { enrollmentRowsToLink, enrollmentNoticeKind } from "@/lib/enrollmentLink";
+import {
+  emailBelongsToAccount,
+  enrollmentNoticeKind,
+  enrollmentOwner,
+  enrollmentRowsToLink,
+  ilikePattern,
+} from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
 import { createServiceClient } from "./service";
 
@@ -42,26 +48,29 @@ function siteUrl(): string {
 }
 
 /**
- * The account an enrollment being saved belongs to: the signed-in user when
- * there is one, else the auth user for the contact email, else null. One
- * call per request — the email lookup pages the whole user list — and the
- * result goes on every row the request saves.
+ * The account an enrollment being saved belongs to — `enrollmentOwner`'s
+ * rule (the signed-in user, else the auth user for the contact email, else
+ * null) with the I/O around it. One call per request — the email lookup
+ * pages the whole user list, and is skipped when the session already
+ * answers — and the result goes on every row the request saves.
  */
 export async function resolveEnrollmentUserId(
   contactEmail: string,
   sessionUserId?: string | null
 ): Promise<string | null> {
   if (!supabaseConfigured()) return null;
-  if (sessionUserId) return sessionUserId;
   const email = contactEmail.trim();
-  if (!email) return null;
-  return findUserIdByEmail(email).catch((err) => {
-    console.error(
-      "Enrollment owner lookup failed; row saved unowned (non-blocking):",
-      err instanceof Error ? err.message : err
-    );
-    return null;
-  });
+  const lookup =
+    sessionUserId || !email
+      ? null
+      : await findUserIdByEmail(email).catch((err) => {
+          console.error(
+            "Enrollment owner lookup failed; row saved unowned (non-blocking):",
+            err instanceof Error ? err.message : err
+          );
+          return null;
+        });
+  return enrollmentOwner(sessionUserId, lookup);
 }
 
 // Returns the Supabase enrollment UUID, or null if Supabase is not configured.
@@ -107,22 +116,41 @@ export async function saveEnrollmentToSupabase(
 
 /**
  * Every enrollment row for this email that no account owns yet becomes this
- * account's (audit H5). Idempotent; a row that already has an owner is never
- * touched. Resolves to how many rows were linked. The same rule, applied to
- * history, is migration 0008.
+ * account's (audit H5) — provided the email is the account's own address.
+ * Idempotent; a row that already has an owner is never touched. Resolves to
+ * how many rows were linked. The same rule, applied to history, is
+ * migration 0008.
  */
 export async function linkEnrollmentsToAccount(userId: string, email: string): Promise<number> {
   if (!supabaseConfigured() || !userId) return 0;
   const target = normalizeEmail(email);
   if (!target) return 0;
   const supabase = createServiceClient();
-  // ilike: case-insensitive, and `_` in an address is a wildcard here, so the
-  // exact match is re-checked by enrollmentRowsToLink before the update.
+  // The account's own address must be the one being linked. The id and the
+  // email arrive separately — from the payment routes the email is the
+  // request body's — so the helper asks Supabase whose address it is rather
+  // than trusting the pair, and another address's rows can never be
+  // attached to this account. Logs carry no address.
+  const { data: owner, error: ownerError } = await supabase.auth.admin.getUserById(userId);
+  if (ownerError || !owner?.user) {
+    console.error(
+      "Enrollment link skipped: account lookup failed (non-blocking):",
+      ownerError?.message ?? "no user"
+    );
+    return 0;
+  }
+  if (!emailBelongsToAccount(owner.user.email, target)) {
+    console.warn("Enrollment link refused: the email is not the account's own (non-blocking)");
+    return 0;
+  }
+  // ilike: case-insensitive. `%`, `_` and `\` in the address are escaped so
+  // the read stays to this address's rows, and the exact match is
+  // re-checked by enrollmentRowsToLink before the update.
   const { data, error } = await supabase
     .from("enrollments")
     .select("id, contact_email, user_id")
     .is("user_id", null)
-    .ilike("contact_email", target);
+    .ilike("contact_email", ilikePattern(target));
   if (error) {
     console.error("Enrollment link lookup failed (non-blocking):", error.message);
     return 0;
@@ -193,9 +221,16 @@ export async function issueActivationLink(
     // Link the newly-created user BEFORE sending. The send throws on a
     // provider refusal, and the auth user already exists by this point —
     // leaving the rows unlinked would orphan the enrollment from the account
-    // that owns it, and no later link attempt would run.
+    // that owns it, and no later link attempt would run. Only an unowned
+    // row: the session that saved it wins (enrollmentOwner), and a webhook
+    // whose email lookup came back empty must not move it to the address's
+    // brand-new account.
     if (enrollmentId) {
-      await supabase.from("enrollments").update({ user_id: userId }).eq("id", enrollmentId);
+      await supabase
+        .from("enrollments")
+        .update({ user_id: userId })
+        .eq("id", enrollmentId)
+        .is("user_id", null);
     }
     await linkEnrollmentsToAccount(userId, email).catch((err) =>
       console.error("Enrollment link after invite failed (non-blocking):", err)
