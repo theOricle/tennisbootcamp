@@ -146,6 +146,25 @@ rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-6 py-6
 - Every looping or decorative animation is `motion-safe:` (`motion-safe:animate-bounce`); `globals.css` also stops animation and transition for `prefers-reduced-motion: reduce`.
 - The hero particle wave loads after the page is idle, pauses off screen and in hidden tabs, and draws one still frame under reduced motion.
 
+## Court Plates (program art)
+
+The program graphics are **Court Plates** (owner D13, 2026-10-09; audit H1): one court diagram per program, drawn in code as inline SVG from `src/lib/plates/`. No photos, no stock, no AI imagery, and never a person or a venue. They are sharp at any DPR, about 6–10 KB, deterministic, and need no image request.
+
+- **One court, one camera.** Every plate draws the same court from the same fixed broadcast camera (`src/lib/plates/geometry.ts`); programs differ only by what happens on it (`src/lib/plates/specs.ts`). Youth: cross-court reps into a target zone. High Performance: serve to the T, then the next shot into the open corner. Adult Bootcamps: three flights from one spot, flatter and deeper as the level rises. Kids' Camp: cones, a slalom, hoops and a short rally, drawn dashed until it opens. Anything new starts as `plate: "court"`.
+- **Grammar.** Exactly one lime signature trace per plate, travelling left to right; support traces white @0.70; ghost @0.28; echoes lime @0.30/0.55; a dashed ground shadow under every trace; a bounce mark r 0.24 m and, on the signature only, a target ring r 0.75 m; a kick after the bounce; a ground zone lime @0.10; dotted footwork; player markers as a ground ring, a hairline and a contact dot, never a figure. Coming soon = long-dashed traces and outline-only bounces.
+- **Honest physics, tested.** Every flight clears the net cord by at least 0.3 m and bounces inside the doubles court, in every cohort variant (`npm test`, `test-plates.ts`). At most 4 traces, 1 zone and 2 markers.
+- **Tokens** (`src/lib/plates/tokens.ts`): bg `#061427`, run-off `#081A30`, court `#0B2342`, lines white @0.55, net cord white @0.70, signature `#B4E655`. Lime and white only; **tier colours never appear in a plate**.
+- **Frames**, all `preserveAspectRatio="xMidYMid slice"`: `master` (`0 0 1600 1000`, 16:10, detail page), `band` (`0 100 1600 800`, 2:1, cards), `strip` (`-100 215 1800 600`, 3:1, dashboard, admin and the OG card). Containers set an aspect ratio, never a fixed height: `relative overflow-hidden bg-[#061427]` + `aspect-[16/10]` / `aspect-[2/1]` / `aspect-[3/1]`; corners come from the container.
+- **Stroke widths** are screen pixels with `vector-effect="non-scaling-stroke"`: `compact` (≤480px wide) court 1 / net 1.25 / signature 2 / support 1.5; `hero` (detail page) 1.25 / 1.5 / 2.75 / 1.75. The OG card uses `fixed` (hero × viewBox units per pixel, no vector-effect, because Satori ignores it).
+- **Cohort variants** (`src/lib/plates/variant.ts`): the side of the court is hashed from the cohort id (`v` mirrors, `u` never); the cohort's level band profiles the signature flight; `artFocusForCohort` lights the Adult class the cohort trains in. Age is never encoded in the art.
+- **Components:** `ProgramPlate` (the plate; decorative unless given a `label`, then `role="img"`), `PlateMark` (a 40–64px plan-view thumbnail, always decorative), `AgeBandChips` (age as a three-step glyph plus the exact `AGE_BAND_LABELS` text, neutral white).
+- **Motion:** detail page only, once, `motion-safe:` only. Traces wipe left to right over 900ms (the signature 140ms behind), shadows fade in, bounce marks and the ring pop; keyframes `plate-wipe`, `plate-pop` and `plate-fade` live in `tailwind.config.js` and fill backwards, so the finished plate is static. Cards get only the hover emphasis (signature +0.5px, ring to full), never a scale.
+- **Sign-off gallery:** `/admin/art` (admin-gated, noindex) shows every plate in every frame, the coming-soon state, the Adult focus, the Youth profile, both sides, the marks and the age chips.
+
+### No text or data baked into images
+
+Art never carries data. No program name, number, tier span, price or date goes inside an image or a plate: level, age and price are rendered as HTML text and components *below* the art, so the words can change without the picture (audit H1). The Figma tiles with their titles baked in are deleted. A future owner photo (consented, real sessions only) lives in an "On court" strip on detail pages, never on a card, and never with text over it.
+
 ## Anti-patterns — do NOT use
 
 - Glassmorphism (heavy `backdrop-blur` on cards)

@@ -1,5 +1,5 @@
 import type { Program } from "@/types/program";
-import { AGE_BAND_LABELS } from "@/lib/ageBand";
+import { AGE_BAND_LABELS, ageBandsLabel, type AgeBand } from "@/lib/ageBand";
 
 // Weekend offer (backlog #20, owner decision 2026-10-01): once a week, 60
 // minutes, fixed-length cohorts. Homepage cards are programs.slice(0, 3), so
@@ -64,6 +64,18 @@ export const CAMP_WEEK_PRICE_LABEL = formatDollars(CAMP_WEEK_PRICE);
 const PRICE_LINE =
   `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. If you took the $20 assessment, that $20 comes off the price.`;
 
+/** "$35 a session · $210 for six weeks" — the one-line price on program cards. */
+export const PRICE_SUMMARY = `${SESSION_PRICE_LABEL} a session · ${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}`;
+/** "$499 a week" — the camp's one-line price (owner D10). */
+export const CAMP_PRICE_SUMMARY = `${CAMP_WEEK_PRICE_LABEL} a week`;
+
+// Who each program is for (audit M37), youngest first. `ageGroup` is derived
+// from these so the two can never disagree.
+const YOUTH_BANDS: AgeBand[] = ["junior", "teen"];
+const ANY_AGE_BANDS: AgeBand[] = ["junior", "teen", "adult"];
+const ADULT_BANDS: AgeBand[] = ["adult"];
+const JUNIOR_BANDS: AgeBand[] = ["junior"];
+
 // The assessment is optional: Sina places each player (backlog #20 review).
 export const PLACEMENT_LINE =
   "Sina places each player by level and schedule, and a 20-minute assessment is available if you want your level confirmed on court first. It is $20, and if you enroll in a program afterward that $20 comes off the price.";
@@ -85,14 +97,25 @@ export const programs: Program[] = [
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/youth-programs",
+    plate: "youth-programs",
+    plateAlt:
+      "Court diagram: a cross-court rally, three shots landing deep in the target zone, then recovery to the middle.",
+    plateCaption: "Cross-court rallies. Every rep aimed past the service line.",
+    ageBands: YOUTH_BANDS,
+    // Owner decision D2 (2026-10-09): Love – Break.
+    levelMin: 1.0,
+    levelMax: 4.5,
+    levelNote: "First season to club player, grouped by level in each class",
+    priceSummary: PRICE_SUMMARY,
+    enrollmentStatus: "forming",
     schedule: `Once a week · 60 minutes · ${COHORT_LENGTH_ADJ} cohorts · Saturdays 12:00 and 1:00`,
     priceCents: COHORT_TOTAL_CENTS,
     currency: "CAD",
-    ageGroup: `${AGE_BAND_LABELS.junior} · ${AGE_BAND_LABELS.teen}`,
+    ageGroup: ageBandsLabel(YOUTH_BANDS),
     priceLine: PRICE_LINE,
     timetable: [
-      { day: "Saturday", time: "12:00–1:00 pm", group: AGE_BAND_LABELS.junior },
-      { day: "Saturday", time: "1:00–2:00 pm", group: AGE_BAND_LABELS.teen },
+      { day: "Saturday", time: "12:00–1:00 pm", group: AGE_BAND_LABELS.junior, ageBand: "junior" },
+      { day: "Saturday", time: "1:00–2:00 pm", group: AGE_BAND_LABELS.teen, ageBand: "teen" },
     ],
     includes: [
       `One 60-minute class a week for ${COHORT_LENGTH}`,
@@ -118,10 +141,23 @@ export const programs: Program[] = [
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/high-performance",
+    plate: "high-performance",
+    plateAlt: "Court diagram: a serve to the T, the return, and the next shot into the open corner.",
+    plateCaption: "Serve to the T, then the next shot into the open court.",
+    // Any age (the copy says so); owner D5 confirms whether juniors 7–13 join.
+    ageBands: ANY_AGE_BANDS,
+    // Owner decision D2 (2026-10-09): Deuce and up, in step with the quiz's
+    // competitive → Deuce map (D4) because recommend.ts sends competitive
+    // players here.
+    levelMin: 3.0,
+    levelMax: 7.0,
+    levelNote: "For players who compete, or are training to",
+    priceSummary: PRICE_SUMMARY,
+    enrollmentStatus: "forming",
     schedule: `Once a week · 60 minutes · ${COHORT_LENGTH_ADJ} cohorts · Saturdays 2:00`,
     priceCents: COHORT_TOTAL_CENTS,
     currency: "CAD",
-    ageGroup: "Competitive and elite players · any age",
+    ageGroup: ageBandsLabel(ANY_AGE_BANDS),
     priceLine: PRICE_LINE,
     timetable: [
       { day: "Saturday", time: "2:00–3:00 pm", group: "Competitive and elite players" },
@@ -153,15 +189,27 @@ export const programs: Program[] = [
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/bootcamps",
+    plate: "bootcamps",
+    plateAlt:
+      "Court diagram: three ball flights from the same spot, from a high arc landing short to a flat drive landing deep.",
+    plateCaption: "Three levels on Sunday. As the level goes up, the ball flies flatter and lands deeper.",
+    ageBands: ADULT_BANDS,
+    // Owner decision D2/D3 (2026-10-09): Love – Ace, one tier band per class
+    // (whole-tier bounds, so no tier name appears in two classes).
+    levelMin: 1.0,
+    levelMax: 5.5,
+    levelNote: "Newer, intermediate and advanced classes, back to back",
+    priceSummary: PRICE_SUMMARY,
+    enrollmentStatus: "forming",
     schedule: `Once a week · 60 minutes · ${COHORT_LENGTH_ADJ} cohorts · Sundays 4:00, 5:00 and 6:00`,
     priceCents: COHORT_TOTAL_CENTS,
     currency: "CAD",
-    ageGroup: AGE_BAND_LABELS.adult,
+    ageGroup: ageBandsLabel(ADULT_BANDS),
     priceLine: PRICE_LINE,
     timetable: [
-      { day: "Sunday", time: "4:00–5:00 pm", group: "Newer players" },
-      { day: "Sunday", time: "5:00–6:00 pm", group: "Intermediate" },
-      { day: "Sunday", time: "6:00–7:00 pm", group: "Advanced" },
+      { day: "Sunday", time: "4:00–5:00 pm", group: "Newer players", levelMin: 1.0, levelMax: 2.5 },
+      { day: "Sunday", time: "5:00–6:00 pm", group: "Intermediate", levelMin: 3.0, levelMax: 3.5 },
+      { day: "Sunday", time: "6:00–7:00 pm", group: "Advanced", levelMin: 4.0, levelMax: 5.5 },
     ],
     includes: [
       `One 60-minute class a week for ${COHORT_LENGTH}`,
@@ -187,9 +235,19 @@ export const programs: Program[] = [
     type: "Summer Camp",
     comingSoon: true,
     ctaText: "Notify Me When Open",
-    ctaHref: "/programs/kids-summer-camp",
+    // Straight to the one notify form on the page (audit H8).
+    ctaHref: "/programs/kids-summer-camp#notify",
+    plate: "kids-summer-camp",
+    plateAlt: "Court diagram: a footwork path through cones, and a short rally across the service boxes.",
+    plateCaption: "Movement games, then rally play.",
+    ageBands: JUNIOR_BANDS,
+    // Owner decision D2 (2026-10-09): all levels.
+    levelMin: 1.0,
+    levelMax: 7.0,
+    levelNote: "First time on court to a few years in, grouped by ability",
+    priceSummary: CAMP_PRICE_SUMMARY,
     schedule: "Summer · dates not set yet",
-    ageGroup: "Ages 7–13",
+    ageGroup: ageBandsLabel(JUNIOR_BANDS),
     currency: "CAD",
     related: {
       text: `Looking for something sooner? Youth Programs runs Saturday classes for ${AGE_BAND_LABELS.junior} players.`,
@@ -212,8 +270,11 @@ export const programs: Program[] = [
     unlisted: true,
     ctaText: "Notify Me When Open",
     ctaHref: "/programs/group-lessons",
+    plate: "court",
+    plateAlt: "Court diagram: a cross-court rally.",
+    ageBands: ADULT_BANDS,
     schedule: "Weekly evening + weekend slots (schedule TBA)",
-    ageGroup: "Adults 18+",
+    ageGroup: ageBandsLabel(ADULT_BANDS),
     currency: "CAD",
     includes: [
       "Capped at 6 per court — more reps, less standing around",

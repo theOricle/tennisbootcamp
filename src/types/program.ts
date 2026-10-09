@@ -1,3 +1,6 @@
+import type { AgeBand } from "@/lib/ageBand";
+import type { PlateId } from "@/lib/plates/specs";
+
 // The eyebrow above a program's title, so it never repeats the title.
 export type ProgramType = "Weekend group class" | "Group Lessons" | "Summer Camp";
 
@@ -5,7 +8,17 @@ export type ProgramType = "Weekend group class" | "Group Lessons" | "Summer Camp
 export type TimetableSlot = {
   day: "Saturday" | "Sunday";
   time: string;
+  /** The class label as the recommender and its test match it; unchanged by M37. */
   group: string;
+  /** The band this class is for, when the program splits its classes by age. */
+  ageBand?: AgeBand;
+  /**
+   * The level band this class is built for (owner decision D3, 2026-10-09),
+   * 1.0–7.0 in half steps. Either both are set or neither; a program's
+   * banded slots are contiguous, ascending and together cover the program span.
+   */
+  levelMin?: number;
+  levelMax?: number;
 };
 
 export type Program = {
@@ -24,7 +37,36 @@ export type Program = {
   comingSoon?: boolean;
   ctaText: string;
   ctaHref: string;
-  imageSrc?: string;
+
+  /**
+   * The program's Court Plate (audit H1, design specs §4): a code-drawn court
+   * diagram, one composition per program. There is no image field: no photo
+   * or title is ever baked into program art. A new program starts as "court".
+   */
+  plate: PlateId;
+  /** The plate's accessible name on the detail page; elsewhere the plate is decorative. */
+  plateAlt: string;
+  /** The visible figcaption under the detail-page plate. */
+  plateCaption?: string;
+
+  /**
+   * Who the program is for (audit M37), youngest first. All three bands mean
+   * "Any age". `ageGroup` is derived from this and stays for the enroll wizard
+   * and the dashboard until they switch to the bands.
+   */
+  ageBands: AgeBand[];
+  /**
+   * The tier span the program is built for (owner decision D2, 2026-10-09),
+   * 1.0–7.0 in half steps. Unset renders nothing, never a guess.
+   */
+  levelMin?: number;
+  levelMax?: number;
+  /** One plain line on levels, lifted from the program's own copy. */
+  levelNote?: string;
+  /** The price in one line, built from the constants in programs.ts only. */
+  priceSummary?: string;
+  /** This season's status chip (owner default D11, "Groups forming"); comingSoon always wins. */
+  enrollmentStatus?: "forming" | "invite-only";
 
   schedule?: string;
   priceCents?: number;
