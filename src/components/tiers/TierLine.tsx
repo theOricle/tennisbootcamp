@@ -140,6 +140,15 @@ function Rail(props: TierLineProps) {
     return PIP_UNLIT;
   }
 
+  // The marker's sentence goes into the track's accessible name: children of
+  // role="img" are presentational, so an sr-only span inside it is never read.
+  const markerSentence =
+    mode === "span" && marker && markerTier
+      ? `${marker.label === "You" ? "Your tier" : `${marker.label}'s tier`}, ${markerTier.name}, ${
+          markerInRange ? "is in this range." : "is outside this range."
+        }`
+      : null;
+
   // Accessible name for the track; the pips themselves are hidden.
   let a11y: Record<string, string | number>;
   if (mode === "position" && tier && progress) {
@@ -160,7 +169,9 @@ function Rail(props: TierLineProps) {
     const who = range.min.id === range.max.id ? range.min.name : `${range.min.name} to ${range.max.name}`;
     a11y = {
       role: "img",
-      "aria-label": `Built for ${who}, levels ${lo.toFixed(1)} to ${hi.toFixed(1)}`,
+      "aria-label": `Built for ${who}, levels ${lo.toFixed(1)} to ${hi.toFixed(1)}${
+        markerSentence ? `. ${markerSentence}` : ""
+      }`,
     };
   } else {
     a11y = { role: "img", "aria-label": "Unranked. Seven tiers, Love to Grand Slam." };
@@ -192,9 +203,10 @@ function Rail(props: TierLineProps) {
     return { left: "Love", right: "Grand Slam" };
   })();
 
+  // An unranked rail has nothing to emphasise: both ends read the same.
   const endsRow = (
     <div className="mt-1.5 flex items-baseline justify-between gap-3 text-xs">
-      <span className="font-semibold text-white">{ends.left}</span>
+      <span className={mode === "ghost" ? "text-white/60" : "font-semibold text-white"}>{ends.left}</span>
       {ends.right && <span className="text-white/60">{ends.right}</span>}
     </div>
   );
@@ -232,12 +244,6 @@ function Rail(props: TierLineProps) {
             );
           })}
         </div>
-        {marker && markerTier && mode === "span" && (
-          <span className="sr-only">
-            {marker.label === "You" ? "Your tier" : `${marker.label}'s tier`}, {markerTier.name},{" "}
-            {markerInRange ? "is in this range." : "is outside this range."}
-          </span>
-        )}
       </div>
       {labels === "ends" && endsRow}
       {labels === "all" && (
@@ -349,17 +355,18 @@ function HorizontalLadder({
             aria-current={n.current ? "step" : undefined}
             className="flex min-w-0 flex-col items-center text-center"
           >
+            {/* Each half reaches 2px past its cell, so the two meet in the middle of the 4px column gap. */}
             <div className={`relative flex w-full items-center justify-center ${cell}`}>
               {prev && (
                 <span
                   aria-hidden="true"
-                  className={`absolute left-0 right-1/2 top-1/2 h-0.5 -translate-y-1/2 ${leftOn ? LIME : CONNECTOR_OFF}`}
+                  className={`absolute -left-0.5 right-1/2 top-1/2 h-0.5 -translate-y-1/2 ${leftOn ? LIME : CONNECTOR_OFF}`}
                 />
               )}
               {next && (
                 <span
                   aria-hidden="true"
-                  className={`absolute left-1/2 right-0 top-1/2 h-0.5 -translate-y-1/2 ${rightOn ? LIME : CONNECTOR_OFF}`}
+                  className={`absolute left-1/2 -right-0.5 top-1/2 h-0.5 -translate-y-1/2 ${rightOn ? LIME : CONNECTOR_OFF}`}
                 />
               )}
               <span className={`relative block shrink-0 ${sizeClass}`}>
@@ -416,7 +423,8 @@ function VerticalLadder({
             aria-current={n.current ? "step" : undefined}
             className="grid min-h-[52px] grid-cols-[48px_1fr] items-center gap-4 py-2"
           >
-            <div className="relative flex h-full min-h-[44px] items-center justify-center">
+            {/* The emblem column stretches through the row's py-2, so the connectors meet across rows. */}
+            <div className="relative -my-2 flex self-stretch items-center justify-center">
               {next && (
                 <span
                   aria-hidden="true"

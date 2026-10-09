@@ -13,7 +13,8 @@ export function TierBand() {
   return (
     <section aria-labelledby="tier-band-title" className="border-b border-white/10">
       <Container className="py-12 md:py-16">
-        <div className="md:grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:items-center md:gap-12">
+        {/* Two columns only from lg: at md the 7fr column would be ~390px, under the ladder's 480px floor (specs §3.3). */}
+        <div className="lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-12">
           <div className="max-w-xl">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#B4E655]">
               Levels
@@ -33,7 +34,7 @@ export function TierBand() {
               How tiers work →
             </Link>
           </div>
-          <div className="mt-8 min-w-0 md:mt-0">
+          <div className="mt-8 min-w-0 lg:mt-0">
             <TierLine variant="ladder" orientation="horizontal" density="compact" />
           </div>
         </div>

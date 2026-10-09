@@ -13,6 +13,9 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { TierLine } from "../components/tiers/TierLine";
 import {
   LEVEL_OPTIONS,
   LEVEL_STEPS,
@@ -207,6 +210,22 @@ check("the ghost rail names all seven", line.includes("Unranked. Seven tiers, Lo
 check("the ladder is an ordered list, Love first", line.includes("<ol aria-label={LADDER_LABEL}") && line.includes("flex flex-col-reverse"));
 check("a provisional rung shows its band, never a level number", (line.match(/n\.state !== "provisional" \?/g) ?? []).length === 2);
 check("the current rung is aria-current=step with an sr-only suffix", line.includes('aria-current={n.current ? "step" : undefined}') && line.includes("(your tier)") && line.includes("(likely tier, provisional)") && line.includes("(in this program)") && line.includes("(reached)"));
+
+// Rendered markup (fix round 1): the line is connected, the ghost is even,
+// and the marker is in the accessible name.
+const render = (props: Parameters<typeof TierLine>[0]) => renderToStaticMarkup(createElement(TierLine, props));
+const markerRail = render({ variant: "rail", span: { min: 3, max: 5.5 }, marker: { level: 2.5, label: "You" } });
+check("a marker rail names the marker in its aria-label", markerRail.includes('aria-label="Built for Deuce to Ace, levels 3.0 to 5.5. Your tier, Rally, is outside this range."'));
+check("a named marker inside the span reads the same way", render({ variant: "rail", span: { min: 2, max: 3.5 }, marker: { level: 2.5, label: "Maya" } }).includes("Maya&#x27;s tier, Rally, is in this range."));
+check("a marker rail has no sr-only text (nothing inside role=img is read)", !markerRail.includes("sr-only") && !line.includes('<span className="sr-only">\n            {marker'));
+check("a span rail without a marker keeps its plain label", render({ variant: "rail", span: { min: 3, max: 5.5 } }).includes('aria-label="Built for Deuce to Ace, levels 3.0 to 5.5"'));
+const ghostRail = render({ variant: "rail", labels: "ends" });
+check("the ghost rail's two ends share one style", /<span class="text-white\/60">Love<\/span><span class="text-white\/60">Grand Slam<\/span>/.test(ghostRail));
+check("a ranked rail still emphasises its left end", render({ variant: "rail", level: 2.5, labels: "ends" }).includes('<span class="font-semibold text-white">Rally · Level 2.5</span>'));
+const horizontal = render({ variant: "ladder", orientation: "horizontal" });
+check("horizontal connectors reach 2px past each cell to bridge the 4px gap", horizontal.includes("gap-x-1") && horizontal.includes("absolute -left-0.5 right-1/2") && horizontal.includes("absolute left-1/2 -right-0.5") && !horizontal.includes("absolute left-0 ") && !horizontal.includes(" right-0 "));
+const vertical = render({ variant: "ladder", orientation: "vertical" });
+check("the vertical emblem column stretches through the row's py-2 so connectors meet across rows", vertical.includes("relative -my-2 flex self-stretch items-center justify-center") && vertical.includes("items-center gap-4 py-2") && !vertical.includes("min-h-[44px]"));
 check("forced colours get a track border and Highlight pips", line.includes("forced-colors:border-[color:CanvasText]") && line.includes("forced-colors:bg-[color:Highlight]"));
 check("emblems are never focusable and hide when decorative", badges.includes('focusable="false"') && badges.includes('"aria-hidden": true'));
 check("no className fills in the emblem", !/className\s*[=:]/.test(read("src/components/tiers/emblemGeometry.ts")));
@@ -226,6 +245,10 @@ for (const f of tierFiles) {
 const home = read("src/app/page.tsx");
 const band = read("src/components/sections/TierBand.tsx");
 check("home mounts the TierBand after the TrustBar", home.indexOf("<TrustBar />") < home.indexOf("<TierBand />"));
+check(
+  "the band splits into two columns at lg, never md (the ladder keeps the full width to 1024)",
+  band.includes("lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-12") && band.includes("mt-8 min-w-0 lg:mt-0") && !band.includes("md:grid") && !band.includes("md:mt-0")
+);
 check("the band says the seven tiers and links to the ladder", band.includes("Seven tiers. Love to Grand Slam.") && band.includes('href="/assessment#ladder"') && band.includes("How tiers work"));
 check("the band carries the owner's body copy and no new button", band.includes("Every player trains at a tier.") && !band.includes("<Button"));
 const assessment = read("src/app/assessment/page.tsx");
@@ -254,7 +277,8 @@ check("Unranked is the one no-level word", !/Unleveled</.test(players) && !playe
 
 // Docs and the test chain.
 check("design-system.md documents the tier tokens", read("ops/briefs/design-system.md").includes("## Tier tokens"));
-check("test-tiers is last in the npm test chain", /test-tiers\.ts"?\s*,?\s*$/m.test(JSON.parse(read("package.json")).scripts.test + "\n"));
+// Only membership: another PR may append its own script after this one.
+check("test-tiers is in the npm test chain", JSON.parse(read("package.json")).scripts.test.includes("src/scripts/test-tiers.ts"));
 
 if (failed > 0) {
   console.log(`\n${failed} check(s) failed.`);
