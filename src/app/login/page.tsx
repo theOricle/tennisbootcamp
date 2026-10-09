@@ -1,13 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/browser";
 import { trackEvent } from "@/lib/analytics";
 import { PasswordToggleIcon } from "@/components/ui/PasswordToggleIcon";
+import {
+  AFTER_LOGIN_DEFAULT,
+  callbackNotice,
+  loginErrorMessage,
+  safeNextPath,
+} from "@/lib/authFlow";
 
+const linkClass =
+  "rounded text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
+
+// The page reads `?error=` (an auth-callback refusal) and `?next=` (where to
+// land after signing in — audit M20, L21). useSearchParams needs a Suspense
+// boundary at prerender time; the fallback is the same form with neither, so
+// the first paint is never blank.
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginForm notice={null} nextPath={AFTER_LOGIN_DEFAULT} />}>
+      <LoginFormWithParams />
+    </Suspense>
+  );
+}
+
+function LoginFormWithParams() {
+  const params = useSearchParams();
+  return (
+    <LoginForm
+      notice={callbackNotice(params.get("error"))}
+      nextPath={safeNextPath(params.get("next"))}
+    />
+  );
+}
+
+function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,18 +55,21 @@ export default function LoginPage() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authError) {
-      setError(authError.message);
+      // Plain words and the one way out — never Supabase's own message.
+      setError(loginErrorMessage(authError.message));
       setLoading(false);
       return;
     }
 
     trackEvent("login_success");
-    router.push("/dashboard");
+    router.push(nextPath);
     router.refresh();
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#061427] px-6 text-white">
+    // Top-aligned on phones (audit L9): the sticky header already takes the
+    // top of the screen, so a full-height centred card left a blank band.
+    <main className="flex min-h-[calc(100svh-80px)] items-start justify-center bg-[#061427] px-6 pb-16 pt-10 text-white md:items-center md:pt-0">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-semibold">Sign in to your account</h1>
@@ -43,6 +77,18 @@ export default function LoginPage() {
             Access your enrollments and training dashboard.
           </p>
         </div>
+
+        {notice && (
+          <div
+            role="status"
+            className="mb-5 rounded-2xl border border-yellow-200/30 bg-yellow-200/5 px-5 py-4 text-sm text-white/80"
+          >
+            <p>{notice}</p>
+            <Link href="/auth/forgot-password" className={`mt-2 inline-block font-semibold ${linkClass}`}>
+              Send a new link →
+            </Link>
+          </div>
+        )}
 
         <form
           onSubmit={handleSubmit}
@@ -65,10 +111,7 @@ export default function LoginPage() {
           <div className="grid gap-1.5">
             <div className="flex items-center justify-between">
               <label htmlFor="login-password" className="text-sm text-white/70">Password</label>
-              <Link
-                href="/auth/forgot-password"
-                className="rounded text-xs text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-              >
+              <Link href="/auth/forgot-password" className={`text-xs ${linkClass}`}>
                 Forgot password?
               </Link>
             </div>
@@ -94,7 +137,11 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-red-400">
+              {error}
+            </p>
+          )}
 
           <button
             type="submit"
@@ -112,10 +159,7 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-white/60">
             New here?{" "}
-            <Link
-              href="/intake"
-              className="text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
-            >
+            <Link href="/intake" className={linkClass}>
               Take the 2-minute quiz →
             </Link>
           </p>

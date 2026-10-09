@@ -3,9 +3,11 @@ import { google } from "googleapis";
 import { isMockMode, createCheckoutSession } from "@/lib/payments";
 import {
   saveEnrollmentToSupabase,
-  issueActivationLink,
+  notifyEnrollmentAccount,
+  resolveEnrollmentUserId,
 } from "@/lib/supabase/enrollmentActions";
 import { getCohortById } from "@/lib/cohortsDb";
+import { programs } from "@/content/programs";
 import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { setEnrollmentCredit } from "@/lib/enrollmentSheet";
 import {
@@ -17,6 +19,7 @@ import {
   RECORDS_UNAVAILABLE_ERROR,
   ROW_MISMATCH_ERROR,
   cohortRequiresInvite,
+  contactEmailRefusal,
   foreignRows,
   gateRefusal,
   inviteSettlement,
@@ -142,6 +145,15 @@ export async function POST(req: NextRequest) {
     // signed-in account (the household rule); a signed-out caller names
     // nobody. Runs before the credit lookup and before Stripe metadata.
     const signedIn = await currentUser();
+    // Audit H5: a signed-in caller enrolls under the account's own address.
+    // The rows save with the session as owner, so a body naming another
+    // address would hand that address's history to this account — 400,
+    // before any row, credit or Stripe session. A body with no contact
+    // email saves nothing and passes.
+    const mismatch = contactEmailRefusal(signedIn, enrollmentMeta?.contactEmail);
+    if (mismatch) {
+      return NextResponse.json({ error: mismatch.error }, { status: mismatch.status });
+    }
     const owned = signedIn
       ? new Set(
           (
@@ -156,6 +168,11 @@ export async function POST(req: NextRequest) {
         )
       : null;
     const players = scrubParticipantIds(sent, owned);
+    // Audit H5: the account every row this request saves belongs to — the
+    // signed-in user, else the account that already exists for the email.
+    const ownerId = enrollmentMeta?.contactEmail
+      ? await resolveEnrollmentUserId(enrollmentMeta.contactEmail, signedIn?.id)
+      : null;
     const rowNumbers = players
       .map((p) => p.rowNumber ?? null)
       .filter((n): n is number => typeof n === "number" && n > 0);
@@ -266,6 +283,7 @@ export async function POST(req: NextRequest) {
           consentAgreedAt: enrollmentMeta.consentAgreedAt,
           waiverVersion: enrollmentMeta.waiverVersion,
           status: isMockMode ? "test_paid" : "pending",
+          userId: ownerId,
         });
         if (!supabaseEnrollmentId) supabaseEnrollmentId = id;
       }
@@ -299,11 +317,22 @@ export async function POST(req: NextRequest) {
       if (enrollmentMeta?.contactEmail) {
         // Non-blocking: an uncaught refusal here would skip the credit and
         // invite-confirmation tail below and turn a completed mock checkout
-        // into a 500 via this route's outer catch.
-        await issueActivationLink(
-          enrollmentMeta.contactEmail,
-          supabaseEnrollmentId
-        ).catch((err) =>
+        // into a 500 via this route's outer catch. A new email gets the
+        // set-password link; an existing account gets "You're enrolled" (H5).
+        await notifyEnrollmentAccount({
+          email: enrollmentMeta.contactEmail,
+          enrollmentId: supabaseEnrollmentId,
+          userId: ownerId,
+          enrolled: {
+            programTitle:
+              programs.find((p) => p.id === cohort?.programId)?.title ??
+              programTitle ??
+              "your program",
+            cohortLabel: cohort?.label ?? cohortId,
+            participantName: players[0]?.name ?? enrollmentMeta.participantName ?? null,
+            paid: true,
+          },
+        }).catch((err) =>
           console.error("Activation link failed (non-blocking):", err)
         );
       }

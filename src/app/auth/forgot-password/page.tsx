@@ -33,7 +33,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#061427] px-6 text-white">
+    // Top-aligned on phones (audit L9), same as /login.
+    <main className="flex min-h-[calc(100svh-80px)] items-start justify-center bg-[#061427] px-6 pb-16 pt-10 text-white md:items-center md:pt-0">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-semibold">Reset your password</h1>
@@ -43,10 +44,23 @@ export default function ForgotPasswordPage() {
         </div>
 
         {sent ? (
-          <div className="rounded-3xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-8 text-center">
+          // The route answers the same whether or not the address has an
+          // account, and stays quiet inside its per-address cooldown — so
+          // the page can only promise what it knows (audit M20).
+          <div
+            role="status"
+            className="rounded-3xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-8 text-center"
+          >
             <p className="text-sm text-white/80">
-              Check your inbox — a reset link is on its way to{" "}
-              <strong>{email}</strong>.
+              If an account exists for <strong>{email}</strong>, a reset link is on its way.
+              Check your spam folder too.
+            </p>
+            <p className="mt-3 text-sm text-white/60">
+              Nothing after a few minutes? Try again, or email{" "}
+              <a href="mailto:info@tennisbootcamp.ca" className="text-[#B4E655] hover:underline">
+                info@tennisbootcamp.ca
+              </a>
+              .
             </p>
             <Link
               href="/login"
@@ -74,7 +88,11 @@ export default function ForgotPasswordPage() {
               />
             </div>
 
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && (
+              <p role="alert" className="text-sm text-red-400">
+                {error}
+              </p>
+            )}
 
             <button
               type="submit"

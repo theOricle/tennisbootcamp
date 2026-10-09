@@ -21,6 +21,7 @@ import {
   buildAssessmentCompleteEmail,
   buildEtransferInstructionsEmail,
   buildPaymentReceivedEmail,
+  buildEnrolledEmail,
   buildEtransferPendingAdminEmail,
   buildPaymentUnmatchedAdminEmail,
 } from "../lib/emailBodies";
@@ -339,6 +340,17 @@ const PLAYER_EMAILS: [string, () => EmailBody, string][] = [
         programTitle: "Adult Bootcamps",
         cohortLabel: "Fall A",
         amountCents: 21000,
+      }),
+    UNSUB_GENERAL,
+  ],
+  [
+    "you're enrolled (existing account)",
+    () =>
+      buildEnrolledEmail({
+        name: "Maya Chen",
+        programTitle: "Adult Bootcamps",
+        cohortLabel: "Fall A",
+        paid: true,
       }),
     UNSUB_GENERAL,
   ],
