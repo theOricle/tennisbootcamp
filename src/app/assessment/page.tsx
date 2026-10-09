@@ -1,6 +1,7 @@
 import { membershipNote } from "@/lib/membership";
 import { ASSESSMENT_CREDIT_MONTHS } from "@/content/policies";
-import { TierLadder } from "@/components/tiers";
+import { TierLine } from "@/components/tiers";
+import { TIER_RERATE_LINE } from "@/lib/tiers";
 import { TrackedLink } from "@/components/ui/TrackedButton";
 
 const LEAVE_WITH = [
@@ -113,19 +114,24 @@ export default function AssessmentLandingPage() {
           </ul>
         </section>
 
-        {/* The ladder */}
-        <section className="mt-14">
+        {/* The ladder (audit H6, M36, L28): all seven tiers with their
+            blurbs, vertical on phones so nothing hides, horizontal from md.
+            The home band and the About page link here. */}
+        <section id="ladder" className="mt-14 scroll-mt-24">
           <h2 className="text-xl font-semibold text-white sm:text-2xl">
             The ladder you&apos;re climbing
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-white/65 sm:text-base">
-            Your level places you on a seven-rung ladder. Every player starts on
-            one rung and climbs from there — the assessment confirms which rung
-            you&apos;re on.
+            Your level places you on a seven-rung ladder, Love to Grand Slam.
+            Every player starts on one rung and climbs from there — the
+            assessment confirms which rung you&apos;re on.
           </p>
-          <div className="mt-6">
-            <TierLadder />
+          <div className="mt-6 md:mt-8">
+            <TierLine variant="ladder" orientation="responsive" showBlurbs />
           </div>
+          {TIER_RERATE_LINE && (
+            <p className="mt-6 text-sm leading-relaxed text-white/65">{TIER_RERATE_LINE}</p>
+          )}
         </section>
 
         {/* FAQ */}

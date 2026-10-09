@@ -1,22 +1,43 @@
-// Tier UI — the labeled badge, the unranked chip, the header decision helper,
-// and the ladder strip. All derive from the numeric level via src/lib/tiers.ts;
-// nothing here stores or mutates a level.
+// Tier UI — the labeled badge, the chips, the header decision helper, the
+// line and the rank card. All derive from the numeric level via
+// src/lib/tiers.ts; nothing here stores or mutates a level.
+//
+// One primitive per job (design specs §1.2): TierEmblem for a single tier,
+// TierLine for the line, RankCard for a player's rank, TierChip and
+// TierRangeBadges for inline tier text. The old TierLadder (a horizontal
+// scroller that hid three tiers on phones, audit H6) is gone: use
+// `<TierLine variant="ladder" />`.
 
 import Link from "next/link";
 import {
-  TIERS,
+  TIER_COUNT,
   tierForLevel,
   formatLevelNumber,
+  formatTierSpan,
   tierRangeForLevels,
 } from "@/lib/tiers";
-import { BADGE_BY_TIER, type BadgeProps } from "./badges";
+import { BADGE_BY_TIER, TierEmblem, type BadgeProps } from "./badges";
 
 export * from "./badges";
+export { TierLine, type TierLineProps, type TierLineSpan } from "./TierLine";
+export { RankCard, formatShortDate, type RankCardProps, type RankCardPlayer } from "./RankCard";
+export {
+  emblemSvgString,
+  emblemLabel,
+  type EmblemState,
+  type EmblemVariant,
+} from "./emblemGeometry";
+
+/** The chip base (design-system.md): 12px is the floor, never smaller. */
+const CHIP_BASE =
+  "inline-flex min-h-6 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium";
+const CHIP_NEUTRAL = "border border-white/15 bg-white/5 text-white/85";
+const CHIP_DASHED = "border border-dashed border-white/30 bg-white/5 text-white/85";
 
 /**
- * Labeled tier badge — glyph + tier name + numeric level ("Rally · 2.5").
+ * Labeled tier badge — emblem + tier name + numeric level ("Rally · 2.5").
  * Renders nothing when the level is unranked (callers show `UnrankedChip`).
- * The glyph is decorative because the text beside it already names the tier.
+ * The emblem is decorative because the text beside it already names the tier.
  */
 export function TierBadge({
   level,
@@ -29,10 +50,9 @@ export function TierBadge({
 }) {
   const tier = tierForLevel(level);
   if (!tier) return null;
-  const Badge = BADGE_BY_TIER[tier.id];
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
-      <Badge size={size} decorative className="shrink-0" />
+      <TierEmblem tier={tier.id} size={size} decorative className="shrink-0" />
       <span className="leading-tight">
         <span className="block text-sm font-semibold text-white">
           {tier.name}
@@ -45,7 +65,7 @@ export function TierBadge({
   );
 }
 
-/** A single tier glyph by level, or nothing when unranked. Handy for chips. */
+/** A single tier emblem by level, or nothing when unranked. Handy for chips. */
 export function TierGlyph({
   level,
   ...props
@@ -57,8 +77,9 @@ export function TierGlyph({
 }
 
 /**
- * Subtle "Unranked — book your assessment" chip linking to booking. Shown w
+ * Subtle "Unranked — book your assessment" chip linking to booking. Shown
  * wherever a player has no coach-assigned level yet. 44px min touch target.
+ * Retired in PR-H together with TierStatus (the RankCard replaces both).
  */
 export function UnrankedChip({ className = "" }: { className?: string }) {
   return (
@@ -66,10 +87,7 @@ export function UnrankedChip({ className = "" }: { className?: string }) {
       href="/assessment/book"
       className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 text-sm font-medium text-white/70 transition hover:border-[#B4E655]/50 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] ${className}`}
     >
-      <span
-        aria-hidden="true"
-        className="inline-block h-2 w-2 rounded-full bg-white/30"
-      />
+      <TierEmblem tier={null} size={20} decorative className="shrink-0" />
       Unranked — book your assessment
     </Link>
   );
@@ -78,7 +96,7 @@ export function UnrankedChip({ className = "" }: { className?: string }) {
 /**
  * Header decision: the labeled `TierBadge` when a level is set, otherwise the
  * `UnrankedChip`. This is the shared treatment for the profile and dashboard
- * headers — one call, so both stay identical.
+ * headers — one call, so both stay identical. Retired in PR-H.
  */
 export function TierStatus({
   level,
@@ -97,30 +115,60 @@ export function TierStatus({
   );
 }
 
-/** Small tier chip for dense rows (admin bookings): glyph + name. */
-export function TierChip({
-  level,
-  className = "",
-}: {
-  level: number | string | null | undefined;
-  className?: string;
-}) {
-  const tier = tierForLevel(level);
-  if (!tier) return null;
+/** The no-level chip: a ghost mark and the one player-facing word, "Unranked". */
+export function UnrankedTag({ className = "" }: { className?: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full bg-[#B4E655]/10 px-2 py-0.5 text-[11px] font-semibold text-[#B4E655] ${className}`}
-    >
-      <TierGlyph level={level} size={16} decorative className="shrink-0" />
-      {tier.name}
+    <span className={`${CHIP_BASE} ${CHIP_DASHED} ${className}`.trim()}>
+      <TierEmblem tier={null} size={20} decorative className="shrink-0" />
+      Unranked
     </span>
   );
 }
 
 /**
- * A cohort's tier band as badges — "Deuce" for a single-tier band, both ends
- * for a spread ("Deuce – Break"). Derived from the numeric level_min/level_max
- * via tierForLevel; renders nothing when the cohort isn't tier-gated.
+ * Tier chip for dense rows (admin, dashboard lists): a 20px mark and the
+ * name. `showLevel` adds "· 3.0"; `provisional` reads "Likely Rally" with a
+ * dashed border. A null level renders the UnrankedTag.
+ */
+export function TierChip({
+  level,
+  showLevel = false,
+  provisional = false,
+  className = "",
+}: {
+  level: number | string | null | undefined;
+  showLevel?: boolean;
+  provisional?: boolean;
+  className?: string;
+}) {
+  const tier = tierForLevel(level);
+  if (!tier) return <UnrankedTag className={className} />;
+  return (
+    <span
+      className={`${CHIP_BASE} ${provisional ? CHIP_DASHED : CHIP_NEUTRAL} ${className}`.trim()}
+    >
+      <TierEmblem
+        tier={tier.id}
+        state={provisional ? "provisional" : "earned"}
+        size={20}
+        decorative
+        className="shrink-0"
+      />
+      <span>
+        {provisional && <span className="text-white/70">Likely </span>}
+        <span className="font-semibold text-white">{tier.name}</span>
+        {showLevel && !provisional && (
+          <span className="tabular-nums text-white/60"> · {formatLevelNumber(level)}</span>
+        )}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * A cohort's or program's tier band as a chip — the min mark, the span in
+ * words ("Deuce", "Love – Rally", "Break and up", "All levels") and the max
+ * mark when it differs. Renders nothing when the span is empty.
  */
 export function TierRangeBadges({
   levelMin,
@@ -133,58 +181,17 @@ export function TierRangeBadges({
 }) {
   const range = tierRangeForLevels(levelMin, levelMax);
   if (!range) return null;
-  const MinBadge = BADGE_BY_TIER[range.min.id];
-  const MaxBadge = BADGE_BY_TIER[range.max.id];
   const single = range.min.id === range.max.id;
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full bg-[#B4E655]/10 px-2.5 py-1 text-[11px] font-semibold text-[#B4E655] ${className}`}
-    >
-      <MinBadge size={16} decorative className="shrink-0" />
-      {single ? (
-        range.min.name
-      ) : (
-        <>
-          {range.min.name}
-          <span aria-hidden="true" className="text-white/40">
-            –
-          </span>
-          <MaxBadge size={16} decorative className="shrink-0" />
-          {range.max.name}
-        </>
-      )}
+    <span className={`${CHIP_BASE} ${CHIP_NEUTRAL} ${className}`.trim()}>
+      <TierEmblem tier={range.min.id} size={20} decorative className="shrink-0" />
+      <span className="font-semibold text-white">{formatTierSpan(levelMin, levelMax)}</span>
+      {!single && <TierEmblem tier={range.max.id} size={20} decorative className="shrink-0" />}
+      <span className="sr-only">
+        {single
+          ? `, tier ${range.min.id} of ${TIER_COUNT}`
+          : `, tiers ${range.min.id} to ${range.max.id} of ${TIER_COUNT}`}
+      </span>
     </span>
-  );
-}
-
-/**
- * Compact ladder strip: all seven tiers with mini badges, low to high, so a
- * prospect sees the progression they're joining. Scrolls horizontally on small
- * screens; the whole row is one accessible list.
- */
-export function TierLadder({ className = "" }: { className?: string }) {
-  return (
-    <ul
-      className={`flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:justify-center ${className}`}
-      aria-label="The seven tiers, from Love to Grand Slam"
-    >
-      {TIERS.map((tier) => {
-        const Badge = BADGE_BY_TIER[tier.id];
-        return (
-          <li
-            key={tier.id}
-            className="flex w-[76px] shrink-0 snap-start flex-col items-center gap-2 text-center"
-          >
-            <Badge size={44} decorative />
-            <span className="text-xs font-semibold leading-tight text-white">
-              {tier.name}
-            </span>
-            <span className="text-[10px] leading-none text-white/40">
-              {tier.band}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
   );
 }

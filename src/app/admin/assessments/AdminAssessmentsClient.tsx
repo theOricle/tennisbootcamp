@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { trackAssessmentCompletedAdmin } from "@/lib/analytics";
 import { TierChip } from "@/components/tiers";
+import { LEVEL_OPTIONS, formatTierLevel } from "@/lib/tiers";
 
 // ─── Types (mirror the admin API payloads) ────────────────────────────────────
 
@@ -66,11 +67,6 @@ type OpenSlot = {
 const COORDINATED_NOTE = "coordinated-direct";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-// NTRP halves 1.0 → 7.0
-const LEVELS: string[] = Array.from({ length: 13 }, (_, i) =>
-  (1 + i * 0.5).toFixed(1)
-);
 
 function fmtTime(t: string): string {
   const [h, m] = t.slice(0, 5).split(":").map(Number);
@@ -262,12 +258,17 @@ function BookingCard({
   booking: Booking;
   onChanged: () => void;
 }) {
-  const [level, setLevel] = useState("3.0");
+  // The picker starts empty (audit M29): the coach chooses the level, and a
+  // one-line confirmation sits between the choice and the email.
+  const [level, setLevel] = useState("");
   const [note, setNote] = useState("");
+  const [confirming, setConfirming] = useState<"complete" | "no_show" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const done = booking.status === "completed" || booking.status === "no_show";
+  const playerName = booking.participant_name || booking.name;
+  const firstName = playerName.trim().split(/\s+/)[0] || "them";
 
   async function togglePaid() {
     setBusy(true);
@@ -378,10 +379,7 @@ function BookingCard({
       {booking.status === "completed" && (
         <div className="mt-3 rounded-lg bg-white/[0.03] p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-[#B4E655]">
-              Level {booking.level_result?.toFixed(1)}
-            </p>
-            <TierChip level={booking.level_result} />
+            <TierChip level={booking.level_result} showLevel />
           </div>
           {booking.coach_notes && (
             <p className="mt-1 text-sm text-white/70">{booking.coach_notes}</p>
@@ -392,45 +390,112 @@ function BookingCard({
       {!done && (
         <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-3">
-            <label className="text-sm text-white/70">Level</label>
+            <label htmlFor={`level-${booking.id}`} className="text-sm text-white/70">
+              Level
+            </label>
             <select
+              id={`level-${booking.id}`}
               value={level}
-              onChange={(e) => setLevel(e.target.value)}
+              onChange={(e) => {
+                setLevel(e.target.value);
+                setConfirming(null);
+              }}
               className={inputClass}
             >
-              {LEVELS.map((l) => (
-                <option key={l} value={l} className="bg-[#061427]">
-                  {l}
+              <option value="" className="bg-[#061427]">
+                Pick a level
+              </option>
+              {LEVEL_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value} className="bg-[#061427]">
+                  {o.label}
                 </option>
               ))}
             </select>
           </div>
+          {level && (
+            <div className="flex items-center gap-2">
+              <TierChip level={level} showLevel />
+            </div>
+          )}
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
             placeholder="A 2–3 sentence read on their game…"
             className={inputClass}
+            aria-label="Coach note"
           />
           {error && <p className="text-sm text-red-300">{error}</p>}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => act("complete")}
-              className="min-h-[44px] flex-1 rounded-full bg-[#B4E655] px-4 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
-            >
-              {busy ? "Saving…" : "Complete + send level"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => act("no_show")}
-              className="min-h-[44px] rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/60 transition hover:border-red-400/50 hover:text-red-200 disabled:opacity-40"
-            >
-              No-show
-            </button>
-          </div>
+          {confirming === "complete" && level ? (
+            <div className="rounded-lg border border-[#B4E655]/30 bg-[#B4E655]/5 p-3">
+              <p className="text-sm text-white">
+                Send {firstName}: {formatTierLevel(level)}
+                {note.trim() ? " + your note" : ""}?
+              </p>
+              <p className="mt-1 text-xs text-white/60">
+                This sets their level and emails them.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => act("complete")}
+                  className="min-h-[44px] flex-1 rounded-full bg-[#B4E655] px-4 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
+                >
+                  {busy ? "Sending…" : "Send"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setConfirming(null)}
+                  className="min-h-[44px] rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/70 hover:text-white"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          ) : confirming === "no_show" ? (
+            <div className="rounded-lg border border-red-400/30 bg-red-400/5 p-3">
+              <p className="text-sm text-white">Mark {firstName} as a no-show?</p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => act("no_show")}
+                  className="min-h-[44px] flex-1 rounded-full border border-red-400/50 px-4 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-400/10 disabled:opacity-40"
+                >
+                  {busy ? "Saving…" : "Confirm no-show"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setConfirming(null)}
+                  className="min-h-[44px] rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/70 hover:text-white"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy || !level}
+                onClick={() => setConfirming("complete")}
+                className="min-h-[44px] flex-1 rounded-full bg-[#B4E655] px-4 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
+              >
+                Complete + send level
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setConfirming("no_show")}
+                className="min-h-[44px] rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/60 transition hover:border-red-400/50 hover:text-red-200 disabled:opacity-40"
+              >
+                No-show
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
