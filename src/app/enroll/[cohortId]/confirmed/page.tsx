@@ -52,12 +52,21 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
 
   const firstName = participantName?.trim().split(/\s+/)[0] ?? null;
 
+  // Audit H5: an email that already had an account gets no activation link
+  // any more — the enrollment is linked to that account and the email says
+  // so — so the steps only promise what each visitor will actually get.
   const nextSteps = [
     ...(viaEtransfer
       ? ["Send the e-transfer if you haven't yet — the amount, address, and message are in your email."]
       : []),
-    "Check your email — you'll receive an activation link to access your account.",
-    "Set your password to open your training dashboard and enrollment history.",
+    ...(user
+      ? [
+          "This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date.",
+        ]
+      : [
+          "Check your email. First time with us? You'll get a link to set your password. Already have an account? You'll get a note that this enrollment is on it.",
+          "Sign in to your dashboard to see your sessions and enrollment history.",
+        ]),
     viaEtransfer
       ? "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email."
       : "We'll send reminders before your first session with court details and what to bring.",
@@ -178,10 +187,10 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
               </Link>
             ) : (
               <Link
-                href="/set-password"
+                href="/login"
                 className="rounded-full bg-[#B4E655] px-6 py-2.5 text-sm font-semibold text-[#061427] transition hover:brightness-110"
               >
-                Set password from your email →
+                Sign in to your dashboard →
               </Link>
             )}
             <Link

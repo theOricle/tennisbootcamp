@@ -3,9 +3,11 @@ import { google } from "googleapis";
 import { isMockMode, createCheckoutSession } from "@/lib/payments";
 import {
   saveEnrollmentToSupabase,
-  issueActivationLink,
+  notifyEnrollmentAccount,
+  resolveEnrollmentUserId,
 } from "@/lib/supabase/enrollmentActions";
 import { getCohortById } from "@/lib/cohortsDb";
+import { programs } from "@/content/programs";
 import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { setEnrollmentCredit } from "@/lib/enrollmentSheet";
 import {
@@ -156,6 +158,11 @@ export async function POST(req: NextRequest) {
         )
       : null;
     const players = scrubParticipantIds(sent, owned);
+    // Audit H5: the account every row this request saves belongs to — the
+    // signed-in user, else the account that already exists for the email.
+    const ownerId = enrollmentMeta?.contactEmail
+      ? await resolveEnrollmentUserId(enrollmentMeta.contactEmail, signedIn?.id)
+      : null;
     const rowNumbers = players
       .map((p) => p.rowNumber ?? null)
       .filter((n): n is number => typeof n === "number" && n > 0);
@@ -266,6 +273,7 @@ export async function POST(req: NextRequest) {
           consentAgreedAt: enrollmentMeta.consentAgreedAt,
           waiverVersion: enrollmentMeta.waiverVersion,
           status: isMockMode ? "test_paid" : "pending",
+          userId: ownerId,
         });
         if (!supabaseEnrollmentId) supabaseEnrollmentId = id;
       }
@@ -299,11 +307,22 @@ export async function POST(req: NextRequest) {
       if (enrollmentMeta?.contactEmail) {
         // Non-blocking: an uncaught refusal here would skip the credit and
         // invite-confirmation tail below and turn a completed mock checkout
-        // into a 500 via this route's outer catch.
-        await issueActivationLink(
-          enrollmentMeta.contactEmail,
-          supabaseEnrollmentId
-        ).catch((err) =>
+        // into a 500 via this route's outer catch. A new email gets the
+        // set-password link; an existing account gets "You're enrolled" (H5).
+        await notifyEnrollmentAccount({
+          email: enrollmentMeta.contactEmail,
+          enrollmentId: supabaseEnrollmentId,
+          userId: ownerId,
+          enrolled: {
+            programTitle:
+              programs.find((p) => p.id === cohort?.programId)?.title ??
+              programTitle ??
+              "your program",
+            cohortLabel: cohort?.label ?? cohortId,
+            participantName: players[0]?.name ?? enrollmentMeta.participantName ?? null,
+            paid: true,
+          },
+        }).catch((err) =>
           console.error("Activation link failed (non-blocking):", err)
         );
       }

@@ -763,6 +763,79 @@ ${commercialFooterText("general")}`;
   return { subject, html: emailLayout(bodyHtml), text };
 }
 
+// ─── You're enrolled (audit H5) ───────────────────────────────────────────────
+// To an email that already had an account when its enrollment was saved. A
+// brand-new address gets the set-password link instead; this one already has
+// a password (or a "Forgot password?" away from one), so it gets the fact and
+// the dashboard, never a second "set your password".
+
+export function buildEnrolledEmail(params: {
+  /** The account holder — who is reading. */
+  name: string;
+  /** The player, when that isn't the holder. */
+  participantName?: string | null;
+  programTitle: string;
+  cohortLabel: string;
+  /** True once the payment is in (card); false while an e-transfer is on its way. */
+  paid: boolean;
+}): EmailBody {
+  const { name, participantName, programTitle, cohortLabel, paid } = params;
+  const who = subjectOf(name, participantName);
+  const firstName = who.holderFirst;
+  const group = `${programTitle} — ${cohortLabel}`;
+
+  const subject = paid
+    ? who.isSelf
+      ? `You're enrolled: ${group}`
+      : `${who.playerFirst} is enrolled: ${group}`
+    : `${who.Possessive} spot in ${cohortLabel} is on your account`;
+
+  const headline = paid
+    ? who.isSelf
+      ? `You're enrolled, ${firstName}.`
+      : `${who.playerFirst} is enrolled.`
+    : who.isSelf
+      ? `Your spot is on your account, ${firstName}.`
+      : `${who.playerFirst}'s spot is on your account.`;
+
+  const statusLine = paid
+    ? `${group} is paid and recorded on your Tennis Bootcamp account. The group runs once enough players have paid to meet its minimum; the moment it does, we'll email every session date and time.`
+    : `${group} is recorded on your Tennis Bootcamp account. Once your e-transfer arrives and the coach marks it received, ${
+        who.isSelf ? "you're" : `${who.playerFirst} is`
+      } in, and the confirmation email follows.`;
+  const dashboardLine =
+    "Your dashboard shows every program on the account, its weekly slot and, once the group is set, every session date.";
+  const signInLine =
+    "Sign in with your email and password. Never set one? Use “Forgot password?” on the sign-in page and we'll email you a link.";
+  const dashboardUrl = `${BASE_URL}/dashboard`;
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${headline}</p>
+    <p style="margin:0 0 16px;font-size:14px;color:rgba(255,255,255,0.70);">${statusLine}</p>
+    <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.70);">${dashboardLine}</p>
+    ${limeButton(dashboardUrl, "Open your dashboard →")}
+    ${smallText(signInLine)}
+    ${signOff()}
+    ${commercialFooter("general")}
+  `;
+
+  const text = `${headline}
+
+${statusLine}
+
+${dashboardLine}
+
+Open your dashboard: ${dashboardUrl}
+
+${signInLine}
+
+— Sina Kassaian, Tennis Bootcamp
+
+${commercialFooterText("general")}`;
+
+  return { subject, html: emailLayout(bodyHtml), text };
+}
+
 // ─── E-transfer pending → Sina (admin) — no footer ────────────────────────────
 
 export function buildEtransferPendingAdminEmail(params: {

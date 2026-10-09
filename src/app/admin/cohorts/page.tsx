@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAdminUser } from "@/lib/adminAuth";
+import { adminRefusedRedirect, getAdminUser } from "@/lib/adminAuth";
 import { AdminCohortsClient } from "./AdminCohortsClient";
 
 export const metadata: Metadata = {
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminCohortsPage() {
   const admin = await getAdminUser();
-  if (!admin) redirect("/login");
+  if (!admin) redirect(await adminRefusedRedirect("/admin/cohorts"));
 
   const seasonEndDate = process.env.SEASON_END_DATE || "2026-11-15";
 

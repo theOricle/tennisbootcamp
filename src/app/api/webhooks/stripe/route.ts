@@ -3,9 +3,12 @@ import Stripe from "stripe";
 import { google } from "googleapis";
 import {
   saveEnrollmentToSupabase,
-  issueActivationLink,
+  notifyEnrollmentAccount,
+  resolveEnrollmentUserId,
 } from "@/lib/supabase/enrollmentActions";
 import { inviteLinkFromMetadata } from "@/lib/checkoutInvite";
+import { getCohortById } from "@/lib/cohortsDb";
+import { programs } from "@/content/programs";
 
 const TAB = "enrollments";
 const STATUS_COL = "P";
@@ -96,6 +99,13 @@ export async function POST(req: NextRequest) {
       await markEnrollmentPaid(n);
     }
 
+    // Read once for the invite settlement below and the enrolled email: a
+    // cohort that cannot be read counts as private (fail closed).
+    const cohort = cohortId ? await getCohortById(cohortId).catch(() => undefined) : undefined;
+    // Audit H5: the account the payer's rows belong to. No session in a
+    // webhook, so this is the account that exists for the email, if any.
+    const ownerId = contactEmail ? await resolveEnrollmentUserId(contactEmail, null) : null;
+
     // ── Phase 3: assessment credit + invite confirmation ─────────────────────
     const creditBookings =
       bookingIds.length > 0
@@ -122,14 +132,12 @@ export async function POST(req: NextRequest) {
       const { markInvitePaidAndMaybeConfirm } = await import("@/lib/cohortActions");
       const { cohortRequiresInvite, inviteSettlement, settledByInvite, unmatchedSignal } =
         await import("@/lib/enrollGate");
-      const { getCohortById } = await import("@/lib/cohortsDb");
       const { sendPaymentUnmatchedAdminEmail } = await import("@/lib/email");
       // Backlog #38: the email fallback only serves a legacy session that
       // names neither an invite nor a participant, and never a private
       // cohort — a cohort that cannot be read counts as private (fail
       // closed). Once the first player has settled onto an invite row here
       // by id or token, later players on the same session may use it.
-      const cohort = await getCohortById(cohortId).catch(() => undefined);
       const requiresInvite = cohortRequiresInvite(cohort);
       const playerCount = Math.max(1, participantIds.length, paidRows.length);
       const targets: (string | undefined)[] = Array.from(
@@ -185,22 +193,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // What the account hears once the money is in (audit H5): a new email
+    // gets the set-password link, an existing account gets "You're enrolled".
+    const enrolled = {
+      programTitle: programs.find((p) => p.id === cohort?.programId)?.title ?? "your program",
+      cohortLabel: cohort?.label ?? cohortId,
+      paid: true,
+    };
+
     // If the enrollment wasn't saved to Supabase during checkout creation
     // (e.g. Supabase wasn't configured at checkout time), save it now.
     if (contactEmail && !supabaseEnrollmentId) {
-      const cohortId = session.metadata?.cohortId ?? "";
       const newId = await saveEnrollmentToSupabase({
         cohortId,
         contactEmail,
         status: "paid",
+        userId: ownerId,
       });
       if (newId) {
         // Non-blocking: the payment is already recorded. Letting a Resend
         // refusal throw here would 500 the webhook and make Stripe retry a
         // payment we have already banked.
-        await issueActivationLink(contactEmail, newId).catch((err) =>
-          console.error("Activation link failed (non-blocking):", err)
-        );
+        await notifyEnrollmentAccount({
+          email: contactEmail,
+          enrollmentId: newId,
+          userId: ownerId,
+          enrolled: { ...enrolled, participantName: null },
+        }).catch((err) => console.error("Activation link failed (non-blocking):", err));
       }
     } else if (supabaseEnrollmentId && contactEmail) {
       // Update existing Supabase row to paid
@@ -210,9 +229,13 @@ export async function POST(req: NextRequest) {
         .from("enrollments")
         .update({ status: "paid" })
         .eq("id", supabaseEnrollmentId);
-      await issueActivationLink(contactEmail, supabaseEnrollmentId).catch((err) =>
-        console.error("Activation link failed (non-blocking):", err)
-      );
+      await notifyEnrollmentAccount({
+        email: contactEmail,
+        enrollmentId: supabaseEnrollmentId,
+        userId: ownerId,
+        // The player's name is on the row saved at checkout.
+        enrolled,
+      }).catch((err) => console.error("Activation link failed (non-blocking):", err));
     }
   }
 

@@ -16,6 +16,7 @@ import {
   buildAssessmentCompleteEmail,
   buildEtransferInstructionsEmail,
   buildPaymentReceivedEmail,
+  buildEnrolledEmail,
   buildEtransferPendingAdminEmail,
   buildPaymentUnmatchedAdminEmail,
   moneyCAD,
@@ -308,6 +309,30 @@ export async function sendPaymentReceivedEmail(params: {
     console.log(
       `[STUB EMAIL — set RESEND_API_KEY] ${email.subject} for ${to}: ${moneyCAD(rest.amountCents)}`
     );
+    return;
+  }
+  await deliver({ to, ...email, replyTo: CONTACT_EMAIL });
+}
+
+/**
+ * An enrollment was saved under an email that already has an account (audit
+ * H5): the fact and the dashboard link, in place of the set-password email a
+ * brand-new address gets. `paid` is false while an e-transfer is on its way.
+ */
+export async function sendEnrolledEmail(params: {
+  /** The account holder — every email goes to them. */
+  to: string;
+  name: string;
+  /** The player, when that isn't the holder. */
+  participantName?: string | null;
+  programTitle: string;
+  cohortLabel: string;
+  paid: boolean;
+}): Promise<void> {
+  const { to, ...rest } = params;
+  const email = buildEnrolledEmail(rest);
+  if (!process.env.RESEND_API_KEY) {
+    console.log(`[STUB EMAIL — set RESEND_API_KEY] ${email.subject} for ${to}`);
     return;
   }
   await deliver({ to, ...email, replyTo: CONTACT_EMAIL });
