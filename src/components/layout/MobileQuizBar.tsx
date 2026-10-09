@@ -19,7 +19,12 @@ export function MobileQuizBar() {
   const allowed = quizBarAllowedOn(pathname);
   const { signedIn } = useAuthState();
   const [scrollY, setScrollY] = useState(0);
-  const [ctaInView, setCtaInView] = useState(false);
+  // Keyed by the path it was measured on: a page with no quiz CTA has nothing
+  // to observe, so the observer never calls back there, and the last page's
+  // reading must not carry over (audit M13). Same idea as the Navbar's
+  // lastPath, without a setState inside the effect.
+  const [ctaState, setCtaState] = useState({ path: pathname, inView: false });
+  const ctaInView = ctaState.path === pathname && ctaState.inView;
 
   useEffect(() => {
     if (!allowed) return;
@@ -36,7 +41,7 @@ export function MobileQuizBar() {
         if (entry.isIntersecting) inView.add(entry.target);
         else inView.delete(entry.target);
       }
-      setCtaInView(inView.size > 0);
+      setCtaState({ path: pathname, inView: inView.size > 0 });
     });
     document.querySelectorAll(`[${QUIZ_CTA_ATTR}]`).forEach((el) => io.observe(el));
 
