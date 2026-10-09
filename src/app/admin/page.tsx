@@ -27,6 +27,11 @@ const CARDS = [
     title: "Cohorts",
     body: "Build private groups, send invites, manage sessions and make-ups.",
   },
+  {
+    href: "/admin/art",
+    title: "Program art",
+    body: "The Court Plates gallery — one court diagram per program, in every frame and state.",
+  },
 ];
 
 export default async function AdminHomePage() {

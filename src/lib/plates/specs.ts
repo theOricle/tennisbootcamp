@@ -34,9 +34,10 @@ export type PlateSpec = PlateComposition & {
   name: string;
   /** The program copy each element comes from. */
   copy: readonly string[];
-  /** Drawn dashed with outline-only bounces until the program opens. */
-  comingSoon?: boolean;
 };
+// The dashed coming-soon state is never part of a spec: every surface passes
+// the program's own `comingSoon` flag to ProgramPlate, so the card, the detail
+// hero and the OG card go solid together when the program opens.
 
 const { halfLength: L, halfSingles: SW, serviceLine: SL } = COURT;
 
@@ -91,7 +92,6 @@ export const PLATE_SPECS: Record<PlateId, PlateSpec> = {
     id: "kids-summer-camp",
     name: "Movement games, then rally play",
     copy: ["Kids' Summer Camp is for Junior (7–13) players"],
-    comingSoon: true,
     cones: [[-10.6, -3.6], [-9.0, -1.8], [-7.4, -3.6], [-5.8, -1.8], [-4.2, -3.6]],
     footwork: {
       lime: true,

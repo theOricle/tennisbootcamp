@@ -238,13 +238,14 @@ export const programs: Program[] = [
     // Straight to the one notify form on the page (audit H8).
     ctaHref: "/programs/kids-summer-camp#notify",
     plate: "kids-summer-camp",
+    // No plateCaption: a caption would say what the camp covers, which is not
+    // confirmed (owner D10). plateAlt describes the drawing only.
     plateAlt: "Court diagram: a footwork path through cones, and a short rally across the service boxes.",
-    plateCaption: "Movement games, then rally play.",
     ageBands: JUNIOR_BANDS,
     // Owner decision D2 (2026-10-09): all levels.
     levelMin: 1.0,
     levelMax: 7.0,
-    levelNote: "First time on court to a few years in, grouped by ability",
+    levelNote: "First time on court to a few years in",
     priceSummary: CAMP_PRICE_SUMMARY,
     schedule: "Summer · dates not set yet",
     ageGroup: ageBandsLabel(JUNIOR_BANDS),

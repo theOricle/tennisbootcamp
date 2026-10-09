@@ -40,7 +40,8 @@ function Caption({ children }: { children: React.ReactNode }) {
   return <p className="mt-2 text-xs text-white/60">{children}</p>;
 }
 
-const titleOf = (id: PlateId) => programs.find((p) => p.plate === id)?.title ?? "Fallback (any new program)";
+const programOf = (id: PlateId) => programs.find((p) => p.plate === id);
+const titleOf = (id: PlateId) => programOf(id)?.title ?? "Fallback (any new program)";
 
 export function ArtGallery() {
   const youth = programs.find((p) => p.plate === "youth-programs");
@@ -63,7 +64,8 @@ export function ArtGallery() {
                 {FRAMES.map((frame) => (
                   <div key={frame}>
                     <Frame frame={frame}>
-                      <ProgramPlate plate={id} frame={frame} density="compact" />
+                      {/* In the state the program is in today, like the live surfaces. */}
+                      <ProgramPlate plate={id} frame={frame} density="compact" comingSoon={programOf(id)?.comingSoon} />
                     </Frame>
                     <Caption>
                       {frame} · {PLATE_FRAMES[frame].viewBox}

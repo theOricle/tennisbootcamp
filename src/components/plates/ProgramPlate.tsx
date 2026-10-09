@@ -18,7 +18,10 @@ export type ProgramPlateProps = {
   frame: PlateFrame;
   /** `compact` at 480px wide or less (cards, strips); `hero` on the detail page. */
   density: "compact" | "hero";
-  /** Dashed traces and outline-only bounces until the program opens. */
+  /**
+   * Dashed traces and outline-only bounces until the program opens. Always the
+   * program's own flag; the plate carries no state of its own.
+   */
   comingSoon?: boolean;
   /** A cohort's level band profiles the signature flight (design specs §4.5). */
   levelMin?: number | string | null;
@@ -91,7 +94,7 @@ export function ProgramPlate({
 }: ProgramPlateProps) {
   const variant = plateVariant({ plate, levelMin, levelMax, seed, focusSlot });
   const spec = resolvePlateSpec(plate, variant);
-  const shapes = plateShapes(spec, { density, side: variant.side, comingSoon: comingSoon || !!spec.comingSoon });
+  const shapes = plateShapes(spec, { density, side: variant.side, comingSoon });
   const a11y = label
     ? { role: "img" as const, "aria-label": label }
     : { "aria-hidden": true as const, focusable: "false" as const };

@@ -121,6 +121,14 @@ check("camp CTA goes to the notify form", byId["kids-summer-camp"].ctaHref === "
 // The recommender and the structured data match these strings; keep them.
 check("slot group strings unchanged", byId["bootcamps"].timetable?.map((s) => s.group).join("|") === "Newer players|Intermediate|Advanced" && byId["youth-programs"].timetable?.map((s) => s.group).join("|") === `${AGE_BAND_LABELS.junior}|${AGE_BAND_LABELS.teen}`);
 
+// Owner D10 (only confirmed facts; PR #83 fix round 1): the camp page says
+// what each day covers will be posted later, so no camp field may describe
+// how the camp runs. The figcaption renders only when plateCaption is set.
+console.log("Kids' Summer Camp states only confirmed facts (owner D10)");
+check("camp has no plateCaption", byId["kids-summer-camp"].plateCaption === undefined, String(byId["kids-summer-camp"].plateCaption));
+check("camp levelNote is the level range alone", byId["kids-summer-camp"].levelNote === "First time on court to a few years in", byId["kids-summer-camp"].levelNote);
+check("camp plateAlt describes the drawing, not the camp", byId["kids-summer-camp"].plateAlt.startsWith("Court diagram:"));
+
 // ── Age band helpers ────────────────────────────────────────────────────────
 console.log("Age band helpers");
 check("AGE_BAND_LABELS byte-identical", AGE_BAND_LABELS.adult === "Adult (18+)" && AGE_BAND_LABELS.teen === "Teen (14–17)" && AGE_BAND_LABELS.junior === "Junior (7–13)");
@@ -237,6 +245,16 @@ check("the decorative plate is not focusable", decorative.includes('focusable="f
 const unknown = renderToStaticMarkup(createElement(ProgramPlate, { plate: "retired-thing", frame: "strip", density: "compact" }));
 check("an unknown plate id renders the court", unknown.length > 1000 && unknown.includes('viewBox="-100 215 1800 600"'));
 check("ProgramPlate is deterministic", decorative === renderToStaticMarkup(createElement(ProgramPlate, { plate: "youth-programs", frame: "band", density: "compact" })));
+// The dashed state comes from the caller's flag alone (PR #83 fix round 1):
+// a spec never forces it, so every surface goes solid together when the
+// program's `comingSoon` flips in programs.ts.
+const COMING_SOON_ATTR = 'stroke-dasharray="10 7"';
+check("no PlateSpec carries a comingSoon of its own", Object.values(PLATE_SPECS).every((s) => !("comingSoon" in s)));
+const kidsOpen = renderToStaticMarkup(createElement(ProgramPlate, { plate: "kids-summer-camp", frame: "band", density: "compact" }));
+const kidsSoon = renderToStaticMarkup(createElement(ProgramPlate, { plate: "kids-summer-camp", frame: "band", density: "compact", comingSoon: true }));
+check("the Kids plate is solid without the flag", !kidsOpen.includes(COMING_SOON_ATTR));
+check("the Kids plate is dashed with the flag", kidsSoon.includes(COMING_SOON_ATTR));
+check("the flag changes nothing but the dash and the bounce fill", kidsOpen.length !== kidsSoon.length && kidsOpen.replace(/<\/?path[^>]*>/g, "") === kidsSoon.replace(/<\/?path[^>]*>/g, ""));
 const mark = renderToStaticMarkup(createElement(PlateMark, { plate: "high-performance", size: 48 }));
 check("PlateMark is decorative, 96-unit box, ≤2 KB", mark.includes('aria-hidden="true"') && mark.includes('viewBox="0 0 96 96"') && Buffer.byteLength(mark) <= 2048, String(Buffer.byteLength(mark)));
 check("PlateMark falls back to court", renderToStaticMarkup(createElement(PlateMark, { plate: "whatever" })) === renderToStaticMarkup(createElement(PlateMark, { plate: "court" })));
@@ -284,6 +302,9 @@ check("program card draws the band plate, decorative, 2:1", card.includes('frame
 check("program card draws nothing over the plate", !card.includes("bg-gradient-to-t"));
 const og = read("src/app/programs/[slug]/opengraph-image.tsx");
 check("OG card embeds the strip plate at fixed density with a fallback", og.includes('"strip"') && og.includes('density: "fixed"') && og.includes("catch"));
+check("card, detail hero and OG card all pass the program's comingSoon flag", card.includes("comingSoon={p.comingSoon}") && detail.includes("comingSoon={program.comingSoon}") && og.includes("!!program.comingSoon"));
+check("the admin gallery draws each plate in the program's own state", read("src/app/admin/art/ArtGallery.tsx").includes("comingSoon={programOf(id)?.comingSoon}"));
+check("the admin home links to the art gallery", read("src/app/admin/page.tsx").includes('href: "/admin/art"'));
 const tw = read("tailwind.config.js");
 check("tailwind has the plate keyframes", tw.includes('"plate-wipe"') && tw.includes('"plate-pop"') && tw.includes("backwards"));
 check("the admin gallery is gated and noindex", read("src/app/admin/art/page.tsx").includes("getAdminUser()") && read("src/app/admin/art/page.tsx").includes("index: false"));
