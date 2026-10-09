@@ -18,7 +18,7 @@
 // origin too, so a prefilled page (the quiz → booking handoff) only ever
 // reads larger, never smaller.
 
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { FILL_TIME_FIELD, HONEYPOT_FIELD } from "@/lib/botCheck";
 
 const HIDDEN: React.CSSProperties = {
@@ -41,6 +41,8 @@ function fillTime(): number | null {
 
 export function useBotCheck() {
   const [honeypot, setHoneypot] = useState("");
+  // One id per form, so two forms on a page never share it (audit H8).
+  const fieldId = `bot-check-${useId()}`;
 
   const payload = useCallback(
     () => ({
@@ -52,9 +54,9 @@ export function useBotCheck() {
 
   const field = (
     <div style={HIDDEN} aria-hidden="true">
-      <label htmlFor={`bot-check-${HONEYPOT_FIELD}`}>Leave this empty</label>
+      <label htmlFor={fieldId}>Leave this empty</label>
       <input
-        id={`bot-check-${HONEYPOT_FIELD}`}
+        id={fieldId}
         name={HONEYPOT_FIELD}
         type="text"
         tabIndex={-1}

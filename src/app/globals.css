@@ -14,11 +14,44 @@ body {
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
 }
 
-/* Soft background glow used across pages */
-.tb-gradient {
-  background:
-    radial-gradient(900px 600px at 20% 10%, rgba(122,168,255,0.12), transparent 60%),
-    radial-gradient(800px 500px at 85% 30%, rgba(124,255,122,0.08), transparent 55%),
-    radial-gradient(700px 500px at 50% 90%, rgba(255,255,255,0.06), transparent 60%),
-    linear-gradient(180deg, rgba(255,255,255,0.04), transparent 40%);
+/*
+ * The page-header band glow (audit L2). Lime and navy only, painted on a
+ * pseudo-element so it can fade in under the header and out at the bottom
+ * without fading the band's text: no hard seam at either edge. In the
+ * components layer so utilities (the hero's `absolute inset-0`) still win.
+ */
+@layer components {
+  .tb-gradient {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .tb-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(900px 560px at 18% 30%, rgba(180, 230, 85, 0.07), transparent 60%),
+      radial-gradient(820px 520px at 85% 35%, rgba(40, 84, 150, 0.24), transparent 62%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 30%, #000 45%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 30%, #000 45%, transparent 100%);
+  }
+}
+
+/*
+ * Reduced motion (audit M15, WCAG 2.2.2 and 2.3.3): nothing loops, slides or
+ * fades for a visitor who asked for less motion. The hero wave draws one
+ * still frame on its own (CourtBackground.tsx).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { EmailCapture } from "@/components/sections/EmailCapture";
+import { Container } from "@/components/layout/Container";
 
 // No event is scheduled (audit M6, owner default D24): the page stays out of
 // the nav, the home page and the sitemap, carries noindex, and promises
@@ -27,7 +28,9 @@ export default function EventsPage() {
         </div>
       </div>
 
-      <EmailCapture />
+      <Container className="py-12 md:py-16">
+        <EmailCapture source="events_email_capture" />
+      </Container>
     </main>
   );
 }

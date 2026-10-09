@@ -23,5 +23,33 @@ export const site: SiteConfig = {
     { label: "Instagram", href: "#" },
   ],
 
+  // Kept on the owner default D20 (audit L16): the credit stays until Sina
+  // says otherwise.
   footerNote: "Design and Development QUANTUMAPPS",
 };
+
+export type NavLink = { href: string; label: string };
+
+/**
+ * The header and mobile-drawer text links (audit M11). Events and Video
+ * Lessons stay out until they have real content (audit M6, owner default
+ * D24); their pages still resolve, with noindex.
+ */
+export const NAV_LINKS: readonly NavLink[] = [
+  { href: "/programs", label: "Programs" },
+  { href: "/about", label: "About" },
+  { href: "/assessment", label: "Assessment" },
+];
+
+/** The footer's link columns (audit M11): the site, then the policies. */
+export const FOOTER_GROUPS: readonly { heading: string; links: readonly NavLink[] }[] = [
+  { heading: "Site", links: NAV_LINKS },
+  {
+    heading: "Policies",
+    links: [
+      { href: "/legal/refund-policy", label: "Program Policies" },
+      { href: "/legal/waiver", label: "Waiver" },
+      { href: "/legal/privacy", label: "Privacy Policy" },
+    ],
+  },
+];

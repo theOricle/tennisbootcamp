@@ -2,9 +2,14 @@ import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { programs } from "@/content/programs";
+import { SESSION_PRICE_LABEL, programs } from "@/content/programs";
+import type { Program } from "@/types/program";
 import { ProgramInterestForm } from "@/components/sections/ProgramInterestForm";
 import { EmailCapture } from "@/components/sections/EmailCapture";
+import { QuizBand } from "@/components/sections/QuizBand";
+import { Container } from "@/components/layout/Container";
+import { Button } from "@/components/ui/Button";
+import { Heading } from "@/components/ui/Heading";
 import {
   formatDateRange,
   formatDaysTimes,
@@ -21,6 +26,21 @@ function fmtStartDate(iso: string): string {
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const [, m, d] = iso.split("-");
   return `${months[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
+}
+
+/**
+ * The phone summary under the H1 (audit M13): who, which day, what it costs,
+ * so the decision facts sit above the fold. Weekend classes only; a
+ * coming-soon program's card line already states its price. Each fact is
+ * joined with no-break spaces, so a line wraps only between facts. The tier
+ * span joins this row when programs carry one (audit build items F and G).
+ */
+const NBSP = "\u00A0";
+
+function summaryFacts(program: Program): string[] {
+  const days = [...new Set((program.timetable ?? []).map((slot) => `${slot.day}s`))];
+  if (program.comingSoon || days.length === 0) return [];
+  return [program.ageGroup ?? "", days.join(" and "), `${SESSION_PRICE_LABEL} a session`].filter(Boolean);
 }
 
 export const dynamic = "force-dynamic";
@@ -66,26 +86,35 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const quizHref = `/intake?program=${program.slug}`;
   // Null for coming-soon programs: no stated price, so no Course markup.
   const courseLd = courseJsonLd(program);
+  const summary = summaryFacts(program);
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       {courseLd && <JsonLd data={courseLd} />}
 
-      {/* Breadcrumb */}
-      <div className="border-b border-white/10 px-6 py-4">
-        <div className="mx-auto max-w-5xl">
-          <nav className="flex items-center gap-2 text-sm text-white/50">
-            <Link href="/programs" className="hover:text-white transition-colors">
-              Our Programs
-            </Link>
-            <span>›</span>
-            <span className="text-white">{program.title}</span>
-          </nav>
-        </div>
+      {/* Breadcrumb: on the header's left edge (one Container, audit H2),
+          with landmark and current-page semantics (audit L6). */}
+      <div className="border-b border-white/10">
+        <Container as="nav" aria-label="Breadcrumb" className="py-1">
+          <ol role="list" className="flex flex-wrap items-center gap-x-2 text-sm text-white/60">
+            <li>
+              <Link
+                href="/programs"
+                className="inline-flex min-h-[44px] items-center rounded transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+              >
+                Our Programs
+              </Link>
+            </li>
+            <li aria-hidden="true" className="text-white/40">›</li>
+            <li>
+              <span aria-current="page" className="text-white">{program.title}</span>
+            </li>
+          </ol>
+        </Container>
       </div>
 
       {/* Hero: image left + content right */}
-      <div className="mx-auto max-w-5xl px-6 py-10 md:py-14">
+      <Container className="py-10 md:py-14">
         <div className="flex flex-col gap-8 md:flex-row md:gap-12">
 
           {/* Image */}
@@ -112,7 +141,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
             <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
               <span className="font-semibold text-[#B4E655]">{program.type}</span>
               {program.ageGroup && (
-                <span className="text-white/50">· {program.ageGroup}</span>
+                // On phones the age moves into the summary row under the H1.
+                <span className={`text-white/50 ${summary.length > 0 ? "max-md:hidden" : ""}`}>· {program.ageGroup}</span>
               )}
               {program.comingSoon && (
                 <span className="ml-1 rounded-full border border-yellow-400/30 bg-yellow-400/10 px-2 py-0.5 text-[10px] font-medium text-yellow-200">
@@ -121,7 +151,12 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               )}
             </div>
 
-            <h1 className="text-3xl font-bold text-white md:text-4xl">{program.title}</h1>
+            <Heading as="h1">{program.title}</Heading>
+            {summary.length > 0 && (
+              <p className="mt-3 text-sm font-medium text-white/85 md:hidden">
+                {summary.map((fact) => fact.replace(/ /g, NBSP)).join(" · ")}
+              </p>
+            )}
             <p className="mt-2 text-base text-white/60">{program.description}</p>
 
             <p className="mt-5 text-sm leading-relaxed text-white/75">
@@ -160,21 +195,18 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                     Next cohort starts {fmtStartDate(nextOpenCohort.startDate)}
                   </p>
                 )}
-                <Link
-                  href={quizHref}
-                  className="mt-4 block w-full rounded-full bg-[#B4E655] py-3.5 text-center text-base font-semibold text-[#061427] transition hover:brightness-110"
-                >
+                {/* Primary, then the optional assessment as an outline pill
+                    at 44px, not 12px grey text (audit M12). */}
+                <Button variant="primary" href={quizHref} className="mt-4 w-full" data-quiz-cta>
                   Take the 2-minute quiz
-                </Link>
-                <Link
-                  href="/assessment/book"
-                  className="mt-2 block text-center text-xs text-white/50 transition hover:text-white/80"
-                >
-                  Or Book Your Assessment
-                </Link>
+                </Button>
+                <Button variant="secondary" href="/assessment/book" className="mt-3 w-full">
+                  Book Your Assessment
+                </Button>
               </div>
             ) : (
-              <div className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
+              // The one notify form on the page (audit H8), anchored at #notify.
+              <div id="notify" className="mt-6 scroll-mt-24 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
                 <p className="text-sm font-semibold text-white">Not open for enrollment yet</p>
                 <p className="mt-1 text-xs text-white/60">
                   Leave your email and we&apos;ll tell you when enrollment opens.
@@ -301,45 +333,16 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 and Sina places you in a class by level and schedule, or leave
                 your email and we&apos;ll tell you when a cohort opens.
               </p>
-              <div className="-mx-6 mt-2">
-                <EmailCapture />
+              <div className="mt-6">
+                <EmailCapture source={`program_${program.slug}_email_capture`} />
               </div>
             </div>
-          ) : (
-            /* Coming soon: registration alert + email capture */
-            <div className="rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-6 py-6 md:px-8 md:py-7">
-              <div className="flex items-start gap-3">
-                <svg
-                  className="mt-0.5 h-5 w-5 shrink-0 text-[#B4E655]"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
-                  />
-                </svg>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white">Enrollment not open yet</p>
-                  <p className="mt-0.5 text-sm text-white/60">
-                    Leave your email and we&apos;ll tell you when {program.title} opens.
-                  </p>
-                  <div className="mt-4">
-                    <ProgramInterestForm
-                      programSlug={program.slug}
-                      programTitle={program.title}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          ) : null}
+          {/* A coming-soon program has one notify form, at the top (#notify):
+              the second, triangle-marked copy is gone (audit H8). */}
 
           {program.related && (
-            <p className="mt-6 text-sm leading-relaxed text-white/70">
+            <p className="mt-6 text-sm leading-relaxed text-white/70 first:mt-0">
               {program.related.text}{" "}
               <Link
                 href={program.related.href}
@@ -351,13 +354,20 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           )}
         </div>
 
-        <div className="mt-10">
-          <Link href="/programs" className="text-sm text-white/40 hover:text-white transition-colors">
+        {/* The page closes on the primary CTA, not a newsletter box (audit M13). */}
+        <div className="mt-12">
+          <QuizBand href={quizHref} source="program-closing" />
+        </div>
+
+        <div className="mt-6">
+          <Link
+            href="/programs"
+            className="inline-flex min-h-[44px] items-center rounded text-sm text-white/60 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+          >
             ← Back to all programs
           </Link>
         </div>
-      </div>
-
+      </Container>
     </main>
   );
 }

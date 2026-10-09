@@ -1,6 +1,7 @@
 import type { Event } from "@/types/event";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Heading } from "@/components/ui/Heading";
 
 type EventsListProps = {
   events: Event[];
@@ -11,8 +12,9 @@ export function EventsList({ events, title = "Upcoming events" }: EventsListProp
   const real = events.filter((e) => !e.placeholder);
 
   return (
-    <section className="mx-auto max-w-6xl px-6 py-12">
-      <h2 className="text-2xl font-semibold text-white">{title}</h2>
+    // No padding or width of its own: the page's Container sets both (audit H2).
+    <section aria-labelledby="events-title">
+      <Heading id="events-title">{title}</Heading>
 
       {real.length === 0 ? (
         <p className="mt-6 text-sm text-white/50">
