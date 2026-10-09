@@ -47,6 +47,7 @@ import {
 import { ProgramPlate } from "../components/plates/ProgramPlate";
 import { PlateMark } from "../components/plates/PlateMark";
 import { AgeBandChips } from "../components/programs/AgeBandChips";
+import { ArtGallery } from "../app/admin/art/ArtGallery";
 
 let failed = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -303,7 +304,19 @@ check("program card draws nothing over the plate", !card.includes("bg-gradient-t
 const og = read("src/app/programs/[slug]/opengraph-image.tsx");
 check("OG card embeds the strip plate at fixed density with a fallback", og.includes('"strip"') && og.includes('density: "fixed"') && og.includes("catch"));
 check("card, detail hero and OG card all pass the program's comingSoon flag", card.includes("comingSoon={p.comingSoon}") && detail.includes("comingSoon={program.comingSoon}") && og.includes("!!program.comingSoon"));
-check("the admin gallery draws each plate in the program's own state", read("src/app/admin/art/ArtGallery.tsx").includes("comingSoon={programOf(id)?.comingSoon}"));
+const galleryFile = read("src/app/admin/art/ArtGallery.tsx");
+check("the admin gallery draws each plate in the program's own state", galleryFile.includes("comingSoon={programOf(id)?.comingSoon}"));
+// PR #83 fix round 2: the retired Group Lessons entry is unlisted and still
+// points at "court", so the gallery's lookup must skip unlisted programs or
+// the fallback row inherits that program's title and its coming-soon dashes.
+check("the admin gallery looks a plate's program up among listed programs only", galleryFile.includes("p.plate === id && !p.unlisted"));
+const gallery = renderToStaticMarkup(createElement(ArtGallery));
+const platesSection = gallery.slice(gallery.indexOf('aria-labelledby="plates"'), gallery.indexOf('aria-labelledby="hero"'));
+check("the gallery's court row is titled as the fallback", platesSection.includes("Fallback (any new program)"));
+check("no retired program is named anywhere in the gallery", !gallery.includes("Group Lessons"));
+const dashedPlates = platesSection.split("<svg").slice(1).filter((s) => s.includes(COMING_SOON_ATTR)).length;
+const expectedDashed = listedPrograms.filter((p) => p.comingSoon).length * FRAMES.length;
+check(`in "Every plate, every frame" only listed coming-soon programs draw dashed (${expectedDashed} plates)`, dashedPlates === expectedDashed, `${dashedPlates} dashed`);
 check("the admin home links to the art gallery", read("src/app/admin/page.tsx").includes('href: "/admin/art"'));
 const tw = read("tailwind.config.js");
 check("tailwind has the plate keyframes", tw.includes('"plate-wipe"') && tw.includes('"plate-pop"') && tw.includes("backwards"));

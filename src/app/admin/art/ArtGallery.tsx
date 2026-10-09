@@ -40,7 +40,10 @@ function Caption({ children }: { children: React.ReactNode }) {
   return <p className="mt-2 text-xs text-white/60">{children}</p>;
 }
 
-const programOf = (id: PlateId) => programs.find((p) => p.plate === id);
+// Listed programs only: the retired Group Lessons entry is unlisted and still
+// points at "court", and the fallback row must read as the plate a new
+// program starts on (solid), not as that retired program (design specs §4.11).
+const programOf = (id: PlateId) => programs.find((p) => p.plate === id && !p.unlisted);
 const titleOf = (id: PlateId) => programOf(id)?.title ?? "Fallback (any new program)";
 
 export function ArtGallery() {
