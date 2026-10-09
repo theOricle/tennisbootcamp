@@ -3,10 +3,19 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
+// The owner-locked particle wave (DECISIONS 2026-04-25). The grid spans the
+// same world extent at every size; phones sample it with half the points.
 const SEPARATION = 120;
 const AMOUNTX    = 50;
 const AMOUNTY    = 35;
+const AMOUNTX_SMALL = 35;
+const AMOUNTY_SMALL = 25;
 
+/**
+ * Audit M15: the loop runs only while the hero is on screen, the tab is
+ * visible and the visitor has not asked for reduced motion. Under
+ * prefers-reduced-motion the wave renders one still frame and never moves.
+ */
 export function CourtBackground() {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -14,6 +23,16 @@ export function CourtBackground() {
     const container = containerRef.current;
     if (!container) return;
     const c: HTMLDivElement = container;
+
+    const small = window.innerWidth < 768;
+    const NX = small ? AMOUNTX_SMALL : AMOUNTX;
+    const NY = small ? AMOUNTY_SMALL : AMOUNTY;
+    // World units between points, and the index step that keeps the wave's
+    // shape identical when fewer points sample it.
+    const SEP_X = (SEPARATION * AMOUNTX) / NX;
+    const SEP_Z = (SEPARATION * AMOUNTY) / NY;
+    const STEP_X = AMOUNTX / NX;
+    const STEP_Y = AMOUNTY / NY;
 
     let W = c.clientWidth;
     let H = c.clientHeight;
@@ -33,18 +52,18 @@ export function CourtBackground() {
 
     const scene = new THREE.Scene();
 
-    const NUM = AMOUNTX * AMOUNTY;
+    const NUM = NX * NY;
     const positions = new Float32Array(NUM * 3);
     const scales    = new Float32Array(NUM);
 
     {
       let i = 0;
       let j = 0;
-      for (let ix = 0; ix < AMOUNTX; ix++) {
-        for (let iy = 0; iy < AMOUNTY; iy++) {
-          positions[i    ] = ix * SEPARATION - (AMOUNTX * SEPARATION) / 2;
+      for (let ix = 0; ix < NX; ix++) {
+        for (let iy = 0; iy < NY; iy++) {
+          positions[i    ] = ix * SEP_X - (NX * SEP_X) / 2;
           positions[i + 1] = 0;
-          positions[i + 2] = iy * SEPARATION - (AMOUNTY * SEPARATION) / 2;
+          positions[i + 2] = iy * SEP_Z - (NY * SEP_Z) / 2;
           scales[j] = 1;
           i += 3;
           j += 1;
@@ -80,8 +99,10 @@ export function CourtBackground() {
     const points = new THREE.Points(geometry, material);
     scene.add(points);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // No antialiasing and a 1.5 pixel-ratio cap: round point sprites gain
+    // nothing from MSAA, and DPR 2 doubled the fill cost (audit M15).
+    const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(W, H);
     renderer.setClearColor(0x000000, 0);
     renderer.domElement.style.display = "block";
@@ -106,22 +127,8 @@ export function CourtBackground() {
       cursorActive = true;
     }
 
-    function onResize() {
-      W = c.clientWidth;
-      H = c.clientHeight;
-      halfW = W / 2;
-      camera.aspect = W / H;
-      camera.updateProjectionMatrix();
-      renderer.setSize(W, H);
-    }
-
-    window.addEventListener("mousemove", onMouseMove);
-    const ro = new ResizeObserver(onResize);
-    ro.observe(c);
-
-    let rafId = 0;
-
-    function animate() {
+    /** Advance the wave to `count` and draw it once. */
+    function drawFrame() {
       // Slight camera follow — half the previous amplitude (subtler rotation)
       camera.position.x += ((mouseX * 0.5) - camera.position.x) * 0.06;
       camera.lookAt(scene.position);
@@ -138,12 +145,14 @@ export function CourtBackground() {
 
       let i = 0;
       let j = 0;
-      for (let ix = 0; ix < AMOUNTX; ix++) {
-        for (let iy = 0; iy < AMOUNTY; iy++) {
+      for (let ix = 0; ix < NX; ix++) {
+        const fx = ix * STEP_X;
+        for (let iy = 0; iy < NY; iy++) {
+          const fy = iy * STEP_Y;
           // Base wave (unchanged)
           let y =
-            Math.sin((ix + count) * 0.3) * 50 +
-            Math.sin((iy + count) * 0.5) * 50;
+            Math.sin((fx + count) * 0.3) * 50 +
+            Math.sin((fy + count) * 0.5) * 50;
 
           // Per-particle cursor bounce — gaussian-ish falloff
           if (cursorActive) {
@@ -157,8 +166,8 @@ export function CourtBackground() {
 
           pos[i + 1] = y;
           sca[j] =
-            (Math.sin((ix + count) * 0.3) + 1) * 5.5 +
-            (Math.sin((iy + count) * 0.5) + 1) * 5.5;
+            (Math.sin((fx + count) * 0.3) + 1) * 5.5 +
+            (Math.sin((fy + count) * 0.5) + 1) * 5.5;
           i += 3;
           j += 1;
         }
@@ -168,26 +177,75 @@ export function CourtBackground() {
       scaleAttr.needsUpdate = true;
 
       renderer.render(scene, camera);
-      count += 0.1;
-      rafId = requestAnimationFrame(animate);
     }
 
-    rafId = requestAnimationFrame(animate);
+    let rafId = 0;
+    let running = false;
+    let onScreen = true;
+    let pageVisible = !document.hidden;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-    function onVisibilityChange() {
-      if (document.hidden) {
+    function loop() {
+      drawFrame();
+      count += 0.1;
+      rafId = requestAnimationFrame(loop);
+    }
+
+    function sync() {
+      const shouldRun = onScreen && pageVisible && !reducedMotion.matches;
+      if (shouldRun && !running) {
+        running = true;
+        rafId = requestAnimationFrame(loop);
+      } else if (!shouldRun && running) {
+        running = false;
         cancelAnimationFrame(rafId);
-      } else {
-        rafId = requestAnimationFrame(animate);
       }
     }
+
+    function onResize() {
+      W = c.clientWidth;
+      H = c.clientHeight;
+      halfW = W / 2;
+      camera.aspect = W / H;
+      camera.updateProjectionMatrix();
+      renderer.setSize(W, H);
+      // setSize clears the canvas; a paused or still wave redraws its frame.
+      if (!running) drawFrame();
+    }
+
+    function onVisibilityChange() {
+      pageVisible = !document.hidden;
+      sync();
+    }
+
+    const io = new IntersectionObserver(([entry]) => {
+      onScreen = entry?.isIntersecting ?? true;
+      sync();
+    });
+    io.observe(c);
+
+    window.addEventListener("mousemove", onMouseMove);
+    const ro = new ResizeObserver(onResize);
+    ro.observe(c);
     document.addEventListener("visibilitychange", onVisibilityChange);
+    reducedMotion.addEventListener("change", sync);
+
+    // The first frame always draws, so reduced motion still shows the wave, still.
+    drawFrame();
+    const fadeId = requestAnimationFrame(() => {
+      c.style.opacity = "1";
+    });
+    sync();
 
     return () => {
+      running = false;
       cancelAnimationFrame(rafId);
+      cancelAnimationFrame(fadeId);
+      io.disconnect();
       ro.disconnect();
       window.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      reducedMotion.removeEventListener("change", sync);
       if (renderer.domElement.parentNode) {
         renderer.domElement.parentNode.removeChild(renderer.domElement);
       }
@@ -201,7 +259,8 @@ export function CourtBackground() {
     <div
       ref={containerRef}
       aria-hidden="true"
-      className="block h-full w-full"
+      // Fades in once the first frame is drawn (instant under reduced motion).
+      className="block h-full w-full opacity-0 transition-opacity duration-700"
     />
   );
 }

@@ -1,5 +1,6 @@
 import type { Coach } from "@/types/coach";
 import { Card } from "@/components/ui/Card";
+import { Heading } from "@/components/ui/Heading";
 
 type CoachesProps = {
   coaches: Coach[];
@@ -50,8 +51,9 @@ export function Coaches({ coaches, title }: CoachesProps) {
   const heading = title ?? (coaches.length > 1 ? "Meet the Coaches" : "Your coach");
 
   return (
-    <section className="mx-auto max-w-6xl px-6 py-12">
-      <h2 className="text-2xl font-semibold text-white">{heading}</h2>
+    // No padding or width of its own: the page's Container sets both (audit H2).
+    <section aria-labelledby="coaches-title">
+      <Heading id="coaches-title">{heading}</Heading>
 
       <div className="mt-6 grid gap-6 md:grid-cols-2">
         {coaches.map((c) => (

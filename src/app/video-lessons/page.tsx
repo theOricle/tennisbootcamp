@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { EmailCapture } from "@/components/sections/EmailCapture";
+import { Container } from "@/components/layout/Container";
 
 // No library exists yet (audit M6, owner default D24): the page stays out of
 // the nav and the sitemap, carries noindex, and says only what is true. The
@@ -25,7 +26,9 @@ export default function VideoLessonsPage() {
         </div>
       </div>
 
-      <EmailCapture />
+      <Container className="py-12 md:py-16">
+        <EmailCapture source="video_lessons_email_capture" />
+      </Container>
     </main>
   );
 }

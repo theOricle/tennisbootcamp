@@ -1,10 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { Container } from "@/components/layout/Container";
 import { trackQuizCtaClick } from "@/lib/analytics";
 import { COHORT_LENGTH_ADJ } from "@/content/programs";
+import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 
 // Code-split Three.js out of the initial bundle; never SSR the WebGL canvas.
 const CourtBackground = dynamic(
@@ -12,28 +15,68 @@ const CourtBackground = dynamic(
   { ssr: false, loading: () => null }
 );
 
+/**
+ * Mounts the particle wave once the page has loaded and the browser is idle,
+ * so the 128KB Three.js chunk never competes with the hero's first paint
+ * (audit M15).
+ */
+function useWaveWhenIdle(): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let idleId: number | undefined;
+    let timer: number | undefined;
+    const start = () => setReady(true);
+    const schedule = () => {
+      if (typeof window.requestIdleCallback === "function") {
+        idleId = window.requestIdleCallback(start, { timeout: 2500 });
+      } else {
+        timer = window.setTimeout(start, 400);
+      }
+    };
+    if (document.readyState === "complete") schedule();
+    else window.addEventListener("load", schedule, { once: true });
+    return () => {
+      window.removeEventListener("load", schedule);
+      if (idleId !== undefined) window.cancelIdleCallback(idleId);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, []);
+  return ready;
+}
+
+// Feathers the court slab's hard edges into the navy (audit M14). The
+// ellipse keeps the player, racket and ball fully opaque.
+const FEATHER =
+  "[mask-image:radial-gradient(ellipse_56%_72%_at_50%_44%,#000_60%,transparent_100%)] " +
+  "[-webkit-mask-image:radial-gradient(ellipse_56%_72%_at_50%_44%,#000_60%,transparent_100%)]";
+
 export function Hero() {
+  const waveReady = useWaveWhenIdle();
+
   return (
-    <section className="relative isolate overflow-hidden pb-10 pt-14 md:pt-20">
+    <section className="relative isolate overflow-hidden pb-10 pt-12 md:pb-12 md:pt-20">
       {/* z-0  — solid base */}
       <div className="absolute inset-0 z-0 bg-[#061427]" />
 
       {/* z-10 — particle wave */}
-      <div className="absolute inset-0 z-10">
-        <CourtBackground />
-      </div>
+      <div className="absolute inset-0 z-10">{waveReady && <CourtBackground />}</div>
 
-      {/* z-20 — soft vignette + left-side darkening for text contrast */}
+      {/* z-20 — soft vignette, then the text scrim: top-down on phones so the
+          dots never run through the buttons and note (audit M15), left-right
+          from md. */}
       <div className="pointer-events-none absolute inset-0 z-20 tb-gradient opacity-60" />
-      <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-r from-[#061427]/95 via-[#061427]/60 to-transparent" />
+      <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-b from-[#061427]/95 via-[#061427]/80 to-[#061427]/35 md:bg-gradient-to-r md:from-[#061427]/95 md:via-[#061427]/60 md:to-transparent" />
 
-      {/* z-30 — translucent wordmark watermark */}
-      <div className="pointer-events-none absolute left-1/2 top-24 z-30 w-[1200px] -translate-x-1/2 text-center text-[90px] font-semibold tracking-[0.25em] text-white/[0.05] md:text-[130px]">
+      {/* z-30 — translucent wordmark watermark; decorative, desktop only */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-24 z-30 hidden w-[1200px] -translate-x-1/2 select-none text-center text-[130px] font-semibold tracking-[0.25em] text-white/[0.05] md:block"
+      >
         TENNIS BOOTCAMP
       </div>
 
       {/* z-30 — main content */}
-      <div className="relative z-30 mx-auto grid max-w-6xl items-center gap-10 px-6 md:grid-cols-2">
+      <Container className="relative z-30 grid items-center gap-8 md:grid-cols-2 md:gap-10">
         <div>
           {/* Eyebrow badge: a standing fact, not an "open now" claim (audit M2),
               so no live-status ping. */}
@@ -52,42 +95,44 @@ export function Hero() {
 
           <div className="mt-8 flex flex-col items-start gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <a
+              <Button
+                variant="primary"
                 href="/intake"
                 onClick={() => trackQuizCtaClick("hero")}
-                className="inline-flex items-center justify-center rounded-full bg-[#B4E655] px-7 py-3 text-sm font-semibold text-[#061427] transition hover:bg-[#c8ee76] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+                data-quiz-cta
               >
-                Take the 2-minute quiz
-              </a>
-              <Link
-                href="/programs"
-                className="inline-flex items-center justify-center rounded-full border border-white/25 px-7 py-3 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-              >
+                {QUIZ_CTA_LABEL}
+              </Button>
+              <Button variant="secondary" href="/programs" className="bg-[#061427]/80">
                 Browse Programs
-              </Link>
+              </Button>
             </div>
-            <p className="text-xs text-white/50">
+            <p className="max-w-md text-xs leading-relaxed text-white/65">
               The quiz is free. Optional: a 20-minute on-court assessment for $20 — join a program after and it comes off the price.
             </p>
           </div>
         </div>
 
-        <div className="flex justify-center md:justify-start md:-ml-16 lg:-ml-24">
+        {/* The owner's 640/720px player (DECISIONS 2026-04-25), restored past
+            the 380px phone cap (audit M14). The PNG is cropped to the player,
+            so no transparent headroom pushes the court down; the -ml-24 pull
+            keeps the outstretched arm on screen at 768px. */}
+        <div className="flex justify-center md:-ml-24 md:justify-start">
           <Image
             src="/images/hero/player.png"
             alt="Tennis player mid-swing on court"
-            width={720}
-            height={720}
+            width={1280}
+            height={446}
             priority
-            sizes="(max-width: 768px) 380px, (max-width: 1024px) 640px, 720px"
-            className="h-auto w-full max-w-[380px] md:w-[640px] lg:w-[720px]"
+            sizes="(max-width: 767px) 380px, (max-width: 1023px) 640px, 720px"
+            className={`h-auto w-full max-w-[380px] md:w-[640px] md:max-w-none lg:w-[720px] ${FEATHER}`}
           />
         </div>
-      </div>
+      </Container>
 
       <div className="relative z-30 mt-6 flex justify-center" aria-hidden="true">
         <svg
-          className="h-5 w-5 animate-bounce text-white/50"
+          className="h-5 w-5 text-white/50 motion-safe:animate-bounce"
           fill="none"
           stroke="currentColor"
           strokeWidth={2}

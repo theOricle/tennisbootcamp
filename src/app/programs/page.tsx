@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import {
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
@@ -8,6 +8,9 @@ import {
 } from "@/content/programs";
 import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { EmailCapture } from "@/components/sections/EmailCapture";
+import { Container } from "@/components/layout/Container";
+import { PageStack } from "@/components/layout/PageStack";
+import { Heading } from "@/components/ui/Heading";
 
 export const metadata: Metadata = {
   title: "Programs",
@@ -20,8 +23,8 @@ export default function ProgramsPage() {
   return (
     <main>
       <div className="tb-gradient">
-        <div className="mx-auto max-w-6xl px-6 py-14">
-          <h1 className="text-3xl font-semibold text-white">Our Programs</h1>
+        <Container className="pb-2 pt-14 md:pb-4 md:pt-16">
+          <Heading as="h1">Our Programs</Heading>
           {/* No self-enrollment: Sina places every player (audit M3). */}
           <p className="mt-3 max-w-2xl text-white/70">
             Weekend classes for juniors, teens and adults. Each cohort is a fixed
@@ -29,11 +32,16 @@ export default function ProgramsPage() {
             class a week. Take the 2-minute quiz and Sina places you by level and
             schedule.
           </p>
-        </div>
+        </Container>
       </div>
 
-      <EmailCapture />
-      <ProgramsGrid programs={listedPrograms} title="Programs" />
+      {/* The grid sits inside the page Container (audit H2): no second
+          "Programs" heading under the H1, no link to the page it is on, and
+          the newsletter after the catalog, not before it (M12). */}
+      <PageStack>
+        <ProgramsGrid programs={listedPrograms} title={null} browseLink={false} />
+        <EmailCapture source="programs_email_capture" />
+      </PageStack>
     </main>
   );
 }

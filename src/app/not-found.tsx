@@ -1,39 +1,38 @@
 "use client";
 
-import Link from "next/link";
+import { Button } from "@/components/ui/Button";
+import { Heading } from "@/components/ui/Heading";
 import { trackQuizCtaClick } from "@/lib/analytics";
+import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 
 export default function NotFound() {
   return (
-    <main className="flex min-h-[70vh] flex-col items-center justify-center px-6 bg-[#061427] text-white">
-      <div className="max-w-lg w-full text-center">
+    <main className="flex min-h-[70vh] flex-col items-center justify-center bg-[#061427] px-6 text-white">
+      <div className="w-full max-w-lg text-center">
         <p className="text-sm font-semibold uppercase tracking-widest text-[#B4E655]">404</p>
-        <h1 className="mt-3 text-3xl font-semibold text-white">
+        <Heading as="h1" className="mt-3">
           We couldn&apos;t find that page.
-        </h1>
+        </Heading>
         <p className="mt-3 text-white/60">Maybe these links help —</p>
 
-        <div className="mt-10 grid gap-3 sm:grid-cols-3">
-          <Link
-            href="/"
-            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-semibold text-white transition hover:border-[#B4E655]/40 hover:bg-[#B4E655]/5 hover:text-[#B4E655]"
-          >
-            Home
-          </Link>
-          <Link
-            href="/programs"
-            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-semibold text-white transition hover:border-[#B4E655]/40 hover:bg-[#B4E655]/5 hover:text-[#B4E655]"
-          >
-            Programs
-          </Link>
-          <Link
+        {/* One primary, two outlines: the quiz is the lime CTA here too (audit M12). */}
+        <nav aria-label="Helpful links" className="mt-10 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
+          <Button
+            variant="primary"
             href="/intake"
             onClick={() => trackQuizCtaClick("not-found")}
-            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-semibold text-white transition hover:border-[#B4E655]/40 hover:bg-[#B4E655]/5 hover:text-[#B4E655]"
+            className="whitespace-nowrap"
+            data-quiz-cta
           >
-            Take the 2-minute quiz
-          </Link>
-        </div>
+            {QUIZ_CTA_LABEL}
+          </Button>
+          <Button variant="secondary" href="/programs">
+            Programs
+          </Button>
+          <Button variant="secondary" href="/">
+            Home
+          </Button>
+        </nav>
       </div>
     </main>
   );

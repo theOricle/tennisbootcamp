@@ -7,6 +7,7 @@ import { EmailCapture } from "@/components/sections/EmailCapture";
 import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { Coaches } from "@/components/sections/Coaches";
 import { EventsList } from "@/components/sections/EventsList";
+import { QuizBand } from "@/components/sections/QuizBand";
 import { PageStack } from "@/components/layout/PageStack";
 
 import { programs } from "@/content/programs";
@@ -32,14 +33,14 @@ export default function HomePage() {
 
       <TrustBar />
 
-      <section className="mx-auto max-w-6xl px-6">
-        <EmailCapture />
-      </section>
-
+      {/* One Container, one rhythm (audit H2). Programs come first; the page
+          closes on the quiz, then the newsletter, the tertiary CTA (M12, M13). */}
       <PageStack>
         <ProgramsGrid programs={programs.slice(0, 3)} title="Our Programs" />
         <Coaches coaches={coaches} />
         {hasRealEvents && <EventsList events={events} title="Upcoming Events" />}
+        <QuizBand source="home-closing" />
+        <EmailCapture source="homepage_email_capture" />
       </PageStack>
     </main>
   );
