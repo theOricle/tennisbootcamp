@@ -6,7 +6,7 @@ import {
   AvailabilityHoursLegend,
 } from "@/components/ui/AvailabilityGrid";
 import { TierChip } from "@/components/tiers";
-import { TIERS } from "@/lib/tiers";
+import { LEVEL_OPTIONS, TIERS } from "@/lib/tiers";
 import {
   AVAILABILITY_SOURCE_LABELS,
   type Availability,
@@ -37,16 +37,12 @@ type Player = {
 type View = "all" | "leveled" | "unleveled";
 type Sort = "level" | "availability_updated_at";
 
+// "Unranked" is the one no-level word, in admin as on the site (audit M29).
 const VIEW_LABELS: Record<View, string> = {
   all: "All",
   leveled: "Leveled",
-  unleveled: "Unleveled",
+  unleveled: "Unranked",
 };
-
-// NTRP halves 1.0 → 7.0 (same list as the assessment complete form).
-const LEVELS: string[] = Array.from({ length: 13 }, (_, i) =>
-  (1 + i * 0.5).toFixed(1)
-);
 
 const inputClass =
   "w-full rounded-lg border border-white/35 bg-white/5 px-3 py-2.5 text-base text-white " +
@@ -85,7 +81,7 @@ function PlayerCard({
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  // Unleveled players start with no selection: the coach picks the level.
+  // Unranked players start with no selection: the coach picks the level.
   const [level, setLevel] = useState(
     player.level != null ? player.level.toFixed(1) : ""
   );
@@ -101,7 +97,7 @@ function PlayerCard({
     setError(null);
     try {
       // Only send what changed: an untouched grid must not re-stamp the
-      // availability provenance, and a blank level leaves it unleveled.
+      // availability provenance, and a blank level leaves it unranked.
       const payload: Record<string, unknown> = { id: player.id, levelNotes: notes.trim() };
       if (level) payload.level = Number(level);
       if (JSON.stringify(availability) !== JSON.stringify(player.availability)) {
@@ -159,16 +155,8 @@ function PlayerCard({
         </div>
         <div className="shrink-0 text-right">
           <div className="flex items-center justify-end gap-2">
-            <span className="text-sm font-semibold text-[#B4E655]">
-              {player.level != null ? player.level.toFixed(1) : "—"}
-            </span>
-            {player.level != null ? (
-              <TierChip level={player.level} />
-            ) : (
-              <span className="rounded-full border border-yellow-400/30 bg-yellow-400/10 px-2 py-0.5 text-xs font-medium text-yellow-200">
-                Unleveled
-              </span>
-            )}
+            {/* "Deuce · 3.0", or the Unranked tag while no level is set. */}
+            <TierChip level={player.level} showLevel />
           </div>
           {player.level_assessed_at && (
             <p className="mt-1 text-xs text-white/60">
@@ -215,9 +203,9 @@ function PlayerCard({
               <option value="" className="bg-[#061427]">
                 {player.level != null ? "—" : "Pick a level"}
               </option>
-              {LEVELS.map((l) => (
-                <option key={l} value={l} className="bg-[#061427]">
-                  {l}
+              {LEVEL_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value} className="bg-[#061427]">
+                  {o.label}
                 </option>
               ))}
             </select>
@@ -320,7 +308,7 @@ export function AdminPlayersClient() {
 
   return (
     <div className="space-y-4">
-      {/* View toggle — All / Leveled / Unleveled */}
+      {/* View toggle — All / Leveled / Unranked (the API view stays `unleveled`) */}
       <div className="flex gap-2" role="group" aria-label="View">
         {(["all", "leveled", "unleveled"] as View[]).map((v) => (
           <button
@@ -385,7 +373,7 @@ export function AdminPlayersClient() {
       {!loading && !loadError && filtered.length === 0 && (
         <p className="text-sm text-white/60">
           {view === "unleveled"
-            ? "Nobody is waiting for a level. New quiz sign-ups and assessment requests land here."
+            ? "Nobody is unranked. New quiz sign-ups and assessment requests land here."
             : view === "leveled"
             ? `No leveled players${band === "all" ? " yet" : " in this band"}. Completed assessments and levels you set here land in this list.`
             : "No players yet. Quiz sign-ups, assessment requests and completed assessments all land here."}

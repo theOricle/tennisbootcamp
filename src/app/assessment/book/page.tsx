@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { TEXT_LINK_LIME, TextLink } from "@/components/ui/TextLink";
+import { TierLine } from "@/components/tiers";
 
 type PublicSlot = { slotStart: string; timeLabel: string; taken: boolean };
 type PublicBlock = {
@@ -86,6 +87,27 @@ function hasAnyAvailability(a: Availability): boolean {
 }
 
 const SECTION_HEADING = "text-sm font-semibold uppercase tracking-wide text-[#B4E655]";
+
+// ─── What you leave with (audit M36) ─────────────────────────────────────────
+
+/**
+ * The one thing the assessment produces, drawn: a ghost rail of the seven
+ * tiers, lit for nobody yet. In the desktop summary and, on phones, under
+ * the intro.
+ */
+function LeaveWith({ className = "" }: { className?: string }) {
+  return (
+    <div className={className}>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">
+        What you leave with
+      </p>
+      <p className="mt-1 text-sm text-white/90">
+        You leave with your tier: one of seven, Love to Grand Slam.
+      </p>
+      <TierLine variant="rail" size="sm" labels="ends" className="mt-3" />
+    </div>
+  );
+}
 
 // ─── Slot picker (audit M22) ──────────────────────────────────────────────────
 
@@ -702,6 +724,7 @@ export default function BookAssessmentPage() {
                 </Link>
                 .
               </p>
+              <LeaveWith className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 lg:hidden" />
             </div>
 
             {requestDone ? (
@@ -907,6 +930,7 @@ export default function BookAssessmentPage() {
                   </dd>
                 </div>
               </dl>
+              <LeaveWith className="mt-6 border-t border-white/10 pt-4" />
               <p className="mt-6 border-t border-white/10 pt-4 text-xs leading-relaxed text-white/60">
                 Refunds, weather rebooking and the $20 credit are set out in our{" "}
                 <Link

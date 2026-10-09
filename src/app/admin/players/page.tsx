@@ -27,7 +27,7 @@ export default async function AdminPlayersPage() {
             Players
           </h1>
           <p className="mt-1 text-sm text-white/55">
-            Everyone with an account. Unleveled players came in through the
+            Everyone with an account. Unranked players came in through the
             2-minute quiz or an assessment request — tap one to set their level.
             Tap a leveled player to correct their level, note, or availability.
           </p>

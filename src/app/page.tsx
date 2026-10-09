@@ -3,6 +3,7 @@ import { JsonLd } from "@/components/JsonLd";
 import { organizationJsonLd } from "@/lib/structuredData";
 import { Hero } from "@/components/sections/Hero";
 import { TrustBar } from "@/components/sections/TrustBar";
+import { TierBand } from "@/components/sections/TierBand";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { Coaches } from "@/components/sections/Coaches";
@@ -38,6 +39,10 @@ export default function HomePage() {
       <Hero />
 
       <TrustBar />
+
+      {/* The seven tiers, where a visitor first weighs up the level system
+          (audit M36, H6). */}
+      <TierBand />
 
       {/* One Container, one rhythm (audit H2). Programs come first; the page
           closes on the quiz, then the newsletter, the tertiary CTA (M12, M13). */}

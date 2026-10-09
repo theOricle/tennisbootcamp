@@ -28,6 +28,11 @@ const CARDS = [
     body: "Build private groups, send invites, manage sessions and make-ups.",
   },
   {
+    href: "/admin/tiers",
+    title: "Tiers",
+    body: "The tier system in one place: every emblem, rail, ladder and rank card, for checking.",
+  },
+  {
     href: "/admin/art",
     title: "Program art",
     body: "The Court Plates gallery — one court diagram per program, in every frame and state.",
