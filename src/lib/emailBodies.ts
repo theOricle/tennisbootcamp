@@ -153,6 +153,25 @@ function tierChip(name: string): string {
 }
 
 /**
+ * The tier line's cell width and total width. Thirteen 14px cells plus six
+ * 2px and six 6px gaps come to 230px, which fits the card's content box on a
+ * 375px phone (about 261px wide); 18px cells (282px) spilled past its border.
+ */
+const TIER_LINE_CELL = 14;
+
+/** The gap after step `i`: 2px within a tier, 6px between tiers, none after the last. */
+function tierLineGap(i: number): number {
+  const next = LEVEL_STEPS[i + 1];
+  if (next === undefined) return 0;
+  return Math.floor(next) === Math.floor(LEVEL_STEPS[i]) ? 2 : 6;
+}
+
+const TIER_LINE_WIDTH = LEVEL_STEPS.reduce(
+  (width, _step, i) => width + TIER_LINE_CELL + tierLineGap(i),
+  0
+);
+
+/**
  * The tier line as a table (design specs §3.9), so it reads with images off:
  * thirteen `<td bgcolor>` cells, 2px apart within a tier and 6px between
  * tiers, lit in each tier's colour up to the player's level and unlit above
@@ -163,16 +182,15 @@ export function tierLineTable(level: number): string {
     const tier = tierForLevel(step)!;
     const lit = step <= level;
     const color = lit ? tier.color : INK_UNLIT;
-    const next = LEVEL_STEPS[i + 1];
-    const gap = next === undefined ? 0 : Math.floor(next) === Math.floor(step) ? 2 : 6;
-    const cell = `<td width="18" height="8" bgcolor="${color}" style="width:18px;height:8px;background:${color};font-size:0;line-height:0;">&nbsp;</td>`;
+    const gap = tierLineGap(i);
+    const cell = `<td width="${TIER_LINE_CELL}" height="8" bgcolor="${color}" style="width:${TIER_LINE_CELL}px;height:8px;background:${color};font-size:0;line-height:0;">&nbsp;</td>`;
     const spacer = gap ? `<td width="${gap}" style="width:${gap}px;font-size:0;line-height:0;">&nbsp;</td>` : "";
     return cell + spacer;
   }).join("");
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:14px 0 0;">
       <tr>${steps}</tr>
     </table>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="282" style="border-collapse:collapse;width:282px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${TIER_LINE_WIDTH}" style="border-collapse:collapse;width:${TIER_LINE_WIDTH}px;">
       <tr>
         <td style="padding:6px 0 0;font-size:13px;color:${INK_MUTED};">Love</td>
         <td align="right" style="padding:6px 0 0;font-size:13px;color:${INK_MUTED};text-align:right;">Grand Slam</td>
@@ -499,7 +517,7 @@ export function buildCohortInviteEmail(params: CohortInviteParams): EmailBody {
       : moneyCAD(priceCents);
 
   const tierLine = tierNames.length
-    ? `<p style="margin:0 0 12px;">${tierNames.map(tierChip).join('<span style="color:${INK_MUTED};margin:0 6px;">–</span>')}</p>`
+    ? `<p style="margin:0 0 12px;">${tierNames.map(tierChip).join(`<span style="color:${INK_MUTED};margin:0 6px;">–</span>`)}</p>`
     : "";
 
   const detailRow = (label: string, value: string) => `
@@ -698,7 +716,7 @@ export function buildAssessmentCompleteEmail(params: {
   const tierSentence = tier ? `${who.isSelf ? "You're" : `${who.playerFirst} is`} a ${tier.name}.` : "";
   const forming = `We're forming ${who.possessive} ${levelLabel} group around everyone's availability — invitations go out by email.`;
   const dashboardLine = `${who.Possessive} tier, level and what comes next are on your dashboard.`;
-  const sooner = "Want to move sooner? Browse Programs.";
+  const sooner = "Want to move sooner?";
 
   const tierBlock = tier
     ? `

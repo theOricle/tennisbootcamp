@@ -299,6 +299,19 @@ function ProgramMatchCard({
   );
 }
 
+/**
+ * The player's first name when the quiz was about someone other than the
+ * holder (a parent taking it for one child), else undefined so the copy says
+ * "you". The same rule as the quiz email's subjectOf(): first names compared
+ * case-insensitively, the holder being the contact name in form.name.
+ */
+function otherPlayerFirst(playerName?: string, holderName?: string): string | undefined {
+  const player = (playerName ?? "").trim().split(/\s+/)[0] ?? "";
+  const holder = (holderName ?? "").trim().split(/\s+/)[0] ?? "";
+  if (!player || player.toLowerCase() === holder.toLowerCase()) return undefined;
+  return player;
+}
+
 /** The dashed "Provisional" chip beside a likely tier (design specs §3.4). */
 const PROVISIONAL_CHIP =
   "inline-flex min-h-6 items-center rounded-full border border-dashed border-white/30 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/85";
@@ -478,7 +491,7 @@ function TentativeMatchScreen({
           <IntakeComplete name={form.name} household={false} signedIn={signedIn} />
 
           {/* The likely tier, named as provisional (audit M17) */}
-          <LikelyTierBlock tier={tier} />
+          <LikelyTierBlock tier={tier} firstName={otherPlayerFirst(result.name, form.name)} />
 
           {/* The match, as information: a link to the program with its class and price */}
           {top && (
@@ -602,11 +615,14 @@ function HouseholdMatchScreen({
 function FallbackScreen({
   form,
   level,
+  playerName,
   household,
   signedIn,
 }: {
   form: FormState;
   level?: SelfLevel;
+  /** The one player's name, so a parent reads their child's name (see otherPlayerFirst). */
+  playerName?: string;
   household: boolean;
   signedIn: boolean;
 }) {
@@ -619,7 +635,12 @@ function FallbackScreen({
           <IntakeComplete name={form.name} household={household} signedIn={signedIn} />
 
           {/* One player still gets their likely tier; a household with no match is thanked. */}
-          {!household && <LikelyTierBlock tier={provisionalTierFor(level)} />}
+          {!household && (
+            <LikelyTierBlock
+              tier={provisionalTierFor(level)}
+              firstName={otherPlayerFirst(playerName, form.name)}
+            />
+          )}
 
           <AssessmentSuggestion
             household={household}
@@ -955,6 +976,7 @@ function IntakePageInner() {
         <FallbackScreen
           form={form}
           level={results[0]?.level}
+          playerName={results[0]?.name}
           household={results.length > 1}
           signedIn={household.signedIn}
         />
