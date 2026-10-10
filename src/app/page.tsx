@@ -11,7 +11,7 @@ import { EventsList } from "@/components/sections/EventsList";
 import { QuizBand } from "@/components/sections/QuizBand";
 import { PageStack } from "@/components/layout/PageStack";
 
-import { programs } from "@/content/programs";
+import { listedPrograms } from "@/content/programs";
 import { coaches } from "@/content/coaches";
 import { events } from "@/content/events";
 import { SITE_DESCRIPTION } from "@/content/site";
@@ -44,10 +44,17 @@ export default function HomePage() {
           (audit M36, H6). */}
       <TierBand />
 
-      {/* One Container, one rhythm (audit H2). Programs come first; the page
-          closes on the quiz, then the newsletter, the tertiary CTA (M12, M13). */}
+      {/* One Container, one rhythm (audit H2). Programs come first: the live
+          weekend classes as spec-sheet cards with a quiz line under them
+          (H7); the coming-soon camp lives on /programs. The page closes on
+          the quiz, then the newsletter, the tertiary CTA (M12, M13). */}
       <PageStack>
-        <ProgramsGrid programs={programs.slice(0, 3)} title="Our Programs" />
+        <ProgramsGrid
+          programs={listedPrograms.filter((p) => !p.comingSoon)}
+          title="Our Programs"
+          layout="grid"
+          quizLine
+        />
         <Coaches coaches={coaches} />
         {hasRealEvents && <EventsList events={events} title="Upcoming Events" />}
         <QuizBand source="home-closing" />
