@@ -156,6 +156,18 @@ check("enroll focuses the step heading", enroll.includes("useFocusOnChange(headi
 check("enroll's Continue is never disabled for gaps", !enroll.includes("disabled={!canContinue()"));
 check("enroll players and guardian are fieldsets", (enroll.match(/<fieldset/g) ?? []).length >= 3);
 check("enroll failures are alerts", enroll.includes("<FormAlert>{submitError}</FormAlert>"));
+check(
+  "every enroll refusal carries info@",
+  enroll.includes('setSubmitError(withHumanFallback(msg.slice("refused:".length)))') &&
+    !enroll.includes('setSubmitError(msg.slice("refused:".length))')
+);
+check("a server refusal without info@ gets it", withHumanFallback("Missing required fields.") === `Missing required fields. If it keeps happening, email ${INFO_EMAIL}.`);
+check(
+  "enroll stops a chosen player with no name",
+  /if \(!p\.name\.trim\(\)\) \{\s*out\.push\(\{ id: FIELD_IDS\.player\(p\.key\), message: FIELD_MESSAGES\.playerNameMissing \}\)/.test(enroll)
+);
+check("the no-name message offers a way out and info@", FIELD_MESSAGES.playerNameMissing.includes("choose someone else") && FIELD_MESSAGES.playerNameMissing.includes(INFO_EMAIL));
+check("the player block shows its own error", enroll.includes("fieldId={FIELD_IDS.player(player.key)}") && enroll.includes("id={FIELD_IDS.player(player.key)}"));
 check("the Copy button is announced", enroll.includes("copied` : \"\""));
 check("the e-transfer labels meet the floor", !/text-white\/40">(Amount|Send to|Message)/.test(enroll));
 for (const [file, src] of [
