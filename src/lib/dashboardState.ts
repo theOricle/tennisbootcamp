@@ -287,7 +287,23 @@ function groupName(cohort: Cohort): string {
   return span ? `${span} group` : cohort.label;
 }
 
-/** The player a row is for: "your" / "Maya's", and the name used in buttons. */
+/**
+ * True when a row's own name (an e-transfer note, a booking's player name)
+ * is the holder's: the full name, or the first name alone, folded for case
+ * and spaces.
+ */
+function namesHolder(input: NextStepInput, name: string | null): boolean {
+  const holder = input.roster.find((p) => p.id === input.selfId)?.full_name;
+  if (!norm(holder) || !norm(name)) return false;
+  return norm(name) === norm(holder) || norm(firstNameOf(name)) === norm(firstNameOf(holder));
+}
+
+/**
+ * The player a row is for: "your" / "Maya's", and the name used in buttons.
+ * A row with no roster player is the holder's under "you" only when it names
+ * nobody or names the holder; a row named for someone else (a signed-out
+ * enroll's note, "Leo Chen") reads by that name.
+ */
 function whose(
   input: NextStepInput,
   player: RosterPlayer | null,
@@ -295,11 +311,22 @@ function whose(
 ): { owner: string; Owner: string; name: string | null; isSelf: boolean } {
   const isSelf =
     (player !== null && player.id === input.selfId) ||
-    (player === null && input.voice === "you");
+    (player === null &&
+      input.voice === "you" &&
+      (!norm(fallbackName) || namesHolder(input, fallbackName)));
   if (isSelf) return { owner: "your", Owner: "Your", name: null, isSelf: true };
   const name = firstNameOf(player?.full_name ?? fallbackName) || "your player";
   const p = name === "your player" ? "your player's" : possessive(name);
   return { owner: p, Owner: p.charAt(0).toUpperCase() + p.slice(1), name, isSelf: false };
+}
+
+/**
+ * Which of two waiting rows for one player stands: a live hold over a lapsed
+ * one, else the newer hold.
+ */
+function replacesHold(kept: DashInvite, next: DashInvite): boolean {
+  if (kept.status !== next.status) return next.status === "invited";
+  return next.expires_at > kept.expires_at;
 }
 
 function cohortIsLive(cohort: Cohort | undefined, today: string): cohort is Cohort {
@@ -371,14 +398,33 @@ export function nextStepFor(input: NextStepInput): NextStep {
     );
   if (waiting.length > 0) {
     const cohort = cohortById.get(waiting[0].cohort_id) as Cohort;
-    const group = waiting.filter((i) => i.cohort_id === cohort.id);
-    const people = group.map((i) => {
-      const player = playerFor(roster, { participantId: i.participant_id });
-      return {
-        who: whose(input, player, i.payment_note ?? null),
-        fullName: player?.full_name?.trim() || i.payment_note?.trim() || "",
-      };
-    });
+    // One row per player: a lapsed hold beside a newer row for the same
+    // player (the coach re-invited, or the player sent it again) is one
+    // spot and one amount, not two.
+    const byPlayer = new Map<
+      string,
+      { invite: DashInvite; who: ReturnType<typeof whose>; fullName: string }
+    >();
+    for (const i of waiting) {
+      if (i.cohort_id !== cohort.id) continue;
+      const note = i.payment_note?.trim() || null;
+      const player = playerFor(roster, { participantId: i.participant_id, name: note });
+      const who = whose(input, player, note);
+      const key = who.isSelf
+        ? "self"
+        : player
+          ? `p:${player.id}`
+          : i.participant_id
+            ? `p:${i.participant_id}`
+            : note
+              ? `n:${norm(note)}`
+              : `r:${i.id}`;
+      const kept = byPlayer.get(key);
+      if (kept && !replacesHold(kept.invite, i)) continue;
+      byPlayer.set(key, { invite: i, who, fullName: player?.full_name?.trim() || note || kept?.fullName || "" });
+    }
+    const people = [...byPlayer.values()];
+    const group = people.map((p) => p.invite);
     const amount = etransferTotalCents(group, cohort.priceCents);
     const memo = etransferMemo(
       people.map((p) => p.fullName).filter(Boolean).join(" + "),

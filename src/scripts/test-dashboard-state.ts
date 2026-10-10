@@ -262,6 +262,89 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
     })
   );
   ok("rows with no participant still name the players from the intent's note", guestRows.detail.includes("“Maya Chen + Leo Chen – Fall Saturday”"));
+  // Fix round 2 on PR #88: a row with no participant is "you" only when it
+  // names nobody or names the holder, never "for you and you".
+  check("…and the headline names them, not 'you and you'", guestRows.headline, "Sina is confirming the e-transfer for Maya and Leo.");
+  ok("…and so do the spots", guestRows.detail.includes("The spots for Maya and Leo in Youth Programs are held while Sina confirms it arrived."));
+  const holderAndGuest = nextStepFor(
+    base({
+      roster: [parent],
+      voice: "you",
+      invites: [
+        invite({ id: "inv_dana", participant_id: parent.id, payment_method: "etransfer" }),
+        invite({ id: "inv_b", participant_id: null, payment_note: "Leo Chen", payment_method: "etransfer" }),
+      ],
+    })
+  );
+  check(
+    "the holder's own row beside a guest row reads 'you and Leo'",
+    [holderAndGuest.headline, holderAndGuest.detail.includes("“Dana Chen + Leo Chen – Fall Saturday”")],
+    ["Sina is confirming the e-transfer for you and Leo.", true]
+  );
+  const nameless = nextStepFor(
+    base({ roster: [parent], voice: "you", invites: [invite({ participant_id: null, payment_method: "etransfer" })] })
+  );
+  check("a row that names nobody is still the solo holder's", nameless.headline, "Sina is confirming your e-transfer.");
+  const holderNote = nextStepFor(
+    base({ roster: [parent], voice: "you", invites: [invite({ participant_id: null, payment_note: "dana", payment_method: "etransfer" })] })
+  );
+  check("…and so is one whose note is the holder's name", holderNote.headline, "Sina is confirming your e-transfer.");
+
+  // Fix round 2 on PR #88: one row per player. A lapsed hold beside a newer
+  // row for the same player is one spot and one amount, the live one.
+  const resent = nextStepFor(
+    base({
+      invites: [
+        invite({ id: "inv_old", status: "expired", expires_at: "2026-10-05T22:00:00.000Z", payment_method: "etransfer", amountDueCents: PRICE }),
+        invite({ id: "inv_new", token: "tok789", payment_method: "etransfer", amountDueCents: PRICE - 2000, creditBookingId: "b_maya" }),
+      ],
+    })
+  );
+  check(
+    "a lapsed hold beside a newer row for the same player counts once",
+    [resent.headline, resent.detail.startsWith(`${formatDollars(COHORT_TOTAL - 20)} to`), resent.detail.includes("“Maya Chen – Fall Saturday”")],
+    ["Sina is confirming the e-transfer for Maya.", true, true]
+  );
+  ok("…and reads as one spot", resent.detail.includes("Maya's spot in Youth Programs is held while Sina confirms it arrived."));
+  const resentFirst = nextStepFor(
+    base({
+      invites: [
+        invite({ id: "inv_new", token: "tok789", payment_method: "etransfer", amountDueCents: PRICE - 2000 }),
+        invite({ id: "inv_old", status: "expired", expires_at: "2026-10-05T22:00:00.000Z", payment_method: "etransfer", amountDueCents: PRICE }),
+      ],
+    })
+  );
+  check("…whichever row comes first, the live hold stands", resentFirst.detail.startsWith(`${formatDollars(COHORT_TOTAL - 20)} to`), true);
+  const guestResent = nextStepFor(
+    base({
+      roster: [parent],
+      voice: "you",
+      invites: [
+        invite({ id: "inv_old", participant_id: null, payment_note: "Maya Chen", status: "expired", expires_at: "2026-10-05T22:00:00.000Z", payment_method: "etransfer" }),
+        invite({ id: "inv_new", participant_id: null, payment_note: "Maya Chen", token: "tok789", payment_method: "etransfer" }),
+      ],
+    })
+  );
+  check(
+    "two guest rows named for one player count once",
+    [guestResent.headline, guestResent.detail.startsWith(`${formatDollars(COHORT_TOTAL)} to`), guestResent.detail.includes("“Maya Chen – Fall Saturday”")],
+    ["Sina is confirming the e-transfer for Maya.", true, true]
+  );
+  const holderTwice = nextStepFor(
+    base({
+      roster: [parent],
+      voice: "you",
+      invites: [
+        invite({ id: "inv_dana", participant_id: parent.id, status: "expired", expires_at: "2026-10-05T22:00:00.000Z", payment_method: "etransfer" }),
+        invite({ id: "inv_guest", participant_id: null, payment_note: "Dana Chen", token: "tok789", payment_method: "etransfer" }),
+      ],
+    })
+  );
+  check(
+    "the holder's lapsed row and a newer row in their name count once",
+    [holderTwice.headline, holderTwice.detail.startsWith(`${formatDollars(COHORT_TOTAL)} to`), holderTwice.detail.includes("“Dana Chen – Fall Saturday”")],
+    ["Sina is confirming your e-transfer.", true, true]
+  );
   check("etransferTotalCents: a missing amount counts the cohort price", etransferTotalCents([{ amountDueCents: null }, { amountDueCents: PRICE - 2000 }], PRICE), PRICE * 2 - 2000);
   check(
     "etransferTotalCents: one $20 found by two invites comes off once",
