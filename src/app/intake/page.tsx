@@ -387,14 +387,23 @@ function IntakeComplete({
   name,
   household,
   signedIn,
+  playerFirst,
 }: {
   name?: string;
   household: boolean;
   signedIn: boolean;
+  /**
+   * The one player's first name when the quiz was about someone other than
+   * the holder (otherPlayerFirst), so a parent reads "Leo's level" here and
+   * the tier block below says "Leo's likely starting tier" on the same
+   * screen. Ignored for a household.
+   */
+  playerFirst?: string;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   useFocusOnMount(headingRef);
   const firstName = (name ?? "").trim().split(/\s+/)[0];
+  const child = household ? undefined : playerFirst;
   return (
     <>
       <span className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
@@ -410,12 +419,16 @@ function IntakeComplete({
       <p className="mt-3 text-sm leading-relaxed text-white/70">
         {household
           ? "Your answers are in and there's nothing else you need to do. Sina reviews each player's level and your schedule, then places each of them in a group and a time that fit."
-          : "Your answers are in and there's nothing else you need to do. Sina reviews your level and schedule, then places you in a group and a time that fit."}
+          : child
+            ? `Your answers are in and there's nothing else you need to do. Sina reviews ${child}'s level and your schedule, then places ${child} in a group and a time that fit.`
+            : "Your answers are in and there's nothing else you need to do. Sina reviews your level and schedule, then places you in a group and a time that fit."}
       </p>
       <p className="mt-3 text-sm leading-relaxed text-white/70">
         {household
           ? "When a group that fits a player's level and your schedule is forming, Sina emails you an invitation with the day, time and price."
-          : "When a group that fits your level and schedule is forming, Sina emails you an invitation with the day, time and price."}
+          : child
+            ? `When a group that fits ${child}'s level and your schedule is forming, Sina emails you an invitation with the day, time and price.`
+            : "When a group that fits your level and schedule is forming, Sina emails you an invitation with the day, time and price."}
       </p>
       {/* Only a brand-new email gets the set-password link; a signed-in holder has one. */}
       {!signedIn && (
@@ -483,15 +496,23 @@ function TentativeMatchScreen({
   const router = useRouter();
   const top = result.recommendations[0];
   const tier = provisionalTierFor(result.level);
+  // A parent who took the quiz for one child reads the child's name in both
+  // the confirmation and the tier block, never "you" above "Leo's".
+  const playerFirst = otherPlayerFirst(result.name, form.name);
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-10 md:py-16">
         <div className={RESULT_CARD}>
-          <IntakeComplete name={form.name} household={false} signedIn={signedIn} />
+          <IntakeComplete
+            name={form.name}
+            household={false}
+            signedIn={signedIn}
+            playerFirst={playerFirst}
+          />
 
           {/* The likely tier, named as provisional (audit M17) */}
-          <LikelyTierBlock tier={tier} firstName={otherPlayerFirst(result.name, form.name)} />
+          <LikelyTierBlock tier={tier} firstName={playerFirst} />
 
           {/* The match, as information: a link to the program with its class and price */}
           {top && (
@@ -627,19 +648,23 @@ function FallbackScreen({
   signedIn: boolean;
 }) {
   const router = useRouter();
+  // Same rule as TentativeMatchScreen: one child is named in both blocks.
+  const playerFirst = household ? undefined : otherPlayerFirst(playerName, form.name);
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-10 md:py-16">
         <div className={RESULT_CARD}>
-          <IntakeComplete name={form.name} household={household} signedIn={signedIn} />
+          <IntakeComplete
+            name={form.name}
+            household={household}
+            signedIn={signedIn}
+            playerFirst={playerFirst}
+          />
 
           {/* One player still gets their likely tier; a household with no match is thanked. */}
           {!household && (
-            <LikelyTierBlock
-              tier={provisionalTierFor(level)}
-              firstName={otherPlayerFirst(playerName, form.name)}
-            />
+            <LikelyTierBlock tier={provisionalTierFor(level)} firstName={playerFirst} />
           )}
 
           <AssessmentSuggestion
