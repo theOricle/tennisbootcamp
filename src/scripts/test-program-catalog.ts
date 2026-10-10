@@ -21,7 +21,7 @@ import {
   programs,
 } from "../content/programs";
 import { AGE_BANDS, ageBandIsMinor } from "../lib/ageBand";
-import { formatStartDate } from "../lib/cohorts";
+import { formatCohortSchedule, formatStartDate } from "../lib/cohorts";
 import { recommendPrograms } from "../lib/recommend";
 import { formatTierSpan, tierForLevel } from "../lib/tiers";
 import {
@@ -278,6 +278,19 @@ check("no span → the level note as a plain row", /<dt[^>]*>Level<\/dt><dd[^>]*
 const withCohort = render(createElement(ProgramCard, { program: youth, nextCohort: cohort, variant: "compact" }));
 check("a public cohort → the lime chip and the Next row", withCohort.includes("Next cohort Oct 18") && /<dt[^>]*>Next<\/dt>/.test(withCohort));
 check("the Next row is always visible (no hover strip)", !withCohort.includes("group-hover:max-h") && !withCohort.includes("group-hover:opacity"));
+// Fix round 2: the Next row's parts wrap whole. Each part of
+// formatCohortSchedule is its own whitespace-nowrap span in a flex-wrap line,
+// the middot rides with the part before it (decoration), and the last part
+// carries none, so a narrow column never splits a date range and a second
+// line never opens with "·" (audit L8, as the Price row).
+const nextParts = formatCohortSchedule(cohort).split(" · ");
+const nextDd = withCohort.match(/<dt[^>]*>Next<\/dt><dd[^>]*>([\s\S]*?)<\/dd><\/div>/)?.[1] ?? "";
+check("Next: four parts in a flex-wrap line", nextParts.length === 4 && nextDd.startsWith('<span class="flex flex-wrap gap-x-1">') && count(nextDd, 'class="whitespace-nowrap"') === nextParts.length, nextDd);
+check("Next: every part is its own nowrap span, the middot attached to the part before it", nextParts.slice(0, -1).every((part) => nextDd.includes(`<span class="whitespace-nowrap">${part}<span aria-hidden="true"> ·</span></span>`)) && nextDd.includes(`<span class="whitespace-nowrap">${nextParts[nextParts.length - 1]}</span>`), nextDd);
+check("Next: no part opens with a middot, and the joined string is gone", !/class="whitespace-nowrap">\s*·/.test(nextDd) && !nextDd.includes(formatCohortSchedule(cohort)) && count(nextDd, "·") === nextParts.length - 1);
+const rowWithCohort = render(createElement(ProgramCard, { program: youth, nextCohort: cohort, variant: "row" }));
+const rowNextDd = rowWithCohort.match(/<dt[^>]*>Next<\/dt><dd[^>]*>([\s\S]*?)<\/dd><\/div>/)?.[1] ?? "";
+check("Next: the row variant renders the same wrapped parts", rowNextDd.length > 0 && rowNextDd === nextDd, rowNextDd);
 
 const fitMaya = render(createElement(ProgramCard, { program: youth, fit: { name: "Maya", level: 2.5 }, variant: "compact" }));
 check("fit → Fits Maya eyebrow", fitMaya.includes("Fits Maya") && !fitMaya.includes("Juniors and teens · Saturdays"));

@@ -132,6 +132,31 @@ function PriceSummary({ text }: { text: string }) {
   );
 }
 
+/**
+ * The Next row: the public cohort's schedule (formatCohortSchedule, four
+ * parts joined by " · ") as parts that wrap whole. Each part is
+ * `whitespace-nowrap`, so a narrow column never splits a date range
+ * ("Oct 18 – Nov" / "22"), and the middot rides with the part before it, so
+ * a second line never opens with a separator (the audit L8 pattern the Price
+ * row already avoids). The separators are decoration; the parts are the
+ * text. `gap-x-1` matches the space before the middot, so the spacing on
+ * both sides of it reads the same.
+ */
+function CohortSchedule({ cohort }: { cohort: Cohort }) {
+  const parts = formatCohortSchedule(cohort).split(" · ");
+  const last = parts.length - 1;
+  return (
+    <span className="flex flex-wrap gap-x-1">
+      {parts.map((part, i) => (
+        <span key={`${i}-${part}`} className="whitespace-nowrap">
+          {part}
+          {i < last && <span aria-hidden="true"> ·</span>}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 // ─── Slot qualifier (design specs §5.3.1) ─────────────────────────────────────
 // The first matching rule wins: the slot's level band as TierRangeBadges (so
 // Adult Bootcamps shows Love – Rally / Deuce / Break – Ace, the visible
@@ -365,7 +390,9 @@ export function ProgramCard({
           {nextCohort && (
             <div className={`${ROW_CLASS} ${L.specRow} ${L.dlNext}`.trim()}>
               <dt className={`${LABEL_CLASS} pt-0.5`}>Next</dt>
-              <dd className={VALUE_CLASS}>{formatCohortSchedule(nextCohort)}</dd>
+              <dd className={VALUE_CLASS}>
+                <CohortSchedule cohort={nextCohort} />
+              </dd>
             </div>
           )}
 
