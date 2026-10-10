@@ -353,19 +353,24 @@ export function ProgramCard({
                 <ul role="list" className="space-y-1">
                   {slots.map((slot) => {
                     const kind = qualifierKind(slot, slots.length);
+                    // `row` at md: the class label beside the time. The middot
+                    // between them rides with the time (decoration, shown and
+                    // hidden with the label), so when the narrow Timetable
+                    // column wraps, the label's line never opens with "·"
+                    // (audit L8, as the Next and Price rows). `gap-x-1` matches
+                    // the space before the middot.
+                    const showGroup = L.rowSpec && (kind === "tier" || kind === "none");
                     return (
                       <li
                         key={`${slot.day}-${slot.time}`}
                         className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${L.slot}`.trim()}
                       >
-                        <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
-                          <span className="whitespace-nowrap">{formatSlotWhen(slot)}</span>
-                          {L.rowSpec && (kind === "tier" || kind === "none") && (
-                            <span className={`min-w-0 text-white/65 ${L.slotGroup}`}>
-                              <span aria-hidden="true">· </span>
-                              {slot.group}
-                            </span>
-                          )}
+                        <span className="flex min-w-0 flex-wrap items-baseline gap-x-1">
+                          <span className="whitespace-nowrap">
+                            {formatSlotWhen(slot)}
+                            {showGroup && <span aria-hidden="true" className={`text-white/65 ${L.slotGroup}`}> ·</span>}
+                          </span>
+                          {showGroup && <span className={`min-w-0 text-white/65 ${L.slotGroup}`}>{slot.group}</span>}
                         </span>
                         <SlotQualifier slot={slot} kind={kind} />
                       </li>

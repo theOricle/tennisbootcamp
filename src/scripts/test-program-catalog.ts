@@ -325,6 +325,19 @@ check("row variant: the art box is 16:10 at md, never stretched", rowCard.includ
 check("auto variant: the band frame keeps 2:1 in every state, the column resets at lg", h2.includes('viewBox="0 100 1600 800"') && h2.includes("lg:block lg:h-auto lg:border-r-0") && !h2.includes("md:aspect-") && !h2.includes("min-h-["));
 check("row variant reads Timetable at md and When below", rowCard.includes(">Timetable</span>") && rowCard.includes(">When</span>"));
 check("row variant carries both rails, one hidden per breakpoint", count(rowCard, 'aria-label="Built for Love to Ace') === 2 && rowCard.includes("hidden md:block"));
+// Fix round 3: in the row variant's Timetable column the class label follows
+// the time, and the middot between them rides with the time (aria-hidden,
+// shown and hidden with the label), so a wrapped line in the narrow md column
+// never opens with "·" (audit L8, as the Next and Price rows). The label span
+// is middot-free; the compact card, which shows no label, carries no middot.
+const slotList = (markup: string) => markup.match(/<ul role="list" class="space-y-1">([\s\S]*?)<\/ul>/)?.[1] ?? "";
+const rowSlots = slotList(rowCard);
+const GROUP_MIDDOT = '<span aria-hidden="true" class="text-white/65 hidden md:inline"> ·</span>';
+check("Timetable: the middot rides with the time, hidden below md like the label", adult.timetable!.every((slot) => rowSlots.includes(`<span class="whitespace-nowrap">${formatSlotWhen(slot)}${GROUP_MIDDOT}</span>`)), rowSlots);
+check("Timetable: the class label follows the time and is middot-free", adult.timetable!.every((slot) => rowSlots.includes(`${GROUP_MIDDOT}</span><span class="min-w-0 text-white/65 hidden md:inline">${slot.group}</span>`)) && !/min-w-0 text-white\/65 hidden md:inline">\s*·/.test(rowSlots), rowSlots);
+check("Timetable: one middot per class, none in the compact card", count(rowSlots, "·") === adult.timetable!.length && !slotList(card).includes("·") && slotList(card).includes(`<span class="whitespace-nowrap">${formatSlotWhen(youth.timetable![0])}</span>`), slotList(card));
+const hpRowSlots = slotList(render(createElement(ProgramCard, { program: hp, variant: "row" })));
+check("Timetable: a single unbanded class shows its label the same way", hpRowSlots.includes(`${formatSlotWhen(hp.timetable![0])}${GROUP_MIDDOT}</span><span class="min-w-0 text-white/65 hidden md:inline">${hp.timetable![0].group}</span>`), hpRowSlots);
 
 console.log("ProgramCardList and ProgramComingSoonBand");
 const live = listedPrograms.filter((p) => !p.comingSoon);
