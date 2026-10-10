@@ -369,3 +369,62 @@ export function tierInCohortRange(
   if (!tier || !range) return false;
   return tier.id >= range.min.id && tier.id <= range.max.id;
 }
+
+// ─── Placed state (audit L17, owner D6-B) ────────────────────────────────────
+// A quiz-placed player has no coach-set level, but when Sina has put them in a
+// level-banded cohort the band says where they train. The RankCard shows that
+// as "Deuce group" instead of "Unranked" — a fact, never an assessment pitch.
+
+export type PlacedSpan = { min: number | null; max: number | null };
+
+/**
+ * The level band of a cohort this player is enrolled in, or null: when the
+ * player already has a level (the rank shows instead), when they have no
+ * enrollment, or when none of their cohorts is tier-gated. Enrollment rows
+ * carry the player's name, not an id, so a row matches a player by name
+ * (trimmed, case-insensitive); an account with one player claims every row
+ * on it, the pre-household behaviour. The earliest-starting banded cohort
+ * wins when there are several.
+ */
+export function placedSpanFor(
+  player: { level: number | string | null | undefined; full_name: string | null },
+  enrollments: readonly { cohort_id: string; participant_name: string | null }[],
+  cohorts: readonly {
+    id: string;
+    startDate: string;
+    levelMin?: number | string | null;
+    levelMax?: number | string | null;
+  }[],
+  { soloAccount = false }: { soloAccount?: boolean } = {}
+): PlacedSpan | null {
+  if (toLevelNumber(player.level) !== null) return null;
+  const name = (player.full_name ?? "").trim().toLowerCase();
+  const mine = enrollments.filter((e) => {
+    if (soloAccount) return true;
+    const who = (e.participant_name ?? "").trim().toLowerCase();
+    return name.length > 0 && who === name;
+  });
+  const banded = mine
+    .map((e) => cohorts.find((c) => c.id === e.cohort_id))
+    .filter(
+      (c): c is NonNullable<typeof c> =>
+        !!c && tierRangeForLevels(c.levelMin, c.levelMax) !== null
+    )
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const cohort = banded[0];
+  if (!cohort) return null;
+  return {
+    min: toLevelNumber(cohort.levelMin ?? cohort.levelMax),
+    max: toLevelNumber(cohort.levelMax ?? cohort.levelMin),
+  };
+}
+
+// ─── Email emblem (audit M35, design specs §3.9) ─────────────────────────────
+
+/**
+ * The path of a tier's emblem PNG, served by src/app/tier-emblem/[slug]/
+ * route.tsx (prerendered at build time). Emails prefix it with the site URL.
+ */
+export function tierEmblemPath(tier: Pick<Tier, "slug">): string {
+  return `/tier-emblem/${tier.slug}`;
+}

@@ -94,11 +94,17 @@ export async function sendLinkEmail(
   await deliver({ to, ...buildLinkEmail(subject, link, actionLabel) });
 }
 
+/**
+ * The quiz result. `provisionalTierName` is the self-estimate's tier (owner
+ * D4) or null when the player named no level; `participantName` is the first
+ * player the quiz was about, when that isn't the holder (audit M17, M35).
+ */
 export async function sendRecommendationEmail(
   to: string,
   name: string,
   recommendations: Recommendation[],
-  tentativeLevel?: string
+  provisionalTierName?: string | null,
+  participantName?: string | null
 ): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
@@ -107,7 +113,7 @@ export async function sendRecommendationEmail(
   }
   await deliver({
     to,
-    ...buildRecommendationEmail(name, recommendations, tentativeLevel),
+    ...buildRecommendationEmail(name, recommendations, provisionalTierName, participantName),
     replyTo: CONTACT_EMAIL,
   });
 }

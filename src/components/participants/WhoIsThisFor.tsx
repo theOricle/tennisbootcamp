@@ -7,7 +7,9 @@ import {
   ageBandIsMinor,
   type AgeBand,
 } from "@/lib/ageBand";
-import { SELF_LEVELS } from "@/lib/level";
+import { SELF_LEVELS, provisionalTierFor } from "@/lib/level";
+import { formatTierLevel } from "@/lib/tiers";
+import { TierLine } from "@/components/tiers";
 import { withHumanFallback, type FieldIssue } from "@/lib/formValidation";
 import {
   FieldError,
@@ -387,9 +389,34 @@ function AgeBandField({
 }
 
 /**
+ * The quiz's hint under the self-estimate (audit M17; design specs §3.7):
+ * once an answer maps to a provisional tier (owner D4), a provisional rail
+ * and "Likely tier: Rally. Sina confirms it when he places you." "Not sure"
+ * and "Prefer not to say" show nothing. Polite live region, so a
+ * screen-reader user hears the tier change without leaving the select.
+ */
+function LikelyTierHint({ value, self }: { value: string; self: boolean }) {
+  const tier = provisionalTierFor(value);
+  return (
+    <div aria-live="polite" className="min-w-0">
+      {tier && (
+        <div className="mt-1">
+          <TierLine variant="rail" size="sm" level={tier.id} provisional labels="none" />
+          <p className={`${HINT_CLASS} mt-2`}>
+            Likely tier: <span className="font-semibold text-white">{tier.name}</span>. Sina
+            confirms it when he places {self ? "you" : "them"}.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Self-estimate select. Optional unless the form places off the answer. The
  * options speak to whoever answers (audit M18): "I can rally" for yourself,
- * "They can rally" for a child or partner.
+ * "They can rally" for a child or partner. `tierHint` (the quiz only) shows
+ * the answer's provisional tier under the select.
  */
 function SelfLevelField({
   id,
@@ -400,6 +427,7 @@ function SelfLevelField({
   label = "Where's their game right now?",
   note,
   error,
+  tierHint = false,
 }: {
   id: string;
   value: string;
@@ -410,6 +438,8 @@ function SelfLevelField({
   label?: string;
   note?: string;
   error?: string | null;
+  /** Show the answer's provisional tier (the quiz places off this answer). */
+  tierHint?: boolean;
 }) {
   const options = required
     ? [
@@ -445,6 +475,7 @@ function SelfLevelField({
           {note}
         </p>
       )}
+      {tierHint && <LikelyTierHint value={value} self={self} />}
       <FieldError fieldId={id} message={error} />
     </div>
   );
@@ -458,7 +489,8 @@ function relationshipNote(p: ParticipantOption): string {
   const rel = (RELATIONSHIPS as readonly string[]).includes(p.relationship)
     ? RELATIONSHIP_LABELS[p.relationship as Relationship]
     : "";
-  const level = p.level != null ? `Level ${p.level.toFixed(1)}` : "Unranked";
+  // "Rally · 2.5", the tier with its level, or the one no-level word.
+  const level = p.level != null ? formatTierLevel(p.level) : "Unranked";
   return [rel, level].filter(Boolean).join(" · ");
 }
 
@@ -573,8 +605,9 @@ function AddPersonForm({
           if (fieldErrors.level && next) setFieldErrors((f) => ({ ...f, level: undefined }));
         }}
         required={requireLevel}
-        note="A starting point only — their level comes from the court."
+        note="A starting point only — Sina sets their level."
         error={fieldErrors.level}
+        tierHint={requireLevel}
       />
       {error && (
         <p role="alert" className="text-sm text-red-400">
@@ -715,6 +748,7 @@ function GuestBlock({
         self={self}
         label={self ? "Where's your game right now?" : "Where's their game right now?"}
         error={errors?.[levelId]}
+        tierHint={requireLevel}
       />
     </fieldset>
   );
@@ -878,6 +912,7 @@ export function WhoIsThisFor({
                           ? "Where's your game right now?"
                           : "Where's their game right now?"
                       }
+                      tierHint
                     />
                   </div>
                 )}

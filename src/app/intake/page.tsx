@@ -9,8 +9,11 @@ import { useBotCheck } from "@/lib/useBotCheck";
 import { MIN_FILL_TIME_MS } from "@/lib/botCheck";
 import { LEAD_SOURCE_FIELD } from "@/lib/leadSource";
 import { storedFirstTouch } from "@/lib/firstTouchBrowser";
-import { tentativeLevelLabel, selfEstimateToLevel, type SelfLevel } from "@/lib/level";
-import { ageBandToWho, type AgeBand } from "@/lib/ageBand";
+import { provisionalTierFor, selfEstimateToLevel, type SelfLevel } from "@/lib/level";
+import { AGE_BAND_LABELS, ageBandToWho, type AgeBand } from "@/lib/ageBand";
+import { levelWithinRange, type Tier } from "@/lib/tiers";
+import { TierChip, TierEmblem, TierLine } from "@/components/tiers";
+import type { Program, TimetableSlot } from "@/types/program";
 import {
   availabilityToLegacySlots,
   parseAvailability,
@@ -219,13 +222,135 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 
 // ─── Tentative-match result screens (funnel flip) ─────────────────────────────
 
-/** The one program card, identical wherever a player's match is shown. */
-function ProgramMatchCard({ rec }: { rec: Recommendation }) {
+/** "12:00–1:00 pm" → "12:00", the class start as the timetable states it. */
+function startOf(slot: TimetableSlot): string {
+  return slot.time.split("–")[0];
+}
+
+/**
+ * The class this player would join, from the program's own timetable (audit
+ * M17): the slot for their age band, or the slot whose level band holds their
+ * provisional tier, or the program's one class. "Saturdays 12:00–1:00 pm ·
+ * Junior (7–13)". Null when the timetable is empty or nothing matches, and the
+ * program's schedule line stands in.
+ */
+function classLineFor(program: Program, ageBand: AgeBand, tier: Tier | null): string | null {
+  const slots = program.timetable ?? [];
+  if (slots.length === 0) return null;
+  const byAge = slots.find((s) => s.ageBand === ageBand);
+  const byTier =
+    tier && slots.find((s) => s.levelMin !== undefined && levelWithinRange(tier.id, s.levelMin, s.levelMax));
+  const slot = byAge ?? byTier ?? (slots.length === 1 ? slots[0] : null);
+  if (!slot) {
+    // Several banded classes and no tier to pick one: name the day and every start.
+    const day = `${slots[0].day}s`;
+    const starts = slots.map(startOf);
+    const list = starts.length > 1 ? `${starts.slice(0, -1).join(", ")} and ${starts[starts.length - 1]}` : starts[0];
+    return `${day} ${list}`;
+  }
+  const qualifier = slot.ageBand ? AGE_BAND_LABELS[slot.ageBand] : slot.levelMin !== undefined ? slot.group : null;
+  return [`${slot.day}s ${slot.time}`, qualifier].filter(Boolean).join(" · ");
+}
+
+/**
+ * The one program card, identical wherever a player's match is shown: a link
+ * to the program page carrying the class line and the price (audit M17).
+ * The whole card is the link; the arrow is decoration.
+ */
+function ProgramMatchCard({
+  rec,
+  ageBand,
+  tier,
+}: {
+  rec: Recommendation;
+  ageBand: AgeBand;
+  tier: Tier | null;
+}) {
+  const { program } = rec;
+  const when = classLineFor(program, ageBand, tier) ?? program.schedule ?? null;
   return (
-    <div className="mt-5 rounded-2xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-5">
-      <span className="text-xs text-white/60">{rec.program.type}</span>
-      <h2 className="mt-1 text-lg font-semibold text-white">{rec.program.title}</h2>
-      <p className="mt-1 text-sm italic text-white/70">&ldquo;{rec.reason}&rdquo;</p>
+    <Link
+      href={`/programs/${program.slug}`}
+      className={`group mt-5 block rounded-2xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-5 transition hover:border-[#B4E655]/60 ${FOCUS_RING}`}
+    >
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">{program.type}</span>
+      <span className="mt-1 block text-lg font-semibold text-white">{program.title}</span>
+      <dl className="mt-3 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1.5 text-sm">
+        {when && (
+          <>
+            <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60 pt-0.5">When</dt>
+            <dd className="text-white/90">{when}</dd>
+          </>
+        )}
+        {program.priceSummary && (
+          <>
+            <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60 pt-0.5">Price</dt>
+            <dd className="tabular-nums text-white/90">{program.priceSummary}</dd>
+          </>
+        )}
+      </dl>
+      <span aria-hidden="true" className="mt-3 block text-sm font-semibold text-[#B4E655]">
+        View Program{" "}
+        <span className="inline-block motion-safe:transition-transform motion-safe:duration-150 motion-safe:group-hover:translate-x-1">
+          →
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+/** The dashed "Provisional" chip beside a likely tier (design specs §3.4). */
+const PROVISIONAL_CHIP =
+  "inline-flex min-h-6 items-center rounded-full border border-dashed border-white/30 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/85";
+
+/**
+ * The tier moment on the result screen (audit M17, L30; design specs §3.7):
+ * the player's likely tier from the self-estimate map (owner D4) as a 56px
+ * provisional emblem, the name, a "Provisional" chip and the compact ladder.
+ * A player who answered "Not sure" or "Prefer not to say" is thanked and
+ * shown the seven tiers, with no guess.
+ */
+function LikelyTierBlock({ tier, firstName }: { tier: Tier | null; firstName?: string }) {
+  const whom = firstName ? firstName : "you";
+  if (!tier) {
+    return (
+      <div className="mt-6 border-t border-white/10 pt-5">
+        <p className="text-base font-semibold text-white">
+          Thanks for telling us about {firstName ? `${firstName}'s` : "your"} game.
+        </p>
+        <p className="mt-1 text-sm leading-relaxed text-white/70">
+          Sina places every player on one of seven tiers, Love to Grand Slam.
+        </p>
+        <TierLine variant="ladder" orientation="horizontal" density="compact" className="mt-5" />
+      </div>
+    );
+  }
+  return (
+    <div className="mt-6 border-t border-white/10 pt-5">
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">
+        {firstName ? `${firstName}'s likely starting tier` : "Your likely starting tier"}
+      </span>
+      <div className="mt-3 flex items-center gap-4">
+        <TierEmblem tier={tier.id} state="provisional" size={56} decorative className="shrink-0" />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-2xl font-semibold tracking-tight text-white">{tier.name}</p>
+            <span className={PROVISIONAL_CHIP}>Provisional</span>
+          </div>
+          <p className="mt-0.5 text-sm text-white/70">{tier.blurb}</p>
+        </div>
+      </div>
+      <TierLine
+        variant="ladder"
+        orientation="horizontal"
+        density="compact"
+        level={tier.id}
+        provisional
+        className="mt-5"
+      />
+      <p className="mt-4 text-sm leading-relaxed text-white/70">
+        From your answers. Sina confirms {firstName ? `${firstName}'s` : "your"} tier when he places {whom}.
+      </p>
     </div>
   );
 }
@@ -240,7 +365,10 @@ const RESULT_CARD =
  * The intake is already saved when any result screen renders, so every one
  * opens by saying so: nothing else is required (backlog #19). Its h1 takes
  * focus when the screen appears (audit M19), so a screen-reader user hears
- * the result instead of silence on a vanished Submit button.
+ * the result instead of silence on a vanished Submit button. The next step
+ * is stated as it works today: Sina emails an invitation when a group that
+ * fits is forming (audit M17). No window is promised until the owner sets
+ * one (D21).
  */
 function IntakeComplete({
   name,
@@ -270,6 +398,11 @@ function IntakeComplete({
         {household
           ? "Your answers are in and there's nothing else you need to do. Sina reviews each player's level and your schedule, then places each of them in a group and a time that fit."
           : "Your answers are in and there's nothing else you need to do. Sina reviews your level and schedule, then places you in a group and a time that fit."}
+      </p>
+      <p className="mt-3 text-sm leading-relaxed text-white/70">
+        {household
+          ? "When a group that fits a player's level and your schedule is forming, Sina emails you an invitation with the day, time and price."
+          : "When a group that fits your level and schedule is forming, Sina emails you an invitation with the day, time and price."}
       </p>
       {/* Only a brand-new email gets the set-password link; a signed-in holder has one. */}
       {!signedIn && (
@@ -336,7 +469,7 @@ function TentativeMatchScreen({
 }) {
   const router = useRouter();
   const top = result.recommendations[0];
-  const levelLabel = tentativeLevelLabel(result.level);
+  const tier = provisionalTierFor(result.level);
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -344,16 +477,18 @@ function TentativeMatchScreen({
         <div className={RESULT_CARD}>
           <IntakeComplete name={form.name} household={false} signedIn={signedIn} />
 
-          {/* The match, as information */}
-          <div className="mt-6 border-t border-white/10 pt-5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">
-              Your tentative match
-            </span>
-            <p className="mt-1 text-base font-semibold text-white">
-              You profile like a Level {levelLabel} player
-            </p>
-            {top && <ProgramMatchCard rec={top} />}
-          </div>
+          {/* The likely tier, named as provisional (audit M17) */}
+          <LikelyTierBlock tier={tier} />
+
+          {/* The match, as information: a link to the program with its class and price */}
+          {top && (
+            <div className="mt-6 border-t border-white/10 pt-5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-white/60">
+                Your tentative match
+              </span>
+              <ProgramMatchCard rec={top} ageBand={result.ageBand} tier={tier} />
+            </div>
+          )}
 
           <AssessmentSuggestion
             household={false}
@@ -379,12 +514,53 @@ function HouseholdMatchScreen({
 }) {
   const router = useRouter();
   const first = results[0];
+  const anyTier = results.some((r) => provisionalTierFor(r.level) !== null);
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-10 md:py-16">
         <div className={RESULT_CARD}>
           <IntakeComplete name={form.name} household signedIn={signedIn} />
+
+          {/* Each player's likely tier as a provisional chip and rail (audit
+              M17), the ladder once, then each player's match. */}
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">
+              Likely starting tiers for your {results.length} players
+            </span>
+            <ul role="list" className="mt-3 space-y-4">
+              {results.map((r) => {
+                const tier = provisionalTierFor(r.level);
+                const first = r.name.trim().split(/\s+/)[0] || r.name;
+                return (
+                  <li key={r.key}>
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                      <p className="text-base font-semibold text-white">{r.name}</p>
+                      {tier ? (
+                        <TierChip level={tier.id} provisional />
+                      ) : (
+                        <span className={PROVISIONAL_CHIP}>Sina sets {first}&apos;s tier</span>
+                      )}
+                    </div>
+                    <TierLine
+                      variant="rail"
+                      size="sm"
+                      level={tier?.id ?? null}
+                      provisional
+                      labels="none"
+                      className="mt-2"
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+            <TierLine variant="ladder" orientation="horizontal" density="compact" className="mt-6" />
+            <p className="mt-4 text-sm leading-relaxed text-white/70">
+              {anyTier
+                ? "From your answers. Sina confirms each player's tier when he places them."
+                : "Sina places every player on one of seven tiers, Love to Grand Slam."}
+            </p>
+          </div>
 
           {/* The matches, as information */}
           <div className="mt-6 border-t border-white/10 pt-5">
@@ -397,14 +573,11 @@ function HouseholdMatchScreen({
                 return (
                   <div key={r.key} className="border-t border-white/10 pt-5 first:border-t-0 first:pt-2">
                     <p className="text-base font-semibold text-white">{r.name}</p>
-                    <p className="mt-0.5 text-sm text-white/70">
-                      Profiles like a Level {tentativeLevelLabel(r.level)} player
-                    </p>
                     {top ? (
-                      <ProgramMatchCard rec={top} />
+                      <ProgramMatchCard rec={top} ageBand={r.ageBand} tier={provisionalTierFor(r.level)} />
                     ) : (
                       <p className="mt-3 text-sm text-white/70">
-                        Nothing lines up on paper — the coach will place them from the court.
+                        Nothing lines up on paper — Sina places them from their answers.
                       </p>
                     )}
                   </div>
@@ -444,6 +617,9 @@ function FallbackScreen({
       <div className="mx-auto max-w-2xl px-6 py-10 md:py-16">
         <div className={RESULT_CARD}>
           <IntakeComplete name={form.name} household={household} signedIn={signedIn} />
+
+          {/* One player still gets their likely tier; a household with no match is thanked. */}
+          {!household && <LikelyTierBlock tier={provisionalTierFor(level)} />}
 
           <AssessmentSuggestion
             household={household}

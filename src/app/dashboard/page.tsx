@@ -18,6 +18,7 @@ import {
 } from "@/lib/players";
 import { VENUE_LINE } from "@/lib/membership";
 import { suggestProgramsFor } from "@/lib/programCatalog";
+import { placedSpanFor, type PlacedSpan } from "@/lib/tiers";
 import { DashboardView, SURFACE, type DashboardEnrollment } from "./DashboardView";
 
 export const metadata: Metadata = {
@@ -28,6 +29,36 @@ export const metadata: Metadata = {
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
+/** The RankCard's ghost (audit M24): emblem, three lines and the seven rail groups. */
+const RAIL_GHOST_HEIGHTS = ["h-[6px]", "h-[8px]", "h-[10px]", "h-[12px]", "h-[14px]", "h-[16px]", "h-[18px]"];
+
+function RankCardGhost() {
+  return (
+    <div className={`${SURFACE} border-t-2 border-t-white/15 p-5 md:p-6`}>
+      <div className="md:flex md:items-start md:gap-8">
+        <div className="flex items-start gap-5 md:w-[280px] md:shrink-0">
+          <div className="h-20 w-20 shrink-0 rounded-[22px] bg-white/5" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3 w-16 rounded bg-[#B4E655]/20" />
+            <div className="h-3 w-20 rounded bg-white/5" />
+            <div className="h-7 w-28 rounded bg-white/10" />
+            <div className="h-3 w-16 rounded bg-white/5" />
+          </div>
+        </div>
+        <div className="mt-6 flex flex-1 items-end gap-1.5 md:mt-8">
+          {RAIL_GHOST_HEIGHTS.map((h, i) => (
+            <div key={i} className="flex flex-1 items-end gap-[2px]">
+              <div className={`flex-1 rounded-[1px] bg-white/[0.10] ${h}`} />
+              {i < 6 && <div className={`flex-1 rounded-[1px] bg-white/[0.10] ${h}`} />}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="mt-4 h-3 w-48 rounded bg-white/5" />
+    </div>
+  );
+}
+
 function DashboardSkeleton() {
   return (
     <div className="animate-pulse space-y-10">
@@ -37,7 +68,7 @@ function DashboardSkeleton() {
           <div className="space-y-3 lg:col-span-2">
             <div className="h-8 w-56 rounded bg-white/10" />
             <div className="h-3 w-44 rounded bg-white/5" />
-            <div className="mt-5 h-10 w-40 rounded-full bg-white/5" />
+            <div className="mt-3 h-11 w-24 rounded bg-white/5" />
           </div>
           <div className="rounded-2xl border border-white/10 bg-[#061427]/60 p-5 md:p-6 lg:col-span-3">
             <div className="h-3 w-20 rounded bg-[#B4E655]/20" />
@@ -47,6 +78,9 @@ function DashboardSkeleton() {
           </div>
         </div>
       </div>
+
+      {/* Tier section ghost */}
+      <RankCardGhost />
 
       <div className="grid gap-10 lg:grid-cols-3 lg:gap-8">
         {/* My programs — two card silhouettes */}
@@ -69,7 +103,7 @@ function DashboardSkeleton() {
           ))}
         </div>
 
-        {/* Side column — level card ghost, then the static venue line */}
+        {/* Side column — week card ghost, then the static venue line */}
         <div className="space-y-6">
           <div className={`${SURFACE} p-5 md:p-6`}>
             <div className="h-5 w-24 rounded bg-white/10" />
@@ -166,6 +200,17 @@ async function DashboardContent({
   // ids so old enrollment rows keep their title.
   const suggestions = suggestProgramsFor(players, listedPrograms, enrolledProgramIds);
 
+  // The Placed state (audit L17, owner D6-B): a player with no level who is
+  // enrolled in a tier-banded cohort shows that band instead of "Unranked".
+  // Enrollment rows name the player, so a household matches rows by name; an
+  // account with one player claims every row on it.
+  const placedSpans: Record<string, PlacedSpan | null> = {};
+  for (const player of players) {
+    placedSpans[player.id] = placedSpanFor(player, rows, cohorts, {
+      soloAccount: players.length === 1,
+    });
+  }
+
   return (
     <DashboardView
       firstName={firstName}
@@ -177,6 +222,7 @@ async function DashboardContent({
       openForTier={openForTier}
       suggestions={suggestions}
       programs={programs}
+      placedSpans={placedSpans}
       today={todayIso()}
     />
   );

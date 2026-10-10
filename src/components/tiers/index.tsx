@@ -1,14 +1,15 @@
-// Tier UI — the labeled badge, the chips, the header decision helper, the
-// line and the rank card. All derive from the numeric level via
-// src/lib/tiers.ts; nothing here stores or mutates a level.
+// Tier UI — the labeled badge, the chips, the line and the rank card. All
+// derive from the numeric level via src/lib/tiers.ts; nothing here stores or
+// mutates a level.
 //
 // One primitive per job (design specs §1.2): TierEmblem for a single tier,
 // TierLine for the line, RankCard for a player's rank, TierChip and
 // TierRangeBadges for inline tier text. The old TierLadder (a horizontal
 // scroller that hid three tiers on phones, audit H6) is gone: use
-// `<TierLine variant="ladder" />`.
+// `<TierLine variant="ladder" />`. TierStatus and UnrankedChip ("Unranked —
+// book your assessment", a purchase pitched as a rank) went in audit PR H:
+// the dashboard and /profile mount the RankCard instead.
 
-import Link from "next/link";
 import {
   TIER_COUNT,
   tierForLevel,
@@ -74,45 +75,6 @@ export function TierGlyph({
   if (!tier) return null;
   const Badge = BADGE_BY_TIER[tier.id];
   return <Badge {...props} />;
-}
-
-/**
- * Subtle "Unranked — book your assessment" chip linking to booking. Shown
- * wherever a player has no coach-assigned level yet. 44px min touch target.
- * Retired in PR-H together with TierStatus (the RankCard replaces both).
- */
-export function UnrankedChip({ className = "" }: { className?: string }) {
-  return (
-    <Link
-      href="/assessment/book"
-      className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 text-sm font-medium text-white/70 transition hover:border-[#B4E655]/50 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] ${className}`}
-    >
-      <TierEmblem tier={null} size={20} decorative className="shrink-0" />
-      Unranked — book your assessment
-    </Link>
-  );
-}
-
-/**
- * Header decision: the labeled `TierBadge` when a level is set, otherwise the
- * `UnrankedChip`. This is the shared treatment for the profile and dashboard
- * headers — one call, so both stay identical. Retired in PR-H.
- */
-export function TierStatus({
-  level,
-  badgeSize = 40,
-  className = "",
-}: {
-  level: number | string | null | undefined;
-  badgeSize?: number;
-  className?: string;
-}) {
-  const tier = tierForLevel(level);
-  return tier ? (
-    <TierBadge level={level} size={badgeSize} className={className} />
-  ) : (
-    <UnrankedChip className={className} />
-  );
 }
 
 /** The no-level chip: a ghost mark and the one player-facing word, "Unranked". */
