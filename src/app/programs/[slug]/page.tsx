@@ -304,9 +304,12 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 {program.levelNote && (
                   <p className="mt-2 text-sm leading-relaxed text-white/70">{program.levelNote}.</p>
                 )}
-                <p className="mt-2 text-sm leading-relaxed text-white/70">
-                  Sina places every player on the ladder, from the quiz or on court.
-                </p>
+                {/* A coming-soon program has no decided intake path yet (owner D10): only confirmed facts. */}
+                {!program.comingSoon && (
+                  <p className="mt-2 text-sm leading-relaxed text-white/70">
+                    Sina places every player on the ladder, from the quiz or on court.
+                  </p>
+                )}
                 <Link href="/assessment#ladder" className={`mt-2 ${TEXT_LINK_LIME}`}>
                   How tiers work →
                 </Link>

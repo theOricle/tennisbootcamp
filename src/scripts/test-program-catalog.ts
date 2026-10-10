@@ -206,6 +206,24 @@ check("an enrolled program is never suggested", !ids(enrolled).includes("youth-p
 const selfInHousehold = suggestProgramsFor([self(2.5), maya], listedPrograms, ["youth-programs"]);
 check("the holder in a household still reads as 'you'", selfInHousehold.find((s) => s.program.id === "bootcamps")?.fit?.name === null);
 
+// Fix round 1: a ranked household player with no name must never become the
+// holder's "Fits you" / "Your level" — the card would pin the child's level
+// on the account holder. Nameless, the player still counts for the age fit;
+// a named ranked sibling is preferred; alone on the account, "you" is right.
+const nameless: SuggestPlayer = { full_name: null, relationship: "child", is_minor: true, level: 2.5 };
+const blankName: SuggestPlayer = { full_name: "   ", relationship: "child", is_minor: true, level: 2.5 };
+const namelessHousehold = suggestProgramsFor([self(null), nameless], listedPrograms, []);
+check("household: a nameless ranked child is still suggested for", ids(namelessHousehold).includes("youth-programs"), ids(namelessHousehold));
+check("household: a nameless ranked child gives no fit marker (never 'Fits you')", namelessHousehold.every((s) => s.fit === null));
+const blankHousehold = suggestProgramsFor([self(null), blankName], listedPrograms, []);
+check("household: a whitespace name counts as nameless", blankHousehold.every((s) => s.fit === null));
+const namedSibling = suggestProgramsFor([self(null), nameless, maya], listedPrograms, []);
+check("household: the named ranked sibling is the fit, not the nameless one", namedSibling[0].program.id === "youth-programs" && namedSibling[0].fit?.name === "Maya");
+const rankedHolderNamelessChild = suggestProgramsFor([self(2.5), nameless], listedPrograms, []);
+check("household: the ranked holder still reads as 'you' beside a nameless child", rankedHolderNamelessChild.find((s) => s.program.id === "bootcamps")?.fit?.name === null && rankedHolderNamelessChild.find((s) => s.program.id === "youth-programs")?.fit === null);
+const aloneNameless = suggestProgramsFor([{ full_name: null, relationship: "self", is_minor: false, level: 2.5 }], listedPrograms, []);
+check("alone on the account, a nameless holder reads as 'you'", aloneNameless[0]?.fit?.name === null && aloneNameless[0]?.fit?.level === 2.5);
+
 const nothingFits = suggestProgramsFor([self(2.0)], listedPrograms, ["bootcamps"]);
 check("nothing fits → today's list, no fit", ids(nothingFits) === "youth-programs,high-performance" && nothingFits.every((s) => s.fit === null), ids(nothingFits));
 const noPlayers = suggestProgramsFor([], listedPrograms, []);
@@ -229,10 +247,21 @@ const titleLink = card.match(/<h3[^>]*><a ([^>]*)>Youth Programs<\/a><\/h3>/)?.[
 check("the link is the title, stretched", titleLink.includes('href="/programs/youth-programs"') && titleLink.includes("after:absolute after:inset-0"), titleLink);
 check("the eyebrow is the audience and the day", card.includes("Juniors and teens · Saturdays"));
 check("the status chip reads Groups forming", card.includes("Groups forming"));
+// Fix round 1: the chip sits over the art (top-right, on an opaque disc of
+// the plate's ground), before the eyebrow in source order, so the eyebrow has
+// its line to itself and three titles in a grid line up.
+check("the status chip sits over the art, before the eyebrow", at(card, "Groups forming") < at(card, "Juniors and teens · Saturdays") && card.includes('class="absolute right-3 top-3 flex rounded-full bg-[#061427]"'));
+check("the eyebrow has its line to itself (the title follows it directly)", /<p class="[^"]*">Juniors and teens · Saturdays<\/p><h3/.test(card));
+const beforeLink = card.slice(0, card.indexOf("<a "));
+check("only the article and the art column are positioned before the link", count(beforeLink, "relative") === 2 && /<div class="flex min-w-0 flex-1 flex-col[^"]*">/.test(card) && !/<div class="flex min-w-0 flex-1 flex-col[^"]*relative/.test(card));
 check("a real spec list with Ages, When and Price", card.includes("<dl") && /<dt[^>]*>Ages<\/dt>/.test(card) && /<dt[^>]*>When<\/dt>/.test(card) && /<dt[^>]*>Price<\/dt>/.test(card));
 check("no Next row without a cohort", !/<dt[^>]*>Next<\/dt>/.test(card));
 const [priceLead, ...priceRest] = PRICE_SUMMARY.split(" · ");
 check("the price is the constant, the session figure leading", card.includes(`>${priceLead}<`) && priceRest.every((part) => card.includes(part)));
+// Fix round 1: the two parts are stacked with no separator, so a narrow Price
+// column never wraps to a stray "· $…" line (audit L8 on every card).
+const priceDd = card.match(/<dt[^>]*>Price<\/dt><dd[^>]*>([\s\S]*?)<\/dd>/)?.[1] ?? "";
+check("the price is stacked: lead in white, total in white/60, no middot", priceDd.includes(`font-semibold text-white">${priceLead}<`) && priceRest.every((part) => priceDd.includes(`text-white/60">${part}<`)) && !priceDd.includes("·") && count(priceDd, 'class="block ') === 1 + priceRest.length, priceDd);
 check("each class on its own line with its age chip", card.includes("Sat 12:00–1:00 pm") && card.includes("Sat 1:00–2:00 pm") && count(card, "Junior (7–13)") === 2);
 check("the Level block names the span", card.includes(`>${formatTierSpan(youth.levelMin, youth.levelMax)}<`) && card.includes("1.0–4.5"));
 check("the rail is in span mode", card.includes('aria-label="Built for Love to Break, levels 1.0 to 4.5"'));
@@ -268,6 +297,7 @@ check("High Performance span reads Deuce and up", hpCard.includes(">Deuce and up
 
 const comingSoon = render(createElement(ProgramCard, { program: camp, variant: "compact" }));
 check("coming soon → one dashed chip over the art, no status chip", count(comingSoon, "Coming Soon") === 1 && !comingSoon.includes("Groups forming"));
+check("coming soon → the chip is the same over-art chip, before the eyebrow", count(comingSoon, 'class="absolute right-3 top-3 flex rounded-full bg-[#061427]"') === 1 && at(comingSoon, "Coming Soon") < at(comingSoon, "Juniors · Summer Camp"));
 check("coming soon → the CTA is the notify label", comingSoon.includes("Notify Me When Open") && comingSoon.includes('href="/programs/kids-summer-camp#notify"'));
 
 const h2 = render(createElement(ProgramCard, { program: youth, headingLevel: 2 }));
@@ -275,6 +305,11 @@ check("headingLevel 2 renders an h2", h2.includes("<h2") && !h2.includes("<h3"))
 
 const rowCard = render(createElement(ProgramCard, { program: adult, variant: "row" }));
 check("row variant draws the master frame", rowCard.includes('viewBox="0 0 1600 1000"'));
+// Fix round 1: side by side, the art column fills the row and centres a box
+// that keeps the frame's own ratio; the box is never stretched to the row.
+check("row variant: the art column centres the box at md", rowCard.includes('class="relative md:flex md:h-full md:items-center md:border-r md:border-white/10 md:bg-[#061427]"'));
+check("row variant: the art box is 16:10 at md, never stretched", rowCard.includes("md:aspect-[16/10]") && !rowCard.includes("md:h-full md:min-h") && !rowCard.includes("md:aspect-auto"));
+check("auto variant: the band frame keeps 2:1 in every state, the column resets at lg", h2.includes('viewBox="0 100 1600 800"') && h2.includes("lg:block lg:h-auto lg:border-r-0") && !h2.includes("md:aspect-") && !h2.includes("min-h-["));
 check("row variant reads Timetable at md and When below", rowCard.includes(">Timetable</span>") && rowCard.includes(">When</span>"));
 check("row variant carries both rails, one hidden per breakpoint", count(rowCard, 'aria-label="Built for Love to Ace') === 2 && rowCard.includes("hidden md:block"));
 
@@ -301,6 +336,8 @@ const cardSrc = read("src/components/sections/ProgramCard.tsx");
 check("card: no Learn more, no hover-only strip, no second button", !cardSrc.includes("Learn more") && !cardSrc.includes("group-hover:max-h") && count(cardSrc, "<Link") === 1);
 check("card: stretched link and has-focus ring", cardSrc.includes("after:absolute after:inset-0 after:z-10") && cardSrc.includes("has-[a:focus-visible]:ring-2"));
 check("card: no scale on hover", !cardSrc.includes("hover:scale"));
+check("card: the art box is never stretched to the row (fix round 1)", !cardSrc.includes("md:aspect-auto") && !cardSrc.includes("min-h-[320px]"));
+check("card: one StatusChip, rendered inside the art column", count(cardSrc, "<StatusChip status={status} />") === 1 && !cardSrc.includes("justify-between gap-x-3 gap-y-1.5"));
 const gridSrc = read("src/components/sections/ProgramsGrid.tsx");
 check("grid renders ProgramCardList and reads cohorts once", gridSrc.includes("<ProgramCardList") && count(gridSrc, "getPublicCohorts()") === 1);
 check("grid: the quiz line with the locked label", gridSrc.includes("Not sure which fits?") && gridSrc.includes("{QUIZ_CTA_LABEL}") && gridSrc.includes("Sina places you by level and schedule"));
@@ -317,6 +354,9 @@ const detail = read("src/app/programs/[slug]/page.tsx");
 check("detail: age and tier chip row replaces the grey age line (L8)", detail.includes("<AgeBandChips") && !detail.includes("· {program.ageGroup}"));
 check("detail: Levels in this program ladder in span mode", detail.includes("Levels in this program") && /<TierLine variant="ladder" orientation="vertical"[^>]*span=\{range\}/.test(detail));
 check("detail: How tiers work link", detail.includes('href="/assessment#ladder"'));
+// Fix round 1: the camp has no decided intake path (owner D10), so the
+// placement line renders only for a live program; the span and ladder stay.
+check("detail: the placement line is gated off a coming-soon program (D10)", /\{!program\.comingSoon && \(\s*<p[^>]*>\s*Sina places every player on the ladder, from the quiz or on court\.\s*<\/p>\s*\)\}/.test(detail));
 check("detail: a TierRangeBadges per timetable slot", detail.includes("<TierRangeBadges levelMin={slot.levelMin} levelMax={slot.levelMax} />"));
 check("detail: cohort cards carry the mark and the rail", detail.includes("<PlateMark plate={program.plate}") && detail.includes("artFocusForCohort(program, cohort)") && /tierGated &&[\s\S]*<TierLine[\s\S]*variant="rail"/.test(detail));
 check("detail: the start date helper is shared", detail.includes("formatStartDate(") && !detail.includes("fmtStartDate"));

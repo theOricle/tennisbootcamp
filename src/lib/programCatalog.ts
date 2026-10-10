@@ -110,9 +110,12 @@ function firstName(player: SuggestPlayer): string | null {
  * a fit for at least one player on the account. `fit` names the first fitting
  * ranked player — the account holder reads as "you" (null), anyone else in a
  * household by first name — so the card can mark "Fits Maya" and place her on
- * the rail. Programs with a ranked fit come first, then catalog order. When
- * nothing fits anyone (no players, or every player outside every program),
- * the list falls back to today's behaviour: every eligible program, no fit.
+ * the rail. In a household, a ranked player who is not the holder counts only
+ * with a first name to show: a nameless one would read as "Fits you" and pin
+ * a child's level on the holder. Programs with a ranked fit come first, then
+ * catalog order. When nothing fits anyone (no players, or every player
+ * outside every program), the list falls back to today's behaviour: every
+ * eligible program, no fit.
  */
 export function suggestProgramsFor(
   players: readonly SuggestPlayer[],
@@ -127,7 +130,11 @@ export function suggestProgramsFor(
   for (const program of eligible) {
     const fits = players.filter((player) => programFitsPlayer(program, player));
     if (fits.length === 0) continue;
-    const ranked = fits.find((player) => levelNumber(player.level) !== null);
+    const ranked = fits.find(
+      (player) =>
+        levelNumber(player.level) !== null &&
+        (!household || player.relationship === "self" || firstName(player) !== null)
+    );
     const fit: ProgramFit = ranked
       ? {
           name: household && ranked.relationship !== "self" ? firstName(ranked) : null,

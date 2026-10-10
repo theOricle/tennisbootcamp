@@ -24,17 +24,20 @@ import { AgeBandChips } from "@/components/programs/AgeBandChips";
 import { TierEmblem, TierLine, TierRangeBadges } from "@/components/tiers";
 
 // The one program card (audit H7; design specs §5.3): a spec sheet. The
-// program's Court Plate on top, then an eyebrow and a status chip, the title
-// as the card's one link, a two-line description, and the decision rows —
-// Ages, When, Price, Next — on hairlines, then the Level block (tier span,
-// mark, rail and the program's own plain line) when the program carries a
-// span. Nothing appears on hover; one action per card.
+// program's Court Plate on top with the status chip in its corner, then the
+// eyebrow on a line of its own, the title as the card's one link, a two-line
+// description, and the decision rows — Ages, When, Price, Next — on
+// hairlines, then the Level block (tier span, mark, rail and the program's
+// own plain line) when the program carries a span. Nothing appears on hover;
+// one action per card.
 //
 // One link, one tab stop: the title's Link is stretched over the whole card
 // with an ::after pseudo-element, the article is the only positioned ancestor
-// between the two, and no other element in the card is interactive. The CTA
-// line is decoration (aria-hidden) and the plate is decorative, so the
-// card's accessible name is its title.
+// between the two, and no other element in the card is interactive. The art
+// column is positioned too, for the chip it carries, but it is the body's
+// sibling, never an ancestor of the link. The CTA line is decoration
+// (aria-hidden) and the plate is decorative, so the card's accessible name is
+// its title.
 //
 // Rendered by the homepage grid, /programs, and the dashboard's "Suggested
 // for you" row, so all three stay identical.
@@ -109,19 +112,19 @@ export function CtaLine({ text, className = "" }: { text: string; className?: st
 }
 
 /**
- * The one-line price (PRICE_SUMMARY: the session price, then the cohort total)
- * with the per-session figure leading in white and the total muted, each part
- * kept on its own line when the row is narrow. The camp's "$499 a week" is a
- * single part.
+ * The price (PRICE_SUMMARY: the session price, then the cohort total) stacked:
+ * the per-session figure leading in white, the total on its own line in
+ * white/60. Stacked on purpose, with no separator, so a narrow Price column
+ * never wraps to a stray "· $…" line (the audit L8 pattern). The camp's
+ * "$499 a week" is a single part.
  */
 function PriceSummary({ text }: { text: string }) {
   const [lead, ...rest] = text.split(" · ");
   return (
-    <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
-      <span className="whitespace-nowrap font-semibold text-white">{lead}</span>
+    <span className="block">
+      <span className="block font-semibold text-white">{lead}</span>
       {rest.map((part) => (
-        <span key={part} className="whitespace-nowrap text-white/60">
-          <span aria-hidden="true">· </span>
+        <span key={part} className="block text-white/60">
           {part}
         </span>
       ))}
@@ -154,9 +157,20 @@ function SlotQualifier({ slot, kind }: { slot: TimetableSlot; kind: QualifierKin
 // ─── Layout per variant ───────────────────────────────────────────────────────
 // Every class is a complete literal so the JIT keeps it. `row` switches at md;
 // `auto` switches at md and back at lg.
+//
+// The art column and the art box are two elements on purpose. Side by side
+// (md), the column fills the row's height and centres the box, which keeps
+// the plate's own aspect ratio (16:10 master in `row`, 2:1 band in `auto`),
+// so the frame is never sliced to the row: a spec sheet runs 580–680px tall,
+// and a plate stretched to that showed a quarter of its width. The column is
+// `relative` for the status chip in its corner; it is never between the
+// article and the title link.
 
 type Layout = {
   article: string;
+  /** The art column: side by side at md it is the tall dark panel the box sits in. */
+  artColumn: string;
+  /** The art box: owns the plate's aspect ratio in every state. */
   art: string;
   body: string;
   title: string;
@@ -183,6 +197,7 @@ type Layout = {
 const LAYOUT: Record<ProgramCardVariant, Layout> = {
   compact: {
     article: "",
+    artColumn: "",
     art: "",
     body: "",
     title: "text-lg",
@@ -201,7 +216,8 @@ const LAYOUT: Record<ProgramCardVariant, Layout> = {
   },
   row: {
     article: "md:grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]",
-    art: "md:aspect-auto md:h-full md:min-h-[320px] md:border-b-0 md:border-r",
+    artColumn: "md:flex md:h-full md:items-center md:border-r md:border-white/10 md:bg-[#061427]",
+    art: "md:aspect-[16/10] md:border-b-0",
     body: "md:p-8",
     title: "text-lg md:text-2xl",
     description: "line-clamp-2 md:line-clamp-none",
@@ -219,7 +235,9 @@ const LAYOUT: Record<ProgramCardVariant, Layout> = {
   },
   auto: {
     article: "md:grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:flex",
-    art: "md:aspect-auto md:h-full md:min-h-[320px] md:border-b-0 md:border-r lg:aspect-[2/1] lg:h-auto lg:min-h-0 lg:border-b lg:border-r-0",
+    artColumn:
+      "md:flex md:h-full md:items-center md:border-r md:border-white/10 md:bg-[#061427] lg:block lg:h-auto lg:border-r-0",
+    art: "md:border-b-0 lg:border-b",
     body: "md:p-8 lg:p-6",
     title: "text-lg md:text-2xl lg:text-lg",
     description: "line-clamp-2 md:line-clamp-none lg:line-clamp-2",
@@ -255,24 +273,29 @@ export function ProgramCard({
 
   return (
     <article className={`${CARD_SHELL} ${L.article}`.trim()}>
-      {/* The plate: text-free and decorative (design specs rule 2). The art
-          box is not positioned, so the Coming Soon chip and the stretched
-          link both measure from the article. */}
-      <div className={`aspect-[2/1] w-full overflow-hidden border-b border-white/10 bg-[#061427] ${L.art}`.trim()}>
-        {variant === "row" ? (
-          // The row card's art fills a tall left column, so it takes the full master frame.
-          <ProgramPlate plate={p.plate} frame="master" density="compact" comingSoon={p.comingSoon} interactive />
-        ) : (
-          <ProgramPlate plate={p.plate} frame="band" density="compact" comingSoon={p.comingSoon} interactive />
-        )}
+      {/* The art column: the plate, text-free and decorative (design specs
+          rule 2), and the status chip in its top-right corner in every state,
+          so the eyebrow below always has its line to itself. The column is
+          the body's sibling, so the stretched link still measures from the
+          article. */}
+      <div className={`relative ${L.artColumn}`.trim()}>
+        <div className={`aspect-[2/1] w-full overflow-hidden border-b border-white/10 bg-[#061427] ${L.art}`.trim()}>
+          {variant === "row" ? (
+            // The row card's art sits in a tall left column, so it takes the full master frame.
+            <ProgramPlate plate={p.plate} frame="master" density="compact" comingSoon={p.comingSoon} interactive />
+          ) : (
+            <ProgramPlate plate={p.plate} frame="band" density="compact" comingSoon={p.comingSoon} interactive />
+          )}
+        </div>
+        {/* An opaque disc of the plate's own ground under the chip, so a
+            translucent chip stays legible over the court lines. */}
+        <span className="absolute right-3 top-3 flex rounded-full bg-[#061427]">
+          <StatusChip status={status} />
+        </span>
       </div>
-      {p.comingSoon && <span className={`absolute right-3 top-3 ${CHIP_COMING_SOON}`}>Coming Soon</span>}
 
       <div className={`flex min-w-0 flex-1 flex-col p-5 md:p-6 ${L.body}`.trim()}>
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-          <p className={EYEBROW_CLASS}>{eyebrow}</p>
-          {!p.comingSoon && <StatusChip status={status} />}
-        </div>
+        <p className={EYEBROW_CLASS}>{eyebrow}</p>
 
         <Title className={`mt-3 font-semibold tracking-tight text-white ${L.title}`}>
           <Link href={p.ctaHref} className={STRETCHED_LINK}>
