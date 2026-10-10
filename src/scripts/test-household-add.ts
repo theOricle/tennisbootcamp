@@ -13,12 +13,14 @@ import {
   RELATIONSHIPS,
   blockIsMinor,
   cleanParticipantName,
+  fillOnlyProfileWrites,
   findExistingParticipant,
   isAddedRelationship,
   isRelationship,
   newParticipantInput,
   normalizeParticipantName,
   participantCapReached,
+  participantProfilePatch,
   plannedAdditions,
 } from "../lib/participantInput";
 
@@ -158,6 +160,26 @@ check("twelve may not", participantCapReached(12), true);
 check("beyond twelve may not", participantCapReached(40), true);
 check("an empty account may", participantCapReached(0), false);
 check("the message names the number and the way out", [PARTICIPANT_CAP_ERROR.includes("12"), PARTICIPANT_CAP_ERROR.includes("info@tennisbootcamp.ca")], [true, true]);
+
+// ─── A player's answers: full write vs fill-only (fix round 1 on PR #88) ─────
+
+console.log("answers: full write, and fill-only for a signed-out form");
+check("the full write sets the band, is_minor from it, and the self-estimate", participantProfilePatch({ ageBand: "teen", selfLevel: " rally " }), {
+  age_band: "teen",
+  is_minor: true,
+  self_level: "rally",
+});
+check("Prefer not to say is an answer", participantProfilePatch({ selfLevel: "" }), { self_level: "" });
+check("values outside the vocabularies are dropped", participantProfilePatch({ ageBand: "toddler", selfLevel: "pro" }), {});
+const guest = fillOnlyProfileWrites(participantProfilePatch({ ageBand: "junior", selfLevel: "elite" }));
+check("fill-only: one guarded write per answer, each on its own blank column", guest.map((w) => [w.blank, Object.keys(w.set)]), [
+  ["age_band", ["age_band"]],
+  ["self_level", ["self_level"]],
+]);
+check("fill-only never writes is_minor", guest.some((w) => "is_minor" in w.set), false);
+check("a band is filled only where the stored is_minor already agrees", guest[0], { set: { age_band: "junior" }, blank: "age_band", isMinor: true });
+check("an adult band agrees only with is_minor false", fillOnlyProfileWrites(participantProfilePatch({ ageBand: "adult" }))[0], { set: { age_band: "adult" }, blank: "age_band", isMinor: false });
+check("nothing to fill → no writes", fillOnlyProfileWrites(participantProfilePatch({})), []);
 
 // ─── Result ───────────────────────────────────────────────────────────────────
 

@@ -400,6 +400,8 @@ export async function createInvitesForParticipants(
 export type AccountInvite = InviteRow & {
   /** Price minus this player's unused $20 credit, for an unpaid invite. */
   amountDueCents: number | null;
+  /** The booking that $20 comes from, so a shared one is counted once. */
+  creditBookingId: string | null;
 };
 
 /**
@@ -434,11 +436,15 @@ export async function listInvitesForAccount(input: {
   return Promise.all(
     rows.map(async (row) => {
       const cohort = cohortById.get(row.cohort_id);
-      const amountDueCents =
+      const due =
         row.status === "paid" || !cohort
           ? null
-          : await inviteAmountDueCents(row, cohort).catch(() => null);
-      return { ...row, amountDueCents };
+          : await inviteAmountDue(row, cohort).catch(() => null);
+      return {
+        ...row,
+        amountDueCents: due?.amountDueCents ?? null,
+        creditBookingId: due?.creditBookingId ?? null,
+      };
     })
   );
 }
@@ -782,10 +788,21 @@ export async function inviteAmountDueCents(
   invite: Pick<InviteRow, "email" | "participant_id">,
   cohort: Cohort
 ): Promise<number> {
+  return (await inviteAmountDue(invite, cohort)).amountDueCents;
+}
+
+/** inviteAmountDueCents, plus the booking whose $20 it takes off (if any). */
+export async function inviteAmountDue(
+  invite: Pick<InviteRow, "email" | "participant_id">,
+  cohort: Cohort
+): Promise<{ amountDueCents: number; creditBookingId: string | null }> {
   const credit = await findUnusedCredit(invite.email, {
     participantId: invite.participant_id ?? null,
   });
-  return amountDueCents(cohort.priceCents, credit?.creditCents ?? 0);
+  return {
+    amountDueCents: amountDueCents(cohort.priceCents, credit?.creditCents ?? 0),
+    creditBookingId: credit?.bookingId ?? null,
+  };
 }
 
 /** What the mark-paid receipt did, for the admin's confirmation line. */

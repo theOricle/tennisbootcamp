@@ -9,13 +9,15 @@ import {
   type Availability,
   type AvailabilitySource,
 } from "@/lib/availability";
-import { isAgeBand, ageBandIsMinor, type AgeBand } from "@/lib/ageBand";
+import { isAgeBand, type AgeBand } from "@/lib/ageBand";
 import { removalBlocker } from "@/lib/householdView";
 import {
   PARTICIPANT_CAP_ERROR,
   RELATIONSHIPS,
+  fillOnlyProfileWrites,
   isRelationship,
   participantCapReached,
+  participantProfilePatch,
   type Relationship,
 } from "@/lib/participantInput";
 
@@ -648,25 +650,41 @@ export async function setPlayerAvailability(
  * them. Written whenever a flow names the player; `is_minor` follows the band
  * (the band is its one source, CLAUDE.md). Never touches the coach level.
  *
+ * `fillOnly` is for a flow that names an existing player without proving it
+ * is them (a signed-out form typing an account's email): only a blank band or
+ * self-estimate is filled, and `is_minor` is never changed — see
+ * fillOnlyProfileWrites (src/lib/participantInput.ts).
+ *
  * Degrades quietly: before 0009 runs (no columns) or before 0007 (no table)
  * the write is skipped and reported as such, never thrown — the quiz and the
  * booking form call this on their way to a response they must not fail.
  */
 export async function setParticipantProfile(
   id: string,
-  input: { ageBand?: unknown; selfLevel?: unknown }
+  input: { ageBand?: unknown; selfLevel?: unknown },
+  opts: { fillOnly?: boolean } = {}
 ): Promise<{ ok: boolean; skipped?: string; error?: string }> {
-  const patch: Record<string, unknown> = {};
-  if (isAgeBand(input.ageBand)) {
-    patch.age_band = input.ageBand;
-    patch.is_minor = ageBandIsMinor(input.ageBand);
-  }
-  if (typeof input.selfLevel === "string" && SELF_LEVEL_VALUES.has(input.selfLevel.trim())) {
-    patch.self_level = input.selfLevel.trim();
-  }
+  const patch = participantProfilePatch(input);
   if (Object.keys(patch).length === 0) return { ok: true, skipped: "nothing to write" };
   try {
     const supabase = createServiceClient();
+    if (opts.fillOnly) {
+      // One guarded update per column: the database only writes a value that
+      // is still null, so nothing on file is ever replaced.
+      for (const write of fillOnlyProfileWrites(patch)) {
+        let query = supabase
+          .from(PARTICIPANT_TABLE)
+          .update(write.set)
+          .eq("id", id)
+          .is(write.blank, null);
+        if (write.blank === "age_band") query = query.eq("is_minor", write.isMinor);
+        const { error } = await query;
+        if (isMissingTable(error)) return { ok: true, skipped: "participants table missing (0007)" };
+        if (isUndefinedColumn(error)) return { ok: true, skipped: "migration 0009 not applied" };
+        if (error) return { ok: false, error: error.message };
+      }
+      return { ok: true };
+    }
     const { error } = await supabase.from(PARTICIPANT_TABLE).update(patch).eq("id", id);
     if (isMissingTable(error)) return { ok: true, skipped: "participants table missing (0007)" };
     if (isUndefinedColumn(error)) {
@@ -686,15 +704,22 @@ export async function setParticipantProfile(
   }
 }
 
-/** The self-estimate values 0009's check allows (src/lib/level.ts SELF_LEVELS). */
-const SELF_LEVEL_VALUES = new Set(["new", "rally", "competitive", "elite", "unsure", ""]);
+/**
+ * What /profile shows when a player edit or removal fails in the database.
+ * The raw Supabase message is logged on the server, never sent: a holder
+ * should not read Postgres wording.
+ */
+export const PLAYER_SAVE_ERROR = "That didn't save. Try again or email info@tennisbootcamp.ca.";
 
 /**
  * A holder edits one of their own players from /profile (audit M34): the name
- * and, for anyone but the holder, the age band. The holder's own name is
- * mirrored onto their profile so the dashboard greeting and the admin list
- * read the same name. `accountId` is the session's account — a participant on
- * another account is refused, never written.
+ * and, for anyone but the holder, the age band. /profile sends only the other
+ * players here; the holder's own name and phone go through /api/profile
+ * (updateHolderContact), which is what keeps the profile and the holder's
+ * player row on one name. Do not rely on this function for that. `accountId`
+ * is the session's account — a participant on another account is refused,
+ * never written. A database failure returns PLAYER_SAVE_ERROR and logs the
+ * raw message.
  */
 export async function updateParticipantDetails(
   accountId: string,
@@ -711,12 +736,18 @@ export async function updateParticipantDetails(
   }
   if (name && name !== (current.full_name ?? "")) {
     const result = await patchParticipant(id, { full_name: name });
-    if (!result.ok) return { ok: false, error: result.error, status: 400 };
+    if (!result.ok) {
+      console.error("Player rename failed:", result.error);
+      return { ok: false, error: PLAYER_SAVE_ERROR, status: 500 };
+    }
   }
   if (input.ageBand !== undefined && current.relationship !== "self") {
     if (!isAgeBand(input.ageBand)) return { ok: false, error: "Choose an age group.", status: 400 };
     const result = await setParticipantProfile(id, { ageBand: input.ageBand });
-    if (!result.ok) return { ok: false, error: result.error, status: 400 };
+    if (!result.ok) {
+      console.error("Player age band save failed:", result.error);
+      return { ok: false, error: PLAYER_SAVE_ERROR, status: 500 };
+    }
   }
   return { ok: true };
 }
@@ -766,7 +797,10 @@ export async function removeParticipant(
     .eq("id", id)
     .eq("account_id", accountId)
     .neq("relationship", "self");
-  if (error) return { ok: false, error: error.message, status: 400 };
+  if (error) {
+    console.error("Player removal failed:", error.message);
+    return { ok: false, error: PLAYER_SAVE_ERROR, status: 500 };
+  }
   return { ok: true };
 }
 

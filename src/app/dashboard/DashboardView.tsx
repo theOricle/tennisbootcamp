@@ -494,10 +494,16 @@ export function DashboardView(props: DashboardViewProps) {
 
             {enrollments.length === 0 ? (
               // The truth, and no second primary (audit M32): the next step
-              // above already says what happens.
+              // above already says what happens. A held spot or a pending
+              // e-transfer means Sina has placed someone, so the card says
+              // nothing is enrolled yet and points up instead of "placing".
               <div className={`${SURFACE} p-6`}>
                 <p className="text-sm leading-relaxed text-white/75">
-                  {voice === "you"
+                  {step.kind === "invite"
+                    ? "Nothing is enrolled yet. Claim the spot held above and the program shows here."
+                    : step.kind === "etransfer"
+                    ? "Nothing is enrolled yet. The program shows here once Sina confirms the e-transfer above."
+                    : voice === "you"
                     ? "Sina is placing you — your group, dates and price land here."
                     : `Sina is placing ${namesList(names)} — ${several ? "groups, dates and prices" : "the group, dates and price"} land here.`}
                 </p>

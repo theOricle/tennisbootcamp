@@ -888,7 +888,7 @@ export function WhoIsThisFor({
                       ? "border-[#B4E655]/60 bg-[#B4E655]/10"
                       : pickable
                       ? "border-white/15 bg-white/5 hover:bg-white/10"
-                      : "cursor-not-allowed border-white/10 bg-transparent",
+                      : "cursor-not-allowed border-white/10 bg-transparent opacity-60",
                   ].join(" ")}
                 >
                   <span className="min-w-0">
@@ -899,24 +899,30 @@ export function WhoIsThisFor({
                       {relationshipNote(p)}
                     </span>
                     {!pickable && (
-                      <span className="block text-xs text-white/60">
+                      // Brighter than the note above so the reason still
+                      // reads at 4.5:1 through the row's opacity-60.
+                      <span className="block text-xs text-white/80">
                         Outside this group&apos;s level band
                       </span>
                     )}
                   </span>
-                  {/* The state shows as a tick as well as colour (WCAG 1.4.1). */}
-                  <span
-                    aria-hidden="true"
-                    className={[
-                      "flex h-5 w-5 shrink-0 items-center justify-center border text-xs font-bold",
-                      multiple ? "rounded-sm" : "rounded-full",
-                      selected
-                        ? "border-[#B4E655] bg-[#B4E655] text-[#061427]"
-                        : "border-white/45",
-                    ].join(" ")}
-                  >
-                    {selected ? "✓" : ""}
-                  </span>
+                  {/* The state shows as a tick as well as colour (WCAG 1.4.1).
+                      A row that can't be picked has no tick box to suggest
+                      otherwise. */}
+                  {(pickable || selected) && (
+                    <span
+                      aria-hidden="true"
+                      className={[
+                        "flex h-5 w-5 shrink-0 items-center justify-center border text-xs font-bold",
+                        multiple ? "rounded-sm" : "rounded-full",
+                        selected
+                          ? "border-[#B4E655] bg-[#B4E655] text-[#061427]"
+                          : "border-white/45",
+                      ].join(" ")}
+                    >
+                      {selected ? "✓" : ""}
+                    </span>
+                  )}
                 </button>
                 {collectProfile && selected && (
                   <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">

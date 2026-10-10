@@ -49,8 +49,19 @@ export type DashInvite = {
   expires_at: string;
   payment_method?: "card" | "etransfer" | null;
   participant_id?: string | null;
+  /**
+   * The player's name as the e-transfer intent wrote it (backlog #38), for an
+   * invite that names no participant (a signed-out enroll).
+   */
+  payment_note?: string | null;
   /** Price minus the player's unused $20, for an unpaid invite. */
   amountDueCents: number | null;
+  /**
+   * The assessment booking whose $20 `amountDueCents` takes off, if any. Two
+   * invites under one email with no participant find the same booking; the
+   * $20 comes off once (etransferTotalCents).
+   */
+  creditBookingId?: string | null;
 };
 
 export type DashBooking = {
@@ -344,7 +355,10 @@ export function nextStepFor(input: NextStepInput): NextStep {
     };
   }
 
-  // 2. An e-transfer sent and waiting on Sina's confirmation.
+  // 2. An e-transfer sent and waiting on Sina's confirmation. One transfer
+  // can cover a household (the enroll wizard sends one for every player in a
+  // cohort), so the card adds up every waiting invite in that cohort and
+  // repeats the wizard's memo, everyone's name joined with " + ".
   const waiting = input.invites
     .filter(
       (i) =>
@@ -356,21 +370,36 @@ export function nextStepFor(input: NextStepInput): NextStep {
       (cohortById.get(a.cohort_id)?.startDate ?? "").localeCompare(cohortById.get(b.cohort_id)?.startDate ?? "")
     );
   if (waiting.length > 0) {
-    const invite = waiting[0];
-    const cohort = cohortById.get(invite.cohort_id) as Cohort;
-    const player = playerFor(roster, { participantId: invite.participant_id });
-    const who = whose(input, player, null);
-    const memoName = player?.full_name?.trim() ?? "";
-    const amount = invite.amountDueCents ?? cohort.priceCents;
+    const cohort = cohortById.get(waiting[0].cohort_id) as Cohort;
+    const group = waiting.filter((i) => i.cohort_id === cohort.id);
+    const people = group.map((i) => {
+      const player = playerFor(roster, { participantId: i.participant_id });
+      return {
+        who: whose(input, player, i.payment_note ?? null),
+        fullName: player?.full_name?.trim() || i.payment_note?.trim() || "",
+      };
+    });
+    const amount = etransferTotalCents(group, cohort.priceCents);
+    const memo = etransferMemo(
+      people.map((p) => p.fullName).filter(Boolean).join(" + "),
+      cohort.label
+    );
+    const program = programTitle(programs, cohort, cohort.programId);
+    const [one] = people;
+    const several = people.length > 1;
+    const names = namesList(people.map((p) => (p.who.isSelf ? "you" : p.who.name ?? "your player")));
     return {
       kind: "etransfer",
       eyebrow: "Payment pending",
-      headline: who.isSelf
-        ? "Sina is confirming your e-transfer."
-        : `Sina is confirming the e-transfer for ${who.name}.`,
+      headline:
+        !several && one.who.isSelf
+          ? "Sina is confirming your e-transfer."
+          : `Sina is confirming the e-transfer for ${names}.`,
       detail:
-        `${money(amount)} to ${input.recipientEmail}, memo “${etransferMemo(memoName, cohort.label)}”. ` +
-        `${who.Owner} spot in ${programTitle(programs, cohort, cohort.programId)} is held while Sina confirms it arrived.`,
+        `${money(amount)} to ${input.recipientEmail}, memo “${memo}”. ` +
+        (several
+          ? `The spots for ${names} in ${program} are held while Sina confirms it arrived.`
+          : `${one.who.Owner} spot in ${program} is held while Sina confirms it arrived.`),
       secondary: { href: "#my-programs", label: "See my programs" },
     };
   }
@@ -474,6 +503,30 @@ export function nextStepFor(input: NextStepInput): NextStep {
         ? { href: "/assessment/book", label: "Book Your Assessment" }
         : { href: "/programs", label: "Browse Programs" },
   };
+}
+
+/**
+ * What one e-transfer for these invites comes to: each player's amount due
+ * (the cohort price when it couldn't be read), with a $20 that two invites
+ * found on the same assessment booking taken off once, as the enroll wizard
+ * and recordEtransferIntent take it.
+ */
+export function etransferTotalCents(
+  invites: readonly Pick<DashInvite, "amountDueCents" | "creditBookingId">[],
+  priceCents: number
+): number {
+  const used = new Set<string>();
+  let total = 0;
+  for (const invite of invites) {
+    const booking = invite.creditBookingId ?? null;
+    if (booking && used.has(booking)) {
+      total += priceCents;
+      continue;
+    }
+    if (booking) used.add(booking);
+    total += invite.amountDueCents ?? priceCents;
+  }
+  return total;
 }
 
 // ─── Credit line (audit M25) ──────────────────────────────────────────────────

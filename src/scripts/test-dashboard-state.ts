@@ -32,6 +32,7 @@ import {
   enrollmentIsActive,
   enrollmentNote,
   enrollmentState,
+  etransferTotalCents,
   fmtHoldDeadline,
   nextStepFor,
   welcomeHeading,
@@ -214,6 +215,77 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   ok("it carries the amount, the recipient and the memo", waiting.detail.includes(formatDollars(COHORT_TOTAL)) && waiting.detail.includes("info@tennisbootcamp.ca") && waiting.detail.includes("“Maya Chen – Fall Saturday”"));
   check("…even after the hold lapsed", nextStepFor(base({ invites: [invite({ payment_method: "etransfer", status: "expired", expires_at: "2026-10-01T00:00:00.000Z" })] })).kind, "etransfer");
 
+  // One e-transfer for a household (fix round 1 on PR #88): the wizard told
+  // the family to send both players' amounts with one memo naming both.
+  const household = nextStepFor(
+    base({
+      roster: [maya, leo],
+      invites: [
+        invite({ id: "inv_maya", payment_method: "etransfer", amountDueCents: PRICE - 2000, creditBookingId: "b_maya" }),
+        invite({ id: "inv_leo", participant_id: "p_leo", token: "tok456", payment_method: "etransfer", amountDueCents: PRICE }),
+      ],
+    })
+  );
+  check("a household transfer adds up every player in the cohort", household.detail.startsWith(`${formatDollars(COHORT_TOTAL * 2 - 20)} to info@tennisbootcamp.ca`), true);
+  ok("…with the wizard's memo, both names joined with +", household.detail.includes("“Maya Chen + Leo Chen – Fall Saturday”"));
+  check("…and names everyone", household.headline, "Sina is confirming the e-transfer for Maya and Leo.");
+  ok("…and both spots", household.detail.includes("The spots for Maya and Leo in Youth Programs are held while Sina confirms it arrived."));
+  const withParent = nextStepFor(
+    base({
+      roster: [parent, maya],
+      invites: [
+        invite({ id: "inv_dana", participant_id: parent.id, payment_method: "etransfer" }),
+        invite({ id: "inv_maya", payment_method: "etransfer" }),
+      ],
+    })
+  );
+  check("the holder and a child on one transfer", [withParent.headline, withParent.detail.includes("“Dana Chen + Maya Chen – Fall Saturday”")], ["Sina is confirming the e-transfer for you and Maya.", true]);
+  const otherCohort = nextStepFor(
+    base({
+      roster: [maya, leo],
+      cohorts: [cohort({}), cohort({ id: "coh_later", label: "Winter Saturday", startDate: "2026-12-05" })],
+      invites: [
+        invite({ id: "inv_maya", payment_method: "etransfer" }),
+        invite({ id: "inv_leo", participant_id: "p_leo", cohort_id: "coh_later", payment_method: "etransfer" }),
+      ],
+    })
+  );
+  check("a transfer for another cohort is not folded in", [otherCohort.headline, otherCohort.detail.startsWith(`${formatDollars(COHORT_TOTAL)} to`)], ["Sina is confirming the e-transfer for Maya.", true]);
+  const guestRows = nextStepFor(
+    base({
+      roster: [parent],
+      voice: "you",
+      invites: [
+        invite({ id: "inv_a", participant_id: null, payment_note: "Maya Chen", payment_method: "etransfer" }),
+        invite({ id: "inv_b", participant_id: null, payment_note: "Leo Chen", payment_method: "etransfer" }),
+      ],
+    })
+  );
+  ok("rows with no participant still name the players from the intent's note", guestRows.detail.includes("“Maya Chen + Leo Chen – Fall Saturday”"));
+  check("etransferTotalCents: a missing amount counts the cohort price", etransferTotalCents([{ amountDueCents: null }, { amountDueCents: PRICE - 2000 }], PRICE), PRICE * 2 - 2000);
+  check(
+    "etransferTotalCents: one $20 found by two invites comes off once",
+    etransferTotalCents(
+      [
+        { amountDueCents: PRICE - 2000, creditBookingId: "b1" },
+        { amountDueCents: PRICE - 2000, creditBookingId: "b1" },
+      ],
+      PRICE
+    ),
+    PRICE * 2 - 2000
+  );
+  check(
+    "etransferTotalCents: two players' own $20s each come off",
+    etransferTotalCents(
+      [
+        { amountDueCents: PRICE - 2000, creditBookingId: "b1" },
+        { amountDueCents: PRICE - 2000, creditBookingId: "b2" },
+      ],
+      PRICE
+    ),
+    PRICE * 2 - 4000
+  );
+
   const assessment = nextStepFor(base({ bookings: [booking] }));
   check("then a booked assessment", [assessment.kind, assessment.eyebrow, assessment.headline], ["assessment", "Maya's assessment", "Wed Oct 14 · 6pm"]);
   ok("…with what to bring", assessment.detail.includes("Bring a racquet if you have one, water, and court shoes."));
@@ -324,6 +396,12 @@ console.log("sources");
   const primaries = (view.match(/className=\{primaryButton\}/g) ?? []).length + (view.match(/\$\{primaryButton\}/g) ?? []).length;
   check("the dashboard has one primary: the next-step card's", primaries, 1);
   ok("the empty state is the truth, with no button", view.includes("Sina is placing you — your group, dates and price land here."));
+  ok(
+    "a held spot or a pending e-transfer never reads as 'placing' under My programs",
+    view.includes('step.kind === "invite"') &&
+      view.includes('step.kind === "etransfer"') &&
+      view.includes("Nothing is enrolled yet. Claim the spot held above")
+  );
   ok("'your coach' is gone from the dashboard", !/your coach/i.test(view) && !/your coach/i.test(read("src", "lib", "dashboardState.ts")));
 
   const actions = read("src", "lib", "cohortActions.ts");
@@ -352,6 +430,20 @@ console.log("sources");
   ok("reads fall back to the 0007 columns before 0009", players.includes("isUndefinedColumn(first.error)") && players.includes("PARTICIPANT_BASE_COLUMNS"));
   const household = read("src", "lib", "household.ts");
   ok("answers are remembered without blocking a form", household.includes("async function rememberAnswers") && household.includes("catch (err)"));
+  const signedOut = household.slice(household.indexOf("── Signed out"), household.indexOf("// Registering someone else"));
+  ok(
+    "a signed-out form only fills the holder's blanks",
+    signedOut.includes("rememberAnswers(self?.id, { ageBand, selfLevel }, { fillOnly: true })") &&
+      !/rememberAnswers\(self\?\.id, \{ ageBand, selfLevel \}\);/.test(signedOut)
+  );
+  const details = players.slice(players.indexOf("export async function updateParticipantDetails"), players.indexOf("export async function listPlayerEvidence"));
+  ok(
+    "player edits and removals never send a raw database message",
+    !/error: (result\.error|error\.message)/.test(details) && details.includes("PLAYER_SAVE_ERROR")
+  );
+
+  const chooser = read("src", "components", "participants", "WhoIsThisFor.tsx");
+  ok("a row outside the band is dimmed and has no tick box", chooser.includes("bg-transparent opacity-60") && chooser.includes("(pickable || selected) &&"));
 }
 
 if (failures > 0) {
