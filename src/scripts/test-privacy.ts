@@ -235,7 +235,7 @@ const recommendation = {
 const PLAYER_EMAILS: [string, () => EmailBody, string][] = [
   [
     "quiz result",
-    () => buildRecommendationEmail("Maya Chen", [recommendation], "3.0"),
+    () => buildRecommendationEmail("Maya Chen", [recommendation], "Deuce"),
     UNSUB_GENERAL,
   ],
   [

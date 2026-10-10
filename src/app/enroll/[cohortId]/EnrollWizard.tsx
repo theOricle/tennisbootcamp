@@ -9,6 +9,8 @@ import { VENUE_LINE } from "@/lib/membership";
 import { COOLING_OFF_DAYS } from "@/content/policies";
 import { trackEvent, trackEnrollStart } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
+import { ProgramPlate } from "@/components/plates/ProgramPlate";
+import { artFocusForCohort } from "@/lib/plates/variant";
 import { amountDueCents, etransferMemo } from "@/lib/paymentTransitions";
 import {
   WhoIsThisFor,
@@ -234,6 +236,24 @@ function OrderSummary({
   const price = formatCohortPrice(cohort);
   return (
     <div className="space-y-5">
+      {/* The program's Court Plate (design specs §4.8): the strip frame,
+          profiled by the cohort's band and side-picked by its id. Visual
+          only; nothing below reads it. */}
+      {program && (
+        <div className="aspect-[3/1] w-full overflow-hidden rounded-xl border border-white/10 bg-[#061427]">
+          <ProgramPlate
+            plate={program.plate}
+            frame="strip"
+            density="compact"
+            comingSoon={program.comingSoon}
+            levelMin={cohort.levelMin}
+            levelMax={cohort.levelMax}
+            seed={cohort.id}
+            focusSlot={artFocusForCohort(program, cohort)}
+          />
+        </div>
+      )}
+
       {/* Program */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">

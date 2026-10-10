@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TierLine } from "../components/tiers/TierLine";
+import { RankCard, type RankCardPlayer } from "../components/tiers/RankCard";
 import {
   LEVEL_OPTIONS,
   LEVEL_STEPS,
@@ -29,7 +30,9 @@ import {
   formatTierSpan,
   levelWithinRange,
   nextTier,
+  placedSpanFor,
   tierById,
+  tierEmblemPath,
   tierForLevel,
   tierIdsInRange,
   tierInCohortRange,
@@ -37,6 +40,28 @@ import {
   tierProgress,
   type TierId,
 } from "../lib/tiers";
+import {
+  PROVISIONAL_TIER,
+  SELF_LEVELS,
+  provisionalTierFor,
+  tentativeLevelLabel,
+} from "../lib/level";
+import { programs } from "../content/programs";
+import type { Recommendation } from "../lib/recommend";
+import {
+  DASHBOARD_URL,
+  INK_BODY,
+  INK_MUTED,
+  INK_STRONG,
+  buildAssessmentCompleteEmail,
+  buildCohortConfirmedEmail,
+  buildCohortInviteEmail,
+  buildPaymentReceivedEmail,
+  buildRecommendationEmail,
+  cohortInviteSubject,
+  tierLineTable,
+  tierStandingLine,
+} from "../lib/emailBodies";
 import {
   FIELD_TINT,
   FUTURE_INK,
@@ -279,6 +304,192 @@ check("Unranked is the one no-level word", !/Unleveled</.test(players) && !playe
 check("design-system.md documents the tier tokens", read("ops/briefs/design-system.md").includes("## Tier tokens"));
 // Only membership: another PR may append its own script after this one.
 check("test-tiers is in the npm test chain", JSON.parse(read("package.json")).scripts.test.includes("src/scripts/test-tiers.ts"));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Audit PR H (2026-10-10): player tier moments — the quiz's provisional tier
+// (M17, owner D4), the dashboard and /profile RankCard (M24, L17 owner D6-B,
+// L31), the tier emails (M35, L22, owner D9) and the emblem PNG route.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Self-estimate → provisional tier (M17, D4) ──────────────────────────────
+console.log("Self-estimate and provisional tier (M17, owner D4)");
+check("tentativeLevelLabel is null for undefined, \"\" and \"unsure\"", tentativeLevelLabel(undefined) === null && tentativeLevelLabel("") === null && tentativeLevelLabel("unsure") === null && tentativeLevelLabel(null) === null);
+check("tentativeLevelLabel still names the four bands", tentativeLevelLabel("new") === "1.5–2.0" && tentativeLevelLabel("rally") === "2.5–3.0" && tentativeLevelLabel("competitive") === "3.5–4.0" && tentativeLevelLabel("elite") === "4.5+");
+check("PROVISIONAL_TIER is the D4 map: new→Love, rally→Rally, competitive→Deuce, elite→Break", PROVISIONAL_TIER.new === 1 && PROVISIONAL_TIER.rally === 2 && PROVISIONAL_TIER.competitive === 3 && PROVISIONAL_TIER.elite === 4);
+check("provisionalTierFor names the tier", provisionalTierFor("new")?.name === "Love" && provisionalTierFor("rally")?.name === "Rally" && provisionalTierFor("competitive")?.name === "Deuce" && provisionalTierFor("elite")?.name === "Break");
+check("provisionalTierFor is null for \"\", \"unsure\", undefined, null and an unknown value", provisionalTierFor("") === null && provisionalTierFor("unsure") === null && provisionalTierFor(undefined) === null && provisionalTierFor(null) === null && provisionalTierFor("bogus") === null);
+check("SELF_LEVELS includes elite, unsure and prefer-not-to-say", SELF_LEVELS.some((o) => o.value === "elite") && SELF_LEVELS.some((o) => o.value === "unsure") && SELF_LEVELS.some((o) => o.value === ""));
+{
+  // recommend.ts sends competitive and elite players to High Performance, so
+  // their provisional tiers must sit inside its span (owner D2 and D4 agree).
+  const hp = programs.find((p) => p.id === "high-performance");
+  const inHp = (v: string) => {
+    const t = provisionalTierFor(v);
+    return !!hp && !!t && levelWithinRange(t.id, hp.levelMin, hp.levelMax);
+  };
+  check("competitive and elite provisional tiers sit inside the High Performance span", inHp("competitive") && inHp("elite"));
+  const youth = programs.find((p) => p.id === "youth-programs");
+  const adult = programs.find((p) => p.id === "bootcamps");
+  const inBoth = (v: string) => {
+    const t = provisionalTierFor(v);
+    return !!youth && !!adult && !!t && levelWithinRange(t.id, youth.levelMin, youth.levelMax) && levelWithinRange(t.id, adult.levelMin, adult.levelMax);
+  };
+  check("new and rally provisional tiers sit inside the Youth and Adult spans", inBoth("new") && inBoth("rally"));
+}
+
+// ── placedSpanFor (L17, owner D6-B) ─────────────────────────────────────────
+console.log("Placed state (L17, owner D6-B)");
+{
+  const cohorts = [
+    { id: "a", startDate: "2026-11-01", levelMin: 3, levelMax: 3.5 },
+    { id: "b", startDate: "2026-10-18", levelMin: 2, levelMax: 2.5 },
+    { id: "open", startDate: "2026-10-01", levelMin: null, levelMax: null },
+  ];
+  const rows = [
+    { cohort_id: "a", participant_name: "Maya Chen" },
+    { cohort_id: "open", participant_name: "Maya Chen" },
+    { cohort_id: "b", participant_name: "Leo Chen" },
+  ];
+  const maya = { level: null, full_name: "Maya Chen" };
+  check("a levelled player is never Placed", placedSpanFor({ level: 2.5, full_name: "Maya Chen" }, rows, cohorts) === null);
+  check("a household player matches rows by name, case-insensitive", JSON.stringify(placedSpanFor({ level: null, full_name: "maya chen" }, rows, cohorts)) === JSON.stringify({ min: 3, max: 3.5 }));
+  check("an untiered cohort never places anyone", placedSpanFor(maya, [{ cohort_id: "open", participant_name: "Maya Chen" }], cohorts) === null);
+  check("no matching row → null", placedSpanFor({ level: null, full_name: "Sam Chen" }, rows, cohorts) === null);
+  check("a nameless player in a household matches nothing", placedSpanFor({ level: null, full_name: null }, rows, cohorts) === null);
+  check("a solo account claims every row and the earliest banded cohort wins", JSON.stringify(placedSpanFor({ level: null, full_name: null }, rows, cohorts, { soloAccount: true })) === JSON.stringify({ min: 2, max: 2.5 }));
+  check("a Postgres numeric string level reads as a level", placedSpanFor({ level: "3.0", full_name: "Maya Chen" }, rows, cohorts) === null);
+}
+
+// ── RankCard (M24) rendered ─────────────────────────────────────────────────
+console.log("RankCard (M24)");
+const rankFixture = (over: Partial<RankCardPlayer>): RankCardPlayer => ({
+  id: "p1",
+  full_name: "Maya Chen",
+  relationship: "self",
+  is_minor: false,
+  level: 2.5,
+  level_assessed_at: "2026-10-04T15:00:00.000Z",
+  level_notes: null,
+  ...over,
+});
+const renderCard = (props: Parameters<typeof RankCard>[0]) => renderToStaticMarkup(createElement(RankCard, props));
+const compact = renderCard({ player: rankFixture({}), layout: "compact", isSelf: true });
+check("compact: eyebrow, ordinal, name, level, caption and Set by", ["Your tier", "Tier 2 of 7", ">Rally<", "Level 2.5", "Halfway to Deuce. Next tier at 3.0.", "Set by Sina · Oct 4"].every((s) => compact.includes(s)));
+check("compact: the rail is a meter with the position", compact.includes('role="meter"') && compact.includes("aria-valuenow=\"2\""));
+check("compact: the tier-colour top rule is the only block of colour", compact.includes("border-t-2 border-t-[#AEBBCD]") && !compact.includes("bg-[#AEBBCD]/"));
+const wide = renderCard({ player: rankFixture({}), layout: "wide", isSelf: true });
+check("wide: an 80px emblem, the blurb, a ladder at md and the rail below md", wide.includes('width="80"') && wide.includes("You can keep the ball alive across the net.") && wide.includes("<ol") && wide.includes("hidden md:grid") && wide.includes("md:hidden"));
+const child = renderCard({ player: rankFixture({ full_name: "Leo Chen", relationship: "child", is_minor: true, level: 4 }), layout: "compact", isSelf: false });
+check("a child's eyebrow reads First · Child · Under 18", child.includes("Leo · Child · Under 18") && child.includes("Next tier: Ace at 5.0."));
+const unranked = renderCard({ player: rankFixture({ level: null, level_assessed_at: null }), layout: "compact", isSelf: true });
+check("unranked: the ghost, the one word, the sentence, and no pitch on the dashboard", unranked.includes(">Unranked<") && unranked.includes("Your tier shows here once Sina sets your level.") && !unranked.includes("Book Your Assessment") && unranked.includes("Unranked. Seven tiers, Love to Grand Slam."));
+const profileUnranked = renderCard({ player: rankFixture({ level: null, level_assessed_at: null }), layout: "compact", isSelf: true, assessmentLink: true });
+check("profile unranked: the exact button label and the full $20 sentence", profileUnranked.includes(">Book Your Assessment<") && profileUnranked.includes("The assessment is $20 — enroll in a program afterward and that $20 comes off the price.") && profileUnranked.includes('href="/assessment/book"'));
+const placed = renderCard({ player: rankFixture({ level: null, level_assessed_at: null }), layout: "compact", isSelf: true, placedSpan: { min: 3, max: 3.5 } });
+check("placed: the group, the span rail, the sentence, and never Unranked or a pitch", placed.includes(">Deuce group<") && placed.includes("You train in a Deuce group. Sina sets your exact level once he has seen you play.") && placed.includes("Built for Deuce, levels 3.0 to 3.5") && !placed.includes("Unranked") && !placed.includes("Book Your Assessment"));
+check("placed, third person", renderCard({ player: rankFixture({ full_name: "Leo Chen", relationship: "child", level: null }), layout: "compact", isSelf: false, placedSpan: { min: 2, max: 3.5 } }).includes("Leo trains in a Rally – Deuce group. Sina sets their exact level once he has seen them play."));
+check("the re-rate line is absent while null (L18)", TIER_RERATE_LINE === null && !compact.includes("re-rated"));
+
+// ── Surfaces (M24, L17, L31; source checks) ─────────────────────────────────
+console.log("Dashboard and profile surfaces (M24, L31)");
+const indexSrc = read("src/components/tiers/index.tsx");
+check("TierStatus and UnrankedChip are gone", !indexSrc.includes("export function TierStatus") && !indexSrc.includes("export function UnrankedChip") && !indexSrc.toLowerCase().includes("unranked — book your assessment"));
+check("nothing imports TierStatus or UnrankedChip", ["src/app/dashboard/DashboardView.tsx", "src/app/profile/page.tsx", "src/app/admin/tiers/TierGallery.tsx"].every((f) => !/\b(TierStatus|UnrankedChip)\b/.test(read(f))));
+const dash = read("src/app/dashboard/DashboardView.tsx");
+check("dashboard: the tier section mounts the RankCard, wide for one player and compact per household player", dash.includes('aria-labelledby="tiers"') && dash.includes('layout="wide"') && dash.includes('layout="compact"') && dash.includes("Your players' tiers") && dash.includes("Each player's level, set by Sina."));
+check("dashboard: no badge in the header or the side card", !dash.includes("TierBadge") && !dash.includes("<TierChip") && !/Unranked\s*<\/span>/.test(dash));
+check("dashboard: My programs carries age chips, the cohort span and a flush strip plate", dash.includes("<AgeBandChips bands={program.ageBands} />") && dash.includes("<TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />") && dash.includes('frame="strip"') && dash.includes("aspect-[3/1]"));
+check("dashboard: Open for your tier shows the span rail with the You marker and a 56px mark", dash.includes('label: "You"') && dash.includes("span={{ min: c.levelMin, max: c.levelMax }}") && dash.includes("<PlateMark plate={program.plate} size={56}"));
+check("dashboard: Edit profile and Past sessions are 44px targets (L31)", dash.includes('"inline-flex min-h-[44px] items-center rounded text-sm font-semibold text-white/70') && dash.includes("inline-flex min-h-[44px] cursor-pointer list-none items-center"));
+check("dashboard: the holder's card shows in a household only when levelled or placed", dash.includes("p.id !== self?.id || hasLevel(p.level) || Boolean(placedSpans[p.id])"));
+const dashPage = read("src/app/dashboard/page.tsx");
+check("dashboard page: a RankCard ghost in the skeleton and placed spans from players.ts data", dashPage.includes("<RankCardGhost />") && dashPage.includes("placedSpanFor(player, rows, cohorts") && dashPage.includes("soloAccount: players.length === 1"));
+const profile = read("src/app/profile/page.tsx");
+check("/profile mounts the compact RankCard, reading the household through players.ts", profile.includes("<RankCard") && profile.includes('layout="compact"') && profile.includes("listParticipantsForAccount(userId, supabase)") && !profile.includes("TierStatus") && !profile.includes('"full_name, phone, level"'));
+check("/profile offers the assessment only with no enrollment, and reads the Placed state", profile.includes("assessmentLink={rows.length === 0}") && profile.includes("placedSpanFor(player, rows, cohorts, { soloAccount })"));
+check("/profile: the holder claims every row only on a one-person account, as the dashboard does", profile.includes('participants.length <= 1 && participants.every((p) => p.relationship === "self")') && !profile.includes("soloAccount: true"));
+{
+  // The household case the fix guards: a parent with no level, their child
+  // Leo enrolled in a Deuce cohort. The parent's card never reads "Placed".
+  const deuce = [{ id: "d", startDate: "2026-10-18", levelMin: 3, levelMax: 3.5 }];
+  const leoRow = [{ cohort_id: "d", participant_name: "Leo Chen" }];
+  const parent = { level: null, full_name: "Maya Chen" };
+  check("/profile: a parent is not Placed by their child's cohort", placedSpanFor(parent, leoRow, deuce, { soloAccount: false }) === null && JSON.stringify(placedSpanFor({ level: null, full_name: "Leo Chen" }, leoRow, deuce, { soloAccount: false })) === JSON.stringify({ min: 3, max: 3.5 }));
+}
+
+// ── Quiz (M17, L30) ─────────────────────────────────────────────────────────
+console.log("Quiz result and self-estimate hint (M17, L30)");
+const intake = read("src/app/intake/page.tsx");
+check("\"You profile like\" is gone from the quiz", !intake.toLowerCase().includes("profile like") && !intake.includes("tentativeLevelLabel"));
+check("the result shows a 56px provisional emblem, the name, a Provisional chip and the compact ladder", intake.includes('state="provisional"') && intake.includes("size={56}") && intake.includes(">Provisional</span>") && intake.includes("Your likely starting tier") && intake.includes('density="compact"'));
+check("the null case thanks and shows the seven tiers, no guess", intake.includes("Thanks for telling us about") && intake.includes("Sina places every player on one of seven tiers, Love to Grand Slam."));
+check("the result body is the copy deck's", intake.includes("From your answers. Sina confirms"));
+check("a lone player who is not the holder is named on the result, by the email's rule", intake.includes("function otherPlayerFirst(") && intake.includes("const playerFirst = otherPlayerFirst(result.name, form.name);") && intake.includes("const playerFirst = household ? undefined : otherPlayerFirst(playerName, form.name);") && intake.includes("playerName={results[0]?.name}"));
+check("one child is named in the confirmation too, never \"you\" above \"Leo's\" (fix round 2)", (intake.match(/playerFirst=\{playerFirst\}/g) ?? []).length === 4 && (intake.match(/firstName=\{playerFirst\}/g) ?? []).length === 2 && intake.includes("Sina reviews ${child}'s level and your schedule, then places ${child} in a group and a time that fit.") && intake.includes("When a group that fits ${child}'s level and your schedule is forming, Sina emails you an invitation"));
+check("one child is named on the match label and the assessment card, the $20 facts intact (fix round 3)", (intake.match(/<AssessmentSuggestion\s+household=\{(false|household)\}\s+playerFirst=\{playerFirst\}/g) ?? []).length === 2 && intake.includes("{playerFirst ? `${playerFirst}'s tentative match` : \"Your tentative match\"}") && intake.includes("If you'd like ${child}'s level confirmed on court before ${child} is placed, you can book a 20-minute assessment with the coach. The assessment is $20, and if ${child} enrolls in a program afterward that $20 comes off the price.") && intake.includes("The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."));
+check("a household gets a provisional chip and rail per player, the ladder once", intake.includes("<TierChip level={tier.id} provisional />") && intake.includes("Likely starting tiers for your"));
+check("the match card links to the program with its class line and price", intake.includes("href={`/programs/${program.slug}`}") && intake.includes("classLineFor(program, ageBand, tier)") && intake.includes("program.priceSummary"));
+check("the next step is stated without a promised window (D21 open)", intake.includes("Sina emails you an invitation with the day, time and price.") && !/within (a|\d+) (day|hour)/i.test(intake));
+check("no result control is under 44px", !/py-2\b/.test(intake.split("// ─── Main wizard")[0]));
+const who = read("src/components/participants/WhoIsThisFor.tsx");
+check("the quiz's self-estimate shows a provisional rail and the likely tier", who.includes("function LikelyTierHint") && who.includes("Likely tier:") && who.includes("provisional labels=\"none\"") && who.includes("tierHint={requireLevel}") && /\n\s*tierHint\s*\r?\n\s*\/>/.test(who));
+check("the self-estimate note no longer says the level comes from the court", !who.includes("comes from the court"));
+const route = read("src/app/api/intake/route.ts");
+check("/api/intake passes the provisional tier to the email and nothing else changes", route.includes("provisionalTierFor(body.level)?.name ?? null") && !route.includes("tentativeLevelLabel") && route.includes("buildIntakeRow(") && route.includes("INTAKE_APPEND_RANGE_ALL"));
+
+// ── Emails (M35, L22, owner D9) ─────────────────────────────────────────────
+console.log("Emails (M35, L22, D9)");
+for (const [name, hex] of [["INK_BODY", INK_BODY], ["INK_MUTED", INK_MUTED], ["INK_STRONG", INK_STRONG]] as const) {
+  check(`${name} ${hex} ≥ 4.5:1 on navy and on a card`, contrast(hex, NAVY) >= 4.5 && contrast(hex, CARD) >= 4.5, `${contrast(hex, NAVY).toFixed(2)} / ${contrast(hex, CARD).toFixed(2)}`);
+}
+const rec: Recommendation = { program: programs[0], score: 10, reason: "Saturday class" };
+const quizTier = buildRecommendationEmail("Maya Chen", [rec], "Rally");
+const quizNull = buildRecommendationEmail("Maya Chen", [rec], null);
+const quizChild = buildRecommendationEmail("Maya Chen", [rec], "Rally", "Leo Chen");
+check("quiz email with a tier: provisional, in HTML and text", quizTier.html.includes("your likely tier is <strong style=\"color:#fff;\">Rally</strong>. It's provisional — I confirm it when I place you.") && quizTier.text.includes("your likely tier is Rally. It's provisional — I confirm it when I place you."));
+check("quiz email without a tier: thanks, no level, no guess", quizNull.html.includes("Thanks for telling us about your game.") && !quizNull.html.toLowerCase().includes("profile like") && !/Level \d/.test(quizNull.html) && !/Level \d/.test(quizNull.text));
+check("quiz email subject never claims a level", quizTier.subject === "Your Tennis Bootcamp answers are in — Maya" && quizNull.subject === quizTier.subject);
+check("quiz email names the player in a household", quizChild.html.includes("Leo's likely tier is") && quizChild.html.includes("I place Leo") && quizChild.text.includes("Leo's likely tier is Rally"));
+check("quiz email keeps the locked assessment mechanic and label", quizTier.html.includes(">Book Your Assessment<") && quizTier.text.includes("that $20 comes off the price"));
+const complete = buildAssessmentCompleteEmail({ name: "Maya Chen", levelLabel: "3.0", coachNote: "Solid forehand." });
+check("assessment complete: the emblem PNG, the tier sentence and the standing", complete.html.includes(`<img src="`) && complete.html.includes("/tier-emblem/deuce") && complete.html.includes('width="64"') && complete.html.includes("You're a Deuce.") && complete.html.includes("Tier 3 of 7. Next tier: Break at 4.0."));
+check("assessment complete: a table-built tier line of thirteen bgcolor cells with Love and Grand Slam captions", (complete.html.match(/<td width="14" height="8" bgcolor="#/g) ?? []).length === 13 && complete.html.includes(">Love</td>") && complete.html.includes(">Grand Slam</td>"));
+{
+  // 13 × 14px cells + 6 × 2px + 6 × 6px gaps = 230px, inside the card's
+  // ~261px content box on a 375px phone; the caption table matches it.
+  const line = tierLineTable(3);
+  const widths = [...line.matchAll(/<td width="(\d+)"/g)].map((m) => Number(m[1]));
+  check("the tier line is 230px wide and its caption table matches", widths.reduce((a, b) => a + b, 0) === 230 && line.includes('width="230" style="border-collapse:collapse;width:230px;"'));
+}
+check("assessment complete: the text body carries the same facts", complete.text.includes("You're a Deuce.") && complete.text.includes("Tier 3 of 7. Next tier: Break at 4.0.") && complete.text.includes("Solid forehand.") && complete.text.includes(DASHBOARD_URL));
+check("assessment complete: Browse Programs in the locked casing, and the dashboard button", complete.html.includes(">Browse Programs<") && !complete.html.includes("Browse programs") && complete.html.includes(">See it on your dashboard<"));
+check("assessment complete: the sooner line leaves the label to the button", complete.html.includes(">Want to move sooner?</p>") && !complete.html.includes("sooner? Browse Programs") && complete.text.includes("Want to move sooner?\n\nBrowse Programs: ") &&!complete.text.includes("sooner? Browse Programs"));
+const top = buildAssessmentCompleteEmail({ name: "Maya Chen", levelLabel: "7.0", coachNote: "—" });
+check("Grand Slam reads as the top of the ladder", top.html.includes("Tier 7 of 7. That's the top of the ladder.") && top.text.includes("That's the top of the ladder."));
+const childComplete = buildAssessmentCompleteEmail({ name: "Maya Chen", participantName: "Leo Chen", levelLabel: "2.5", coachNote: "—" });
+check("a child's result greets the holder and names the player", childComplete.html.includes("Leo's read from the court is in, Maya.") && childComplete.html.includes("Leo is a Rally.") && !childComplete.html.includes("Nice work out there from"));
+check("tierStandingLine and tierLineTable", tierStandingLine("2.5") === "Tier 2 of 7. Halfway to Deuce. Next tier at 3.0." && tierStandingLine("") === "" && (tierLineTable(2.5).match(/bgcolor="#AEBBCD"/g) ?? []).length === 2 && (tierLineTable(7).match(/bgcolor="#1C2A3C"/g) ?? []).length === 0);
+const inviteBase = { participantName: "Alex Kim", levelLabel: "3.0", tierNames: ["Deuce"], programTitle: "Adult Bootcamps", cohortLabel: "Fall A", dayTimeLabel: "Saturdays 9–10am", startDateLabel: "Oct 17", weeks: 6, priceCents: 21000, creditCents: 0, holdHours: 48, enrollUrl: "https://tennisbootcamp.ca/enroll/abc?invite=tok" };
+check("invite subject leads with the tier (D9)", cohortInviteSubject(inviteBase) === "Alex's Deuce group (3.0) is forming — Saturdays 9–10am, starts Oct 17");
+check("invite subject: a spread, and the holder's own", cohortInviteSubject({ ...inviteBase, levelLabel: "3.0–4.5", tierNames: ["Deuce", "Break"] }).startsWith("Alex's Deuce – Break group (3.0–4.5) is forming") && cohortInviteSubject({ ...inviteBase, participantName: null }).startsWith("Your Deuce group (3.0) is forming"));
+check("invite subject: an untiered cohort names the program", cohortInviteSubject({ ...inviteBase, levelLabel: null, tierNames: [] }) === "Alex's Adult Bootcamps group is forming — Saturdays 9–10am, starts Oct 17");
+const invite = buildCohortInviteEmail(inviteBase);
+const spreadInvite = buildCohortInviteEmail({ ...inviteBase, levelLabel: "3.0–4.5", tierNames: ["Deuce", "Break"] });
+check("invite: the chip separator is a real colour, not template text", spreadInvite.html.includes(`<span style="color:${INK_MUTED};margin:0 6px;">–</span>`) && !spreadInvite.html.includes("${"));
+check("invite chip carries a 16px emblem img with empty alt", invite.html.includes("/tier-emblem/deuce") && invite.html.includes('width="16"') && invite.html.includes('alt=""') && invite.html.includes("Alex's Deuce group (3.0) is forming."));
+const confirmed = buildCohortConfirmedEmail({ cohortLabel: "Fall A", programTitle: "Adult Bootcamps", startDateLabel: "Oct 17", sessionLines: ["Sat Oct 17 · 9–10am"] });
+const received = buildPaymentReceivedEmail({ programTitle: "Adult Bootcamps", cohortLabel: "Fall A", amountCents: 21000 });
+for (const [label, email] of [["quiz", quizTier], ["assessment complete", complete], ["cohort confirmed", confirmed], ["payment received", received]] as const) {
+  check(`${label} email links the dashboard in HTML and text`, email.html.includes(`href="${DASHBOARD_URL}"`) && email.html.includes("See it on your dashboard") && email.text.includes(`See it on your dashboard: ${DASHBOARD_URL}`));
+  check(`${label} email has no rgba text colour (L22)`, !/color:\s*rgba\(/.test(email.html));
+}
+check("no email ships an unfilled template placeholder", ![quizTier, quizNull, quizChild, complete, top, childComplete, invite, spreadInvite, confirmed, received].some((e) => e.html.includes("${") || e.text.includes("${")));
+check("every email body is at least 13px text", ![quizTier, complete, confirmed, received, invite].some((e) => /font-size:1[0-2]px/.test(e.html)));
+check("tierEmblemPath", tierEmblemPath(tierById(3)) === "/tier-emblem/deuce" && tierEmblemPath(tierById(6)) === "/tier-emblem/match-point");
+const pngRoute = read("src/app/tier-emblem/[slug]/route.tsx");
+check("the emblem PNG route is static over the seven slugs and renders emblemSvgString", pngRoute.includes('export const dynamic = "force-static"') && pngRoute.includes("export const dynamicParams = false") && pngRoute.includes("export function generateStaticParams") && pngRoute.includes("emblemSvgString(tier.id, { size: EMBLEM_PNG_SIZE })") && pngRoute.includes("TIERS.map((t) => ({ slug: t.slug }))"));
+check("the enroll summary carries the strip plate", read("src/app/enroll/[cohortId]/EnrollWizard.tsx").includes('frame="strip"'));
+check("the Sheet row builder is untouched by this PR", read("src/lib/intakeRow.ts").includes("INTAKE_APPEND_RANGE_ALL") && !read("src/lib/intakeRow.ts").includes("provisional"));
 
 if (failed > 0) {
   console.log(`\n${failed} check(s) failed.`);

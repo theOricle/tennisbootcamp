@@ -3,7 +3,7 @@ import { google } from "googleapis";
 import { subscribeToMailerLite } from "@/lib/mailerlite";
 import { recommendPrograms } from "@/lib/recommend";
 import { sendRecommendationEmail } from "@/lib/email";
-import { tentativeLevelLabel } from "@/lib/level";
+import { provisionalTierFor } from "@/lib/level";
 import { isAgeBand } from "@/lib/ageBand";
 import {
   INTAKE_APPEND_RANGE_ALL,
@@ -194,8 +194,12 @@ export async function POST(req: NextRequest) {
         availability: availabilitySlots,
       });
       if (recs.length > 0) {
-        const tentativeLevel = tentativeLevelLabel(body.level);
-        sendRecommendationEmail(body.email, body.name ?? "", recs, tentativeLevel).catch(
+        // The provisional tier (owner D4), or null for "Not sure" and "Prefer
+        // not to say" — the email then names no tier (audit M17). Only the
+        // email argument changes here; the Sheet row above is untouched.
+        const provisionalTier = provisionalTierFor(body.level)?.name ?? null;
+        const participantName = people[0]?.participantName ?? null;
+        sendRecommendationEmail(body.email, body.name ?? "", recs, provisionalTier, participantName).catch(
           (err) => {
             console.error("Recommendation email failed (non-blocking):", err);
           }
