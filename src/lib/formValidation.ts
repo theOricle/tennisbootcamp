@@ -42,6 +42,7 @@ export const FIELD_MESSAGES = {
   slotMissing: "Pick a time above.",
   dobMissing: "Add a date of birth.",
   dobInvalid: "Check the date of birth.",
+  playerNameMissing: `This player has no name on file. Go back and choose someone else, or email ${INFO_EMAIL} and we'll add it.`,
   consentMissing: "Tick the box to agree before you continue.",
   signatureMissing: "Type your full name to sign.",
 } as const;

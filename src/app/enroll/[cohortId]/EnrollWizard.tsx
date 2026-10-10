@@ -24,6 +24,7 @@ import {
   issuesById,
   phoneError,
   requiredError,
+  withHumanFallback,
   type FieldIssue,
 } from "@/lib/formValidation";
 import { useFocusOnChange } from "@/lib/useFocusOnChange";
@@ -34,6 +35,7 @@ import {
   INPUT_CLASS,
   LABEL_CLASS,
   LiveStatus,
+  errorIdFor,
   fieldA11y,
   hintIdFor,
 } from "@/components/ui/Input";
@@ -171,6 +173,7 @@ function TextInput({
 
 /** Field ids, so a press of Continue can focus the first problem. */
 const FIELD_IDS = {
+  player: (key: string) => `enroll-player-${key}`,
   dob: (key: string) => `enroll-dob-${key}`,
   email: "enroll-email",
   phone: "enroll-phone",
@@ -370,12 +373,29 @@ function RegistrantStep({
         {players.map((player) => (
           <fieldset
             key={player.key}
-            className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4"
+            // A chosen player with no name on file is flagged on the block
+            // itself, which takes focus when Continue is pressed.
+            id={FIELD_IDS.player(player.key)}
+            tabIndex={-1}
+            aria-describedby={
+              errors[FIELD_IDS.player(player.key)]
+                ? errorIdFor(FIELD_IDS.player(player.key))
+                : undefined
+            }
+            className={cn(
+              "space-y-3 rounded-2xl border bg-white/5 p-4",
+              errors[FIELD_IDS.player(player.key)] ? "border-red-400" : "border-white/10",
+              FOCUS_RING
+            )}
           >
             <legend className="sr-only">{player.name || "This player"}</legend>
             <p aria-hidden="true" className="text-sm font-semibold text-[#B4E655]">
               {player.name || "This player"}
             </p>
+            <FieldError
+              fieldId={FIELD_IDS.player(player.key)}
+              message={errors[FIELD_IDS.player(player.key)]}
+            />
             <FieldGroup
               id={FIELD_IDS.dob(player.key)}
               label="Date of birth"
@@ -818,6 +838,11 @@ export function EnrollWizard({
     if (step === 2) {
       const out: FieldIssue[] = [];
       for (const p of players) {
+        // A signed-in participant can have no stored name ("Unnamed player"
+        // on the dashboard); /api/enroll must never get a blank name.
+        if (!p.name.trim()) {
+          out.push({ id: FIELD_IDS.player(p.key), message: FIELD_MESSAGES.playerNameMissing });
+        }
         const id = FIELD_IDS.dob(p.key);
         if (!p.dob) out.push({ id, message: FIELD_MESSAGES.dobMissing });
         else if (computeAge(p.dob) === null) out.push({ id, message: FIELD_MESSAGES.dobInvalid });
@@ -968,7 +993,8 @@ export function EnrollWizard({
   function reportError(err: unknown) {
     const msg = err instanceof Error ? err.message : "";
     if (msg.startsWith("refused:")) {
-      setSubmitError(msg.slice("refused:".length));
+      // The route's own words, then the info@ fallback (voice.md, errors).
+      setSubmitError(withHumanFallback(msg.slice("refused:".length)));
     } else if (msg === "checkout") {
       setSubmitError(
         "Couldn't reach payment — please try again or email info@tennisbootcamp.ca"
