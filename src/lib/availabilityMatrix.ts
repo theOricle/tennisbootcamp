@@ -26,9 +26,14 @@ export type MatrixCell = {
   names: string[];
 };
 
+/** A player in a cell, with the participant id an invite is sent for (audit M28). */
+export type MatrixPerson = { id: string; name: string };
+
 export type AvailabilityMatrix = {
   /** cells[day][band] */
   cells: Record<Day, Record<Band, MatrixCell>>;
+  /** who[day][band]: the same players as `cells`, by participant id, in name order. */
+  who: Record<Day, Record<Band, MatrixPerson[]>>;
   /** Players inside the band (leveled only). */
   inBand: number;
   /** Of those, players with at least one cell selected. */
@@ -36,6 +41,15 @@ export type AvailabilityMatrix = {
   /** True when no band was given and every leveled player is counted. */
   unbanded: boolean;
 };
+
+function emptyWho(): Record<Day, Record<Band, MatrixPerson[]>> {
+  const who = {} as Record<Day, Record<Band, MatrixPerson[]>>;
+  for (const d of DAYS) {
+    who[d] = {} as Record<Band, MatrixPerson[]>;
+    for (const b of BANDS) who[d][b] = [];
+  }
+  return who;
+}
 
 function emptyCells(): Record<Day, Record<Band, MatrixCell>> {
   const cells = {} as Record<Day, Record<Band, MatrixCell>>;
@@ -58,6 +72,7 @@ export function aggregateAvailabilityMatrix(
   levelMax: number | null
 ): AvailabilityMatrix {
   const cells = emptyCells();
+  const who = emptyWho();
   const unbanded = levelMin === null && levelMax === null;
   let inBand = 0;
   let withAvailability = 0;
@@ -77,14 +92,18 @@ export function aggregateAvailabilityMatrix(
         const cell = cells[d][b];
         cell.count++;
         cell.names.push(label);
+        who[d][b].push({ id: p.id, name: label });
       }
     }
     if (any) withAvailability++;
   }
 
   for (const d of DAYS) {
-    for (const b of BANDS) cells[d][b].names.sort((a, z) => a.localeCompare(z));
+    for (const b of BANDS) {
+      cells[d][b].names.sort((a, z) => a.localeCompare(z));
+      who[d][b].sort((a, z) => a.name.localeCompare(z.name));
+    }
   }
 
-  return { cells, inBand, withAvailability, unbanded };
+  return { cells, who, inBand, withAvailability, unbanded };
 }

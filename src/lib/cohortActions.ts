@@ -271,13 +271,11 @@ export async function createInvites(
     );
   }
 
-  const participantByEmail = new Map<string, string>();
-  emails.forEach((raw, i) => {
-    const id = participantIds?.[i];
-    if (id) participantByEmail.set(raw.trim().toLowerCase(), id);
-  });
-
-  for (const raw of emails) {
+  // One invite per (email, player) pair, matched by position (audit M28): two
+  // children under one parent's email are two pairs with the same email. A
+  // map keyed by email used to fold them into one, so the second child got
+  // the first child's spot.
+  for (const [i, raw] of emails.entries()) {
     const email = raw.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       if (raw.trim()) errors.push(`"${raw.trim()}" doesn't look like an email.`);
@@ -289,9 +287,10 @@ export async function createInvites(
     const userId = await findUserIdByEmail(email);
 
     // Which player on that account the spot is for. An email-only invite goes
-    // to the holder themselves; `participantIds` names someone else.
+    // to the holder themselves; `participantIds` names someone else — and
+    // then their own $20 assessment credit is the one the price math uses.
     const participantId =
-      participantByEmail.get(email) ??
+      participantIds?.[i] ||
       (await resolveParticipantId({ accountId: userId, email }).catch(() => null));
     const participant = participantId
       ? await getParticipant(participantId).catch(() => null)
@@ -359,6 +358,95 @@ export async function createInvites(
   }
 
   return { sent, emailed, errors };
+}
+
+/**
+ * Invite players, not emails (audit M28): the coach ticks names in "Who's
+ * free" or on /admin/players, and each tick carries a participant id. The
+ * invite goes to that player's account holder's inbox, the spot (and the
+ * $20 credit lookup) is the player's own. An id that resolves to no account
+ * email is reported, never guessed.
+ */
+export async function createInvitesForParticipants(
+  cohortId: string,
+  participantIds: string[]
+): Promise<{ sent: number; emailed: number; errors: string[] }> {
+  const ids = [...new Set(participantIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length === 0) return { sent: 0, emailed: 0, errors: ["Pick at least one player."] };
+  const [players, accounts] = await Promise.all([
+    listPlayers().catch(() => [] as PlayerRecord[]),
+    listAccounts().catch(() => new Map<string, { email: string }>()),
+  ]);
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const emails: string[] = [];
+  const pairedIds: string[] = [];
+  const errors: string[] = [];
+  for (const id of ids) {
+    const player = byId.get(id);
+    const email = player ? accounts.get(player.account_id)?.email?.trim() : "";
+    if (!player || !email) {
+      errors.push(`${player?.full_name?.trim() || "A player"}: no account email on file, so no invite.`);
+      continue;
+    }
+    emails.push(email);
+    pairedIds.push(id);
+  }
+  if (emails.length === 0) return { sent: 0, emailed: 0, errors };
+  const result = await createInvites(cohortId, emails, pairedIds);
+  return { ...result, errors: [...errors, ...result.errors] };
+}
+
+/** An invite as the account's own dashboard reads it (audit M25). */
+export type AccountInvite = InviteRow & {
+  /** Price minus this player's unused $20 credit, for an unpaid invite. */
+  amountDueCents: number | null;
+  /** The booking that $20 comes from, so a shared one is counted once. */
+  creditBookingId: string | null;
+};
+
+/**
+ * Every invite on one account (audit M25): by the account id, by the
+ * account's email (invites store it lowercased) and by its players' ids.
+ * Read only — expiry is judged by the caller against `expires_at`, so a
+ * dashboard visit never writes. Missing tables or columns read as none.
+ */
+export async function listInvitesForAccount(input: {
+  accountId: string;
+  email: string;
+  participantIds: string[];
+  cohorts: Cohort[];
+}): Promise<AccountInvite[]> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return [];
+  const supabase = createServiceClient();
+  const email = input.email.trim().toLowerCase();
+  const reads = [
+    supabase.from("cohort_invites").select("*").eq("user_id", input.accountId),
+    email ? supabase.from("cohort_invites").select("*").eq("email", email) : null,
+    input.participantIds.length > 0
+      ? supabase.from("cohort_invites").select("*").in("participant_id", input.participantIds)
+      : null,
+  ];
+  const results = await Promise.all(reads.map((q) => (q ? q.then((r) => r, () => null) : null)));
+  const byId = new Map<string, InviteRow>();
+  for (const r of results) {
+    for (const row of ((r?.data as InviteRow[] | null) ?? [])) byId.set(row.id, row);
+  }
+  const cohortById = new Map(input.cohorts.map((c) => [c.id, c]));
+  const rows = [...byId.values()].sort((a, b) => a.invited_at.localeCompare(b.invited_at));
+  return Promise.all(
+    rows.map(async (row) => {
+      const cohort = cohortById.get(row.cohort_id);
+      const due =
+        row.status === "paid" || !cohort
+          ? null
+          : await inviteAmountDue(row, cohort).catch(() => null);
+      return {
+        ...row,
+        amountDueCents: due?.amountDueCents ?? null,
+        creditBookingId: due?.creditBookingId ?? null,
+      };
+    })
+  );
 }
 
 export type InviteLookup =
@@ -700,10 +788,21 @@ export async function inviteAmountDueCents(
   invite: Pick<InviteRow, "email" | "participant_id">,
   cohort: Cohort
 ): Promise<number> {
+  return (await inviteAmountDue(invite, cohort)).amountDueCents;
+}
+
+/** inviteAmountDueCents, plus the booking whose $20 it takes off (if any). */
+export async function inviteAmountDue(
+  invite: Pick<InviteRow, "email" | "participant_id">,
+  cohort: Cohort
+): Promise<{ amountDueCents: number; creditBookingId: string | null }> {
   const credit = await findUnusedCredit(invite.email, {
     participantId: invite.participant_id ?? null,
   });
-  return amountDueCents(cohort.priceCents, credit?.creditCents ?? 0);
+  return {
+    amountDueCents: amountDueCents(cohort.priceCents, credit?.creditCents ?? 0),
+    creditBookingId: credit?.bookingId ?? null,
+  };
 }
 
 /** What the mark-paid receipt did, for the admin's confirmation line. */
@@ -1290,6 +1389,48 @@ export async function cancelSession(
 }
 
 // ─── Admin CRUD ───────────────────────────────────────────────────────────────
+
+/**
+ * Undo "Cancel cohort" (audit M30). The status a cancelled cohort returns to
+ * is read from what it holds, so nothing has to remember it and no email goes
+ * out: confirmed when its paid invites already meet the minimum (sessions
+ * are generated if missing; members were emailed when it first confirmed),
+ * inviting when anyone was invited, else draft. A cohort whose start date has
+ * passed comes back the same way; the coach marks it running after.
+ */
+export async function reopenCohort(
+  cohortId: string
+): Promise<{ ok: boolean; status?: string; error?: string }> {
+  const cohort = await getCohortById(cohortId);
+  if (!cohort || !cohort.dbStatus) return { ok: false, error: "Cohort not found." };
+  if (cohort.dbStatus !== "cancelled") return { ok: false, error: "Only a cancelled cohort can be reopened." };
+  const supabase = createServiceClient();
+  const [{ count: paid }, { count: invited }] = await Promise.all([
+    supabase
+      .from("cohort_invites")
+      .select("id", { count: "exact", head: true })
+      .eq("cohort_id", cohortId)
+      .eq("status", "paid"),
+    supabase
+      .from("cohort_invites")
+      .select("id", { count: "exact", head: true })
+      .eq("cohort_id", cohortId),
+  ]);
+  const status =
+    (paid ?? 0) >= cohort.capacityMin ? "confirmed" : (invited ?? 0) > 0 ? "inviting" : "draft";
+  const { data: flipped, error } = await supabase
+    .from("cohorts")
+    .update({ status })
+    .eq("id", cohortId)
+    .eq("status", "cancelled")
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!flipped) return { ok: false, error: "That cohort changed state — refresh and try again." };
+  if (status === "confirmed") await ensureCohortSessions(cohortId);
+  revalidateCohortPages();
+  return { ok: true, status };
+}
 
 export type CohortInput = {
   id?: string;

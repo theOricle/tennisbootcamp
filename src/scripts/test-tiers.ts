@@ -399,14 +399,20 @@ const dash = read("src/app/dashboard/DashboardView.tsx");
 check("dashboard: the tier section mounts the RankCard, wide for one player and compact per household player", dash.includes('aria-labelledby="tiers"') && dash.includes('layout="wide"') && dash.includes('layout="compact"') && dash.includes("Your players' tiers") && dash.includes("Each player's level, set by Sina."));
 check("dashboard: no badge in the header or the side card", !dash.includes("TierBadge") && !dash.includes("<TierChip") && !/Unranked\s*<\/span>/.test(dash));
 check("dashboard: My programs carries age chips, the cohort span and a flush strip plate", dash.includes("<AgeBandChips bands={program.ageBands} />") && dash.includes("<TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />") && dash.includes('frame="strip"') && dash.includes("aspect-[3/1]"));
-check("dashboard: Open for your tier shows the span rail with the You marker and a 56px mark", dash.includes('label: "You"') && dash.includes("span={{ min: c.levelMin, max: c.levelMax }}") && dash.includes("<PlateMark plate={program.plate} size={56}"));
+// Audit I (M27): the marker is the first player the cohort fits — "You" for the holder, else their first name.
+check("dashboard: Open for your tier shows the span rail with the You marker and a 56px mark", dash.includes('label: first.id === self?.id ? "You"') && dash.includes("span={{ min: c.levelMin, max: c.levelMax }}") && dash.includes("<PlateMark plate={program.plate} size={56}"));
 check("dashboard: Edit profile and Past sessions are 44px targets (L31)", dash.includes('"inline-flex min-h-[44px] items-center rounded text-sm font-semibold text-white/70') && dash.includes("inline-flex min-h-[44px] cursor-pointer list-none items-center"));
-check("dashboard: the holder's card shows in a household only when levelled or placed", dash.includes("p.id !== self?.id || hasLevel(p.level) || Boolean(placedSpans[p.id])"));
+// Audit I (M26): the cards follow the training roster (src/lib/householdView.ts), which keeps the holder
+// only when levelled or named as a player; the Placed band is one of those names (an enrollment in their name).
+check("dashboard: the holder's card shows in a household only when levelled or placed", read("src/app/dashboard/page.tsx").includes("trainingRoster(players, evidence)") && dash.includes("roster.map((player) => (") && read("src/lib/householdView.ts").includes("if (hasLevelValue(self.level)) return true;"));
 const dashPage = read("src/app/dashboard/page.tsx");
-check("dashboard page: a RankCard ghost in the skeleton and placed spans from players.ts data", dashPage.includes("<RankCardGhost />") && dashPage.includes("placedSpanFor(player, rows, cohorts") && dashPage.includes("soloAccount: players.length === 1"));
+// Audit I (M30): a cancelled cohort places nobody, so the Placed band reads the live cohorts.
+check("dashboard page: a RankCard ghost in the skeleton and placed spans from players.ts data", dashPage.includes("<RankCardGhost />") && dashPage.includes("placedSpanFor(player, rows, liveCohorts") && dashPage.includes("soloAccount: players.length === 1"));
 const profile = read("src/app/profile/page.tsx");
-check("/profile mounts the compact RankCard, reading the household through players.ts", profile.includes("<RankCard") && profile.includes('layout="compact"') && profile.includes("listParticipantsForAccount(userId, supabase)") && !profile.includes("TierStatus") && !profile.includes('"full_name, phone, level"'));
-check("/profile offers the assessment only with no enrollment, and reads the Placed state", profile.includes("assessmentLink={rows.length === 0}") && profile.includes("placedSpanFor(player, rows, cohorts, { soloAccount })"));
+// Audit I (M34): the page reads, ProfileView renders.
+const profileView = read("src/app/profile/ProfileView.tsx");
+check("/profile mounts the compact RankCard, reading the household through players.ts", profileView.includes("<RankCard") && profileView.includes('layout="compact"') && profile.includes("listParticipantsForAccount(userId, supabase)") && !(profile + profileView).includes("TierStatus") && !profile.includes('"full_name, phone, level"'));
+check("/profile offers the assessment only with no enrollment, and reads the Placed state", profileView.includes("assessmentLink={enrollments.length === 0}") && profile.includes("placedSpanFor(") && profile.includes("{ soloAccount }"));
 check("/profile: the holder claims every row only on a one-person account, as the dashboard does", profile.includes('participants.length <= 1 && participants.every((p) => p.relationship === "self")') && !profile.includes("soloAccount: true"));
 {
   // The household case the fix guards: a parent with no level, their child

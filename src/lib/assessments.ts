@@ -399,6 +399,80 @@ async function getBookingWithBlock(
   return { booking: booking as BookingRow, block: block as BlockRow };
 }
 
+/** Escape a value for an exact, case-insensitive `ilike` match. */
+function likeExact(value: string): string {
+  return value.trim().replace(/[\\%_]/g, (c) => "\\" + c);
+}
+
+/** A booked assessment as the account's dashboard shows it (audit M25). */
+export type AccountBooking = {
+  id: string;
+  participantId: string | null;
+  /** The player's name on the booking. */
+  playerName: string;
+  /** "YYYY-MM-DD" */
+  date: string;
+  /** "HH:MM" */
+  start: string;
+  locationLabel: string | null;
+};
+
+/**
+ * Booked (paid or free-confirmed) assessments on one account from `today`
+ * on, soonest first: by account id, by the account's email (exact, case
+ * folded) and by its players' ids. A held-but-unpaid booking (`pending`) is
+ * a checkout in progress, not a booking, and is left out. Read only; an
+ * unreadable table reads as none.
+ */
+export async function listUpcomingBookingsForAccount(input: {
+  accountId: string;
+  email: string;
+  participantIds: string[];
+  today: string;
+}): Promise<AccountBooking[]> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return [];
+  try {
+    const supabase = createServiceClient();
+    const base = () =>
+      supabase.from("assessment_bookings").select("*").eq("status", "booked");
+    const reads = [
+      base().eq("user_id", input.accountId),
+      input.email.trim() ? base().ilike("email", likeExact(input.email)) : null,
+      input.participantIds.length > 0 ? base().in("participant_id", input.participantIds) : null,
+    ];
+    const results = await Promise.all(reads.map((q) => (q ? q.then((r) => r, () => null) : null)));
+    const byId = new Map<string, BookingRow>();
+    for (const r of results) {
+      for (const row of ((r?.data as BookingRow[] | null) ?? [])) byId.set(row.id, row);
+    }
+    const bookings = [...byId.values()].filter((b) => b.block_id && b.slot_start);
+    if (bookings.length === 0) return [];
+    const { data: blocks } = await supabase
+      .from("assessment_blocks")
+      .select("*")
+      .in("id", [...new Set(bookings.map((b) => b.block_id as string))]);
+    const blockById = new Map(((blocks as BlockRow[] | null) ?? []).map((b) => [b.id, b]));
+    return bookings
+      .map((b) => {
+        const block = blockById.get(b.block_id as string);
+        if (!block) return null;
+        return {
+          id: b.id,
+          participantId: b.participant_id ?? null,
+          playerName: b.name,
+          date: block.block_date,
+          start: normTime(b.slot_start as string),
+          locationLabel: block.location_label,
+        };
+      })
+      .filter((b): b is AccountBooking => b !== null && b.date >= input.today)
+      .sort((a, z) => (a.date + a.start).localeCompare(z.date + z.start));
+  } catch (err) {
+    console.error("listUpcomingBookingsForAccount failed:", err);
+    return [];
+  }
+}
+
 /** The slot a booking holds, as the confirmation page shows it (audit L13). */
 export type BookedSlotSummary = {
   dateLabel: string;

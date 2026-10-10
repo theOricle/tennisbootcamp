@@ -28,6 +28,7 @@ import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import { JsonLd } from "@/components/JsonLd";
 import { courseJsonLd } from "@/lib/structuredData";
 import { ProgramPlate } from "@/components/plates/ProgramPlate";
+import { ProgramViewerPanel, ViewerSwap } from "@/components/programs/ProgramViewer";
 
 /**
  * The phone summary under the H1 (audit M13): which day and what it costs,
@@ -221,26 +222,31 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   </p>
                 )}
                 {/* Primary, then the optional assessment as an outline pill
-                    at 44px, not 12px grey text (audit M12). */}
-                <TrackedButton
-                  variant="primary"
-                  href={quizHref}
-                  track="quiz"
-                  source="program-detail"
-                  className="mt-4 w-full"
-                  data-quiz-cta
-                >
-                  Take the 2-minute quiz
-                </TrackedButton>
-                <TrackedButton
-                  variant="secondary"
-                  href="/assessment/book"
-                  track="assessment"
-                  source="program-detail"
-                  className="mt-3 w-full"
-                >
-                  Book Your Assessment
-                </TrackedButton>
+                    at 44px, not 12px grey text (audit M12). A signed-in
+                    holder is already on Sina's list: they see their
+                    players' tiers against this span instead of a second
+                    quiz (audit M32). */}
+                <ProgramViewerPanel span={range}>
+                  <TrackedButton
+                    variant="primary"
+                    href={quizHref}
+                    track="quiz"
+                    source="program-detail"
+                    className="mt-4 w-full"
+                    data-quiz-cta
+                  >
+                    Take the 2-minute quiz
+                  </TrackedButton>
+                  <TrackedButton
+                    variant="secondary"
+                    href="/assessment/book"
+                    track="assessment"
+                    source="program-detail"
+                    className="mt-3 w-full"
+                  >
+                    Book Your Assessment
+                  </TrackedButton>
+                </ProgramViewerPanel>
               </div>
             ) : (
               // The one notify form on the page (audit H8), anchored at #notify.
@@ -401,10 +407,17 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               </div>
               <p className="mt-6 text-sm text-white/60">
                 Sina places each player by level and schedule.{" "}
-                <Link href={quizHref} className="text-[#B4E655] hover:underline">
-                  Take the 2-minute quiz
-                </Link>{" "}
-                to start.
+                <ViewerSwap
+                  guest={
+                    <>
+                      <Link href={quizHref} className="text-[#B4E655] hover:underline">
+                        Take the 2-minute quiz
+                      </Link>{" "}
+                      to start.
+                    </>
+                  }
+                  member={<>You&apos;re on his list already.</>}
+                />
               </p>
             </div>
           ) : !program.comingSoon ? (
@@ -418,11 +431,23 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   wording follows owner default D11, "Groups forming". */}
               <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
                 Groups are forming. Cohort dates aren&apos;t public yet.{" "}
-                <Link href={quizHref} className="text-[#B4E655] hover:underline">
-                  Take the 2-minute quiz
-                </Link>{" "}
-                and Sina places you in a class by level and schedule, or leave
-                your email and we&apos;ll tell you when a cohort opens.
+                <ViewerSwap
+                  guest={
+                    <>
+                      <Link href={quizHref} className="text-[#B4E655] hover:underline">
+                        Take the 2-minute quiz
+                      </Link>{" "}
+                      and Sina places you in a class by level and schedule, or leave
+                      your email and we&apos;ll tell you when a cohort opens.
+                    </>
+                  }
+                  member={
+                    <>
+                      You&apos;re on Sina&apos;s list: he places you in a class by level and
+                      schedule, and your group, dates and price land on your dashboard.
+                    </>
+                  }
+                />
               </p>
               <div className="mt-6">
                 <EmailCapture source={`program_${program.slug}_email_capture`} />
@@ -445,10 +470,17 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           )}
         </div>
 
-        {/* The page closes on the primary CTA, not a newsletter box (audit M13). */}
-        <div className="mt-12">
-          <QuizBand href={quizHref} source="program-closing" />
-        </div>
+        {/* The page closes on the primary CTA, not a newsletter box (audit
+            M13) — for a visitor. A signed-in holder already took the quiz
+            (audit M32); their next step sits in the timetable card. */}
+        <ViewerSwap
+          guest={
+            <div className="mt-12">
+              <QuizBand href={quizHref} source="program-closing" />
+            </div>
+          }
+          member={null}
+        />
 
         <div className="mt-6">
           <Link

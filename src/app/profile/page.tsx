@@ -3,38 +3,21 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { programs } from "@/content/programs";
 import { getAllCohorts } from "@/lib/cohortsDb";
 import { listParticipantsForAccount, type PlayerRecord } from "@/lib/players";
+import { listInvitesForAccount } from "@/lib/cohortActions";
+import { listUpcomingBookingsForAccount } from "@/lib/assessments";
+import { listUnusedCreditsForAccount } from "@/lib/assessmentCredit";
+import { todayIso } from "@/lib/cohortVisibility";
 import { placedSpanFor } from "@/lib/tiers";
-import { RankCard } from "@/components/tiers";
-import { ProfileForm } from "./ProfileForm";
+import { holderIsPlayer } from "@/lib/householdView";
+import { ProfileView } from "./ProfileView";
 
 export const metadata: Metadata = {
   title: "Profile",
   description: "Manage your Tennis Bootcamp account details and enrollments.",
   robots: { index: false, follow: false },
 };
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-CA", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function statusLabel(s: string): string {
-  if (s === "paid") return "Enrolled";
-  if (s === "test_paid") return "Test enrolled";
-  return s;
-}
-
-function statusClass(s: string): string {
-  if (s === "paid") return "bg-[#B4E655]/15 text-[#B4E655]";
-  if (s === "test_paid") return "bg-yellow-400/15 text-yellow-300";
-  return "bg-white/10 text-white/60";
-}
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
@@ -126,8 +109,9 @@ async function ProfileContent({
   // The level is read through players.ts, the one place level and
   // availability live (CLAUDE.md), under the holder's own session (RLS); the
   // profile row still supplies the contact fields the form edits. The whole
-  // household is read, not just the holder, so the Placed state below knows
-  // whether the account's enrollment rows can be the holder's.
+  // household is read, not just the holder: the Placed state below needs to
+  // know whether the account's enrollment rows can be the holder's, and the
+  // other players are managed on this page (audit M34).
   const [{ data: profile, error: profileError }, { data: enrollments, error: enrollError }, playersResult] =
     await Promise.all([
       supabase.from("profiles").select("full_name, phone").eq("id", userId).single(),
@@ -154,6 +138,23 @@ async function ProfileContent({
 
   const cohorts = await getAllCohorts();
   const rows = enrollments ?? [];
+  const participantIds = participants.map((p) => p.id);
+
+  // Is the holder one of the players (audit M26)? The same evidence the
+  // dashboard reads, so a parent who registered only a child gets no
+  // unranked card of their own here either.
+  const [invites, bookings, credits] = await Promise.all([
+    listInvitesForAccount({ accountId: userId, email: userEmail, participantIds, cohorts }).catch(
+      () => []
+    ),
+    listUpcomingBookingsForAccount({
+      accountId: userId,
+      email: userEmail,
+      participantIds,
+      today: todayIso(),
+    }).catch(() => []),
+    listUnusedCreditsForAccount({ email: userEmail, participantIds }).catch(() => []),
+  ]);
 
   // The RankCard (audit M24): the same card as the dashboard. A brand-new
   // account may have no 'self' participant yet; it reads as unranked. The
@@ -182,84 +183,32 @@ async function ProfileContent({
   // is not solo here, because this card is the holder's, not the child's.
   const soloAccount =
     participants.length <= 1 && participants.every((p) => p.relationship === "self");
-  const placedSpan = placedSpanFor(player, rows, cohorts, { soloAccount });
-
+  // A cancelled cohort places nobody (audit M30).
+  const placedSpan = placedSpanFor(
+    player,
+    rows,
+    cohorts.filter((c) => c.dbStatus !== "cancelled"),
+    { soloAccount }
+  );
+  const holderPlays = holderIsPlayer(player, participants.length > 0 ? participants : [player], {
+    participantIds: [
+      ...invites.map((i) => i.participant_id ?? null),
+      ...bookings.map((b) => b.participantId),
+      ...credits.map((c) => c.participantId),
+    ],
+    enrollmentNames: rows.map((r) => r.participant_name),
+  });
   return (
-    <>
-      {/* Profile details */}
-      <section className="mb-12">
-        <div className="mb-4 border-l-2 border-[#B4E655] pl-4">
-          <h1 className="text-xl font-semibold text-white">Profile</h1>
-        </div>
-        <div className="border-b border-white/10 mb-6" />
-        <RankCard
-          player={player}
-          layout="compact"
-          isSelf
-          placedSpan={placedSpan}
-          assessmentLink={rows.length === 0}
-          headingLevel="h2"
-          className="mb-8"
-        />
-        <ProfileForm
-          userId={userId}
-          email={userEmail}
-          initialFullName={profile?.full_name ?? ""}
-          initialPhone={profile?.phone ?? ""}
-        />
-      </section>
-
-      {/* Enrollments */}
-      <section>
-        <div className="mb-4 border-l-2 border-[#B4E655] pl-4">
-          <h2 className="text-xl font-semibold text-white">My enrollments</h2>
-        </div>
-        <div className="border-b border-white/10 mb-6" />
-
-        {!enrollments || enrollments.length === 0 ? (
-          <div className="space-y-4">
-            <p className="text-sm text-white/60">No enrollments yet.</p>
-            <Link
-              href="/programs"
-              className="inline-block rounded-full bg-[#B4E655] px-5 py-2 text-sm font-semibold text-[#061427] hover:brightness-110 transition-filter"
-            >
-              Browse Programs
-            </Link>
-          </div>
-        ) : (
-          <ul className="space-y-4">
-            {enrollments.map((e) => {
-              const cohort = cohorts.find((c) => c.id === e.cohort_id);
-              const program = programs.find(
-                (p) => p.id === (cohort?.programId ?? e.program)
-              );
-              return (
-                <li
-                  key={e.id}
-                  className="flex items-start justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-4"
-                >
-                  <div>
-                    <p className="font-semibold text-white">
-                      {program?.title ?? e.program ?? e.cohort_id}
-                    </p>
-                    {cohort && (
-                      <p className="mt-0.5 text-sm text-white/60">
-                        {fmtDate(cohort.startDate)} – {fmtDate(cohort.endDate)}
-                      </p>
-                    )}
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${statusClass(e.status)}`}
-                  >
-                    {statusLabel(e.status)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-    </>
+    <ProfileView
+      email={userEmail}
+      fullName={profile?.full_name ?? ""}
+      phone={profile?.phone ?? ""}
+      holder={holderPlays ? player : null}
+      holderPlacedSpan={placedSpan}
+      others={participants.filter((p) => p.id !== player.id)}
+      enrollments={rows}
+      cohorts={cohorts}
+    />
   );
 }
 

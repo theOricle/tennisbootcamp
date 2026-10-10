@@ -8,7 +8,11 @@ import { scheduledEndDate, addDaysISO } from "@/lib/makeup";
 import { TierLine, TierRangeBadges } from "@/components/tiers";
 import { LEVEL_OPTIONS, formatLevelBand, formatTierSpan } from "@/lib/tiers";
 import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
+import { PlayerPreview } from "@/components/admin/PlayerPreview";
+import { PlateMark } from "@/components/plates/PlateMark";
 import type { MatrixPlayer } from "@/lib/availabilityMatrix";
+import { artFocusForCohort } from "@/lib/plates/variant";
+import { COHORT_STATUS_LABELS, programTitleFor, statusLabel } from "@/lib/adminLabels";
 import type { SessionSlot } from "@/types/cohort";
 
 type AdminCohort = Cohort & { paidCount: number };
@@ -70,7 +74,8 @@ function CreateCohortForm({
   const [capacityMin, setCapacityMin] = useState(3);
   const [capacityMax, setCapacityMax] = useState(6);
   const [visibility, setVisibility] = useState<"private" | "public">("private");
-  const [paymentMode, setPaymentMode] = useState<"card" | "etransfer">("card");
+  // Fall 2026 collects by e-transfer (CLAUDE.md, audit L23); card stays one tap away.
+  const [paymentMode, setPaymentMode] = useState<"card" | "etransfer">("etransfer");
   const [holdHours, setHoldHours] = useState(48);
   const [makeupMaxWeeks, setMakeupMaxWeeks] = useState(2);
   const [busy, setBusy] = useState(false);
@@ -149,8 +154,9 @@ function CreateCohortForm({
   return (
     <form onSubmit={submit} className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
       <div>
-        <label className="mb-1 block text-xs text-white/60">Program</label>
+        <label htmlFor="new-cohort-program" className="mb-1 block text-xs text-white/60">Program</label>
         <select
+          id="new-cohort-program"
           value={programId}
           onChange={(e) => setProgramId(e.target.value)}
           className={inputClass}
@@ -163,20 +169,22 @@ function CreateCohortForm({
         </select>
       </div>
       <div>
-        <label className="mb-1 block text-xs text-white/60">Label</label>
+        <label htmlFor="new-cohort-label" className="mb-1 block text-xs text-white/60">Label</label>
         <input
+          id="new-cohort-label"
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="Tue/Thu Evening — Level 3.0"
+          placeholder="Saturday 12pm — Deuce"
           required
           className={inputClass}
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-xs text-white/60">Level min</label>
+          <label htmlFor="new-cohort-level-min" className="mb-1 block text-xs text-white/60">Level min</label>
           <select
+            id="new-cohort-level-min"
             value={levelMin}
             onChange={(e) => setLevelMin(e.target.value)}
             className={inputClass}
@@ -188,8 +196,9 @@ function CreateCohortForm({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-white/60">Level max</label>
+          <label htmlFor="new-cohort-level-max" className="mb-1 block text-xs text-white/60">Level max</label>
           <select
+            id="new-cohort-level-max"
             value={levelMax}
             onChange={(e) => setLevelMax(e.target.value)}
             className={inputClass}
@@ -216,6 +225,13 @@ function CreateCohortForm({
           className="mt-2"
         />
       </div>
+      {/* The cohort's art as players will see it, live as the form changes. */}
+      <PlayerPreview
+        programId={programId}
+        levelMin={levelMin || null}
+        levelMax={levelMax || null}
+        sessions={slots as SessionSlot[]}
+      />
       {/* Who's free in this band — read-only, counts per day-part, names on tap */}
       <AvailabilityMatrix
         players={pool}
@@ -224,10 +240,11 @@ function CreateCohortForm({
         loading={poolLoading}
       />
       <div>
-        <label className="mb-1 block text-xs text-white/60">
+        <label htmlFor="new-cohort-location" className="mb-1 block text-xs text-white/60">
           Location note (optional)
         </label>
         <input
+          id="new-cohort-location"
           type="text"
           value={locationLabel}
           onChange={(e) => setLocationLabel(e.target.value)}
@@ -237,8 +254,9 @@ function CreateCohortForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-xs text-white/60">Start date</label>
+          <label htmlFor="new-cohort-start" className="mb-1 block text-xs text-white/60">Start date</label>
           <input
+            id="new-cohort-start"
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
@@ -247,8 +265,9 @@ function CreateCohortForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-white/60">Weeks</label>
+          <label htmlFor="new-cohort-weeks" className="mb-1 block text-xs text-white/60">Weeks</label>
           <input
+            id="new-cohort-weeks"
             type="number"
             min={1}
             value={weeks}
@@ -259,7 +278,7 @@ function CreateCohortForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-white/60">Weekly sessions</label>
+        <p className="mb-1 block text-xs text-white/60">Weekly sessions</p>
         <div className="space-y-2">
           {slots.map((slot, i) => (
             <div key={i} className="flex items-center gap-2">
@@ -313,8 +332,9 @@ function CreateCohortForm({
 
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="mb-1 block text-xs text-white/60">Price (CAD)</label>
+          <label htmlFor="new-cohort-price" className="mb-1 block text-xs text-white/60">Price (CAD)</label>
           <input
+            id="new-cohort-price"
             type="number"
             min={0}
             step="1"
@@ -324,8 +344,9 @@ function CreateCohortForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-white/60">Min to run</label>
+          <label htmlFor="new-cohort-min" className="mb-1 block text-xs text-white/60">Min to run</label>
           <input
+            id="new-cohort-min"
             type="number"
             min={1}
             value={capacityMin}
@@ -334,8 +355,9 @@ function CreateCohortForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-white/60">Capacity</label>
+          <label htmlFor="new-cohort-capacity" className="mb-1 block text-xs text-white/60">Capacity</label>
           <input
+            id="new-cohort-capacity"
             type="number"
             min={1}
             value={capacityMax}
@@ -346,8 +368,9 @@ function CreateCohortForm({
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="mb-1 block text-xs text-white/60">Visibility</label>
+          <label htmlFor="new-cohort-visibility" className="mb-1 block text-xs text-white/60">Visibility</label>
           <select
+            id="new-cohort-visibility"
             value={visibility}
             onChange={(e) => setVisibility(e.target.value as "private" | "public")}
             className={inputClass}
@@ -357,8 +380,9 @@ function CreateCohortForm({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-white/60">Hold (hours)</label>
+          <label htmlFor="new-cohort-hold" className="mb-1 block text-xs text-white/60">Hold (hours)</label>
           <input
+            id="new-cohort-hold"
             type="number"
             min={1}
             value={holdHours}
@@ -367,8 +391,9 @@ function CreateCohortForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-white/60">Make-up cap (wks)</label>
+          <label htmlFor="new-cohort-makeup" className="mb-1 block text-xs text-white/60">Make-up cap (wks)</label>
           <input
+            id="new-cohort-makeup"
             type="number"
             min={0}
             value={makeupMaxWeeks}
@@ -379,14 +404,15 @@ function CreateCohortForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-white/60">Payment</label>
+        <label htmlFor="new-cohort-payment" className="mb-1 block text-xs text-white/60">Payment</label>
         <select
+          id="new-cohort-payment"
           value={paymentMode}
           onChange={(e) => setPaymentMode(e.target.value as "card" | "etransfer")}
           className={inputClass}
         >
-          <option value="card" className="bg-[#061427]">Card (Stripe Checkout)</option>
           <option value="etransfer" className="bg-[#061427]">E-transfer (you mark invites paid)</option>
+          <option value="card" className="bg-[#061427]">Card (Stripe Checkout)</option>
         </select>
       </div>
 
@@ -421,6 +447,7 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
   const [cohorts, setCohorts] = useState<AdminCohort[]>([]);
   const [dbReady, setDbReady] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pool, setPool] = useState<MatrixPlayer[]>([]);
   const [poolLoading, setPoolLoading] = useState(true);
 
@@ -452,14 +479,21 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
     };
   }, []);
 
+  // A load failure says so, with Retry (audit L23), instead of reading as
+  // "no cohorts" or as a missing migration.
   const refresh = useCallback(async () => {
+    setLoadError(null);
     try {
       const res = await fetch("/api/admin/cohorts");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLoadError(typeof data.error === "string" ? data.error : "Couldn't load the cohorts.");
+        return;
+      }
       setCohorts(data.cohorts ?? []);
       setDbReady(data.dbReady ?? false);
     } catch {
-      setDbReady(false);
+      setLoadError("Couldn't reach the server.");
     } finally {
       setLoading(false);
     }
@@ -487,25 +521,50 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
       />
 
       {loading && <p className="text-sm text-white/60">Loading…</p>}
-      {!loading && dbReady && cohorts.length === 0 && (
+      {loadError && (
+        <div className="flex flex-wrap items-center gap-3">
+          <p role="alert" className="text-sm text-red-300">
+            {loadError}
+          </p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:text-white"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {!loading && !loadError && dbReady && cohorts.length === 0 && (
         <p className="text-sm text-white/60">No cohorts yet.</p>
       )}
 
-      {cohorts.map((c) => (
+      {cohorts.map((c) => {
+        const program = programs.find((p) => p.id === c.programId);
+        const banded = c.levelMin != null || c.levelMax != null;
+        return (
         <Link
           key={c.id}
           href={`/admin/cohorts/${c.id}`}
-          className="block rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-[#B4E655]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+          className="block overflow-hidden rounded-xl border border-white/10 bg-white/5 transition hover:border-[#B4E655]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-white">{c.label}</p>
-              <p className="mt-0.5 text-xs text-white/60">
-                {c.programId} · starts {fmtDate(c.startDate)} · {c.weeks} wk
-                {c.visibility === "private" ? " · private" : ""}
-                {c.paymentMode === "etransfer" ? " · e-transfer" : ""}
-              </p>
-              <TierRangeBadges levelMin={c.levelMin} levelMax={c.levelMax} className="mt-2" />
+          <div className="flex items-start justify-between gap-3 p-4">
+            {/* The program's 48px mark (design specs §4.8), its title, not the slug. */}
+            <div className="flex min-w-0 items-start gap-3">
+              <PlateMark
+                plate={program?.plate ?? "court"}
+                size={48}
+                focusSlot={program ? artFocusForCohort(program, c) : null}
+              />
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-white">{c.label}</p>
+                <p className="mt-0.5 text-xs text-white/60">
+                  {programTitleFor(c.programId)} · starts {fmtDate(c.startDate)} · {c.weeks} wk
+                  {c.visibility === "private" ? " · private" : ""}
+                  {c.paymentMode === "etransfer" ? " · e-transfer" : ""}
+                </p>
+                <TierRangeBadges levelMin={c.levelMin} levelMax={c.levelMax} className="mt-2" />
+              </div>
             </div>
             <div className="shrink-0 text-right">
               <span
@@ -513,20 +572,31 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
                   STATUS_STYLE[c.dbStatus ?? "draft"] ?? "bg-white/10 text-white/60"
                 }`}
               >
-                {c.dbStatus ?? "?"}
+                {statusLabel(COHORT_STATUS_LABELS, c.dbStatus ?? "draft")}
               </span>
               <p className="mt-1 text-xs text-white/60">
                 {c.paidCount}/{c.capacityMin} paid to run
               </p>
               {c.creditFollowup && (
                 <p className="mt-1 text-xs font-semibold text-yellow-200">
-                  credit follow-up
+                  Credit follow-up
                 </p>
               )}
             </div>
           </div>
+          {/* The band along the row's bottom edge: flat xs pips (design specs §4.8). */}
+          {banded && (
+            <TierLine
+              variant="rail"
+              size="xs"
+              span={{ min: c.levelMin, max: c.levelMax }}
+              labels="none"
+              className="px-4 pb-3"
+            />
+          )}
         </Link>
-      ))}
+        );
+      })}
     </div>
   );
 }

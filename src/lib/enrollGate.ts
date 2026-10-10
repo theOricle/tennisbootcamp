@@ -2,8 +2,10 @@
 //
 // /enroll/[cohortId] decides who may enroll: the cohort must be renderable
 // (src/lib/cohortVisibility.ts), and a private cohort admits a valid invite
-// token for that cohort or, when the cohort is tier-gated, a signed-in player
-// whose coach-assigned level sits inside [level_min, level_max]. Before this
+// token for that cohort or, when the cohort is tier-gated, a signed-in holder
+// whose players' coach-assigned levels sit inside [level_min, level_max]
+// (audit M27: the level of each player being enrolled, read through
+// src/lib/players.ts, never only the holder's own profile). Before this
 // module /api/checkout and /api/enroll/etransfer trusted whatever the browser
 // posted — cohortId, inviteToken, contactEmail — so the gate could be walked
 // around with one fetch. Both routes now run the same decision as the page,
@@ -15,7 +17,7 @@
 
 import type { Cohort } from "@/types/cohort";
 import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
-import { levelWithinRange } from "@/lib/tiers";
+import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 import { emailBelongsToAccount } from "@/lib/enrollmentLink";
 
@@ -44,12 +46,19 @@ export function decideEnrollGate(input: {
   tokenSent: boolean;
   /** getInviteByToken(cohort.id, token), or null when no token was sent. */
   lookup: GateInviteLookup | null;
-  /** The signed-in player's coach-assigned level, if any. */
+  /** The signed-in player's coach-assigned level, if any (one player). */
   playerLevel?: number | string | null;
+  /**
+   * The coach-assigned level of every player this request enrolls (audit
+   * M27), null for a player with none or one the account doesn't own. The
+   * level path admits only when every one is inside the band; it wins over
+   * `playerLevel` when given.
+   */
+  playerLevels?: readonly (number | string | null | undefined)[];
   payable?: boolean;
   today?: string;
 }): EnrollGateDecision {
-  const { cohort, tokenSent, lookup, playerLevel } = input;
+  const { cohort, tokenSent, lookup, playerLevel, playerLevels } = input;
   const today = input.today ?? todayIso();
   if (!cohort || !isCohortRenderable(cohort, today)) {
     return { allowed: false, status: 404 };
@@ -65,9 +74,10 @@ export function decideEnrollGate(input: {
   if (input.payable && lookup?.state === "expired") {
     return { allowed: true, via: "invite" };
   }
+  const levels = playerLevels ?? (playerLevel !== undefined ? [playerLevel] : []);
   if (
-    (cohort.levelMin != null || cohort.levelMax != null) &&
-    levelWithinRange(playerLevel, cohort.levelMin, cohort.levelMax)
+    levels.length > 0 &&
+    levels.every((level) => cohortAdmitsLevel(level, cohort.levelMin, cohort.levelMax))
   ) {
     return { allowed: true, via: "level" };
   }
@@ -269,6 +279,11 @@ export function foreignRows(
 
 export type ResolvedEnrollGate = {
   decision: EnrollGateDecision;
+  /**
+   * Admitted by level: the account's players whose level is inside the band,
+   * the only people the enroll wizard offers (audit M27). Empty otherwise.
+   */
+  eligibleParticipantIds: string[];
   /** The token's lookup in this cohort, for the invite id and email. */
   lookup: GateInviteLookup | null;
   /** The invited account holder's email when admitted by a valid token. */
@@ -362,25 +377,80 @@ export function etransferRowPlan(params: {
   return steps;
 }
 
+/** A player the level path can read: an id and a coach level. */
+export type GatePlayer = { id: string; relationship: string; level: number | string | null };
+
+/**
+ * Which levels the level path weighs, and who on the account it may admit
+ * (audit M27). Pure, pinned by test-checkout-gate.ts.
+ *
+ *   • The page (`requested` undefined): the holder may open the wizard when
+ *     any of their players is inside the band; those players are the ones
+ *     the wizard offers.
+ *   • A payment route (`requested` an array, one entry per player on the
+ *     request): every player must be one of the account's own, with a level
+ *     inside the band. A typed player (null id) or an id from another account
+ *     has no level here, so the request is refused. A legacy body that names
+ *     no players at all is the holder alone, as before households.
+ */
+export function levelGatePlan(
+  cohort: Pick<Cohort, "levelMin" | "levelMax">,
+  players: readonly GatePlayer[],
+  requested?: readonly (string | null | undefined)[] | null
+): { levels: (number | string | null)[]; eligibleIds: string[] } {
+  const eligible = players.filter((p) => cohortAdmitsLevel(p.level, cohort.levelMin, cohort.levelMax));
+  const eligibleIds = eligible.map((p) => p.id);
+  if (requested === undefined || requested === null) {
+    return { levels: eligible.length > 0 ? [eligible[0].level] : [], eligibleIds };
+  }
+  if (requested.length === 0) {
+    const self = players.find((p) => p.relationship === "self") ?? null;
+    return { levels: self ? [self.level] : [], eligibleIds };
+  }
+  const byId = new Map(players.map((p) => [p.id, p]));
+  return {
+    levels: requested.map((id) => {
+      const key = (id ?? "").trim();
+      return key ? byId.get(key)?.level ?? null : null;
+    }),
+    eligibleIds,
+  };
+}
+
+/**
+ * The participant id of each player a request names, in order: what the
+ * payment routes hand the gate. An empty list means a legacy body that names
+ * no players (the holder alone).
+ */
+export function requestedParticipantIds(players: unknown): (string | null)[] {
+  if (!Array.isArray(players)) return [];
+  return players.map((p) => {
+    const id = (p as { participantId?: unknown } | null)?.participantId;
+    return typeof id === "string" && id.trim() ? id.trim() : null;
+  });
+}
+
 /**
  * Run the gate for a cohort and the token the request carried (query, cookie
- * or JSON body). The signed-in player's level is only read when a tier-gated
- * private cohort has no admitting token, exactly as the page did.
+ * or JSON body). The signed-in holder's players are only read when a
+ * tier-gated private cohort has no admitting token, exactly as the page did.
+ * `participantIds` is what a payment route enrolls (one entry per player,
+ * null for a typed one); the page leaves it out.
  */
 export async function resolveEnrollGate(
   cohort: Cohort | null | undefined,
   token: string | null | undefined,
-  opts: { payable?: boolean } = {}
+  opts: { payable?: boolean; participantIds?: readonly (string | null | undefined)[] | null } = {}
 ): Promise<ResolvedEnrollGate> {
   const tokenParam = (token ?? "").trim() || null;
   const tokenSent = Boolean(tokenParam);
   const first = decideEnrollGate({ cohort, tokenSent, lookup: null, payable: opts.payable });
   if (!first.allowed && first.status === 404) {
-    return { decision: first, lookup: null, inviteEmail: null, declined: false };
+    return { decision: first, eligibleParticipantIds: [], lookup: null, inviteEmail: null, declined: false };
   }
 
   // The token is looked up whenever one was sent (a public cohort's checkout
-  // still links the payment to its invite row); the level only when a
+  // still links the payment to its invite row); the levels only when a
   // tier-gated private cohort has nothing else admitting the player.
   const c = cohort as Cohort;
   let lookup: GateInviteLookup | null = null;
@@ -389,14 +459,17 @@ export async function resolveEnrollGate(
     lookup = await getInviteByToken(c.id, tokenParam);
   }
   let decision = decideEnrollGate({ cohort: c, tokenSent, lookup, payable: opts.payable });
+  let eligibleParticipantIds: string[] = [];
   if (!decision.allowed && (c.levelMin != null || c.levelMax != null)) {
+    const plan = levelGatePlan(c, await signedInPlayers(), opts.participantIds);
     decision = decideEnrollGate({
       cohort: c,
       tokenSent,
       lookup,
-      playerLevel: await signedInPlayerLevel(),
+      playerLevels: plan.levels,
       payable: opts.payable,
     });
+    if (decision.allowed) eligibleParticipantIds = plan.eligibleIds;
   }
   const inviteEmail =
     decision.allowed && decision.via === "invite" && lookup?.state === "valid"
@@ -410,25 +483,26 @@ export async function resolveEnrollGate(
     const row = await findInviteRefByToken(c.id, tokenParam).catch(() => null);
     declined = row?.status === "declined";
   }
-  return { decision, lookup, inviteEmail, declined };
+  return { decision, eligibleParticipantIds, lookup, inviteEmail, declined };
 }
 
-/** The signed-in player's coach-assigned level from their profile, else null. */
-async function signedInPlayerLevel(): Promise<number | string | null> {
+/**
+ * The signed-in holder's players with their coach levels, read through
+ * src/lib/players.ts under the holder's session (RLS), or [] when nobody is
+ * signed in. Before migration 0007 the holder's profile is the one player.
+ */
+async function signedInPlayers(): Promise<GatePlayer[]> {
   try {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("level")
-      .eq("id", user.id)
-      .maybeSingle();
-    return (profile as { level?: number | string | null } | null)?.level ?? null;
+    if (!user) return [];
+    const { listParticipantsForAccount } = await import("@/lib/players");
+    const players = await listParticipantsForAccount(user.id, supabase);
+    return players.map((p) => ({ id: p.id, relationship: p.relationship, level: p.level }));
   } catch {
-    return null;
+    return [];
   }
 }

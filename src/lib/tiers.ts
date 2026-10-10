@@ -356,8 +356,28 @@ export function levelWithinRange(
 }
 
 /**
- * Tier gate for the dashboard "Open for your tier" list: does the player's
- * tier fall inside the cohort's tier band?
+ * The one rule for "may this player join this banded cohort" (audit M27):
+ * the cohort has a band, and the player's coach-assigned level is inside it,
+ * numerically and inclusive. The dashboard's "Open for your tier" list, the
+ * /enroll page, /api/enroll, /api/checkout and /api/enroll/etransfer all
+ * read this, so a cohort the list offers is a cohort the gate admits. Admin
+ * bands may sit on half steps (3.0–3.0 is a Deuce cohort a 3.5 player is not
+ * in), which is why nothing compares whole tiers any more.
+ */
+export function cohortAdmitsLevel(
+  level: number | string | null | undefined,
+  levelMin: number | string | null | undefined,
+  levelMax: number | string | null | undefined
+): boolean {
+  const banded = toLevelNumber(levelMin) !== null || toLevelNumber(levelMax) !== null;
+  return banded && levelWithinRange(level, levelMin, levelMax);
+}
+
+/**
+ * Whole-tier comparison: does the player's tier fall inside the cohort's tier
+ * band? Display only. It used to drive "Open for your tier" and disagreed
+ * with the numeric gate on half-step bands (audit M27); access decisions use
+ * cohortAdmitsLevel.
  */
 export function tierInCohortRange(
   level: number | string | null | undefined,

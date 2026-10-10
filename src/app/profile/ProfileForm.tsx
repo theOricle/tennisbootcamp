@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/browser";
+import { useRouter } from "next/navigation";
 import { phoneError, withHumanFallback } from "@/lib/formValidation";
 import {
   FieldError,
@@ -14,16 +14,20 @@ import {
 import { FOCUS_RING } from "@/components/ui/focus";
 
 type Props = {
-  userId: string;
   email: string;
   initialFullName: string;
   initialPhone: string;
 };
 
-export function ProfileForm({ userId, email, initialFullName, initialPhone }: Props) {
+// The holder's own details. Saved through /api/profile (src/lib/players.ts),
+// which writes the profile and the holder's player row together, so a name
+// edit reaches the dashboard greeting and the admin list (audit M34).
+export function ProfileForm({ email, initialFullName, initialPhone }: Props) {
+  const router = useRouter();
   const [fullName, setFullName] = useState(initialFullName);
   const [phone, setPhone] = useState(initialPhone);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [errorText, setErrorText] = useState<string | null>(null);
   const [phoneProblem, setPhoneProblem] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -36,13 +40,26 @@ export function ProfileForm({ userId, email, initialFullName, initialPhone }: Pr
       return;
     }
     setStatus("saving");
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("profiles")
-      .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
-      .eq("id", userId);
-    setStatus(error ? "error" : "saved");
-    if (!error) setTimeout(() => setStatus("idle"), 2500);
+    setErrorText(null);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName: fullName.trim(), phone: phone.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrorText(typeof data.error === "string" ? data.error : null);
+        setStatus("error");
+        return;
+      }
+      setStatus("saved");
+      // The RankCard and the players list above read the new name.
+      router.refresh();
+      setTimeout(() => setStatus("idle"), 2500);
+    } catch {
+      setStatus("error");
+    }
   }
 
   return (
@@ -98,7 +115,7 @@ export function ProfileForm({ userId, email, initialFullName, initialPhone }: Pr
       </div>
 
       {status === "error" && (
-        <FormAlert>{withHumanFallback("Your changes weren't saved. Try again.")}</FormAlert>
+        <FormAlert>{withHumanFallback(errorText ?? "Your changes weren't saved. Try again.")}</FormAlert>
       )}
       <div className="flex items-center gap-4">
         <button

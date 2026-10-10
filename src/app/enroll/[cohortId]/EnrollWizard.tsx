@@ -769,6 +769,7 @@ export function EnrollWizard({
   inviteToken = null,
   initialEmail = null,
   etransfer = null,
+  eligibleParticipantIds = null,
 }: {
   cohort: Cohort;
   program: Program | undefined;
@@ -776,6 +777,12 @@ export function EnrollWizard({
   inviteToken?: string | null;
   initialEmail?: string | null;
   etransfer?: EtransferInfo | null;
+  /**
+   * Set when the page admitted the holder by level (audit M27): the players
+   * on the account whose level is inside this cohort's band. Nobody else can
+   * be picked; null means everyone on the account may be.
+   */
+  eligibleParticipantIds?: string[] | null;
 }) {
   const totalSteps = etransfer ? ETRANSFER_STEPS : CARD_STEPS;
   const [step, setStep] = useState(0);
@@ -1205,7 +1212,12 @@ export function EnrollWizard({
               value={who}
               onChange={setWho}
               multiple
-              intro="Every player takes their own seat. Add everyone now and pay once."
+              intro={
+                eligibleParticipantIds
+                  ? "This group is for players inside its level band. Every player takes their own seat."
+                  : "Every player takes their own seat. Add everyone now and pay once."
+              }
+              eligibleIds={eligibleParticipantIds}
               errors={errors}
             />
           )}

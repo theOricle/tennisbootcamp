@@ -6,8 +6,15 @@ import { trackCohortInviteSent } from "@/lib/analytics";
 import { inviteNotice } from "@/lib/emailResult";
 import { TierRangeBadges } from "@/components/tiers";
 import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
+import { PlayerPreview } from "@/components/admin/PlayerPreview";
 import type { MatrixPlayer } from "@/lib/availabilityMatrix";
 import { dayNameForDate } from "@/lib/makeup";
+import {
+  COHORT_STATUS_LABELS,
+  INVITE_STATUS_LABELS,
+  programTitleFor,
+  statusLabel,
+} from "@/lib/adminLabels";
 
 type PaymentMode = "card" | "etransfer";
 
@@ -44,6 +51,8 @@ type Detail = {
   invites: InviteRow[];
   sessions: SessionRow[];
   memberCount: number;
+  /** Paid players by name, for the Cancel cohort confirmation (audit M30). */
+  paidPlayers?: string[];
   paidCount: number;
 };
 
@@ -205,7 +214,7 @@ function InviteItem({
               INVITE_STYLE[invite.status] ?? "bg-white/10 text-white/60"
             }`}
           >
-            {invite.status}
+            {statusLabel(INVITE_STATUS_LABELS, invite.status)}
           </span>
           {payable && mode === "idle" && (
             <button
@@ -230,10 +239,11 @@ function InviteItem({
 
       {mode === "paying" && (
         <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
-          <label className="block text-xs text-white/60">
+          <label htmlFor={`note-${invite.id}`} className="block text-xs text-white/60">
             Note (optional) — what arrived and when
           </label>
           <input
+            id={`note-${invite.id}`}
             type="text"
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -348,8 +358,11 @@ function PaymentSettings({
         Payment
       </h2>
       <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-        <label className="block text-xs text-white/60">How players pay</label>
+        <label htmlFor="cohort-payment-mode" className="block text-xs text-white/60">
+          How players pay
+        </label>
         <select
+          id="cohort-payment-mode"
           value={mode}
           onChange={(e) => setMode(e.target.value as PaymentMode)}
           className={inputClass}
@@ -382,11 +395,16 @@ function InviteSection({
   cohortId,
   invites,
   canInvite,
+  selected,
+  onClearSelection,
   onChanged,
 }: {
   cohortId: string;
   invites: InviteRow[];
   canInvite: boolean;
+  /** Players ticked in "Who's free" (audit M28): id and name. */
+  selected: { id: string; name: string }[];
+  onClearSelection: () => void;
   onChanged: () => void;
 }) {
   const [emails, setEmails] = useState("");
@@ -394,13 +412,19 @@ function InviteSection({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  async function send() {
+  // Invite the ticked players (by participant id), or — the fallback — the
+  // typed emails, which go to each account holder's own spot.
+  async function send(by: "players" | "emails") {
     const list = emails
       .split(/[\s,;]+/)
       .map((e) => e.trim())
       .filter(Boolean);
-    if (list.length === 0) {
+    if (by === "emails" && list.length === 0) {
       setError("Add at least one email.");
+      return;
+    }
+    if (by === "players" && selected.length === 0) {
+      setError("Tick at least one player in Who's free.");
       return;
     }
     setBusy(true);
@@ -410,7 +434,11 @@ function InviteSection({
       const res = await fetch(`/api/admin/cohorts/${cohortId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "invite", emails: list }),
+        body: JSON.stringify(
+          by === "players"
+            ? { action: "invite", participantIds: selected.map((p) => p.id) }
+            : { action: "invite", emails: list }
+        ),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -422,7 +450,8 @@ function InviteSection({
       // Count the emails that actually left, not the rows we wrote.
       const emailed: number = data.emailed ?? created;
       trackCohortInviteSent(cohortId, emailed);
-      setEmails("");
+      if (by === "players") onClearSelection();
+      else setEmails("");
 
       const message = inviteNotice({
         created,
@@ -447,27 +476,86 @@ function InviteSection({
         Invites
       </h2>
       {canInvite ? (
-        <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-          <label className="block text-xs text-white/60">
-            Emails (comma, space, or line separated)
-          </label>
-          <textarea
-            value={emails}
-            onChange={(e) => setEmails(e.target.value)}
-            rows={2}
-            placeholder="player1@example.com, player2@example.com"
-            className={inputClass}
-          />
-          {error && <p className="text-sm text-red-300">{error}</p>}
-          {notice && <p className="text-sm text-yellow-200">{notice}</p>}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void send()}
-            className="min-h-[44px] w-full rounded-full bg-[#B4E655] px-4 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
-          >
-            {busy ? "Sending…" : "Send invites (48h hold)"}
-          </button>
+        <div className="space-y-4 rounded-xl border border-white/10 bg-white/5 p-4">
+          {/* Players first (audit M28): each tick is a participant, so a
+              child's invite holds the child's spot with the child's credit. */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">
+              Ticked in Who&apos;s free
+            </p>
+            {selected.length === 0 ? (
+              <p className="text-sm text-white/60">
+                Open a cell above and tick the players to invite.
+              </p>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5" aria-label="Players to invite">
+                {selected.map((p) => (
+                  <li
+                    key={p.id}
+                    className="rounded-full border border-[#B4E655]/40 bg-[#B4E655]/10 px-2.5 py-1 text-xs font-semibold text-white"
+                  >
+                    {p.name}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy || selected.length === 0}
+                onClick={() => void send("players")}
+                className="min-h-[44px] flex-1 rounded-full bg-[#B4E655] px-4 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
+              >
+                {busy
+                  ? "Sending…"
+                  : selected.length === 0
+                    ? "Invite ticked players"
+                    : `Invite ${selected.length} player${selected.length === 1 ? "" : "s"} (48h hold)`}
+              </button>
+              {selected.length > 0 && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onClearSelection}
+                  className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:text-white"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-white/10 pt-4">
+            <label htmlFor="invite-emails" className="block text-xs text-white/60">
+              Or invite by email (comma, space, or line separated). Each goes to that account holder&apos;s own spot.
+            </label>
+            <textarea
+              id="invite-emails"
+              value={emails}
+              onChange={(e) => setEmails(e.target.value)}
+              rows={2}
+              placeholder="player1@example.com, player2@example.com"
+              className={inputClass}
+            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void send("emails")}
+              className="min-h-[44px] w-full rounded-full border border-white/25 px-4 py-2 text-sm font-semibold text-white/80 transition hover:border-[#B4E655]/50 hover:text-white disabled:opacity-40"
+            >
+              {busy ? "Sending…" : "Send email invites (48h hold)"}
+            </button>
+          </div>
+          {error && (
+            <p role="alert" className="text-sm text-red-300">
+              {error}
+            </p>
+          )}
+          {notice && (
+            <p role="status" className="text-sm text-yellow-200">
+              {notice}
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-sm text-white/60">
@@ -555,7 +643,10 @@ function SessionRowItem({
             )}
             {cancelled && (
               <span className="rounded-full bg-red-400/15 px-2 py-0.5 font-semibold text-red-200">
-                Cancelled{session.cancellation_reason ? ` · ${session.cancellation_reason}` : ""}
+                Cancelled
+                {session.cancellation_reason
+                  ? ` · ${REASONS.find((r) => r.value === session.cancellation_reason)?.label ?? session.cancellation_reason}`
+                  : ""}
               </span>
             )}
           </div>
@@ -620,14 +711,31 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [pool, setPool] = useState<MatrixPlayer[]>([]);
   const [poolLoading, setPoolLoading] = useState(true);
+  const [poolError, setPoolError] = useState(false);
+  // Players ticked in "Who's free" for an invite (audit M28).
+  const [ticked, setTicked] = useState<Set<string>>(() => new Set());
+
+  function toggleTick(id: string) {
+    setTicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   // Leveled pool for the who's-free matrix above the invite box.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/admin/players?view=leveled")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("pool");
+        return r.json();
+      })
       .then((data) => {
         if (cancelled) return;
         setPool(
@@ -641,7 +749,9 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
           )
         );
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (!cancelled) setPoolError(true);
+      })
       .finally(() => {
         if (!cancelled) setPoolLoading(false);
       });
@@ -669,41 +779,73 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
     refresh();
   }, [refresh]);
 
-  async function setStatus(status: string) {
+  // Status changes report a refusal instead of swallowing it (audit M30).
+  async function postStatus(body: Record<string, unknown>): Promise<boolean> {
     setStatusBusy(true);
+    setStatusError(null);
     try {
-      await fetch(`/api/admin/cohorts/${cohortId}`, {
+      const res = await fetch(`/api/admin/cohorts/${cohortId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set_status", status }),
+        body: JSON.stringify(body),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatusError(typeof data.error === "string" ? data.error : "That didn't save. Try again.");
+        return false;
+      }
       await refresh();
+      return true;
+    } catch {
+      setStatusError("Network error. Try again.");
+      return false;
     } finally {
       setStatusBusy(false);
     }
   }
 
-  if (loadError) return <p className="text-sm text-red-300">{loadError}</p>;
+  const setStatus = (status: string) => postStatus({ action: "set_status", status });
+
+  if (loadError) {
+    return (
+      <div className="space-y-3">
+        <p role="alert" className="text-sm text-red-300">
+          {loadError}
+        </p>
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:text-white"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
   if (!detail) return <p className="text-sm text-white/60">Loading…</p>;
 
   const { cohort, invites, sessions, paidCount } = detail;
   const dbStatus = cohort.dbStatus ?? "draft";
+  const paidPlayers = detail.paidPlayers ?? [];
+  const selected = pool
+    .filter((p) => ticked.has(p.id))
+    .map((p) => ({ id: p.id, name: (p.name ?? "").trim() || "Unnamed player" }));
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <header>
         <h1 className="text-2xl font-semibold text-white">{cohort.label}</h1>
-        <p className="mt-1 text-sm text-white/55">
-          {cohort.programId} · starts {fmtDate(cohort.startDate)} · {cohort.weeks} wk ·{" "}
+        <p className="mt-1 text-sm text-white/60">
+          {programTitleFor(cohort.programId)} · starts {fmtDate(cohort.startDate)} · {cohort.weeks} wk ·{" "}
           ${(cohort.priceCents / 100).toFixed(0)} · {cohort.capacityMin}–{cohort.capacityMax} players
           {cohort.visibility === "private" ? " · private" : " · public"}
           {cohort.paymentMode === "etransfer" ? " · e-transfer" : " · card"}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />
-          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-white/70">
-            {dbStatus}
+          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-white/80">
+            {statusLabel(COHORT_STATUS_LABELS, dbStatus)}
           </span>
           <span className="text-xs text-white/60">
             {paidCount}/{cohort.capacityMin} paid to run
@@ -717,6 +859,16 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
           credit. Follow up with the group about amounts.
         </p>
       )}
+
+      {/* What players will see: the dashboard art for this cohort. */}
+      <PlayerPreview
+        programId={cohort.programId}
+        levelMin={cohort.levelMin ?? null}
+        levelMax={cohort.levelMax ?? null}
+        sessions={cohort.sessions}
+        seed={cohort.id}
+        className="max-w-xl"
+      />
 
       {/* Status controls */}
       <div className="flex flex-wrap gap-2">
@@ -740,41 +892,127 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
             Mark completed
           </button>
         )}
-        {dbStatus !== "cancelled" && dbStatus !== "completed" && (
+        {dbStatus !== "cancelled" && dbStatus !== "completed" && !confirmingCancel && (
           <button
             type="button"
             disabled={statusBusy}
-            onClick={() => void setStatus("cancelled")}
-            className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/60 hover:border-red-400/50 hover:text-red-200 disabled:opacity-40"
+            onClick={() => {
+              setStatusError(null);
+              setConfirmingCancel(true);
+            }}
+            className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:border-red-400/50 hover:text-red-200 disabled:opacity-40"
           >
-            Cancel cohort
+            Cancel cohort…
+          </button>
+        )}
+        {/* Undo (audit M30): back to the status its invites support. */}
+        {dbStatus === "cancelled" && (
+          <button
+            type="button"
+            disabled={statusBusy}
+            onClick={() => void postStatus({ action: "reopen" })}
+            className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/80 hover:border-[#B4E655]/50 hover:text-white disabled:opacity-40"
+          >
+            {statusBusy ? "Reopening…" : "Reopen cohort"}
           </button>
         )}
       </div>
+
+      {/* The confirmation sheet (audit M30): who has paid, and that nobody is
+          told automatically. What a cancellation tells players is open
+          (owner decision D22), so no email goes out from here. */}
+      {confirmingCancel && dbStatus !== "cancelled" && (
+        <div role="alertdialog" aria-labelledby="cancel-title" aria-describedby="cancel-body" className="space-y-3 rounded-xl border border-red-400/30 bg-red-400/5 p-4">
+          <p id="cancel-title" className="text-sm font-semibold text-white">
+            Cancel {cohort.label}?
+          </p>
+          <div id="cancel-body" className="space-y-2 text-sm text-white/75">
+            {paidPlayers.length > 0 ? (
+              <>
+                <p>
+                  {paidPlayers.length} paid player{paidPlayers.length === 1 ? "" : "s"}:
+                </p>
+                <ul className="flex flex-wrap gap-1.5">
+                  {paidPlayers.map((name, i) => (
+                    <li
+                      key={`${name}-${i}`}
+                      className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/85"
+                    >
+                      {name}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p>Nobody has paid yet.</p>
+            )}
+            <p>
+              Nobody is emailed. Their dashboards show the cohort as cancelled, and you contact each
+              player about their make-up or credit. You can reopen it afterwards.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={statusBusy}
+              onClick={async () => {
+                if (await setStatus("cancelled")) setConfirmingCancel(false);
+              }}
+              className="min-h-[44px] flex-1 rounded-full bg-red-400/80 px-4 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
+            >
+              {statusBusy ? "Cancelling…" : "Cancel cohort"}
+            </button>
+            <button
+              type="button"
+              disabled={statusBusy}
+              onClick={() => setConfirmingCancel(false)}
+              className="min-h-[44px] rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/70 hover:text-white"
+            >
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
+      {statusError && (
+        <p role="alert" className="text-sm text-red-300">
+          {statusError}
+        </p>
+      )}
 
       {/* Who's free in this cohort's band — read it, then invite below */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
           Who&apos;s free
         </h2>
+        {poolError && (
+          <p role="alert" className="text-sm text-red-300">
+            Couldn&apos;t load the player pool. Reload the page to try again.
+          </p>
+        )}
         <AvailabilityMatrix
           players={pool}
           levelMin={cohort.levelMin ?? null}
           levelMax={cohort.levelMax ?? null}
           loading={poolLoading}
+          selectedIds={ticked}
+          onToggle={["draft", "inviting"].includes(dbStatus) ? toggleTick : undefined}
         />
       </section>
 
-      <PaymentSettings
-        cohortId={cohortId}
-        paymentMode={cohort.paymentMode ?? "card"}
-        onChanged={refresh}
-      />
-
+      {/* Invites before payment settings, so on a phone the invite box sits
+          right under the names it invites (audit L23). */}
       <InviteSection
         cohortId={cohortId}
         invites={invites}
         canInvite={["draft", "inviting"].includes(dbStatus)}
+        selected={selected}
+        onClearSelection={() => setTicked(new Set())}
+        onChanged={refresh}
+      />
+
+      <PaymentSettings
+        cohortId={cohortId}
+        paymentMode={cohort.paymentMode ?? "card"}
         onChanged={refresh}
       />
 

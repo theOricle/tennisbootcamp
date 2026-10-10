@@ -9,10 +9,21 @@ import {
   isRelationship,
   type PlayerRecord,
 } from "@/lib/players";
+import { AGE_BAND_LABELS } from "@/lib/ageBand";
 import { VENUE_LINE } from "@/lib/membership";
-import { hasLevel, levelNumber, type PlacedSpan } from "@/lib/tiers";
+import { formatTierLevel, formatTierSpan, hasLevel, levelNumber, type PlacedSpan } from "@/lib/tiers";
 import { isCohortPublic } from "@/lib/cohortVisibility";
 import { artFocusForCohort } from "@/lib/plates/variant";
+import {
+  ENROLLMENT_CHIP,
+  enrollmentNote,
+  enrollmentState,
+  fmt12h,
+  fmtMonthDay,
+  weeklySlots,
+  type NextStep,
+} from "@/lib/dashboardState";
+import { firstNameOf, namesList, possessive } from "@/lib/householdView";
 import { RankCard, TierLine, TierRangeBadges } from "@/components/tiers";
 import { ProgramPlate } from "@/components/plates/ProgramPlate";
 import { PlateMark } from "@/components/plates/PlateMark";
@@ -22,14 +33,16 @@ import { suggestionsSubCopy, type ProgramFit, type SuggestedProgram } from "@/li
 import { AvailabilityEditor } from "./AvailabilityEditor";
 
 // Presentation only. The page (page.tsx) reads everything behind the holder's
-// session and hands it over as plain data; nothing in here touches Supabase.
-// One surface style throughout — the homepage card: rounded-2xl, border
-// white/10, bg white/5, shadow. Mobile order top to bottom: next step, tiers,
-// my programs, where we train, availability, suggestions.
+// session and hands it over as plain data; the words for each state come
+// from src/lib/dashboardState.ts. One surface style throughout — the
+// homepage card: rounded-2xl, border white/10, bg white/5. Mobile order top
+// to bottom: next step, tiers, my programs, open groups, players, availability,
+// suggestions.
 //
-// The tier moment (audit M24) is the RankCard: one wide card for a single
-// player, one compact card per player in a household. It is the only place
-// on the page a tier is drawn; the header and the side card carry no badge.
+// The next-step card is the one primary on the page (audit M32): every other
+// action is an outline button or a text link. The page speaks to the players
+// who train (audit M26): a parent who registered only a child reads about
+// that child by name, never "you" as an unranked player.
 
 export type DashboardEnrollment = {
   id: string;
@@ -40,19 +53,31 @@ export type DashboardEnrollment = {
   created_at: string;
 };
 
+/** An open cohort and the players on the account its band admits (audit M27). */
+export type OpenForTier = { cohort: Cohort; players: PlayerRecord[] };
+
 export type DashboardViewProps = {
-  firstName: string;
+  /** "Welcome, Dana" on a first visit, "Welcome back, Dana" after (audit M32). */
+  heading: string;
   /** The account holder's own player record. */
   self: PlayerRecord | null;
   /** Everyone on the account, holder first. */
   players: PlayerRecord[];
+  /** The people on the account who train (src/lib/householdView.ts). */
+  roster: PlayerRecord[];
+  /** "you" when the holder is the only player; "named" otherwise. */
+  voice: "you" | "named";
+  /** The most urgent thing on the account (src/lib/dashboardState.ts). */
+  nextStep: NextStep;
+  /** The unused $20 assessment line, when one exists (audit M25). */
+  creditLine: string | null;
   enrollments: DashboardEnrollment[];
   /** Every cohort (enrollment lookups + the public ones for suggestion cards). */
   cohorts: Cohort[];
   /** Dated session rows keyed by cohort id (empty when none are generated yet). */
   sessionsByCohort: Record<string, CohortSessionRow[]>;
-  /** Open cohorts in the holder's tier that they aren't enrolled in. */
-  openForTier: Cohort[];
+  /** Open cohorts a player on the account may join by level, not yet enrolled. */
+  openForTier: OpenForTier[];
   /**
    * "Suggested for you" (audit M31): programs the account isn't enrolled in
    * that fit at least one player's age and level, with the ranked player each
@@ -72,47 +97,27 @@ export type DashboardViewProps = {
 
 export const SURFACE = "rounded-2xl border border-white/10 bg-white/5 shadow-md";
 
-const DAY_NAMES: Record<string, string> = {
-  Mon: "Mondays",
-  Tue: "Tuesdays",
-  Wed: "Wednesdays",
-  Thu: "Thursdays",
-  Fri: "Fridays",
-  Sat: "Saturdays",
-  Sun: "Sundays",
-};
-
-function fmt12h(time: string): string {
-  const [h, m] = time.split(":").map(Number);
-  const suffix = h >= 12 ? "pm" : "am";
-  const hour = h % 12 || 12;
-  return m === 0 ? `${hour}${suffix}` : `${hour}:${String(m).padStart(2, "0")}${suffix}`;
-}
-
 function fmtSessionDate(iso: string): string {
-  const [y, mo, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, mo - 1, d)).toLocaleDateString("en-CA", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  return fmtMonthDay(iso);
 }
 
 function fmtSlot(start: string, end: string): string {
-  return `${fmt12h(start.slice(0, 5))}–${fmt12h(end.slice(0, 5))}`;
-}
-
-function weeklySlots(cohort: Cohort): string {
-  return cohort.sessions
-    .map((s) => `${DAY_NAMES[s.day] ?? s.day} ${fmt12h(s.start)}–${fmt12h(s.end)}`)
-    .join(", ");
+  return `${fmt12h(start)}–${fmt12h(end)}`;
 }
 
 function relationshipLine(player: PlayerRecord): string {
   const rel = isRelationship(player.relationship)
     ? RELATIONSHIP_LABELS[player.relationship]
     : "";
-  return `${rel}${player.is_minor ? " · Under 18" : ""}`;
+  const age = player.age_band ? AGE_BAND_LABELS[player.age_band] : player.is_minor ? "Under 18" : "";
+  return [rel, age].filter(Boolean).join(" · ");
+}
+
+/** The player's tier in words for dense rows: "Deuce · 3.0", "Placed · Deuce group", "Unranked". */
+function tierWords(player: PlayerRecord, placed: PlacedSpan | null | undefined): string {
+  if (hasLevel(player.level)) return formatTierLevel(player.level);
+  if (placed) return `Placed · ${formatTierSpan(placed.min, placed.max)} group`;
+  return "Unranked";
 }
 
 /** Section heading used everywhere on the page — one style, no divider rules. */
@@ -149,6 +154,13 @@ const primaryButton =
 
 const secondaryButton =
   "inline-flex min-h-[44px] items-center justify-center rounded-full border border-white/25 px-6 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
+
+const CHIP_TONE: Record<"lime" | "neutral" | "warn" | "muted", string> = {
+  lime: "bg-[#B4E655]/10 text-[#B4E655]",
+  neutral: "border border-white/15 bg-white/5 text-white/85",
+  warn: "border border-amber-300/30 bg-amber-300/10 text-amber-100",
+  muted: "border border-dashed border-white/25 text-white/75",
+};
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
 
@@ -236,141 +248,33 @@ function SessionList({
   );
 }
 
-// ─── Next step ───────────────────────────────────────────────────────────────
-
-type NextStep = {
-  eyebrow: string;
-  headline: string;
-  detail: string;
-  primary?: { href: string; label: string };
-  secondary?: { href: string; label: string };
-};
-
-function nextStepFor(props: DashboardViewProps): NextStep {
-  const { self, enrollments, cohorts, sessionsByCohort, programs, today } = props;
-
-  // The earliest dated, not-cancelled session on or after today across every
-  // enrollment on the account.
-  let soonest: { row: CohortSessionRow; enrollment: DashboardEnrollment } | null = null;
-  for (const enrollment of enrollments) {
-    for (const row of sessionsByCohort[enrollment.cohort_id] ?? []) {
-      if (row.status === "cancelled" || row.session_date < today) continue;
-      if (
-        !soonest ||
-        row.session_date < soonest.row.session_date ||
-        (row.session_date === soonest.row.session_date &&
-          row.start_time < soonest.row.start_time)
-      ) {
-        soonest = { row, enrollment };
-      }
-    }
-  }
-
-  if (soonest) {
-    const { row, enrollment } = soonest;
-    const cohort = cohorts.find((c) => c.id === enrollment.cohort_id);
-    const program = programs.find((p) => p.id === (cohort?.programId ?? enrollment.program));
-    return {
-      eyebrow: "Next session",
-      headline: `${dayNameForDate(row.session_date)} ${fmtSessionDate(row.session_date)} · ${fmtSlot(
-        row.start_time,
-        row.end_time
-      )}`,
-      detail: [
-        program?.title ?? enrollment.program ?? enrollment.cohort_id,
-        cohort?.label,
-        enrollment.participant_name,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      secondary: { href: "#my-programs", label: "See all sessions" },
-    };
-  }
-
-  // Enrolled in a cohort whose dates aren't generated yet — the player is
-  // placed; the weekly slot is the only schedule on record.
-  const pending = enrollments
-    .map((e) => cohorts.find((c) => c.id === e.cohort_id))
-    .find((c) => c && c.sessions.length > 0 && !(sessionsByCohort[c.id] ?? []).length);
-  if (pending) {
-    const program = programs.find((p) => p.id === pending.programId);
-    return {
-      eyebrow: "Next step",
-      headline: "Your session dates are coming.",
-      detail: `${program?.title ?? pending.programId} trains ${weeklySlots(
-        pending
-      )}. Dates are confirmed once the group is set.`,
-      secondary: { href: "#my-programs", label: "See my programs" },
-    };
-  }
-
-  const headline = "Sina will place you in a group and time.";
-
-  if (!hasLevel(self?.level)) {
-    return {
-      eyebrow: "Next step",
-      headline,
-      detail:
-        "There is nothing else you need to do. Keeping your availability current helps Sina place you. If you want your level confirmed on court first, you can book a 20-minute assessment. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.",
-      primary: { href: "#availability", label: "Update my availability" },
-      secondary: { href: "/assessment/book", label: "Book Your Assessment" },
-    };
-  }
-
-  return {
-    eyebrow: "Next step",
-    headline,
-    detail:
-      "Your level is set. Keep your availability current and your coach can build a cohort around it.",
-    primary: { href: "#availability", label: "Update my availability" },
-    secondary: { href: "/programs", label: "Browse Programs" },
-  };
-}
-
-// ─── Tiers (audit M24) ───────────────────────────────────────────────────────
-
-/**
- * Who gets a RankCard. A single player: the holder. A household: every
- * player who is not the holder, plus the holder only when Sina has set their
- * level or placed them in a banded group — an account-only parent is not a
- * player, and an "Unranked" card for them would say they are.
- */
-function tierPlayers(
-  players: PlayerRecord[],
-  self: PlayerRecord | null,
-  placedSpans: Record<string, PlacedSpan | null>
-): PlayerRecord[] {
-  if (players.length <= 1) return players;
-  return players.filter(
-    (p) => p.id !== self?.id || hasLevel(p.level) || Boolean(placedSpans[p.id])
-  );
-}
+// ─── Tiers (audit M24, M26) ──────────────────────────────────────────────────
 
 function TierSection({
-  players,
+  roster,
   self,
   placedSpans,
 }: {
-  players: PlayerRecord[];
+  roster: PlayerRecord[];
   self: PlayerRecord | null;
   placedSpans: Record<string, PlacedSpan | null>;
 }) {
-  const household = players.length > 1;
-  const shown = tierPlayers(players, self, placedSpans);
-  if (shown.length === 0) return null;
+  if (roster.length === 0) return null;
 
-  if (!household) {
-    const player = shown[0];
+  if (roster.length === 1) {
+    const player = roster[0];
+    const isSelf = player.id === self?.id;
+    const title = isSelf ? "Your tier" : `${possessive(firstNameOf(player.full_name) || "Your player")} tier`;
     return (
       <section aria-labelledby="tiers">
-        {/* The card's own eyebrow reads "Your tier"; the heading is for the outline. */}
+        {/* The card's own eyebrow names the player; the heading is for the outline. */}
         <h2 id="tiers" className="sr-only">
-          Your tier
+          {title}
         </h2>
         <RankCard
           player={player}
           layout="wide"
-          isSelf={player.id === self?.id}
+          isSelf={isSelf}
           placedSpan={placedSpans[player.id] ?? null}
           headingLevel="h3"
         />
@@ -378,12 +282,12 @@ function TierSection({
     );
   }
 
-  const columns = shown.length >= 3 ? "md:grid-cols-2 xl:grid-cols-3" : "md:grid-cols-2";
+  const columns = roster.length >= 3 ? "md:grid-cols-2 xl:grid-cols-3" : "md:grid-cols-2";
   return (
     <section aria-labelledby="tiers">
       <SectionHeading id="tiers" title="Your players' tiers" sub="Each player's level, set by Sina." />
       <div className={`grid gap-4 ${columns}`}>
-        {shown.map((player) => (
+        {roster.map((player) => (
           <RankCard
             key={player.id}
             player={player}
@@ -398,13 +302,101 @@ function TierSection({
   );
 }
 
+// ─── My programs ─────────────────────────────────────────────────────────────
+
+function EnrollmentCard({
+  enrollment,
+  cohort,
+  program,
+  sessions,
+  today,
+}: {
+  enrollment: DashboardEnrollment;
+  cohort: Cohort | undefined;
+  program: Program | undefined;
+  sessions: CohortSessionRow[];
+  today: string;
+}) {
+  const state = enrollmentState(enrollment, cohort);
+  const chip = ENROLLMENT_CHIP[state];
+  const note = enrollmentNote(state);
+  const active = state === "enrolled" || state === "test";
+  const hasDated = sessions.some((s) => s.status !== "cancelled");
+  return (
+    <article className={`${SURFACE} overflow-hidden`}>
+      {/* The program's Court Plate, flush to the top (design specs §4.8):
+          the strip frame, profiled by the cohort's band, the court side
+          picked by its id. */}
+      {program && (
+        <div className="aspect-[3/1] w-full overflow-hidden border-b border-white/10 bg-[#061427]">
+          <ProgramPlate
+            plate={program.plate}
+            frame="strip"
+            density="compact"
+            comingSoon={program.comingSoon || state === "cancelled"}
+            levelMin={cohort?.levelMin}
+            levelMax={cohort?.levelMax}
+            seed={cohort?.id ?? enrollment.cohort_id}
+            focusSlot={cohort ? artFocusForCohort(program, cohort) : null}
+          />
+        </div>
+      )}
+      <div className="p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-lg font-semibold text-white">
+              {program?.title ?? enrollment.program ?? enrollment.cohort_id}
+            </h3>
+            <p className="mt-1 text-sm text-white/60">
+              {[cohort?.label, enrollment.participant_name ? `Player: ${enrollment.participant_name}` : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+          {/* The row's state in words (audit M25): never the raw status. */}
+          <span
+            className={`inline-flex min-h-6 shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold ${CHIP_TONE[chip.tone]}`}
+          >
+            {chip.label}
+          </span>
+        </div>
+        {/* Age as chips, the cohort's tier span as a chip (audit M24). */}
+        {(program?.ageBands.length || cohort) && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            {program && <AgeBandChips bands={program.ageBands} />}
+            {cohort && <TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />}
+          </div>
+        )}
+        {note && <p className="mt-3 text-sm leading-relaxed text-white/70">{note}</p>}
+
+        {active && hasDated ? (
+          <SessionList sessions={sessions} today={today} />
+        ) : state !== "cancelled" && cohort && cohort.sessions.length > 0 ? (
+          <div className="mt-4 border-t border-white/10 pt-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
+              Weekly schedule
+            </p>
+            <p className="mt-1 text-sm text-white/80">
+              {weeklySlots(cohort)}
+              {cohort.startDate ? `, starting ${fmtMonthDay(cohort.startDate)}` : ""}
+            </p>
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 // ─── View ────────────────────────────────────────────────────────────────────
 
 export function DashboardView(props: DashboardViewProps) {
   const {
-    firstName,
+    heading,
     self,
-    players,
+    roster,
+    voice,
+    nextStep: step,
+    creditLine,
     enrollments,
     cohorts,
     sessionsByCohort,
@@ -415,10 +407,19 @@ export function DashboardView(props: DashboardViewProps) {
     today,
   } = props;
 
-  const step = nextStepFor(props);
   const publicCohorts = cohorts.filter((c) => isCohortPublic(c, today));
-  const household = players.length > 1;
-  const selfLevel = levelNumber(self?.level);
+  const several = roster.length > 1;
+  const names = roster.map((p) => (p.id === self?.id ? "you" : firstNameOf(p.full_name) || "your player"));
+  const openCount = (playerId: string) =>
+    openForTier.filter((m) => m.players.some((p) => p.id === playerId)).length;
+
+  // "Open for your tier" in the voice of the players it is for.
+  const openTitle =
+    voice === "you"
+      ? "Open for your tier"
+      : several
+        ? "Open for your players"
+        : `Open for ${possessive(names[0] ?? "your player")} tier`;
 
   return (
     <div className="space-y-10">
@@ -428,10 +429,12 @@ export function DashboardView(props: DashboardViewProps) {
         <div className="grid gap-6 lg:grid-cols-5 lg:gap-10">
           <div className="lg:col-span-2">
             <h1 id="dashboard-welcome" className="text-2xl font-semibold text-white md:text-3xl">
-              Welcome back{firstName ? `, ${firstName}` : ""}
+              {heading}
             </h1>
             <p className="mt-1 text-sm text-white/60">
-              Your enrollments and upcoming programs.
+              {voice === "you"
+                ? "Your enrollments and upcoming programs."
+                : `Enrollments and programs for ${namesList(names)}.`}
             </p>
             <div className="mt-3">
               <Link href="/profile" className={linkClass}>
@@ -446,6 +449,13 @@ export function DashboardView(props: DashboardViewProps) {
             </p>
             <p className="mt-2 text-lg font-semibold text-white md:text-xl">{step.headline}</p>
             <p className="mt-2 text-sm leading-relaxed text-white/70">{step.detail}</p>
+            {/* The unused $20, with its condition (audit M25) — unless the
+                invite above already did the sum. */}
+            {creditLine && step.kind !== "invite" && (
+              <p className="mt-3 border-t border-white/10 pt-3 text-sm leading-relaxed text-white/75">
+                {creditLine}
+              </p>
+            )}
             {(step.primary || step.secondary) && (
               <div className="mt-5 flex flex-wrap gap-3">
                 {step.primary && (
@@ -465,7 +475,7 @@ export function DashboardView(props: DashboardViewProps) {
       </section>
 
       {/* Tiers — the RankCard, wide for one player, compact per household player */}
-      <TierSection players={players} self={self} placedSpans={placedSpans} />
+      <TierSection roster={roster} self={self} placedSpans={placedSpans} />
 
       {/* Main + side */}
       <div className="grid gap-10 lg:grid-cols-3 lg:gap-8">
@@ -477,19 +487,26 @@ export function DashboardView(props: DashboardViewProps) {
               title="My programs"
               sub={
                 enrollments.length > 0
-                  ? "Every cohort you're enrolled in, with its dated sessions."
+                  ? "Every cohort on your account, with its dated sessions."
                   : undefined
               }
             />
 
             {enrollments.length === 0 ? (
+              // The truth, and no second primary (audit M32): the next step
+              // above already says what happens. A held spot or a pending
+              // e-transfer means Sina has placed someone, so the card says
+              // nothing is enrolled yet and points up instead of "placing".
               <div className={`${SURFACE} p-6`}>
-                <p className="text-sm text-white/70">
-                  You haven&apos;t enrolled in any programs yet.
+                <p className="text-sm leading-relaxed text-white/75">
+                  {step.kind === "invite"
+                    ? "Nothing is enrolled yet. Claim the spot held above and the program shows here."
+                    : step.kind === "etransfer"
+                    ? "Nothing is enrolled yet. The program shows here once Sina confirms the e-transfer above."
+                    : voice === "you"
+                    ? "Sina is placing you — your group, dates and price land here."
+                    : `Sina is placing ${namesList(names)} — ${several ? "groups, dates and prices" : "the group, dates and price"} land here.`}
                 </p>
-                <Link href="/programs" className={`${primaryButton} mt-4`}>
-                  Browse Programs
-                </Link>
               </div>
             ) : (
               <div className="space-y-4">
@@ -498,80 +515,40 @@ export function DashboardView(props: DashboardViewProps) {
                   const program = programs.find(
                     (p) => p.id === (cohort?.programId ?? enrollment.program)
                   );
-                  const dated = sessionsByCohort[enrollment.cohort_id] ?? [];
-                  const hasDated = dated.some((s) => s.status !== "cancelled");
                   return (
-                    <article key={enrollment.id} className={`${SURFACE} overflow-hidden`}>
-                      {/* The program's Court Plate, flush to the top (design
-                          specs §4.8): the strip frame, profiled by the
-                          cohort's band, the court side picked by its id. */}
-                      {program && (
-                        <div className="aspect-[3/1] w-full overflow-hidden border-b border-white/10 bg-[#061427]">
-                          <ProgramPlate
-                            plate={program.plate}
-                            frame="strip"
-                            density="compact"
-                            comingSoon={program.comingSoon}
-                            levelMin={cohort?.levelMin}
-                            levelMax={cohort?.levelMax}
-                            seed={cohort?.id ?? enrollment.cohort_id}
-                            focusSlot={cohort ? artFocusForCohort(program, cohort) : null}
-                          />
-                        </div>
-                      )}
-                      <div className="p-5 md:p-6">
-                        <h3 className="text-lg font-semibold text-white">
-                          {program?.title ?? enrollment.program ?? enrollment.cohort_id}
-                        </h3>
-                        <p className="mt-1 text-sm text-white/60">
-                          {[cohort?.label, enrollment.participant_name ? `Player: ${enrollment.participant_name}` : null]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                        {/* Age as chips, the cohort's tier span as a chip (audit M24). */}
-                        {(program?.ageBands.length || cohort) && (
-                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                            {program && <AgeBandChips bands={program.ageBands} />}
-                            {cohort && <TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />}
-                          </div>
-                        )}
-
-                        {hasDated ? (
-                          <SessionList sessions={dated} today={today} />
-                        ) : cohort && cohort.sessions.length > 0 ? (
-                          <div className="mt-4 border-t border-white/10 pt-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
-                              Weekly schedule
-                            </p>
-                            <ul className="mt-1 space-y-1 text-sm text-white/80">
-                              {cohort.sessions.map((s) => (
-                                <li key={s.day}>
-                                  {DAY_NAMES[s.day] ?? s.day} {fmt12h(s.start)}–{fmt12h(s.end)}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : null}
-                      </div>
-                    </article>
+                    <EnrollmentCard
+                      key={enrollment.id}
+                      enrollment={enrollment}
+                      cohort={cohort}
+                      program={program}
+                      sessions={sessionsByCohort[enrollment.cohort_id] ?? []}
+                      today={today}
+                    />
                   );
                 })}
               </div>
             )}
           </section>
 
-          {/* Open cohorts matching the player's tier: the span rail with the
-              player's marker shows where they sit inside the band (audit M24). */}
+          {/* Open cohorts a player's level admits (audit M27): per player, by
+              the same numeric rule /enroll uses. The span rail carries the
+              player's marker; the button is an outline, the next step above
+              is the page's one primary (audit M32). */}
           {openForTier.length > 0 && (
             <section aria-labelledby="open-for-tier">
               <SectionHeading
                 id="open-for-tier"
-                title="Open for your tier"
-                sub="Cohorts built for your level that still have room."
+                title={openTitle}
+                sub="Cohorts whose level band fits, with room left."
               />
               <div className="space-y-4">
-                {openForTier.map((c) => {
+                {openForTier.map(({ cohort: c, players: fits }) => {
                   const program = programs.find((p) => p.id === c.programId);
+                  const first = fits[0];
+                  const firstLevel = levelNumber(first?.level);
+                  const fitNames = fits.map((p) =>
+                    p.id === self?.id ? "you" : firstNameOf(p.full_name) || "your player"
+                  );
                   return (
                     <article key={c.id} className={`${SURFACE} p-5 md:p-6`}>
                       <div className="flex items-start gap-4">
@@ -588,6 +565,11 @@ export function DashboardView(props: DashboardViewProps) {
                                 Starts {fmtSessionDate(c.startDate)} · {c.weeks} week
                                 {c.weeks === 1 ? "" : "s"} · {weeklySlots(c)}
                               </p>
+                              {voice === "named" && (
+                                <p className="mt-1 text-sm font-semibold text-white/85">
+                                  Fits {namesList(fitNames)}
+                                </p>
+                              )}
                             </div>
                             <TierRangeBadges levelMin={c.levelMin} levelMax={c.levelMax} />
                           </div>
@@ -597,12 +579,19 @@ export function DashboardView(props: DashboardViewProps) {
                         variant="rail"
                         size="sm"
                         span={{ min: c.levelMin, max: c.levelMax }}
-                        marker={selfLevel !== null ? { level: selfLevel, label: "You" } : null}
+                        marker={
+                          firstLevel !== null
+                            ? {
+                                level: firstLevel,
+                                label: first.id === self?.id ? "You" : firstNameOf(first.full_name) || "Player",
+                              }
+                            : null
+                        }
                         labels="ends"
                         className="mt-4"
                       />
-                      <Link href={`/enroll/${c.id}`} className={`${primaryButton} mt-4`}>
-                        Enroll →
+                      <Link href={`/enroll/${c.id}`} className={`${secondaryButton} mt-4`}>
+                        Enroll{voice === "named" && fits.length === 1 && first.id !== self?.id ? ` ${firstNameOf(first.full_name)}` : ""} →
                       </Link>
                     </article>
                   );
@@ -612,33 +601,43 @@ export function DashboardView(props: DashboardViewProps) {
           )}
         </div>
 
-        {/* Side column */}
+        {/* Side column — the players (households), then the venue line. */}
         <aside className="space-y-6">
-          <section className={`${SURFACE} p-5 md:p-6`} aria-labelledby="your-week">
-            <h2 id="your-week" className="text-base font-semibold text-white">
-              {household ? "Your players" : "Your week"}
-            </h2>
-            {household && (
+          {voice === "named" && (
+            <section className={`${SURFACE} p-5 md:p-6`} aria-labelledby="your-players">
+              <h2 id="your-players" className="text-base font-semibold text-white">
+                {several ? "Your players" : "Your player"}
+              </h2>
+              {/* One line per player: "Maya · Deuce 3.0 — 1 cohort open" (audit M26). */}
               <ul className="mt-4 divide-y divide-white/10">
-                {players.map((player) => (
-                  <li key={player.id} className="py-3 first:pt-0 last:pb-0">
-                    <p className="text-sm font-semibold text-white">
-                      {player.full_name?.trim() || "Unnamed player"}
-                    </p>
-                    <p className="text-xs text-white/60">{relationshipLine(player)}</p>
-                  </li>
-                ))}
+                {roster.map((player) => {
+                  const open = openCount(player.id);
+                  return (
+                    <li key={player.id} className="py-3 first:pt-0 last:pb-0">
+                      <p className="text-sm font-semibold text-white">
+                        {player.full_name?.trim() || "Unnamed player"}
+                      </p>
+                      <p className="text-xs text-white/60">{relationshipLine(player)}</p>
+                      <p className="mt-1 text-sm text-white/80">
+                        {tierWords(player, placedSpans[player.id])}
+                        {open > 0 && (
+                          <>
+                            {" — "}
+                            <Link
+                              href="#open-for-tier"
+                              className="font-semibold text-[#B4E655] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50"
+                            >
+                              {open} cohort{open === 1 ? "" : "s"} open
+                            </Link>
+                          </>
+                        )}
+                      </p>
+                    </li>
+                  );
+                })}
               </ul>
-            )}
-            <p className="mt-4 text-sm text-white/60">
-              Groups form around shared availability. Keep {household ? "every" : "your"} week
-              current and your coach can place {household ? "each player" : "you"} in a cohort that
-              fits.
-            </p>
-            <Link href="#availability" className={`${secondaryButton} mt-3 w-full`}>
-              Edit availability
-            </Link>
-          </section>
+            </section>
+          )}
 
           <section className={`${SURFACE} p-5 md:p-6`} aria-labelledby="where-we-train">
             <h2 id="where-we-train" className="text-base font-semibold text-white">
@@ -649,18 +648,25 @@ export function DashboardView(props: DashboardViewProps) {
         </aside>
       </div>
 
-      {/* Availability — one card per person on the account */}
+      {/* Availability — one card per player who trains. Explained once, here
+          (audit M32). */}
       <section id="availability" className="scroll-mt-24" aria-labelledby="availability-heading">
         <SectionHeading
           id="availability-heading"
-          title={household ? "Your players' availability" : "Your availability"}
-          sub="The week your coach builds cohorts around."
+          title={
+            voice === "you"
+              ? "Your availability"
+              : several
+                ? "Your players' availability"
+                : `${possessive(names[0] ?? "Your player")} availability`
+          }
+          sub="Sina builds every group around the times its players can train. Keep this current."
         />
-        <div className={`grid gap-4 ${household ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
-          {players.map((player) => (
+        <div className={`grid gap-4 ${several ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
+          {roster.map((player) => (
             <div
               key={player.id}
-              className={`${SURFACE} p-5 md:p-6 ${household ? "" : "lg:col-span-2"}`}
+              className={`${SURFACE} p-5 md:p-6 ${several ? "" : "lg:col-span-2"}`}
             >
               <div className="mb-4">
                 <p className="text-base font-semibold text-white">
@@ -671,7 +677,7 @@ export function DashboardView(props: DashboardViewProps) {
               <AvailabilityEditor
                 participantId={player.id}
                 participantName={player.full_name?.trim() ?? ""}
-                showName={household}
+                showName={voice === "named"}
                 initialAvailability={player.availability}
                 initialNote={player.availability_note ?? ""}
                 updatedAt={player.availability_updated_at}
@@ -681,7 +687,7 @@ export function DashboardView(props: DashboardViewProps) {
           ))}
         </div>
         <p className="mt-4 text-xs text-white/60">
-          Training someone else too — a child, a partner? Add them through{" "}
+          Training someone else too — a child, a partner, or yourself? Add them through{" "}
           <Link
             href="/intake"
             className="font-semibold text-[#B4E655]/80 underline-offset-2 hover:text-[#B4E655] hover:underline"
@@ -701,7 +707,7 @@ export function DashboardView(props: DashboardViewProps) {
           <SectionHeading
             id="suggested"
             title="Suggested for you"
-            sub={suggestionsSubCopy(players, suggestions)}
+            sub={suggestionsSubCopy(roster, suggestions)}
             aside={
               <Link href="/programs" className={linkClass}>
                 Browse Programs →

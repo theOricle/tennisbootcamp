@@ -12,6 +12,7 @@ import {
   fillPlayerContact,
   isRelationship,
   listParticipantsForAccount,
+  setParticipantProfile,
   type Relationship,
 } from "@/lib/players";
 import {
@@ -67,6 +68,40 @@ export type ResolvedParticipant = {
 };
 
 const cleanName = cleanParticipantName;
+
+/**
+ * Keep the player's own answers — age band and self-estimate — on their
+ * participant row (migration 0009, audit M31), so the next form starts from
+ * them and the admin pool shows them. Never throws and never blocks: the
+ * quiz (/api/intake) and the booking form resolve through here on their way
+ * to a response they must not fail, and before 0009 runs the write is a
+ * skipped no-op.
+ *
+ * `fillOnly` for an existing player a signed-out form names by email alone:
+ * a blank band or self-estimate is filled, nothing on file is replaced and
+ * `is_minor` never changes (setParticipantProfile).
+ */
+async function rememberAnswers(
+  participantId: string | null | undefined,
+  answers: { ageBand: unknown; selfLevel: string | null },
+  opts: { fillOnly?: boolean } = {}
+): Promise<void> {
+  if (!participantId) return;
+  if (!isAgeBand(answers.ageBand) && answers.selfLevel === null) return;
+  try {
+    const result = await setParticipantProfile(
+      participantId,
+      {
+        ageBand: answers.ageBand,
+        selfLevel: answers.selfLevel ?? undefined,
+      },
+      opts
+    );
+    if (!result.ok) console.warn("Player answers not saved (non-blocking):", result.error);
+  } catch (err) {
+    console.warn("Player answers not saved (non-blocking):", err);
+  }
+}
 
 /** The signed-in user, or null. Never throws — a guest form must still work. */
 export async function currentUser(): Promise<{ id: string; email: string } | null> {
@@ -201,6 +236,8 @@ export async function resolveSubmissionParticipant(input: {
       }).catch(() => null);
     }
 
+    await rememberAnswers(participant?.id, { ageBand, selfLevel });
+
     return {
       accountId,
       participantId: participant?.id ?? null,
@@ -226,12 +263,17 @@ export async function resolveSubmissionParticipant(input: {
   let accountId = await findUserIdByEmail(holderEmail).catch(() => null);
 
   if (isHolder) {
-    // Exactly the pre-household behaviour: with no account yet, the row rides
-    // on the email and the participant is resolved when the account lands.
+    // With no account yet, the row rides on the email and the participant is
+    // resolved when the account lands (the pre-household behaviour).
     if (!accountId) return { ...fallback, participantName: blockName || holderName };
     const self = await ensureSelfParticipant(accountId, {
       fullName: holderName || blockName,
     }).catch(() => null);
+    // Nobody is signed in, so typing an account's email proves nothing: the
+    // answers only fill what the holder's row leaves blank, like
+    // ensureSelfParticipant's name and fillPlayerContact. An age band, a
+    // self-estimate or `is_minor` already on file stays as it is.
+    await rememberAnswers(self?.id, { ageBand, selfLevel }, { fillOnly: true });
     const account = await getAccount(accountId).catch(() => null);
     return {
       accountId,
@@ -271,6 +313,7 @@ export async function resolveSubmissionParticipant(input: {
       isMinor: block?.isMinor === true,
     }
   );
+  if (created.ok) await rememberAnswers(created.participant.id, { ageBand, selfLevel });
   const account = await getAccount(accountId).catch(() => null);
 
   return {

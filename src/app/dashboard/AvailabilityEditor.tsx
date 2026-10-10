@@ -93,7 +93,7 @@ export function AvailabilityEditor({
   const statusLine = (() => {
     if (confirmedAt && !dirty) return `Confirmed for the season on ${fmtDate(confirmedAt)}.`;
     if (updatedAt && source) {
-      return `On file ${AVAILABILITY_SOURCE_LABELS[source]} · ${fmtDate(updatedAt)}. Confirm it so your coach can build around it.`;
+      return `On file ${AVAILABILITY_SOURCE_LABELS[source]} · ${fmtDate(updatedAt)}. Confirm it so Sina can build around it.`;
     }
     if (!hasAnyAvailability(initialAvailability)) {
       return showName && participantName
@@ -105,17 +105,14 @@ export function AvailabilityEditor({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-white/70">
-        {showName && participantName
-          ? `Groups form around shared availability. Keep ${participantName}'s week current and their coach can place them in a cohort that fits.`
-          : "Groups form around shared availability. Keep this current and your coach can place you in a cohort that fits your week."}
-      </p>
+      {/* Why availability matters is said once, in the section heading
+          above (audit M32); each card is just the grid. */}
       <AvailabilityHoursLegend />
       <AvailabilityGrid value={availability} onChange={setAvailability} />
 
       <div className="grid gap-1.5">
         <label htmlFor={noteId} className="text-sm text-white/70">
-          Anything your coach should know? <span className="text-white/60">(optional)</span>
+          Anything Sina should know? <span className="text-white/60">(optional)</span>
         </label>
         <input
           id={noteId}
@@ -135,7 +132,8 @@ export function AvailabilityEditor({
         type="button"
         onClick={() => void confirm()}
         disabled={busy || !hasAnyAvailability(availability)}
-        className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] disabled:opacity-40"
+        // An outline: the next-step card holds the page's one primary (audit M32).
+        className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-[#B4E655]/60 px-6 py-3 text-sm font-semibold text-[#B4E655] transition hover:bg-[#B4E655]/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] disabled:opacity-40"
       >
         {busy ? "Saving…" : "Confirm for the season"}
       </button>
