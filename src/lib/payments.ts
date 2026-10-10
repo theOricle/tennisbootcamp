@@ -35,6 +35,13 @@ export type EnrollmentCheckoutParams = {
   enrollmentRowNumbers?: number[];
   assessmentBookingIds?: string[];
   participantIds?: string[];
+  /**
+   * Every player's Supabase enrollment row (one per seat). The webhook flips
+   * them all to paid; before this only the first player's row was carried,
+   * so a household card payment left a sibling's row "pending" — which the
+   * dashboard now reads as "Payment pending" (audit M25).
+   */
+  supabaseEnrollmentIds?: string[];
 };
 
 /** The seat count and the discount Stripe is asked for, after clamping. */
@@ -86,6 +93,7 @@ export function enrollmentSessionParams(
       enrollmentRowNumbers: (params.enrollmentRowNumbers ?? []).join(","),
       assessmentBookingIds: (params.assessmentBookingIds ?? []).join(","),
       participantIds: (params.participantIds ?? []).join(","),
+      supabaseEnrollmentIds: (params.supabaseEnrollmentIds ?? []).join(","),
     },
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,

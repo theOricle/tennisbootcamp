@@ -7,6 +7,9 @@ import {
 } from "@/components/ui/AvailabilityGrid";
 import { TierChip } from "@/components/tiers";
 import { LEVEL_OPTIONS, TIERS } from "@/lib/tiers";
+import { AGE_BAND_LABELS, isAgeBand } from "@/lib/ageBand";
+import { COHORT_STATUS_LABELS, programTitleFor, selfEstimateLine, statusLabel } from "@/lib/adminLabels";
+import { inviteNotice } from "@/lib/emailResult";
 import {
   AVAILABILITY_SOURCE_LABELS,
   type Availability,
@@ -32,7 +35,15 @@ type Player = {
   availability_updated_at: string | null;
   availability_source: AvailabilitySource | null;
   availability_note: string | null;
+  /** Migration 0009 (audit L20): null before it runs, or when never asked. */
+  ageBand?: string | null;
+  selfLevel?: string | null;
+  /** A holder who only registered someone else (audit M26). */
+  accountOnly?: boolean;
 };
+
+/** A cohort the coach can invite into from here (draft or inviting). */
+type InviteTarget = { id: string; label: string; programId: string; dbStatus?: string };
 
 type View = "all" | "leveled" | "unleveled";
 type Sort = "level" | "availability_updated_at";
@@ -76,9 +87,14 @@ function availabilityStatus(p: Player): string {
 function PlayerCard({
   player,
   onChanged,
+  ticked,
+  onTick,
 }: {
   player: Player;
   onChanged: () => void;
+  /** Ticked for an invite (audit M28); undefined = no tick box. */
+  ticked?: boolean;
+  onTick?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   // Unranked players start with no selection: the coach picks the level.
@@ -123,23 +139,55 @@ function PlayerCard({
     }
   }
 
+  const displayName = player.name || player.email || "Player";
+  const ageLabel = isAgeBand(player.ageBand) ? AGE_BAND_LABELS[player.ageBand] : player.isMinor ? "Under 18" : null;
+  const quiz = selfEstimateLine(player.selfLevel, { self: player.relationship === "self" });
+
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+    <div className={`rounded-xl border bg-white/5 p-4 ${ticked ? "border-[#B4E655]/50" : "border-white/10"}`}>
+      <div className="flex items-start gap-3">
+      {onTick && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={Boolean(ticked)}
+          aria-label={`Invite ${displayName}`}
+          onClick={onTick}
+          className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50"
+        >
+          <span
+            aria-hidden="true"
+            className={`flex h-5 w-5 items-center justify-center rounded-sm border text-xs font-bold ${
+              ticked ? "border-[#B4E655] bg-[#B4E655] text-[#061427]" : "border-white/45"
+            }`}
+          >
+            {ticked ? "✓" : ""}
+          </span>
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex min-h-[44px] w-full items-start justify-between gap-3 text-left"
+        className="flex min-h-[44px] min-w-0 flex-1 items-start justify-between gap-3 text-left"
         aria-expanded={open}
       >
         <div className="min-w-0">
-          <p className="truncate font-semibold text-white">
-            {player.name || player.email || "Player"}
-            {player.isMinor && (
-              <span className="ml-2 rounded-full border border-white/15 px-1.5 py-0.5 text-xs font-medium text-white/60">
-                Under 18
-              </span>
-            )}
-          </p>
+          <p className="truncate font-semibold text-white">{displayName}</p>
+          {/* Age band and the player's own read on their game (audit L20). */}
+          {(ageLabel || player.accountOnly) && (
+            <p className="mt-1 flex flex-wrap gap-1.5">
+              {ageLabel && (
+                <span className="inline-flex min-h-6 items-center rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-xs font-medium text-white/85">
+                  {ageLabel}
+                </span>
+              )}
+              {player.accountOnly && (
+                <span className="inline-flex min-h-6 items-center rounded-full border border-dashed border-white/25 px-2.5 py-0.5 text-xs font-medium text-white/75">
+                  Account holder only
+                </span>
+              )}
+            </p>
+          )}
           {/* Account: two players with the same name under different holders
               are told apart here. */}
           <p className="truncate text-xs text-white/60">
@@ -151,6 +199,7 @@ function PlayerCard({
             <p className="text-xs text-white/60">{player.relationshipLabel}</p>
           )}
           {player.phone && <p className="text-xs text-white/60">{player.phone}</p>}
+          {quiz && <p className="mt-1 text-xs text-white/75">{quiz}</p>}
           <p className="mt-1 text-xs text-white/60">{availabilityStatus(player)}</p>
         </div>
         <div className="shrink-0 text-right">
@@ -165,6 +214,7 @@ function PlayerCard({
           )}
         </div>
       </button>
+      </div>
 
       {!open && (
         <>
@@ -210,7 +260,11 @@ function PlayerCard({
               ))}
             </select>
           </div>
+          <label htmlFor={`notes-${player.id}`} className="sr-only">
+            Coach note
+          </label>
           <textarea
+            id={`notes-${player.id}`}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
@@ -261,6 +315,80 @@ export function AdminPlayersClient() {
   const [sort, setSort] = useState<Sort>("level");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
   const [band, setBand] = useState<string>("all"); // "all" | tier id "1".."7"
+  // Sticky search (audit L20): name, account name or email.
+  const [query, setQuery] = useState("");
+  // Invite from the pool (audit M28): tick players, pick a cohort, send.
+  const [ticked, setTicked] = useState<Set<string>>(() => new Set());
+  const [targets, setTargets] = useState<InviteTarget[]>([]);
+  const [targetId, setTargetId] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteNote, setInviteNote] = useState<string | null>(null);
+
+  // Cohorts that can take invites right now.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/cohorts")
+      .then((r) => (r.ok ? r.json() : { cohorts: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        const open = ((data.cohorts ?? []) as InviteTarget[]).filter((c) =>
+          ["draft", "inviting"].includes(c.dbStatus ?? "")
+        );
+        setTargets(open);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function toggleTick(id: string) {
+    setTicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setInviteNote(null);
+  }
+
+  async function sendInvites() {
+    if (ticked.size === 0) return;
+    if (!targetId) {
+      setInviteError("Pick the cohort to invite them to.");
+      return;
+    }
+    setInviteBusy(true);
+    setInviteError(null);
+    setInviteNote(null);
+    try {
+      const res = await fetch(`/api/admin/cohorts/${encodeURIComponent(targetId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "invite", participantIds: [...ticked] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInviteError(typeof data.error === "string" ? data.error : "Invites failed.");
+        return;
+      }
+      const created: number = data.sent ?? 0;
+      const emailed: number = data.emailed ?? created;
+      const message = inviteNotice({
+        created,
+        emailed,
+        errors: Array.isArray(data.errors) ? data.errors : [],
+      });
+      if (emailed < created) setInviteError(message);
+      else setInviteNote(message);
+      setTicked(new Set());
+    } catch {
+      setInviteError("Network error.");
+    } finally {
+      setInviteBusy(false);
+    }
+  }
 
   const refresh = useCallback(async () => {
     try {
@@ -295,7 +423,7 @@ export function AdminPlayersClient() {
   }
 
   // Tier band chips only make sense over leveled players.
-  const filtered =
+  const byBand =
     band === "all"
       ? players
       : players.filter(
@@ -303,11 +431,35 @@ export function AdminPlayersClient() {
             p.level != null &&
             Math.min(7, Math.max(1, Math.floor(p.level))) === Number(band)
         );
+  const needle = query.trim().toLowerCase();
+  const filtered = needle
+    ? byBand.filter((p) =>
+        [p.name, p.account.name, p.account.email, p.email]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(needle))
+      )
+    : byBand;
 
   const arrow = dir === "desc" ? "↓" : "↑";
 
   return (
     <div className="space-y-4">
+      {/* Sticky search (audit L20) */}
+      <div className="sticky top-[69px] z-10 -mx-1 bg-[#061427] px-1 py-2">
+        <label htmlFor="player-search" className="sr-only">
+          Search players
+        </label>
+        <input
+          id="player-search"
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by player, account or email"
+          autoComplete="off"
+          className={inputClass}
+        />
+      </div>
+
       {/* View toggle — All / Leveled / Unranked (the API view stays `unleveled`) */}
       <div className="flex gap-2" role="group" aria-label="View">
         {(["all", "leveled", "unleveled"] as View[]).map((v) => (
@@ -379,9 +531,76 @@ export function AdminPlayersClient() {
             : "No players yet. Quiz sign-ups, assessment requests and completed assessments all land here."}
         </p>
       )}
+      {needle && !loading && !loadError && filtered.length === 0 && players.length > 0 && (
+        <p className="text-sm text-white/60">No player matches &ldquo;{query.trim()}&rdquo;.</p>
+      )}
       {filtered.map((p) => (
-        <PlayerCard key={p.id} player={p} onChanged={refresh} />
+        <PlayerCard
+          key={p.id}
+          player={p}
+          onChanged={refresh}
+          ticked={ticked.has(p.id)}
+          onTick={p.accountOnly ? undefined : () => toggleTick(p.id)}
+        />
       ))}
+
+      {/* The invite bar (audit M28): ticked players, the cohort, one send.
+          Each invite carries the player's id, so a child's spot and $20
+          credit are the child's. */}
+      {(ticked.size > 0 || inviteNote || inviteError) && (
+        <div className="sticky bottom-3 z-10 space-y-2 rounded-2xl border border-[#B4E655]/30 bg-[#0B1C33] p-4">
+          {ticked.size > 0 && (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[12rem] flex-1">
+                <label htmlFor="invite-cohort" className="mb-1 block text-xs text-white/70">
+                  Invite {ticked.size} player{ticked.size === 1 ? "" : "s"} to
+                </label>
+                <select
+                  id="invite-cohort"
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="" className="bg-[#061427]">
+                    {targets.length === 0 ? "No draft or inviting cohorts" : "Pick a cohort…"}
+                  </option>
+                  {targets.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-[#061427]">
+                      {programTitleFor(c.programId)} · {c.label} ({statusLabel(COHORT_STATUS_LABELS, c.dbStatus)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                disabled={inviteBusy || !targetId}
+                onClick={() => void sendInvites()}
+                className="min-h-[44px] rounded-full bg-[#B4E655] px-5 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
+              >
+                {inviteBusy ? "Sending…" : "Send invites (48h hold)"}
+              </button>
+              <button
+                type="button"
+                disabled={inviteBusy}
+                onClick={() => setTicked(new Set())}
+                className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:text-white"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+          {inviteError && (
+            <p role="alert" className="text-sm text-red-300">
+              {inviteError}
+            </p>
+          )}
+          {inviteNote && (
+            <p role="status" className="text-sm text-yellow-200">
+              {inviteNote}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

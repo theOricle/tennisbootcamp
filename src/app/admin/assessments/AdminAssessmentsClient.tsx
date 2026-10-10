@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { trackAssessmentCompletedAdmin } from "@/lib/analytics";
 import { TierChip } from "@/components/tiers";
 import { LEVEL_OPTIONS, formatTierLevel } from "@/lib/tiers";
+import { BOOKING_STATUS_LABELS, selfEstimateLine, statusLabel } from "@/lib/adminLabels";
 
 // ─── Types (mirror the admin API payloads) ────────────────────────────────────
 
@@ -163,8 +164,9 @@ function CreateBlock({ onCreated }: { onCreated: () => void }) {
       className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4"
     >
       <div>
-        <label className="mb-1 block text-xs text-white/60">Date</label>
+        <label htmlFor="block-date" className="mb-1 block text-xs text-white/60">Date</label>
         <input
+          id="block-date"
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
@@ -174,8 +176,9 @@ function CreateBlock({ onCreated }: { onCreated: () => void }) {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-xs text-white/60">Start</label>
+          <label htmlFor="block-start" className="mb-1 block text-xs text-white/60">Start</label>
           <input
+            id="block-start"
             type="time"
             value={start}
             onChange={(e) => setStart(e.target.value)}
@@ -184,8 +187,9 @@ function CreateBlock({ onCreated }: { onCreated: () => void }) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-white/60">End</label>
+          <label htmlFor="block-end" className="mb-1 block text-xs text-white/60">End</label>
           <input
+            id="block-end"
             type="time"
             value={end}
             onChange={(e) => setEnd(e.target.value)}
@@ -195,10 +199,11 @@ function CreateBlock({ onCreated }: { onCreated: () => void }) {
         </div>
       </div>
       <div>
-        <label className="mb-1 block text-xs text-white/60">
+        <label htmlFor="block-slot" className="mb-1 block text-xs text-white/60">
           Slot length (minutes)
         </label>
         <input
+          id="block-slot"
           type="number"
           min={5}
           step={5}
@@ -208,10 +213,11 @@ function CreateBlock({ onCreated }: { onCreated: () => void }) {
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs text-white/60">
+        <label htmlFor="block-location" className="mb-1 block text-xs text-white/60">
           Location note (optional)
         </label>
         <input
+          id="block-location"
           type="text"
           value={location}
           onChange={(e) => setLocation(e.target.value)}
@@ -220,8 +226,9 @@ function CreateBlock({ onCreated }: { onCreated: () => void }) {
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs text-white/60">Notes (optional)</label>
+        <label htmlFor="block-notes" className="mb-1 block text-xs text-white/60">Notes (optional)</label>
         <input
+          id="block-notes"
           type="text"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -349,7 +356,7 @@ function BookingCard({
               STATUS_STYLE[booking.status] ?? "bg-white/10 text-white/60"
             }`}
           >
-            {booking.status.replace("_", " ")}
+            {statusLabel(BOOKING_STATUS_LABELS, booking.status)}
           </span>
           {(booking.status === "booked" || booking.status === "completed") && (
             <button
@@ -357,13 +364,13 @@ function BookingCard({
               disabled={busy}
               onClick={() => void togglePaid()}
               title={booking.paid ? "Undo: mark as unpaid" : "Paid at court or by e-transfer"}
-              className={`mt-1.5 block min-h-[28px] w-full rounded-full px-2 py-0.5 text-xs font-semibold transition disabled:opacity-40 ${
+              className={`mt-1.5 block min-h-[44px] w-full rounded-full px-3 text-xs font-semibold transition disabled:opacity-40 ${
                 booking.paid
                   ? "bg-[#B4E655]/15 text-[#B4E655]"
-                  : "bg-white/10 text-white/70 hover:text-white"
+                  : "bg-white/10 text-white/80 hover:text-white"
               }`}
             >
-              {booking.paid ? "paid ✓" : "mark paid"}
+              {booking.paid ? "Paid ✓" : "Mark paid"}
             </button>
           )}
 
@@ -371,8 +378,11 @@ function BookingCard({
       </div>
 
       {booking.self_level && (
-        <p className="mt-2 text-xs text-white/60">
-          Self-estimate: {booking.self_level}
+        <p className="mt-2 text-xs text-white/75">
+          {selfEstimateLine(booking.self_level, {
+            self: (booking.participant_relationship ?? "self") === "self",
+            source: "Self-estimate",
+          })}
         </p>
       )}
 
@@ -417,13 +427,16 @@ function BookingCard({
               <TierChip level={level} showLevel />
             </div>
           )}
+          <label htmlFor={`note-${booking.id}`} className="sr-only">
+            Coach note
+          </label>
           <textarea
+            id={`note-${booking.id}`}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
             placeholder="A 2–3 sentence read on their game…"
             className={inputClass}
-            aria-label="Coach note"
           />
           {error && <p className="text-sm text-red-300">{error}</p>}
           {confirming === "complete" && level ? (
@@ -571,26 +584,29 @@ function RequestCard({
         </div>
         <div className="shrink-0 text-right">
           <span className="inline-block rounded-full bg-violet-400/15 px-2 py-0.5 text-xs font-semibold text-violet-200">
-            requested
+            {statusLabel(BOOKING_STATUS_LABELS, "requested")}
           </span>
           <button
             type="button"
             disabled={busy}
             onClick={() => void post({ action: "set_paid", paid: !request.paid })}
-            className={`mt-1.5 block min-h-[28px] w-full rounded-full px-2 py-0.5 text-xs font-semibold transition disabled:opacity-40 ${
+            className={`mt-1.5 block min-h-[44px] w-full rounded-full px-3 text-xs font-semibold transition disabled:opacity-40 ${
               request.paid
                 ? "bg-[#B4E655]/15 text-[#B4E655]"
-                : "bg-white/10 text-white/70 hover:text-white"
+                : "bg-white/10 text-white/80 hover:text-white"
             }`}
           >
-            {request.paid ? "paid ✓" : "mark paid"}
+            {request.paid ? "Paid ✓" : "Mark paid"}
           </button>
         </div>
       </div>
 
       {request.self_level && (
-        <p className="mt-2 text-xs text-white/60">
-          Self-estimate: {request.self_level}
+        <p className="mt-2 text-xs text-white/75">
+          {selfEstimateLine(request.self_level, {
+            self: (request.participant_relationship ?? "self") === "self",
+            source: "Self-estimate",
+          })}
         </p>
       )}
 
@@ -643,7 +659,12 @@ function RequestCard({
               No open slots — record a coordinated time instead.
             </p>
           ) : (
+            <>
+            <label htmlFor={`slot-${request.id}`} className="sr-only">
+              Open slot
+            </label>
             <select
+              id={`slot-${request.id}`}
               value={slotKey}
               onChange={(e) => setSlotKey(e.target.value)}
               className={inputClass}
@@ -661,6 +682,7 @@ function RequestCard({
                 </option>
               ))}
             </select>
+            </>
           )}
           <div className="flex gap-2">
             {openSlots.length > 0 && (
@@ -693,8 +715,9 @@ function RequestCard({
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs text-white/60">Date</label>
+              <label htmlFor={`sched-date-${request.id}`} className="mb-1 block text-xs text-white/60">Date</label>
               <input
+                id={`sched-date-${request.id}`}
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -702,8 +725,9 @@ function RequestCard({
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-white/60">Time</label>
+              <label htmlFor={`sched-time-${request.id}`} className="mb-1 block text-xs text-white/60">Time</label>
               <input
+                id={`sched-time-${request.id}`}
                 type="time"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
@@ -743,8 +767,12 @@ export function AdminAssessmentsClient() {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [openSlots, setOpenSlots] = useState<OpenSlot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
+  // A load failure says so, with Retry (audit L23), instead of leaving the
+  // lists silently empty.
   const refresh = useCallback(async () => {
+    setLoadError(null);
     try {
       const [bRes, kRes, rRes, sRes] = await Promise.all([
         fetch("/api/assessment/admin/blocks"),
@@ -752,6 +780,9 @@ export function AdminAssessmentsClient() {
         fetch("/api/assessment/admin/requests"),
         fetch("/api/assessment/slots"),
       ]);
+      if (![bRes, kRes, rRes].every((r) => r.ok)) {
+        setLoadError("Couldn't load the assessment lists.");
+      }
       const bData = await bRes.json();
       const kData = await kRes.json();
       const rData = await rRes.json();
@@ -775,7 +806,8 @@ export function AdminAssessmentsClient() {
         )
       );
     } catch {
-      // leave existing state
+      // Keep what is on screen, and say the refresh failed.
+      setLoadError("Couldn't reach the server.");
     } finally {
       setLoading(false);
     }
@@ -795,6 +827,20 @@ export function AdminAssessmentsClient() {
 
   return (
     <div className="space-y-10">
+      {loadError && (
+        <div className="flex flex-wrap items-center gap-3">
+          <p role="alert" className="text-sm text-red-300">
+            {loadError}
+          </p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:text-white"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {/* Blocks */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">

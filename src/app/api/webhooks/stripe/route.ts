@@ -93,6 +93,15 @@ export async function POST(req: NextRequest) {
       .filter((n) => Number.isFinite(n) && n > 0);
     const bookingIds = csv(session.metadata?.assessmentBookingIds);
     const participantIds = csv(session.metadata?.participantIds);
+    // Every player's Supabase row (audit M25); a session created before this
+    // deploy carries only the first one, in the singular field.
+    const supabaseEnrollmentIds = csv(session.metadata?.supabaseEnrollmentIds);
+    const paidEnrollmentIds =
+      supabaseEnrollmentIds.length > 0
+        ? supabaseEnrollmentIds
+        : supabaseEnrollmentId
+          ? [supabaseEnrollmentId]
+          : [];
 
     const paidRows = rowNumbers.length > 0 ? rowNumbers : rowNumber ? [rowNumber] : [];
     for (const n of paidRows) {
@@ -222,13 +231,14 @@ export async function POST(req: NextRequest) {
         }).catch((err) => console.error("Activation link failed (non-blocking):", err));
       }
     } else if (supabaseEnrollmentId && contactEmail) {
-      // Update existing Supabase row to paid
+      // Update every player's Supabase row to paid, not just the first: a
+      // household payment covers each seat (audit M25).
       const { createServiceClient } = await import("@/lib/supabase/service");
       const supabase = createServiceClient();
       await supabase
         .from("enrollments")
         .update({ status: "paid" })
-        .eq("id", supabaseEnrollmentId);
+        .in("id", paidEnrollmentIds);
       await notifyEnrollmentAccount({
         email: contactEmail,
         enrollmentId: supabaseEnrollmentId,

@@ -19,9 +19,15 @@ import {
   unmatchedSignal,
   etransferRowPlan,
   claimCredit,
+  levelGatePlan,
+  requestedParticipantIds,
   COHORT_FULL_ERROR,
   INVITE_ONLY_ERROR,
+  type GatePlayer,
 } from "../lib/enrollGate";
+import { cohortAdmitsLevel } from "../lib/tiers";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { DECLINED_INVITE_ERROR } from "../lib/checkoutInvite";
 import { seatsFromSnapshot } from "../lib/seatCount";
 import type { Cohort } from "../types/cohort";
@@ -490,6 +496,107 @@ console.log("foreignRows + seatsFromSnapshot — one Sheet read, two answers");
   check("seats: pending rows don't count", seatsFromSnapshot(snapshot, "coh_other", 6), 6);
   check("seats: empty tab → full capacity", seatsFromSnapshot({ header: [], rows: [] }, "coh_private", 6), 6);
   check("seats: never below zero", seatsFromSnapshot(snapshot, "coh_private", 1), 0);
+}
+
+// ─── Audit M27: the level gate reads each player, through one rule ──────────
+
+console.log("levelGatePlan + decideEnrollGate — per-player levels (audit M27)");
+{
+  const deuceOnly = cohort({ id: "coh_deuce", levelMin: 3, levelMax: 3 });
+  const household: GatePlayer[] = [
+    { id: "p_self", relationship: "self", level: null }, // the parent, unranked
+    { id: "p_maya", relationship: "child", level: 3.0 }, // inside 3.0–4.0
+    { id: "p_leo", relationship: "child", level: 2.0 }, // outside
+  ];
+  const gate = (levels: (number | string | null)[], c: Cohort = gated) =>
+    decideEnrollGate({ cohort: c, tokenSent: false, lookup: null, playerLevels: levels, payable: true, today: TODAY });
+
+  // The page: the holder may open the wizard when any player is inside.
+  const page = levelGatePlan(gated, household);
+  check("page: a ranked child admits the unranked parent's account", gate(page.levels), { allowed: true, via: "level" });
+  check("page: only the players inside the band are offered", page.eligibleIds, ["p_maya"]);
+  check(
+    "page: nobody inside → refused, nobody offered",
+    [gate(levelGatePlan(deuceOnly, [{ id: "a", relationship: "self", level: 2.5 }]).levels, deuceOnly), levelGatePlan(deuceOnly, [{ id: "a", relationship: "self", level: 2.5 }]).eligibleIds],
+    [{ allowed: false, status: 403, expired: false }, []]
+  );
+
+  // The payment routes: every player on the request must be inside.
+  check("route: the child inside the band → allowed", gate(levelGatePlan(gated, household, ["p_maya"]).levels), { allowed: true, via: "level" });
+  check(
+    "route: a sibling outside the band on the same payment → 403",
+    gate(levelGatePlan(gated, household, ["p_maya", "p_leo"]).levels),
+    { allowed: false, status: 403, expired: false }
+  );
+  check(
+    "route: a typed player with no id has no level → 403",
+    gate(levelGatePlan(gated, household, ["p_maya", null]).levels),
+    { allowed: false, status: 403, expired: false }
+  );
+  check(
+    "route: an id from another account has no level here → 403",
+    gate(levelGatePlan(gated, household, ["p_someone_else"]).levels),
+    { allowed: false, status: 403, expired: false }
+  );
+  check(
+    "route: a legacy body naming nobody is the holder alone (unranked → 403)",
+    gate(levelGatePlan(gated, household, []).levels),
+    { allowed: false, status: 403, expired: false }
+  );
+  check(
+    "route: a legacy body from a ranked solo holder still passes",
+    gate(levelGatePlan(gated, [{ id: "solo", relationship: "self", level: 3.5 }], []).levels),
+    { allowed: true, via: "level" }
+  );
+  check("route: no players signed in → no levels → 403", gate(levelGatePlan(gated, [], ["x"]).levels), { allowed: false, status: 403, expired: false });
+
+  // One rule (cohortAdmitsLevel): a 3.5 player is not in a 3.0–3.0 cohort,
+  // even though both are "Deuce". The dashboard list and the gate agree.
+  check(
+    "half-step band: 3.5 refused by a 3.0–3.0 cohort",
+    gate([3.5], deuceOnly),
+    { allowed: false, status: 403, expired: false }
+  );
+  check("half-step band: the list rule agrees (3.5 not admitted)", cohortAdmitsLevel(3.5, 3, 3), false);
+  check("half-step band: 3.0 admitted by both", [gate([3.0], deuceOnly).allowed, cohortAdmitsLevel(3.0, 3, 3)], [true, true]);
+  check("an unbanded cohort admits nobody by level", cohortAdmitsLevel(3.0, null, null), false);
+  check("open-ended band: min only", [cohortAdmitsLevel(6.5, 4, null), cohortAdmitsLevel(3.5, 4, null)], [true, false]);
+  let agree = true;
+  for (const min of [null, 1, 2.5, 3, 3.5, 4]) {
+    for (const max of [null, 3, 3.5, 4.5, 7]) {
+      for (let level = 1; level <= 7; level += 0.5) {
+        const c = cohort({ id: "coh_sweep", levelMin: min, levelMax: max });
+        const viaGate = gate([level], c).allowed;
+        if (viaGate !== cohortAdmitsLevel(level, min, max)) agree = false;
+      }
+    }
+  }
+  check("gate === list rule for every band and level on the half-step grid", agree, true);
+  check("playerLevel (one player) still works", decideEnrollGate({ cohort: gated, tokenSent: false, lookup: null, playerLevel: 3.5, today: TODAY }), { allowed: true, via: "level" });
+  check("an empty playerLevels never admits", gate([]), { allowed: false, status: 403, expired: false });
+}
+
+console.log("requestedParticipantIds — what the routes hand the gate");
+{
+  check("ids in order, blanks are typed players", requestedParticipantIds([{ participantId: " a " }, { participantId: "" }, { name: "Leo" }]), ["a", null, null]);
+  check("no array → legacy body", requestedParticipantIds(undefined), []);
+  check("not an array → legacy body", requestedParticipantIds({ participantId: "a" }), []);
+}
+
+console.log("source — the gate reads players through players.ts, not profiles.level");
+{
+  const src = readFileSync(join(process.cwd(), "src", "lib", "enrollGate.ts"), "utf8");
+  check("enrollGate no longer reads the profiles table", /from\("profiles"\)/.test(src), false);
+  check("enrollGate lists the account's participants", src.includes("listParticipantsForAccount"), true);
+  for (const route of ["checkout/route.ts", "enroll/etransfer/route.ts", "enroll/route.ts"]) {
+    const r = readFileSync(join(process.cwd(), "src", "app", "api", ...route.split("/")), "utf8");
+    check(`${route} passes the request's participant ids to the gate`, r.includes("participantIds: ") && r.includes("requestedParticipantIds"), true);
+  }
+  const dash = readFileSync(join(process.cwd(), "src", "app", "dashboard", "page.tsx"), "utf8");
+  check("dashboard lists open cohorts per player", dash.includes("getOpenCohortsForPlayers(roster)"), true);
+  check("dashboard no longer keys the list to the holder's level", /getOpenCohortsForLevel\(self/.test(dash), false);
+  const db = readFileSync(join(process.cwd(), "src", "lib", "cohortsDb.ts"), "utf8");
+  check("the list uses the gate's rule", db.includes("cohortAdmitsLevel") && !db.includes("tierInCohortRange"), true);
 }
 
 if (failures > 0) {

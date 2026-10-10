@@ -68,6 +68,59 @@ export async function findUnusedCredit(
   }
 }
 
+/** One unused $20 on an account, and whose it is (audit M25). */
+export type AccountCredit = {
+  bookingId: string;
+  participantId: string | null;
+  /** The player's name on the booking. */
+  playerName: string;
+  creditCents: number;
+};
+
+/**
+ * Every unused assessment credit on one account — by the account's email
+ * (exact, case folded) and by its players' ids — so the dashboard can say
+ * whose $20 comes off which price. Read only; an unreadable table reads as
+ * none.
+ */
+export async function listUnusedCreditsForAccount(input: {
+  email: string;
+  participantIds: string[];
+}): Promise<AccountCredit[]> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return [];
+  }
+  try {
+    const supabase = createServiceClient();
+    const base = () =>
+      supabase
+        .from("assessment_bookings")
+        .select("*")
+        .eq("status", "completed")
+        .eq("paid", true)
+        .eq("credit_status", "unused");
+    const email = input.email.trim().replace(/[\\%_]/g, (c) => "\\" + c);
+    const reads = [
+      email ? base().ilike("email", email) : null,
+      input.participantIds.length > 0 ? base().in("participant_id", input.participantIds) : null,
+    ];
+    const results = await Promise.all(reads.map((q) => (q ? q.then((r) => r, () => null) : null)));
+    const byId = new Map<string, BookingRow>();
+    for (const r of results) {
+      for (const row of ((r?.data as BookingRow[] | null) ?? [])) byId.set(row.id, row);
+    }
+    return [...byId.values()].map((b) => ({
+      bookingId: b.id,
+      participantId: b.participant_id ?? null,
+      playerName: b.name,
+      creditCents: ASSESSMENT_CREDIT_CENTS,
+    }));
+  } catch (err) {
+    console.error("listUnusedCreditsForAccount failed:", err);
+    return [];
+  }
+}
+
 /**
  * Mark a booking's credit applied (payment for a program succeeded) and mirror
  * it to the assessments Sheet tab. Best-effort on the Sheet side.

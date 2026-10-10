@@ -6,6 +6,7 @@ import {
   RECORDS_UNAVAILABLE_ERROR,
   contactEmailRefusal,
   gateRefusal,
+  requestedParticipantIds,
   resolveEnrollGate,
   scrubParticipantIds,
   seatsRefuse,
@@ -76,7 +77,11 @@ export async function POST(req: NextRequest) {
     // Backlog #38: the enroll page's gate, run again here before any invite
     // row or Sheet write. Same rule as /api/checkout.
     const cohort = await getCohortById(cohortId);
-    const gate = await resolveEnrollGate(cohort, inviteToken, { payable: true });
+    // Audit M27: the level of each player on the transfer, not the holder's.
+    const gate = await resolveEnrollGate(cohort, inviteToken, {
+      payable: true,
+      participantIds: requestedParticipantIds(enrollmentMeta?.participants),
+    });
     const refused = gateRefusal(gate);
     if (refused) {
       return NextResponse.json({ error: refused.error }, { status: refused.status });

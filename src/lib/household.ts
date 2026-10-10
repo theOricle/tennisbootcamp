@@ -12,6 +12,7 @@ import {
   fillPlayerContact,
   isRelationship,
   listParticipantsForAccount,
+  setParticipantProfile,
   type Relationship,
 } from "@/lib/players";
 import {
@@ -67,6 +68,31 @@ export type ResolvedParticipant = {
 };
 
 const cleanName = cleanParticipantName;
+
+/**
+ * Keep the player's own answers — age band and self-estimate — on their
+ * participant row (migration 0009, audit M31), so the next form starts from
+ * them and the admin pool shows them. Never throws and never blocks: the
+ * quiz (/api/intake) and the booking form resolve through here on their way
+ * to a response they must not fail, and before 0009 runs the write is a
+ * skipped no-op.
+ */
+async function rememberAnswers(
+  participantId: string | null | undefined,
+  answers: { ageBand: unknown; selfLevel: string | null }
+): Promise<void> {
+  if (!participantId) return;
+  if (!isAgeBand(answers.ageBand) && answers.selfLevel === null) return;
+  try {
+    const result = await setParticipantProfile(participantId, {
+      ageBand: answers.ageBand,
+      selfLevel: answers.selfLevel ?? undefined,
+    });
+    if (!result.ok) console.warn("Player answers not saved (non-blocking):", result.error);
+  } catch (err) {
+    console.warn("Player answers not saved (non-blocking):", err);
+  }
+}
 
 /** The signed-in user, or null. Never throws — a guest form must still work. */
 export async function currentUser(): Promise<{ id: string; email: string } | null> {
@@ -201,6 +227,8 @@ export async function resolveSubmissionParticipant(input: {
       }).catch(() => null);
     }
 
+    await rememberAnswers(participant?.id, { ageBand, selfLevel });
+
     return {
       accountId,
       participantId: participant?.id ?? null,
@@ -232,6 +260,7 @@ export async function resolveSubmissionParticipant(input: {
     const self = await ensureSelfParticipant(accountId, {
       fullName: holderName || blockName,
     }).catch(() => null);
+    await rememberAnswers(self?.id, { ageBand, selfLevel });
     const account = await getAccount(accountId).catch(() => null);
     return {
       accountId,
@@ -271,6 +300,7 @@ export async function resolveSubmissionParticipant(input: {
       isMinor: block?.isMinor === true,
     }
   );
+  if (created.ok) await rememberAnswers(created.participant.id, { ageBand, selfLevel });
   const account = await getAccount(accountId).catch(() => null);
 
   return {

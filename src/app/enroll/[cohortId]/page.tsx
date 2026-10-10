@@ -201,8 +201,10 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
   const sessionEmail = await signedInEmail();
 
   // Private cohorts admit a valid unexpired invite token, or — when the cohort
-  // is tier-gated — a signed-in player whose coach-assigned level falls inside
-  // [level_min, level_max]. Everyone else gets the friendly gate. The same
+  // is tier-gated — a signed-in holder with a player whose coach-assigned
+  // level falls inside [level_min, level_max] (audit M27: any player on the
+  // account, read through players.ts). Everyone else gets the friendly gate.
+  // The same
   // decision (src/lib/enrollGate.ts) runs again inside /api/checkout and
   // /api/enroll/etransfer (backlog #38).
   const gate = await resolveEnrollGate(cohort, tokenParam);
@@ -251,6 +253,11 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
       inviteToken={inviteToken}
       initialEmail={inviteEmail}
       etransfer={etransfer}
+      // Admitted by level: only the players inside the band can be enrolled
+      // (the payment routes refuse anyone else), so only they are offered.
+      eligibleParticipantIds={
+        gate.decision.via === "level" ? gate.eligibleParticipantIds : null
+      }
     />
   );
 }

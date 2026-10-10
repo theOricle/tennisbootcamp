@@ -9,6 +9,8 @@ import {
   type Availability,
   type AvailabilitySource,
 } from "@/lib/availability";
+import { isAgeBand, ageBandIsMinor, type AgeBand } from "@/lib/ageBand";
+import { removalBlocker } from "@/lib/householdView";
 import {
   PARTICIPANT_CAP_ERROR,
   RELATIONSHIPS,
@@ -51,10 +53,14 @@ export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
   other: "Someone else",
 };
 
-const PARTICIPANT_COLUMNS =
+const PARTICIPANT_BASE_COLUMNS =
   "id, account_id, full_name, relationship, is_minor, level, level_assessed_at, " +
   "level_notes, availability, availability_updated_at, availability_source, " +
   "availability_note, created_at";
+
+// Migration 0009 (audit M31): each player's age band and self-estimate. Reads
+// ask for them first and fall back to the 0007 columns while 0009 is unrun.
+const PARTICIPANT_COLUMNS = `${PARTICIPANT_BASE_COLUMNS}, age_band, self_level`;
 
 const PROFILE_COLUMNS =
   "id, full_name, phone, level, level_assessed_at, level_notes, " +
@@ -69,9 +75,14 @@ const PROFILE_BASE_COLUMNS =
 type PgError = { code?: string; message?: string } | null;
 
 function isUndefinedColumn(error: PgError): boolean {
+  // 42703 from Postgres on a read; PostgREST's schema-cache miss (PGRST204)
+  // on a write naming a column it doesn't know (migration 0009 unrun).
   return (
     !!error &&
-    (error.code === "42703" || /column .* does not exist/i.test(error.message ?? ""))
+    (error.code === "42703" ||
+      error.code === "PGRST204" ||
+      /column .* does not exist/i.test(error.message ?? "") ||
+      /could not find the '.*' column/i.test(error.message ?? ""))
   );
 }
 
@@ -103,6 +114,17 @@ export type PlayerRecord = {
   availability_updated_at: string | null;
   availability_source: AvailabilitySource | null;
   availability_note: string | null;
+  /**
+   * The player's age band as last answered (migration 0009, audit M31), or
+   * null when never asked or before 0009 runs — callers then fall back to
+   * `is_minor`.
+   */
+  age_band?: AgeBand | null;
+  /**
+   * The player's own self-estimate ("rally", "unsure"…; src/lib/level.ts) as
+   * last answered (migration 0009). Never a coach level.
+   */
+  self_level?: string | null;
 };
 
 /** The account holder behind one or more participants. */
@@ -126,6 +148,8 @@ type RawParticipant = {
   availability_updated_at?: string | null;
   availability_source?: string | null;
   availability_note?: string | null;
+  age_band?: string | null;
+  self_level?: string | null;
 };
 
 type RawProfile = {
@@ -163,6 +187,8 @@ function toRecord(row: RawParticipant): PlayerRecord {
       ? row.availability_source
       : null,
     availability_note: row.availability_note ?? null,
+    age_band: isAgeBand(row.age_band) ? row.age_band : null,
+    self_level: typeof row.self_level === "string" ? row.self_level : null,
   };
 }
 
@@ -183,7 +209,21 @@ function profileToRecord(row: RawProfile): PlayerRecord {
       ? row.availability_source
       : null,
     availability_note: row.availability_note ?? null,
+    age_band: null,
+    self_level: null,
   };
+}
+
+/**
+ * Run a participants select with the 0009 columns, and again with the 0007
+ * columns when they are missing (42703) — the deploy may land before the SQL.
+ */
+async function selectParticipants<T>(
+  run: (columns: string) => PromiseLike<{ data: T; error: PgError }>
+): Promise<{ data: T; error: PgError }> {
+  const first = await run(PARTICIPANT_COLUMNS);
+  if (isUndefinedColumn(first.error)) return run(PARTICIPANT_BASE_COLUMNS);
+  return first;
 }
 
 // ─── Pure helpers (admin list) ────────────────────────────────────────────────
@@ -263,10 +303,9 @@ async function readAllProfiles(client: SupabaseClient): Promise<RawProfile[]> {
 export async function listPlayers(
   client: SupabaseClient = createServiceClient()
 ): Promise<PlayerRecord[]> {
-  const { data, error } = await client
-    .from(PARTICIPANT_TABLE)
-    .select(PARTICIPANT_COLUMNS)
-    .order("created_at", { ascending: true });
+  const { data, error } = await selectParticipants((cols) =>
+    client.from(PARTICIPANT_TABLE).select(cols).order("created_at", { ascending: true })
+  );
   if (isMissingTable(error)) {
     return (await readAllProfiles(client)).map(profileToRecord);
   }
@@ -282,11 +321,13 @@ export async function listParticipantsForAccount(
   accountId: string,
   client: SupabaseClient = createServiceClient()
 ): Promise<PlayerRecord[]> {
-  const { data, error } = await client
-    .from(PARTICIPANT_TABLE)
-    .select(PARTICIPANT_COLUMNS)
-    .eq("account_id", accountId)
-    .order("created_at", { ascending: true });
+  const { data, error } = await selectParticipants((cols) =>
+    client
+      .from(PARTICIPANT_TABLE)
+      .select(cols)
+      .eq("account_id", accountId)
+      .order("created_at", { ascending: true })
+  );
   if (isMissingTable(error)) {
     const profile = await readProfile(accountId, client);
     return profile ? [profileToRecord(profile)] : [];
@@ -304,11 +345,9 @@ export async function getParticipant(
   id: string,
   client: SupabaseClient = createServiceClient()
 ): Promise<PlayerRecord | null> {
-  const { data, error } = await client
-    .from(PARTICIPANT_TABLE)
-    .select(PARTICIPANT_COLUMNS)
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await selectParticipants((cols) =>
+    client.from(PARTICIPANT_TABLE).select(cols).eq("id", id).maybeSingle()
+  );
   if (isMissingTable(error)) {
     const profile = await readProfile(id, client);
     return profile ? profileToRecord(profile) : null;
@@ -325,14 +364,16 @@ export async function getSelfParticipant(
   accountId: string,
   client: SupabaseClient = createServiceClient()
 ): Promise<PlayerRecord | null> {
-  const { data, error } = await client
-    .from(PARTICIPANT_TABLE)
-    .select(PARTICIPANT_COLUMNS)
-    .eq("account_id", accountId)
-    .eq("relationship", "self")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { data, error } = await selectParticipants((cols) =>
+    client
+      .from(PARTICIPANT_TABLE)
+      .select(cols)
+      .eq("account_id", accountId)
+      .eq("relationship", "self")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+  );
   if (isMissingTable(error)) {
     const profile = await readProfile(accountId, client);
     return profile ? profileToRecord(profile) : null;
@@ -506,7 +547,7 @@ export async function createParticipant(input: {
       relationship: input.relationship,
       is_minor: input.isMinor === true,
     })
-    .select(PARTICIPANT_COLUMNS)
+    .select(PARTICIPANT_BASE_COLUMNS)
     .single();
   if (isMissingTable(error)) {
     return {
@@ -599,6 +640,196 @@ export async function setPlayerAvailability(
   };
   if (input.note !== undefined) patch.availability_note = input.note;
   return patchParticipant(id, patch);
+}
+
+/**
+ * A player's own answers (audit M31, migration 0009): their age band and
+ * where their game is right now, as the quiz or the booking form last asked
+ * them. Written whenever a flow names the player; `is_minor` follows the band
+ * (the band is its one source, CLAUDE.md). Never touches the coach level.
+ *
+ * Degrades quietly: before 0009 runs (no columns) or before 0007 (no table)
+ * the write is skipped and reported as such, never thrown — the quiz and the
+ * booking form call this on their way to a response they must not fail.
+ */
+export async function setParticipantProfile(
+  id: string,
+  input: { ageBand?: unknown; selfLevel?: unknown }
+): Promise<{ ok: boolean; skipped?: string; error?: string }> {
+  const patch: Record<string, unknown> = {};
+  if (isAgeBand(input.ageBand)) {
+    patch.age_band = input.ageBand;
+    patch.is_minor = ageBandIsMinor(input.ageBand);
+  }
+  if (typeof input.selfLevel === "string" && SELF_LEVEL_VALUES.has(input.selfLevel.trim())) {
+    patch.self_level = input.selfLevel.trim();
+  }
+  if (Object.keys(patch).length === 0) return { ok: true, skipped: "nothing to write" };
+  try {
+    const supabase = createServiceClient();
+    const { error } = await supabase.from(PARTICIPANT_TABLE).update(patch).eq("id", id);
+    if (isMissingTable(error)) return { ok: true, skipped: "participants table missing (0007)" };
+    if (isUndefinedColumn(error)) {
+      // 0009 is unrun: keep the one column 0007 has, so is_minor still follows.
+      if (patch.is_minor === undefined) return { ok: true, skipped: "migration 0009 not applied" };
+      const { error: minorErr } = await supabase
+        .from(PARTICIPANT_TABLE)
+        .update({ is_minor: patch.is_minor })
+        .eq("id", id);
+      return minorErr
+        ? { ok: false, error: minorErr.message }
+        : { ok: true, skipped: "migration 0009 not applied" };
+    }
+    return error ? { ok: false, error: error.message } : { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** The self-estimate values 0009's check allows (src/lib/level.ts SELF_LEVELS). */
+const SELF_LEVEL_VALUES = new Set(["new", "rally", "competitive", "elite", "unsure", ""]);
+
+/**
+ * A holder edits one of their own players from /profile (audit M34): the name
+ * and, for anyone but the holder, the age band. The holder's own name is
+ * mirrored onto their profile so the dashboard greeting and the admin list
+ * read the same name. `accountId` is the session's account — a participant on
+ * another account is refused, never written.
+ */
+export async function updateParticipantDetails(
+  accountId: string,
+  id: string,
+  input: { fullName?: string | null; ageBand?: unknown }
+): Promise<{ ok: boolean; error?: string; status?: number }> {
+  const current = await getParticipant(id).catch(() => null);
+  if (!current || current.account_id !== accountId) {
+    return { ok: false, error: "That player isn't on your account.", status: 404 };
+  }
+  const name = (input.fullName ?? "").trim().replace(/\s+/g, " ").slice(0, 120);
+  if (input.fullName !== undefined && !name) {
+    return { ok: false, error: "Enter a full name.", status: 400 };
+  }
+  if (name && name !== (current.full_name ?? "")) {
+    const result = await patchParticipant(id, { full_name: name });
+    if (!result.ok) return { ok: false, error: result.error, status: 400 };
+  }
+  if (input.ageBand !== undefined && current.relationship !== "self") {
+    if (!isAgeBand(input.ageBand)) return { ok: false, error: "Choose an age group.", status: 400 };
+    const result = await setParticipantProfile(id, { ageBand: input.ageBand });
+    if (!result.ok) return { ok: false, error: result.error, status: 400 };
+  }
+  return { ok: true };
+}
+
+/**
+ * Remove a player the holder added by mistake (audit M34). Only a player on
+ * the session's own account, never the holder, and only with no history —
+ * see removalBlocker. Anything else is refused with the reason, and the
+ * holder can ask info@ instead.
+ */
+export async function removeParticipant(
+  accountId: string,
+  id: string
+): Promise<{ ok: boolean; error?: string; status?: number }> {
+  const current = await getParticipant(id).catch(() => null);
+  if (!current || current.account_id !== accountId) {
+    return { ok: false, error: "That player isn't on your account.", status: 404 };
+  }
+  const supabase = createServiceClient();
+  const count = async (table: string, column: string, value: string) => {
+    const { count: n, error } = await supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .eq(column, value);
+    // A count that can't be read is history we can't rule out.
+    return error ? 1 : n ?? 0;
+  };
+  const name = (current.full_name ?? "").trim();
+  const [bookings, invites, enrollments] = await Promise.all([
+    count("assessment_bookings", "participant_id", id),
+    count("cohort_invites", "participant_id", id),
+    name
+      ? supabase
+          .from("enrollments")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", accountId)
+          .ilike("participant_name", name)
+          .then(({ count: n, error }) => (error ? 1 : n ?? 0))
+      : Promise.resolve(0),
+  ]);
+  const blocker = removalBlocker(current, { bookings, invites, enrollments });
+  if (blocker) return { ok: false, error: blocker, status: 409 };
+
+  const { error } = await supabase
+    .from(PARTICIPANT_TABLE)
+    .delete()
+    .eq("id", id)
+    .eq("account_id", accountId)
+    .neq("relationship", "self");
+  if (error) return { ok: false, error: error.message, status: 400 };
+  return { ok: true };
+}
+
+/**
+ * What the records say about who has been named as a player, across every
+ * account (the admin pool, audit M26): participant ids on bookings and
+ * invites, and the player names on each account's enrollment rows. The
+ * pool is small; any table that can't be read contributes nothing.
+ */
+export async function listPlayerEvidence(): Promise<{
+  participantIds: Set<string>;
+  enrollmentNamesByAccount: Map<string, string[]>;
+}> {
+  const supabase = createServiceClient();
+  const ids = new Set<string>();
+  const names = new Map<string, string[]>();
+  const [bookings, invites, enrollments] = await Promise.all([
+    supabase.from("assessment_bookings").select("participant_id").not("participant_id", "is", null),
+    supabase.from("cohort_invites").select("participant_id").not("participant_id", "is", null),
+    supabase.from("enrollments").select("user_id, participant_name").not("user_id", "is", null),
+  ]).catch(() => [null, null, null] as const);
+  for (const r of [bookings, invites]) {
+    for (const row of ((r?.data as { participant_id: string | null }[] | null) ?? [])) {
+      if (row.participant_id) ids.add(row.participant_id);
+    }
+  }
+  for (const row of ((enrollments?.data as { user_id: string; participant_name: string | null }[] | null) ?? [])) {
+    if (!row.participant_name) continue;
+    const list = names.get(row.user_id) ?? [];
+    list.push(row.participant_name);
+    names.set(row.user_id, list);
+  }
+  return { participantIds: ids, enrollmentNamesByAccount: names };
+}
+
+/**
+ * The holder edits their own contact details on /profile (audit M34): name
+ * and phone on the profile, and the name on their 'self' participant too, so
+ * the dashboard greeting (which reads participants) never keeps an old name.
+ */
+export async function updateHolderContact(
+  accountId: string,
+  input: { fullName: string | null; phone: string | null }
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = createServiceClient();
+  const fullName = input.fullName?.trim().replace(/\s+/g, " ").slice(0, 120) || null;
+  const phone = input.phone?.trim().slice(0, 40) || null;
+  const { error } = await supabase
+    .from(PLAYER_TABLE)
+    .upsert({ id: accountId, full_name: fullName, phone }, { onConflict: "id" });
+  if (error) return { ok: false, error: error.message };
+  if (fullName) {
+    const self = await getSelfParticipant(accountId, supabase).catch(() => null);
+    // On the pre-0007 fallback the 'self' player IS the profile row.
+    if (self && self.id !== accountId) {
+      const { error: nameErr } = await supabase
+        .from(PARTICIPANT_TABLE)
+        .update({ full_name: fullName })
+        .eq("id", self.id);
+      if (nameErr) console.warn("Participant name sync failed (non-blocking):", nameErr.message);
+    }
+  }
+  return { ok: true };
 }
 
 /** Fill a blank name/phone on the account holder's profile; never overwrites. */

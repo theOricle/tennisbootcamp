@@ -60,6 +60,11 @@ export type ParticipantOption = {
   relationship: string;
   isMinor: boolean;
   level: number | null;
+  /**
+   * The age band this player last answered (migration 0009, audit M31), or
+   * null/absent when never asked — the chooser then assumes from `isMinor`.
+   */
+  ageBand?: AgeBand | null;
 };
 
 /** Age + self-estimate for one player, asked wherever a form places them. */
@@ -157,8 +162,14 @@ export function primaryName(
   return value.guests.find((g) => g.name.trim())?.name.trim() ?? "";
 }
 
-/** A saved participant carries `is_minor`, not a band — assume the youngest. */
+/**
+ * The band a saved participant starts on: the one they last answered
+ * (migration 0009, audit M31), so a returning parent's 15-year-old is not
+ * reset to Junior. Before 0009, or for someone never asked, only `isMinor`
+ * is known — assume the youngest.
+ */
 function participantAgeBand(p: ParticipantOption): AgeBand {
+  if (p.ageBand) return p.ageBand;
   return p.isMinor ? "junior" : "adult";
 }
 
@@ -532,7 +543,7 @@ function AddPersonForm({
       const res = await fetch("/api/participants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName: fullName.trim(), relationship, isMinor }),
+        body: JSON.stringify({ fullName: fullName.trim(), relationship, isMinor, ageBand }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -765,10 +776,17 @@ export function WhoIsThisFor({
   addInline = false,
   intro,
   errors,
+  eligibleIds = null,
 }: {
   household: Household;
   value: HouseholdValue;
   onChange: (next: HouseholdValue) => void;
+  /**
+   * Enroll on a tier-gated private cohort the holder reached by level (audit
+   * M27): only these players are inside the band and can be picked; the
+   * others show, greyed, with the reason. Null offers everyone.
+   */
+  eligibleIds?: readonly string[] | null;
   /** Enroll and the quiz take several people at once; a booking is one slot. */
   multiple?: boolean;
   /**
@@ -802,13 +820,17 @@ export function WhoIsThisFor({
     setFocusKey(null);
   }, [focusKey]);
 
-  // Default the selection to the holder themselves once we know who they are.
+  const canPick = (id: string) => !eligibleIds || eligibleIds.includes(id);
+
+  // Default the selection to the holder themselves once we know who they are
+  // (or, on a level-gated group, the first player inside its band).
   useEffect(() => {
     if (!signedIn || participants.length === 0) return;
     if (value.selectedIds.length > 0) return;
-    const self =
-      participants.find((p) => p.relationship === "self") ?? participants[0];
-    onChange({ ...value, selectedIds: [self.id] });
+    const pickable = participants.filter((p) => canPick(p.id));
+    const first = pickable.find((p) => p.relationship === "self") ?? pickable[0];
+    if (!first) return;
+    onChange({ ...value, selectedIds: [first.id] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn, participants]);
 
@@ -826,6 +848,7 @@ export function WhoIsThisFor({
     }
 
     function toggle(id: string) {
+      if (!canPick(id)) return;
       if (multiple) {
         const next = value.selectedIds.includes(id)
           ? value.selectedIds.filter((x) => x !== id)
@@ -843,6 +866,7 @@ export function WhoIsThisFor({
         <div className="grid gap-2">
           {participants.map((p, i) => {
             const selected = value.selectedIds.includes(p.id);
+            const pickable = canPick(p.id);
             const profile = value.profiles?.[p.id] ?? {
               ageBand: participantAgeBand(p),
               selfLevel: "",
@@ -855,13 +879,16 @@ export function WhoIsThisFor({
                   id={i === 0 ? householdFieldIds.choose : undefined}
                   onClick={() => toggle(p.id)}
                   aria-pressed={selected}
+                  disabled={!pickable}
                   {...(i === 0 ? fieldA11y(householdFieldIds.choose, { error: chooseError }) : {})}
                   className={[
                     "flex min-h-[44px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition",
                     FOCUS_RING,
                     selected
                       ? "border-[#B4E655]/60 bg-[#B4E655]/10"
-                      : "border-white/15 bg-white/5 hover:bg-white/10",
+                      : pickable
+                      ? "border-white/15 bg-white/5 hover:bg-white/10"
+                      : "cursor-not-allowed border-white/10 bg-transparent",
                   ].join(" ")}
                 >
                   <span className="min-w-0">
@@ -871,6 +898,11 @@ export function WhoIsThisFor({
                     <span className="block text-xs text-white/60">
                       {relationshipNote(p)}
                     </span>
+                    {!pickable && (
+                      <span className="block text-xs text-white/60">
+                        Outside this group&apos;s level band
+                      </span>
+                    )}
                   </span>
                   {/* The state shows as a tick as well as colour (WCAG 1.4.1). */}
                   <span
@@ -967,7 +999,7 @@ export function WhoIsThisFor({
               </p>
             )}
           </>
-        ) : adding ? (
+        ) : eligibleIds ? null : adding ? (
           <AddPersonForm
             requireLevel={collectProfile}
             onAdded={(p, profile) => {

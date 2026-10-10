@@ -1,6 +1,6 @@
 import type { Program, TimetableSlot } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
-import { audienceLabel } from "@/lib/ageBand";
+import { audienceLabel, isAgeBand } from "@/lib/ageBand";
 import { formatStartDate } from "@/lib/cohorts";
 import { levelNumber, levelWithinRange } from "@/lib/tiers";
 
@@ -65,15 +65,35 @@ export function programLevelRange(p: Program): LevelRange | null {
 /** What a card needs to know about one player on an account. */
 export type FitPlayer = {
   is_minor: boolean;
+  /**
+   * The age band the player last answered (migration 0009, audit M31). When
+   * known it decides the age fit exactly (a teen is not a Kids' Camp
+   * junior); null or absent falls back to `is_minor`.
+   */
+  age_band?: string | null;
   /** Coach-assigned level, or null while unranked. A Postgres numeric string is fine. */
   level: number | string | null | undefined;
 };
 
 /** True when the program takes players of this age (juniors and teens are minors). */
-export function programFitsAge(p: Program, isMinor: boolean): boolean {
+export function programFitsAge(p: Pick<Program, "ageBands">, isMinor: boolean): boolean {
   return isMinor
     ? p.ageBands.includes("junior") || p.ageBands.includes("teen")
     : p.ageBands.includes("adult");
+}
+
+/**
+ * Does the program take a player of this age? The stored band when known
+ * (migration 0009), else minor vs adult. The dashboard's open-cohort list
+ * reads this too, so a child is never offered an adult group (audit M27).
+ */
+export function programTakesPlayerAge(
+  p: Pick<Program, "ageBands">,
+  player: Pick<FitPlayer, "is_minor" | "age_band">
+): boolean {
+  return isAgeBand(player.age_band)
+    ? p.ageBands.includes(player.age_band)
+    : programFitsAge(p, player.is_minor);
 }
 
 /**
@@ -83,7 +103,7 @@ export function programFitsAge(p: Program, isMinor: boolean): boolean {
  * alone — never a guess.
  */
 export function programFitsPlayer(p: Program, player: FitPlayer): boolean {
-  if (!programFitsAge(p, player.is_minor)) return false;
+  if (!programTakesPlayerAge(p, player)) return false;
   const range = programLevelRange(p);
   if (!range || levelNumber(player.level) === null) return true;
   return levelWithinRange(player.level, range.min, range.max);

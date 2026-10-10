@@ -4,6 +4,7 @@ import { availabilityChips } from "@/lib/availability";
 import {
   listPlayers,
   listAccounts,
+  listPlayerEvidence,
   filterPlayersByView,
   sortPlayers,
   setPlayerLevel,
@@ -13,12 +14,19 @@ import {
   isRelationship,
   type PlayerView,
   type PlayerSort,
+  type PlayerRecord,
 } from "@/lib/players";
+import { holderIsPlayer } from "@/lib/householdView";
 
 // Admin player pool: every participant on every account — the holder
 // themselves, their children, a spouse — leveled or not, each carrying the
-// account they belong to. Coach corrections (level, note, availability) post
-// back here against the participant id.
+// account they belong to, their age band and their own self-estimate
+// (migration 0009, audit L20). Coach corrections (level, note, availability)
+// post back here against the participant id.
+//
+// An account-only holder — a parent who registered a child and was never
+// named as a player themselves (src/lib/householdView.ts, audit M26) — is
+// flagged `accountOnly` and kept out of the Unranked queue and its count.
 //
 // GET ?view=all|leveled|unleveled (default all)
 //     &sort=level|availability_updated_at (default level)
@@ -43,7 +51,35 @@ export async function GET(req: NextRequest) {
     : "level";
 
   try {
-    const [all, accounts] = await Promise.all([listPlayers(), listAccounts()]);
+    const [everyone, accounts, evidence] = await Promise.all([
+      listPlayers(),
+      listAccounts(),
+      listPlayerEvidence().catch(() => ({
+        participantIds: new Set<string>(),
+        enrollmentNamesByAccount: new Map<string, string[]>(),
+      })),
+    ]);
+
+    // Account-only holders: someone else is on the account and nothing names
+    // the holder as a player. They stay in "All" (marked), never "Unranked".
+    const byAccount = new Map<string, PlayerRecord[]>();
+    for (const p of everyone) {
+      const list = byAccount.get(p.account_id) ?? [];
+      list.push(p);
+      byAccount.set(p.account_id, list);
+    }
+    const accountOnly = new Set<string>();
+    for (const [accountId, people] of byAccount) {
+      const self = people.find((p) => p.relationship === "self");
+      if (!self) continue;
+      const plays = holderIsPlayer(self, people, {
+        participantIds: evidence.participantIds,
+        enrollmentNames: evidence.enrollmentNamesByAccount.get(accountId) ?? [],
+      });
+      if (!plays) accountOnly.add(self.id);
+    }
+    const all = everyone.filter((p) => !accountOnly.has(p.id) || view === "all");
+    const pool = everyone.filter((p) => !accountOnly.has(p.id));
 
     const players = sortPlayers(filterPlayersByView(all, view), sort, dirParam).map(
       (p) => {
@@ -65,6 +101,10 @@ export async function GET(req: NextRequest) {
           },
           email: account?.email ?? "",
           phone: account?.phone ?? null,
+          // Migration 0009 (audit L20): null before it runs.
+          ageBand: p.age_band ?? null,
+          selfLevel: p.self_level ?? null,
+          accountOnly: accountOnly.has(p.id),
           level: p.level,
           level_assessed_at: p.level_assessed_at,
           level_notes: p.level_notes,
@@ -83,9 +123,9 @@ export async function GET(req: NextRequest) {
       sort,
       dir: dirParam,
       counts: {
-        all: all.length,
-        leveled: filterPlayersByView(all, "leveled").length,
-        unleveled: filterPlayersByView(all, "unleveled").length,
+        all: everyone.length,
+        leveled: filterPlayersByView(pool, "leveled").length,
+        unleveled: filterPlayersByView(pool, "unleveled").length,
       },
     });
   } catch (err) {

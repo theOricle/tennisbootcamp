@@ -6,7 +6,7 @@ import {
   type ParticipantInput,
 } from "@/lib/household";
 import { getCohortById } from "@/lib/cohortsDb";
-import { gateRefusal, resolveEnrollGate } from "@/lib/enrollGate";
+import { gateRefusal, requestedParticipantIds, resolveEnrollGate } from "@/lib/enrollGate";
 
 const TAB = "enrollments";
 
@@ -60,8 +60,13 @@ export async function POST(req: NextRequest) {
     // private cohort never collects stray pending rows from a bare POST.
     const cohortId = typeof body.cohortId === "string" ? body.cohortId : "";
     const inviteToken = typeof body.inviteToken === "string" ? body.inviteToken : null;
+    // Audit M27: the level of each player the rows are for, not the holder's.
+    // A legacy single-player body names its one participant, or nobody.
     const gate = await resolveEnrollGate(await getCohortById(cohortId), inviteToken, {
       payable: true,
+      participantIds: Array.isArray(body.participants)
+        ? requestedParticipantIds(body.participants)
+        : requestedParticipantIds(body.participantId ? [{ participantId: body.participantId }] : []),
     });
     const refused = gateRefusal(gate);
     if (refused) {

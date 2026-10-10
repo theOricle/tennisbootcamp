@@ -23,6 +23,7 @@ import {
   foreignRows,
   gateRefusal,
   inviteSettlement,
+  requestedParticipantIds,
   resolveEnrollGate,
   scrubParticipantIds,
   seatsRefuse,
@@ -124,7 +125,12 @@ export async function POST(req: NextRequest) {
     // created. A cohort the page would not render is a 404; a private cohort
     // needs an invite in this cohort that can still be paid (or, tier-gated,
     // a signed-in player inside its level band) — else 403, no Stripe session.
-    const gate = await resolveEnrollGate(cohort, inviteToken, { payable: true });
+    // Audit M27: a tier-gated private cohort admits by the level of each
+    // player this payment covers, not the holder's own.
+    const gate = await resolveEnrollGate(cohort, inviteToken, {
+      payable: true,
+      participantIds: requestedParticipantIds(enrollmentMeta?.participants),
+    });
     const refused = gateRefusal(gate);
     if (refused) {
       return NextResponse.json({ error: refused.error }, { status: refused.status });
@@ -265,6 +271,7 @@ export async function POST(req: NextRequest) {
     // Save to Supabase — one enrollment row per player (fire-and-forget on
     // error so it never breaks checkout).
     let supabaseEnrollmentId: string | null = null;
+    const supabaseEnrollmentIds: string[] = [];
     if (enrollmentMeta?.contactEmail) {
       for (const p of players) {
         const id = await saveEnrollmentToSupabase({
@@ -286,6 +293,7 @@ export async function POST(req: NextRequest) {
           userId: ownerId,
         });
         if (!supabaseEnrollmentId) supabaseEnrollmentId = id;
+        if (id) supabaseEnrollmentIds.push(id);
       }
     }
 
@@ -300,6 +308,8 @@ export async function POST(req: NextRequest) {
       cancelUrl,
       contactEmail: enrollmentMeta?.contactEmail,
       supabaseEnrollmentId: supabaseEnrollmentId ?? undefined,
+      // Every player's row, so the webhook marks each one paid (audit M25).
+      supabaseEnrollmentIds,
       discountCents,
       assessmentBookingId: credit?.bookingId,
       assessmentBookingIds: credits.map((c) => c.bookingId),

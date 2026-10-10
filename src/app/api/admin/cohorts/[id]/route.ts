@@ -5,10 +5,12 @@ import {
   listInvites,
   listSessions,
   createInvites,
+  createInvitesForParticipants,
   cancelSession,
   updateCohort,
+  reopenCohort,
   ensureCohortSessions,
-  memberEmails,
+  cohortMembers,
   adminMarkInvitePaid,
   adminMarkInviteUnpaid,
   inviteAmountDueCents,
@@ -16,8 +18,9 @@ import {
 } from "@/lib/cohortActions";
 
 // Admin cohort detail: invites, sessions, and the state-changing actions —
-// invite, cancel_session (→ make-up append), update, set_status, and the
-// e-transfer rail's mark_paid / mark_unpaid (backlog #12).
+// invite (by email, or by player: audit M28), cancel_session (→ make-up
+// append), update, set_status, reopen (undo a cancelled cohort, audit M30),
+// and the e-transfer rail's mark_paid / mark_unpaid (backlog #12).
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -43,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   const [rawInvites, sessions, members] = await Promise.all([
     listInvites(id),
     listSessions(id),
-    memberEmails(id),
+    cohortMembers(id),
   ]);
 
   // Amount still owed per unpaid invite (price − assessment credit) so the
@@ -63,7 +66,9 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     cohort,
     invites,
     sessions,
-    memberCount: members.length,
+    memberCount: new Set(members.map((m) => m.email)).size,
+    // Who has paid, by name, for the Cancel cohort confirmation (audit M30).
+    paidPlayers: members.map((m) => m.participantName || m.email),
     paidCount: invites.filter((i) => i.status === "paid").length,
   });
 }
@@ -81,13 +86,21 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const action = String(body.action ?? "");
 
     if (action === "invite") {
+      // Players first (audit M28): ticked names carry participant ids, so the
+      // spot and the $20 credit are that player's. Emails stay as the fallback.
+      const participantIds: string[] = Array.isArray(body.participantIds)
+        ? body.participantIds.map((x: unknown) => String(x)).filter(Boolean)
+        : [];
       const emails: string[] = Array.isArray(body.emails)
         ? body.emails.map((e: unknown) => String(e))
         : [];
-      if (emails.length === 0) {
-        return NextResponse.json({ error: "Add at least one email." }, { status: 400 });
+      if (participantIds.length === 0 && emails.length === 0) {
+        return NextResponse.json({ error: "Tick a player or add an email." }, { status: 400 });
       }
-      const result = await createInvites(id, emails);
+      const result =
+        participantIds.length > 0
+          ? await createInvitesForParticipants(id, participantIds)
+          : await createInvites(id, emails);
       if (result.sent === 0 && result.errors.length > 0) {
         return NextResponse.json({ error: result.errors.join(" ") }, { status: 400 });
       }
@@ -134,6 +147,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         await ensureCohortSessions(id);
       }
       return NextResponse.json({ ok: true });
+    }
+
+    if (action === "reopen") {
+      const result = await reopenCohort(id);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, status: result.status });
     }
 
     if (action === "mark_paid") {

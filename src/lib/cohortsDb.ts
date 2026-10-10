@@ -2,7 +2,7 @@ import "server-only";
 import type { Cohort, CohortDbStatus, CohortStatus, SessionSlot } from "@/types/cohort";
 import { createServiceClient } from "@/lib/supabase/service";
 import { scheduledEndDate } from "@/lib/makeup";
-import { tierInCohortRange } from "@/lib/tiers";
+import { cohortAdmitsLevel } from "@/lib/tiers";
 import { isCohortPublic, isCohortRenderable } from "@/lib/cohortVisibility";
 import { cohortsWithSeats, readEnrollmentSheet } from "@/lib/seatCount";
 
@@ -191,22 +191,39 @@ export async function getSessionsForCohorts(
 }
 
 /**
- * Open cohorts matching a player's tier — the dashboard "Open for your tier"
- * list. Includes private tier-gated cohorts: a signed-in player whose level
- * falls in the band is admitted by /enroll without an invite token. A cohort
- * with no seat left is dropped (audit M33): the list says "still have room",
- * and /enroll would only show "This group is full". Sheets unconfigured or
- * unreadable keeps every match, as the enroll page skips its seat check then.
+ * Open cohorts a player on the account may join by level — the dashboard
+ * "Open for your tier" list, one entry per cohort with the players it fits
+ * (audit M27). Includes private tier-gated cohorts: /enroll admits a
+ * signed-in holder for any of their players whose level is inside the band,
+ * by the same rule (cohortAdmitsLevel). A cohort with no seat left is
+ * dropped (audit M33): the list says "still have room", and /enroll would
+ * only show "This group is full". Sheets unconfigured or unreadable keeps
+ * every match, as the enroll page skips its seat check then.
  */
+export async function getOpenCohortsForPlayers<
+  P extends { id: string; level: number | string | null | undefined },
+>(players: readonly P[]): Promise<{ cohort: Cohort; players: P[] }[]> {
+  const ranked = players.filter((p) => p.level !== null && p.level !== undefined && p.level !== "");
+  if (ranked.length === 0) return [];
+  const all = await getAllCohorts();
+  const matching = all
+    .filter((c) => isCohortRenderable(c))
+    .map((cohort) => ({
+      cohort,
+      players: ranked.filter((p) => cohortAdmitsLevel(p.level, cohort.levelMin, cohort.levelMax)),
+    }))
+    .filter((m) => m.players.length > 0);
+  if (matching.length === 0) return matching;
+  const sheet = await readEnrollmentSheet();
+  if (sheet.status !== "ok") return matching;
+  const withSeats = new Set(cohortsWithSeats(matching.map((m) => m.cohort), sheet.snapshot).map((c) => c.id));
+  return matching.filter((m) => withSeats.has(m.cohort.id));
+}
+
+/** One player's open cohorts (the pre-household call shape). */
 export async function getOpenCohortsForLevel(
   level: number | string | null | undefined
 ): Promise<Cohort[]> {
-  if (level === null || level === undefined || level === "") return [];
-  const all = await getAllCohorts();
-  const matching = all.filter(
-    (c) => isCohortRenderable(c) && tierInCohortRange(level, c.levelMin, c.levelMax)
-  );
-  if (matching.length === 0) return matching;
-  const sheet = await readEnrollmentSheet();
-  return sheet.status === "ok" ? cohortsWithSeats(matching, sheet.snapshot) : matching;
+  const found = await getOpenCohortsForPlayers([{ id: "player", level }]);
+  return found.map((m) => m.cohort);
 }

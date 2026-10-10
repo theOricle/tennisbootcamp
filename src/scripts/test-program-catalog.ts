@@ -387,12 +387,14 @@ check("detail: a TierRangeBadges per timetable slot", detail.includes("<TierRang
 check("detail: cohort cards carry the mark and the rail", detail.includes("<PlateMark plate={program.plate}") && detail.includes("artFocusForCohort(program, cohort)") && /tierGated &&[\s\S]*<TierLine[\s\S]*variant="rail"/.test(detail));
 check("detail: the start date helper is shared", detail.includes("formatStartDate(") && !detail.includes("fmtStartDate"));
 const dashboardPage = read("src/app/dashboard/page.tsx");
-check("dashboard: suggestions through suggestProgramsFor", dashboardPage.includes("suggestProgramsFor(players, listedPrograms, enrolledProgramIds)"));
+// Audit I (M26): suggestions are for the players who train, not an account-only holder.
+check("dashboard: suggestions through suggestProgramsFor", dashboardPage.includes("suggestProgramsFor(roster, listedPrograms, enrolledProgramIds)"));
 const dashboardView = read("src/app/dashboard/DashboardView.tsx");
-check("dashboard: renders ProgramCardList with fits and the sub-copy", dashboardView.includes("<ProgramCardList") && dashboardView.includes("suggestionsSubCopy(players, suggestions)") && dashboardView.includes("fits="));
+check("dashboard: renders ProgramCardList with fits and the sub-copy", dashboardView.includes("<ProgramCardList") && dashboardView.includes("suggestionsSubCopy(roster, suggestions)") && dashboardView.includes("fits="));
 check("dashboard: the aside is the locked secondary label", dashboardView.includes("Browse Programs →") && !dashboardView.includes("View all"));
 const pkg = JSON.parse(read("package.json")) as { scripts: { test: string } };
-check("npm test ends with this file", pkg.scripts.test.trim().endsWith("npx tsx src/scripts/test-program-catalog.ts"));
+// Later items append their own tests after this one (audit I: test-dashboard-state.ts).
+check("npm test runs this file", pkg.scripts.test.includes("npx tsx src/scripts/test-program-catalog.ts"));
 check("design-system.md documents the program cards", read("ops/briefs/design-system.md").includes("## Program cards"));
 
 if (failed > 0) {
