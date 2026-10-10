@@ -10,6 +10,18 @@ function formatMonth(iso: string): string {
   return d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
 }
 
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * "Oct 18" from an ISO date ("2026-10-18"). A fixed month list, not
+ * toLocaleDateString, so the server and the browser print the same string
+ * (program cards and the detail page's "Next cohort" line; audit H7).
+ */
+export function formatStartDate(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${SHORT_MONTHS[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
+}
+
 function formatTime(t: string): string {
   const [h, m] = t.split(":").map(Number);
   const suffix = h >= 12 ? "pm" : "am";

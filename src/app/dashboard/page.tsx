@@ -17,6 +17,7 @@ import {
   type PlayerRecord,
 } from "@/lib/players";
 import { VENUE_LINE } from "@/lib/membership";
+import { suggestProgramsFor } from "@/lib/programCatalog";
 import { DashboardView, SURFACE, type DashboardEnrollment } from "./DashboardView";
 
 export const metadata: Metadata = {
@@ -160,9 +161,10 @@ async function DashboardContent({
       return cohort?.programId ?? e.program ?? "";
     })
   );
-  // Suggestions come from the public catalog only; `programs` (above) still
-  // resolves retired ids so old enrollment rows keep their title.
-  const suggestedPrograms = listedPrograms.filter((p) => !enrolledProgramIds.has(p.id));
+  // Suggestions come from the public catalog only, filtered by every player's
+  // age band and level (audit M31); `programs` (above) still resolves retired
+  // ids so old enrollment rows keep their title.
+  const suggestions = suggestProgramsFor(players, listedPrograms, enrolledProgramIds);
 
   return (
     <DashboardView
@@ -173,7 +175,7 @@ async function DashboardContent({
       cohorts={cohorts}
       sessionsByCohort={sessionsByCohort}
       openForTier={openForTier}
-      suggestedPrograms={suggestedPrograms}
+      suggestions={suggestions}
       programs={programs}
       today={todayIso()}
     />

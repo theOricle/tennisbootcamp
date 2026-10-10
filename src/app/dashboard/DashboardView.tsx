@@ -13,7 +13,8 @@ import { VENUE_LINE } from "@/lib/membership";
 import { hasLevel } from "@/lib/tiers";
 import { isCohortPublic } from "@/lib/cohortVisibility";
 import { TierBadge, TierRangeBadges } from "@/components/tiers";
-import { ProgramCard, nextCohortFor } from "@/components/sections/ProgramCard";
+import { ProgramCardList } from "@/components/sections/ProgramCard";
+import { suggestionsSubCopy, type ProgramFit, type SuggestedProgram } from "@/lib/programCatalog";
 import { AvailabilityEditor } from "./AvailabilityEditor";
 
 // Presentation only. The page (page.tsx) reads everything behind the holder's
@@ -44,8 +45,12 @@ export type DashboardViewProps = {
   sessionsByCohort: Record<string, CohortSessionRow[]>;
   /** Open cohorts in the holder's tier that they aren't enrolled in. */
   openForTier: Cohort[];
-  /** Programs the account isn't enrolled in — the suggestion row. */
-  suggestedPrograms: Program[];
+  /**
+   * "Suggested for you" (audit M31): programs the account isn't enrolled in
+   * that fit at least one player's age and level, with the ranked player each
+   * one fits, from suggestProgramsFor().
+   */
+  suggestions: SuggestedProgram[];
   programs: Program[];
   /** Today in Toronto as "YYYY-MM-DD" — splits upcoming from past sessions. */
   today: string;
@@ -317,7 +322,7 @@ export function DashboardView(props: DashboardViewProps) {
     cohorts,
     sessionsByCohort,
     openForTier,
-    suggestedPrograms,
+    suggestions,
     programs,
     today,
   } = props;
@@ -580,24 +585,28 @@ export function DashboardView(props: DashboardViewProps) {
         </p>
       </section>
 
-      {/* Suggested for you — the homepage program card, hidden when there is nothing to suggest */}
-      {suggestedPrograms.length > 0 && (
+      {/* Suggested for you (audit M31, H7): the same spec-sheet card as the
+          home grid, filtered by each player's age and level, with "Fits
+          Maya" and her place on the rail. Hidden when there is nothing to
+          suggest. */}
+      {suggestions.length > 0 && (
         <section aria-labelledby="suggested">
           <SectionHeading
             id="suggested"
             title="Suggested for you"
-            sub="Programs you're not enrolled in yet."
+            sub={suggestionsSubCopy(players, suggestions)}
             aside={
               <Link href="/programs" className={linkClass}>
-                View all →
+                Browse Programs →
               </Link>
             }
           />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {suggestedPrograms.map((p) => (
-              <ProgramCard key={p.id} program={p} nextCohort={nextCohortFor(publicCohorts, p.id)} />
-            ))}
-          </div>
+          <ProgramCardList
+            programs={suggestions.map((s) => s.program)}
+            publicCohorts={publicCohorts}
+            fits={Object.fromEntries(suggestions.map((s) => [s.program.id, s.fit])) as Record<string, ProgramFit>}
+            layout="grid"
+          />
         </section>
       )}
     </div>

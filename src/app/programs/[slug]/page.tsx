@@ -13,34 +13,35 @@ import {
   formatDateRange,
   formatDaysTimes,
   formatCohortPrice,
+  formatStartDate,
 } from "@/lib/cohorts";
 import { getPublicCohorts } from "@/lib/cohortsDb";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { VENUE_LINE } from "@/lib/membership";
-import { TierRangeBadges } from "@/components/tiers";
+import { programLevelRange } from "@/lib/programCatalog";
+import { formatLevelBand, formatTierSpan } from "@/lib/tiers";
+import { artFocusForCohort } from "@/lib/plates/variant";
+import { TierLine, TierRangeBadges } from "@/components/tiers";
+import { AgeBandChips } from "@/components/programs/AgeBandChips";
+import { PlateMark } from "@/components/plates/PlateMark";
+import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import { JsonLd } from "@/components/JsonLd";
 import { courseJsonLd } from "@/lib/structuredData";
 import { ProgramPlate } from "@/components/plates/ProgramPlate";
 
-function fmtStartDate(iso: string): string {
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const [, m, d] = iso.split("-");
-  return `${months[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
-}
-
 /**
- * The phone summary under the H1 (audit M13): who, which day, what it costs,
- * so the decision facts sit above the fold. Weekend classes only; a
- * coming-soon program's card line already states its price. Each fact is
- * joined with no-break spaces, so a line wraps only between facts. The tier
- * span joins this row when programs carry one (audit build items F and G).
+ * The phone summary under the H1 (audit M13): which day and what it costs,
+ * so the decision facts sit above the fold; who it is for, and the tier
+ * span, are the chip row under the description (L8). Weekend classes only;
+ * a coming-soon program's card line already states its price. Each fact is
+ * joined with no-break spaces, so a line wraps only between facts.
  */
 const NBSP = "\u00A0";
 
 function summaryFacts(program: Program): string[] {
   const days = [...new Set((program.timetable ?? []).map((slot) => `${slot.day}s`))];
   if (program.comingSoon || days.length === 0) return [];
-  return [program.ageGroup ?? "", days.join(" and "), `${SESSION_PRICE_LABEL} a session`].filter(Boolean);
+  return [days.join(" and "), `${SESSION_PRICE_LABEL} a session`];
 }
 
 // Incremental static regeneration (audit M39): the page is served from the
@@ -96,6 +97,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // Null for coming-soon programs: no stated price, so no Course markup.
   const courseLd = courseJsonLd(program);
   const summary = summaryFacts(program);
+  // The tier span the program is built for (owner D2); unset renders nothing.
+  const range = programLevelRange(program);
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -149,13 +152,10 @@ export default async function ProgramDetailPage({ params }: PageProps) {
 
           {/* Content */}
           <div className="flex flex-col justify-center md:flex-1">
-            {/* Type + age badges */}
+            {/* Type, and the Coming Soon chip. Age and level are the chip
+                row under the description (audit L8). */}
             <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
               <span className="font-semibold text-[#B4E655]">{program.type}</span>
-              {program.ageGroup && (
-                // On phones the age moves into the summary row under the H1.
-                <span className={`text-white/70 ${summary.length > 0 ? "max-md:hidden" : ""}`}>· {program.ageGroup}</span>
-              )}
               {program.comingSoon && (
                 // The neutral Coming Soon chip: 12px, dashed, no warning yellow (audit L3).
                 <span className="ml-1 inline-flex min-h-6 items-center rounded-full border border-dashed border-white/25 bg-[#061427] px-2.5 py-1 text-xs font-medium text-white/85">
@@ -172,6 +172,13 @@ export default async function ProgramDetailPage({ params }: PageProps) {
             )}
             <p className="mt-2 text-base text-white/60">{program.description}</p>
 
+            {/* Who it is for and the tiers it is built for, as chips: age in
+                neutral white, the span with its tier marks (audit L8, M37). */}
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <AgeBandChips bands={program.ageBands} />
+              {range && <TierRangeBadges levelMin={range.min} levelMax={range.max} />}
+            </div>
+
             <p className="mt-5 text-sm leading-relaxed text-white/75">
               {program.longDescription}
             </p>
@@ -186,12 +193,17 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                       {program.timetable.map((slot) => (
                         <li
                           key={`${slot.day}-${slot.time}`}
-                          className="flex flex-wrap justify-between gap-x-4 text-sm text-white/85"
+                          className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-white/85"
                         >
                           <span>
                             {slot.day} {slot.time}
                           </span>
-                          <span className="text-white/60">{slot.group}</span>
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="text-white/60">{slot.group}</span>
+                            {/* The class's tier band (owner D3): the Adult climb reads
+                                Love – Rally, Deuce, Break – Ace. Unbanded slots show nothing. */}
+                            <TierRangeBadges levelMin={slot.levelMin} levelMax={slot.levelMax} />
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -205,7 +217,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 )}
                 {nextOpenCohort && (
                   <p className="mt-3 text-sm font-semibold text-[#B4E655]">
-                    Next cohort starts {fmtStartDate(nextOpenCohort.startDate)}
+                    Next cohort starts {formatStartDate(nextOpenCohort.startDate)}
                   </p>
                 )}
                 {/* Primary, then the optional assessment as an outline pill
@@ -271,6 +283,44 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           </>
         )}
 
+        {/* Levels in this program (audit M36, design specs §5.7): the span in
+            words, the program's own plain line, and the ladder lit inside the
+            span, Grand Slam on top. Only when the span is set (owner D2). */}
+        {range && (
+          <>
+            <div className="mt-12 border-t border-white/10" />
+            <section aria-labelledby="levels" className="mt-10 md:grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-12">
+              <div>
+                <h2 id="levels" className="text-xl font-semibold text-white">Levels in this program</h2>
+                <p className="mt-2 text-base font-semibold text-white">
+                  {formatTierSpan(range.min, range.max)}
+                  <span aria-hidden="true" className="ml-2 text-sm font-normal tabular-nums text-white/60">
+                    {formatLevelBand(range.min, range.max)}
+                  </span>
+                  <span className="sr-only">
+                    , levels {range.min.toFixed(1)} to {range.max.toFixed(1)} on the seven-tier ladder from Love to Grand Slam
+                  </span>
+                </p>
+                {program.levelNote && (
+                  <p className="mt-2 text-sm leading-relaxed text-white/70">{program.levelNote}.</p>
+                )}
+                {/* A coming-soon program has no decided intake path yet (owner D10): only confirmed facts. */}
+                {!program.comingSoon && (
+                  <p className="mt-2 text-sm leading-relaxed text-white/70">
+                    Sina places every player on the ladder, from the quiz or on court.
+                  </p>
+                )}
+                <Link href="/assessment#ladder" className={`mt-2 ${TEXT_LINK_LIME}`}>
+                  How tiers work →
+                </Link>
+              </div>
+              <div className="mt-6 min-w-0 md:mt-0">
+                <TierLine variant="ladder" orientation="vertical" density="compact" span={range} />
+              </div>
+            </section>
+          </>
+        )}
+
         {/* Divider */}
         <div className="mt-12 border-t border-white/10" />
 
@@ -287,28 +337,34 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   const seats = seatCounts[cohort.id] ?? null;
                   const isFull = seats !== null && seats <= 0;
                   const isLowStock = seats !== null && seats > 0 && seats <= 3;
+                  const tierGated = cohort.levelMin != null || cohort.levelMax != null;
                   return (
                     <div
                       key={cohort.id}
                       className="rounded-xl border border-white/10 bg-white/5 px-5 py-4"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-white">{cohort.label}</p>
-                          <TierRangeBadges
-                            levelMin={cohort.levelMin}
-                            levelMax={cohort.levelMax}
-                            className="mt-1"
-                          />
-                          <p className="mt-1 text-sm text-[#B4E655]">
-                            {formatDateRange(cohort)}
-                          </p>
-                          <p className="mt-0.5 text-sm text-white/60">
-                            {formatDaysTimes(cohort)}
-                          </p>
-                          <p className="mt-0.5 text-sm text-white/60">
-                            {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
-                          </p>
+                        {/* The program's mark (the Adult class the cohort trains
+                            in lit), the label, the tier chip and the dates (L8). */}
+                        <div className="flex min-w-0 items-start gap-3">
+                          <PlateMark plate={program.plate} size={48} focusSlot={artFocusForCohort(program, cohort)} />
+                          <div className="min-w-0">
+                            <p className="font-semibold text-white">{cohort.label}</p>
+                            <TierRangeBadges
+                              levelMin={cohort.levelMin}
+                              levelMax={cohort.levelMax}
+                              className="mt-1"
+                            />
+                            <p className="mt-1 text-sm text-[#B4E655]">
+                              {formatDateRange(cohort)}
+                            </p>
+                            <p className="mt-0.5 text-sm text-white/60">
+                              {formatDaysTimes(cohort)}
+                            </p>
+                            <p className="mt-0.5 text-sm text-white/60">
+                              {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
+                            </p>
+                          </div>
                         </div>
                         <div className="shrink-0 text-right">
                           <p className="text-sm font-semibold text-white">
@@ -329,7 +385,16 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                           </span>
                         </div>
                       </div>
-
+                      {/* The cohort's band on the rail, so the chip above reads as a place on the ladder. */}
+                      {tierGated && (
+                        <TierLine
+                          variant="rail"
+                          size="sm"
+                          span={{ min: cohort.levelMin, max: cohort.levelMax }}
+                          labels="none"
+                          className="mt-3"
+                        />
+                      )}
                     </div>
                   );
                 })}
