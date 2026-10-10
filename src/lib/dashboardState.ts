@@ -410,7 +410,10 @@ export function nextStepFor(input: NextStepInput): NextStep {
       const note = i.payment_note?.trim() || null;
       const player = playerFor(roster, { participantId: i.participant_id, name: note });
       const who = whose(input, player, note);
-      const key = who.isSelf
+      // "self" only for a row tied to the holder by player or note. Two rows
+      // that name nobody (one email invited twice before the account
+      // existed) can't be told apart, so each keeps its own spot and amount.
+      const key = who.isSelf && (player || note)
         ? "self"
         : player
           ? `p:${player.id}`
@@ -433,19 +436,27 @@ export function nextStepFor(input: NextStepInput): NextStep {
     const program = programTitle(programs, cohort, cohort.programId);
     const [one] = people;
     const several = people.length > 1;
-    const names = namesList(people.map((p) => (p.who.isSelf ? "you" : p.who.name ?? "your player")));
+    const labels = people.map((p) => (p.who.isSelf ? "you" : p.who.name ?? "your player"));
+    // Rows that read the same ("you and you": two rows naming nobody) are
+    // counted instead of named.
+    const counted = new Set(labels).size < labels.length;
+    const names = namesList(labels);
     return {
       kind: "etransfer",
       eyebrow: "Payment pending",
       headline:
         !several && one.who.isSelf
           ? "Sina is confirming your e-transfer."
-          : `Sina is confirming the e-transfer for ${names}.`,
+          : counted
+            ? `Sina is confirming the e-transfer for ${people.length} spots.`
+            : `Sina is confirming the e-transfer for ${names}.`,
       detail:
         `${money(amount)} to ${input.recipientEmail}, memo “${memo}”. ` +
-        (several
-          ? `The spots for ${names} in ${program} are held while Sina confirms it arrived.`
-          : `${one.who.Owner} spot in ${program} is held while Sina confirms it arrived.`),
+        (counted
+          ? `The ${people.length} spots in ${program} are held while Sina confirms it arrived.`
+          : several
+            ? `The spots for ${names} in ${program} are held while Sina confirms it arrived.`
+            : `${one.who.Owner} spot in ${program} is held while Sina confirms it arrived.`),
       secondary: { href: "#my-programs", label: "See my programs" },
     };
   }

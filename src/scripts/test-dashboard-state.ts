@@ -289,6 +289,34 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
     base({ roster: [parent], voice: "you", invites: [invite({ participant_id: null, payment_note: "dana", payment_method: "etransfer" })] })
   );
   check("…and so is one whose note is the holder's name", holderNote.headline, "Sina is confirming your e-transfer.");
+  // Fix round 3 on PR #88: one email invited twice for two kids before the
+  // account existed leaves two rows naming nobody. They are two spots and
+  // two amounts, never folded into "your" one.
+  const namelessPair = nextStepFor(
+    base({
+      roster: [parent],
+      voice: "you",
+      invites: [
+        invite({ id: "inv_a", participant_id: null, payment_method: "etransfer" }),
+        invite({ id: "inv_b", participant_id: null, token: "tok456", payment_method: "etransfer" }),
+      ],
+    })
+  );
+  check(
+    "two rows that name nobody add up to two spots",
+    [namelessPair.headline, namelessPair.detail.startsWith(`${formatDollars(COHORT_TOTAL * 2)} to`), namelessPair.detail.includes("“Fall Saturday”")],
+    ["Sina is confirming the e-transfer for 2 spots.", true, true]
+  );
+  ok("…and are counted, not 'you and you'", namelessPair.detail.includes("The 2 spots in Youth Programs are held while Sina confirms it arrived."));
+  const namelessNamed = nextStepFor(
+    base({
+      invites: [
+        invite({ id: "inv_a", participant_id: null, payment_method: "etransfer" }),
+        invite({ id: "inv_b", participant_id: null, token: "tok456", payment_method: "etransfer" }),
+      ],
+    })
+  );
+  check("…and in a household, not 'your player and your player'", namelessNamed.headline, "Sina is confirming the e-transfer for 2 spots.");
 
   // Fix round 2 on PR #88: one row per player. A lapsed hold beside a newer
   // row for the same player is one spot and one amount, the live one.
