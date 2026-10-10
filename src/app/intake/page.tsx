@@ -444,17 +444,27 @@ function IntakeComplete({
 function AssessmentSuggestion({
   onBook,
   household,
+  playerFirst,
 }: {
   onBook: () => void;
   household: boolean;
+  /**
+   * The one player's first name when the quiz was about someone other than
+   * the holder (otherPlayerFirst), so a parent reads the assessment offer
+   * about Leo, under the blocks that name Leo. Ignored for a household.
+   */
+  playerFirst?: string;
 }) {
+  const child = household ? undefined : playerFirst;
   return (
     <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
       <p className="text-sm font-semibold text-white">Optional: an on-court assessment</p>
       <p className="mt-1 text-sm leading-relaxed text-white/70">
         {household
           ? "If you'd like a player's level confirmed on court before they're placed, you can book a 20-minute assessment with the coach, one player per slot. The assessment is $20 per player, and if that player enrolls in a program afterward their $20 comes off the price."
-          : "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with the coach. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."}
+          : child
+            ? `If you'd like ${child}'s level confirmed on court before ${child} is placed, you can book a 20-minute assessment with the coach. The assessment is $20, and if ${child} enrolls in a program afterward that $20 comes off the price.`
+            : "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with the coach. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."}
       </p>
       <button type="button" onClick={onBook} className={cn("mt-4", OUTLINE_BUTTON)}>
         Book Your Assessment
@@ -518,7 +528,7 @@ function TentativeMatchScreen({
           {top && (
             <div className="mt-6 border-t border-white/10 pt-5">
               <span className="text-xs font-semibold uppercase tracking-wide text-white/60">
-                Your tentative match
+                {playerFirst ? `${playerFirst}'s tentative match` : "Your tentative match"}
               </span>
               <ProgramMatchCard rec={top} ageBand={result.ageBand} tier={tier} />
             </div>
@@ -526,6 +536,7 @@ function TentativeMatchScreen({
 
           <AssessmentSuggestion
             household={false}
+            playerFirst={playerFirst}
             onBook={() => goToBooking(router, form, result.level)}
           />
 
@@ -669,6 +680,7 @@ function FallbackScreen({
 
           <AssessmentSuggestion
             household={household}
+            playerFirst={playerFirst}
             onBook={() => goToBooking(router, form, level)}
           />
 
