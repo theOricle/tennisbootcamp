@@ -33,10 +33,12 @@ export type NavLink = { href: string; label: string };
 /**
  * The header and mobile-drawer text links (audit M11). Events and Video
  * Lessons stay out until they have real content (audit M6, owner default
- * D24); their pages still resolve, with noindex.
+ * D24); their pages still resolve, with noindex. Locations returns beside
+ * Programs now that the club is named (owner, 2026-10-12).
  */
 export const NAV_LINKS: readonly NavLink[] = [
   { href: "/programs", label: "Programs" },
+  { href: "/locations", label: "Locations" },
   { href: "/about", label: "About" },
   { href: "/assessment", label: "Assessment" },
 ];

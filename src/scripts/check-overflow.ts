@@ -22,6 +22,8 @@ const PATHS = process.env.PATHS?.split(",").map((p) => p.trim()).filter(Boolean)
   "/programs/bootcamps",
   "/programs/private-lessons",
   "/programs?age=14&level=intermediate",
+  "/programs?location=newtonbrook",
+  "/locations",
   "/about",
   "/assessment",
   "/assessment/book",

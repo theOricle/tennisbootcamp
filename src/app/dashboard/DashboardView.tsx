@@ -10,7 +10,8 @@ import {
   type PlayerRecord,
 } from "@/lib/players";
 import { AGE_BAND_LABELS } from "@/lib/ageBand";
-import { VENUE_LINE } from "@/lib/membership";
+import { locations } from "@/content/locations";
+import { LocationBlock } from "@/components/locations/LocationLine";
 import { formatTierLevel, formatTierSpan, hasLevel, levelNumber, type PlacedSpan } from "@/lib/tiers";
 import { isCohortPublic } from "@/lib/cohortVisibility";
 import { artFocusForCohort } from "@/lib/plates/variant";
@@ -605,7 +606,7 @@ export function DashboardView(props: DashboardViewProps) {
           )}
         </div>
 
-        {/* Side column — the players (households), then the venue line. */}
+        {/* Side column — the players (households), then where we train. */}
         <aside className="space-y-6">
           {voice === "named" && (
             <section className={`${SURFACE} p-5 md:p-6`} aria-labelledby="your-players">
@@ -647,7 +648,14 @@ export function DashboardView(props: DashboardViewProps) {
             <h2 id="where-we-train" className="text-base font-semibold text-white">
               Where we train
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/70">{VENUE_LINE}</p>
+            {/* The club by name (owner, 2026-10-12), with its map link. */}
+            <ul role="list" className="mt-3 space-y-3">
+              {locations.map((l) => (
+                <li key={l.id}>
+                  <LocationBlock location={l} />
+                </li>
+              ))}
+            </ul>
           </section>
         </aside>
       </div>

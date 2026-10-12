@@ -1,12 +1,18 @@
-// The /programs catalog filters (owner, 2026-10-12): an age filter and a
-// level filter over the groups, carried in the URL (?age=14&level=intermediate)
-// so a filtered list can be shared and the quiz result can link to one.
-// Pure and server-safe: the client component reads and writes the URL, the
-// page and the tests read the rules here.
+// The /programs catalog filters (owner, 2026-10-12): the location first
+// ("People need to choose location first"), then an age filter and a level
+// filter over the groups, carried in the URL
+// (?location=newtonbrook&age=14&level=intermediate) so a filtered list can be
+// shared and the quiz result can link to one. While there is one location it
+// is preselected and left out of the URL, so /programs stays the canonical
+// link; a second location makes the choice explicit. Pure and server-safe:
+// the client components read and write the URL, the page and the tests read
+// the rules here.
 
 import { AGE_BAND_LABELS, type AgeBand } from "@/lib/ageBand";
 import { TIERS, tierIdsInRange, type Tier } from "@/lib/tiers";
+import { defaultLocation, locationById } from "@/content/locations";
 import type { ProgramGroup } from "@/types/program";
+import type { TrainingLocation } from "@/types/location";
 
 /** What the age filter asks: a band or an exact age, as an inclusive range. */
 export type AgeQuery = {
@@ -56,18 +62,43 @@ export function tierQueryFor(value: string | null | undefined): Tier | null {
   return TIERS.find((t) => t.slug === slug) ?? null;
 }
 
-export type CatalogQuery = { age: AgeQuery | null; tier: Tier | null };
-
-export const EMPTY_QUERY: CatalogQuery = { age: null, tier: null };
-
-/** The query a URL carries. Unknown values read as "any". */
-export function parseCatalogQuery(params: { get(name: string): string | null }): CatalogQuery {
-  return { age: ageQueryFor(params.get("age")), tier: tierQueryFor(params.get("level")) };
+/** The location for a URL value (its id), or null. */
+export function locationQueryFor(value: string | null | undefined): TrainingLocation | null {
+  if (!value) return null;
+  return locationById(value.trim().toLowerCase()) ?? null;
 }
 
-/** "age=14&level=intermediate", or "" for no filter. Keys in a fixed order, so equal queries share a URL. */
+/**
+ * Where the player trains (null: every location), then who they are. The
+ * location is a choice, not a filter: "Clear filters" keeps it.
+ */
+export type CatalogQuery = { location: TrainingLocation | null; age: AgeQuery | null; tier: Tier | null };
+
+/** No location, no filter: every group. */
+export const EMPTY_QUERY: CatalogQuery = { location: null, age: null, tier: null };
+
+/** The catalog as a visitor first sees it: the default location chosen (the only one today), no filter. */
+export function initialCatalogQuery(): CatalogQuery {
+  return { ...EMPTY_QUERY, location: defaultLocation() };
+}
+
+/** The query a URL carries. An unknown or missing location reads as the default; unknown filters read as "any". */
+export function parseCatalogQuery(params: { get(name: string): string | null }): CatalogQuery {
+  return {
+    location: locationQueryFor(params.get("location")) ?? defaultLocation(),
+    age: ageQueryFor(params.get("age")),
+    tier: tierQueryFor(params.get("level")),
+  };
+}
+
+/**
+ * "location=…&age=14&level=intermediate", or "" for the default view. Keys in
+ * a fixed order, so equal queries share a URL; the preselected location is
+ * left out, so /programs stays canonical while there is one location.
+ */
 export function catalogQueryString(q: CatalogQuery): string {
   const params = new URLSearchParams();
+  if (q.location && q.location.id !== defaultLocation()?.id) params.set("location", q.location.id);
   if (q.age) params.set("age", q.age.value);
   if (q.tier) params.set("level", q.tier.slug);
   return params.toString();
@@ -97,6 +128,7 @@ export function groupTakesTier(group: Pick<ProgramGroup, "levelMin" | "levelMax"
 }
 
 export function groupMatches(group: ProgramGroup, q: CatalogQuery): boolean {
+  if (q.location && group.locationId !== q.location.id) return false;
   if (q.age && !groupTakesAge(group, q.age)) return false;
   if (q.tier && !groupTakesTier(group, q.tier)) return false;
   return true;
@@ -106,8 +138,14 @@ export function filterGroups(groups: readonly ProgramGroup[], q: CatalogQuery): 
   return groups.filter((g) => groupMatches(g, q));
 }
 
+/** No age or level filter. The location is a choice, not a filter, so it never counts. */
 export function isEmptyQuery(q: CatalogQuery): boolean {
   return q.age === null && q.tier === null;
+}
+
+/** "Clear filters": the age and level go, the chosen location stays. */
+export function clearFilters(q: CatalogQuery): CatalogQuery {
+  return { ...q, age: null, tier: null };
 }
 
 /** "for age 14 at Intermediate" · "for juniors (7–13)" · "at Intermediate" · "" */
@@ -134,5 +172,5 @@ export function resultsLine(count: number, q: CatalogQuery): string {
  * the quiz could name one, their provisional tier (audit M17, owner D4).
  */
 export function quizCatalogHref(ageBand: AgeBand | undefined, tier: Tier | null): string {
-  return catalogHref({ age: ageBand ? AGE_BAND_QUERIES[ageBand] : null, tier });
+  return catalogHref({ location: null, age: ageBand ? AGE_BAND_QUERIES[ageBand] : null, tier });
 }

@@ -2,7 +2,7 @@
 
 Operational voice guide for every word a visitor, player, or parent reads: page copy, button labels, form helper text, validation messages, emails, and metadata. Distilled from `ops/briefs/brand.md` plus the owner's editorial corrections of 2026-08-02. Load this file before writing or rewriting any user-facing string, in any tool, with any model.
 
-Last updated: 2026-10-12 (audit PR L: joining flow — open to join, the week-one level check, High Performance by approval)
+Last updated: 2026-10-12 (audit PR N: locations — Newtonbrook Tennis Club named, location first)
 
 ---
 
@@ -46,6 +46,7 @@ Not a salesperson. Not a tech company. Not a hype account. The coach has nothing
 - Tagline "Where Athletes Evolve!" and the seven tier names, low to high: **Beginner, Novice, Intermediate, Advanced, Elite, Pro, World Class** (owner, 2026-10-12; they replaced the tennis-score names Love → Grand Slam, which are retired and never shown). The names live once, in `src/lib/tiers.ts`; copy that names the whole ladder reads `TIER_LADDER_SPAN` ("Beginner to World Class") instead of typing it.
 - The quiz's self-estimate answers: "Just starting out", "I can rally", "I play competitively", "Tournament player", "Not sure", "Prefer not to say". "Tournament player" (2026-10-12) replaced "Elite — high-performance track" so no answer reuses a tier name for a different tier.
 - The coach title: **Program Coordinator / High Performance Coach** (owner, 2026-10-12; never "Head Coach"). It shows only with the coach's name, on the coach card and in the JSON-LD Person.
+- Our location (owner, 2026-10-12): **Newtonbrook Tennis Club**, **North York, Toronto**. The name and area live once, in `src/content/locations.ts` (see Locations below).
 
 ## Surface-specific notes
 
@@ -64,7 +65,7 @@ Every pair below is an actual string from the codebase; the "after" is the shipp
 | 1 | Real reps. Real progress. (hero subhead) | A system that makes progress inevitable. | Owner cut it: "real" is superfluous filler; the replacement says what the product does. |
 | 2 | $20, credited to your first program | The assessment is $20 — enroll in a program afterward and that $20 comes off the price. | Owner required the mechanic spelled out; "credited" assumes the reader already understands the ledger. |
 | 3 | Real reviews from real athletes — names changed during pre-launch. (testimonials footnote) | Names changed during pre-launch. | Double "real" is the exact filler pattern the owner cut; the disclosure is the only load-bearing part. |
-| 4 | Elite tennis coaching for competitive players in Toronto. Two locations — North York and Downtown. Limited spots — complete the intake to get priority placement. (site meta) | Weekend tennis classes in Toronto for juniors, teens and adults. Take the 2-minute quiz and our coaches place you. The 20-minute assessment is optional. | "Limited spots" is manufactured scarcity; "North York" was factually wrong; the intake-priority promise is the pre-pivot funnel. The 2026-08 rewrite ("Every player is placed by a 20-minute on-court assessment") went stale when the quiz became the funnel (2026-10-02). |
+| 4 | Elite tennis coaching for competitive players in Toronto. Two locations — North York and Downtown. Limited spots — complete the intake to get priority placement. (site meta) | Weekend tennis classes in Toronto for juniors, teens and adults. Take the 2-minute quiz and our coaches place you. The 20-minute assessment is optional. | "Limited spots" is manufactured scarcity; "Two locations — North York and Downtown" was factually wrong at the time (since 2026-10-12 we train at one club, in North York: see Locations); the intake-priority promise is the pre-pivot funnel. The 2026-08 rewrite ("Every player is placed by a 20-minute on-court assessment") went stale when the quiz became the funnel (2026-10-02). |
 | 5 | Where are you in your tennis journey? (quiz step) | Where's your game right now? | "Journey" is lifestyle/SaaS-speak; the coach asks about your game. Also matches the booking form's identical question. |
 | 6 | Athletes who complete the intake are placed first as programs form. (trust bar) | Every player is placed by level and schedule from the 2-minute quiz. The 20-minute on-court assessment is optional, if you want your level confirmed first. | Stale promise; our coaches place every player from the quiz, and the assessment is optional. The 2026-08 rewrite ("Every player hits with the coach before joining a group") described an assessment-first funnel that no longer exists. |
 | 7 | Adult group lessons that actually move the needle. (program card) | Adult lessons capped at six per court — more reps, more feedback, week-over-week progression. | "Actually move the needle" is cliché plus filler intensifier; the cap and cadence are the concrete facts underneath it. |
@@ -90,6 +91,16 @@ Groups are open to join for anyone whose age and level fit, and the coach confir
 - **High Performance is by approval:** "By approval" on its chip; "Take the 2-minute quiz and our coaches approve each spot. No assessment needed." Every other group reads "Open to join" (or its next cohort's date).
 - **Levels are provisional until week one.** The quiz result's tier and a dashboard placement say "provisional" and name the moment it ends: "until our coaches confirm … on court in week one". The dashboard says "our coaches", never "your coach" (staff wording).
 - **The assessment is for certainty, not a step:** "Want certainty first?" then the $20 mechanic in full (rule 2), and the exact label "Book Your Assessment". Never "credited", and never a word that makes it a step ("required", "start with").
+
+## Locations (owner, 2026-10-12)
+
+"Right now we are only at Newtonbrook Tennis Club in North York"; "People need to choose location first." The club is named everywhere a player asks where: `/programs` opens with "Where do you want to train?", group cards and program pages show the club, the enroll summary and its confirmation show the Location first, the dashboard's "Where we train" card names it, the home page has an "Our location" section, and `/locations` ("Our Locations") lists what runs there. The data lives once, in `src/content/locations.ts`; `npm test` (`test-locations.ts`) pins it.
+
+- **Say only what the owner gave:** the club's name and its area ("Newtonbrook Tennis Club" · "North York, Toronto"). No street address, hours, court counts or parking until the owner provides them. The map link is a Google Maps search for the club, labelled "Open in Google Maps", never a typed address.
+- **Words:** "location" for the choice and the page ("Where do you want to train?", "Our Locations"), "club" in running text. Never "venue" or "facility" on the site.
+- **One location, said plainly:** "Right now we train at one club" and "All our training is here right now: …" are true only while there is one; the code drops them when a second is added. Never promise more locations.
+- **Club membership stays neutral (D19):** the locked line in `src/lib/membership.ts` (`membershipNote()`). Never say a player must, or need not, hold the club's membership.
+- **Retired:** the venue stand-in ("Court details and any club requirements are confirmed in your booking email." as a *location*: it stays only as the neutral club-membership line) and the invitation's "Court details are confirmed in your enrollment email."; both places now name the club.
 
 ## Staff wording (owner, 2026-10-12)
 

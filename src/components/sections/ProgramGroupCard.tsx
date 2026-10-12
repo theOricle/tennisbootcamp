@@ -3,6 +3,7 @@ import type { Cohort } from "@/types/cohort";
 import { formatGroupWhen, groupAgeLabel, groupLevelRange, groupStatus } from "@/lib/programCatalog";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 import { APPROVAL_LINE, RIGHT_GROUP_PROMISE_SHORT } from "@/content/programs";
+import { locationById } from "@/content/locations";
 import { TrackedLink } from "@/components/ui/TrackedButton";
 import {
   CARD_SHELL,
@@ -18,7 +19,9 @@ import {
 } from "./ProgramCard";
 
 // One group as its own card (owner, 2026-10-12): the age range, the level
-// band on the rail, the class day and time, the price, how to join ("Open to
+// band on the rail, the class day and time, where it trains (the club and its
+// area; the map link lives on the pages, so the card keeps one link), the
+// price, how to join ("Open to
 // join" or "By approval") with the week-one promise, and one action — the
 // quiz, where our coaches place the player. The same
 // spec-sheet grammar as the program card, without a photo: the program's
@@ -60,6 +63,7 @@ export function ProgramGroupCard({
   const when = g.day ? `${g.day}s` : "By arrangement";
   const eyebrow = showProgram ? `${program.title} · ${when}` : when;
   const range = groupLevelRange(g);
+  const location = locationById(g.locationId);
 
   return (
     <article id={g.id} className={`${CARD_SHELL} scroll-mt-24 p-5 md:p-6`}>
@@ -79,6 +83,15 @@ export function ProgramGroupCard({
           <dt className={`${LABEL_CLASS} pt-0.5`}>Time</dt>
           <dd className={VALUE_CLASS}>{formatGroupWhen(g)}</dd>
         </div>
+        {location && (
+          <div className={ROW_CLASS}>
+            <dt className={`${LABEL_CLASS} pt-0.5`}>Where</dt>
+            <dd className={VALUE_CLASS}>
+              <span className="block">{location.name}</span>
+              <span className="block text-white/60">{location.area}</span>
+            </dd>
+          </div>
+        )}
         <div className={ROW_CLASS}>
           <dt className={`${LABEL_CLASS} pt-0.5`}>Price</dt>
           <dd className={VALUE_CLASS}>

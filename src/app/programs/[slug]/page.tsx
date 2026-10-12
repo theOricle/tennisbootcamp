@@ -21,7 +21,9 @@ import {
 } from "@/lib/cohorts";
 import { getPublicCohorts } from "@/lib/cohortsDb";
 import { getSeatsRemaining } from "@/lib/seatCount";
-import { VENUE_LINE } from "@/lib/membership";
+import { locationLine } from "@/content/locations";
+import { locationsForProgram } from "@/lib/locationCatalog";
+import { LocationLine } from "@/components/locations/LocationLine";
 import { agesChipLabel, nextCohortForGroup, programLevelRange } from "@/lib/programCatalog";
 import { TIER_LADDER_SPAN, formatLevelBand, formatTierSpan } from "@/lib/tiers";
 import { artFocusForCohort } from "@/lib/plates/variant";
@@ -107,6 +109,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // 2026-10-12); one with no fixed class (private lessons) states its terms
   // in the panel instead, so the page never shows the same card twice.
   const scheduledGroups = groups.filter((g) => g.day !== null);
+  // Where the program's groups train (owner, 2026-10-12): one club today.
+  const programLocations = locationsForProgram(program.slug);
   const arranged = scheduledGroups.length === 0 && !program.comingSoon;
   const groupsHeading =
     scheduledGroups.length > 0
@@ -188,6 +192,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               <span className={CHIP_NEUTRAL}>{agesChipLabel(groups)}</span>
               {range && <TierRangeBadges levelMin={range.min} levelMax={range.max} />}
             </div>
+
+            {/* Where it trains, with the map link (owner, 2026-10-12). */}
+            {programLocations.map((l) => (
+              <LocationLine key={l.id} location={l} mapLink className="mt-4" />
+            ))}
 
             <p className="mt-5 text-sm leading-relaxed text-white/75">
               {program.longDescription}
@@ -365,7 +374,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 /* Available: cohort cards from Supabase */
                 <div>
                   <h2 id="cohorts" className="mb-2 text-xl font-semibold text-white">Upcoming cohorts</h2>
-                  <p className="mb-6 text-sm text-white/60">{VENUE_LINE}</p>
+                  {programLocations.length > 0 && (
+                    <p className="mb-6 text-sm text-white/60">
+                      At {programLocations.map(locationLine).join(" and ")}.
+                    </p>
+                  )}
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     {openCohorts.map((cohort) => {

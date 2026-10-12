@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { programs } from "@/content/programs";
 import { formatDateRange, formatDaysTimes } from "@/lib/cohorts";
 import { getCohortById } from "@/lib/cohortsDb";
-import { VENUE_LINE } from "@/lib/membership";
+import { locationForCohort } from "@/content/locations";
 import { createClient } from "@/lib/supabase/server";
 import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
@@ -30,6 +30,7 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
   if (!cohort) notFound();
 
   const program = programs.find((p) => p.id === cohort.programId);
+  const location = locationForCohort(cohort);
   const isMock = !process.env.STRIPE_SECRET_KEY && !viaEtransfer;
 
   // Auth check — used for CTA and personalised greeting.
@@ -135,6 +136,17 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
 
           {/* Enrollment detail box */}
           <div className="mt-6 divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">
+            {/* Where the cohort trains (owner, 2026-10-12): the club and its area,
+                first, as on the enroll summary. */}
+            {location && (
+              <div className="flex justify-between gap-4 px-4 py-3">
+                <span className="text-white/60">Location</span>
+                <span className="max-w-[60%] text-right">
+                  <span className="block font-medium text-white">{location.name}</span>
+                  <span className="block text-white/70">{location.area}</span>
+                </span>
+              </div>
+            )}
             <div className="flex justify-between gap-4 px-4 py-3">
               <span className="text-white/60">Program</span>
               <span className="text-right font-medium text-white">{program?.title ?? cohort.programId}</span>
@@ -150,10 +162,6 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
             <div className="flex justify-between gap-4 px-4 py-3">
               <span className="text-white/60">Schedule</span>
               <span className="text-right font-medium text-white">{formatDaysTimes(cohort)}</span>
-            </div>
-            <div className="flex justify-between gap-4 px-4 py-3">
-              <span className="text-white/60">Location</span>
-              <span className="max-w-[60%] text-right text-white/70">{VENUE_LINE}</span>
             </div>
             <div className="flex justify-between gap-4 px-4 py-3">
               <span className="text-white/60">Duration</span>

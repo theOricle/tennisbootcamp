@@ -5,6 +5,7 @@
 
 import type { Recommendation } from "@/lib/recommend";
 import { membershipNote } from "@/lib/membership";
+import { cohortWhereLine } from "@/lib/locationCatalog";
 import {
   LEVEL_STEPS,
   TIERS,
@@ -480,6 +481,11 @@ export type CohortInviteParams = {
   creditCents: number;       // 0 when the invitee has no unused assessment credit
   holdHours: number;
   enrollUrl: string;
+  /**
+   * Where the cohort trains, on one line ("Newtonbrook Tennis Club, North
+   * York, Toronto"; cohortWhereLine). Unset reads the default location.
+   */
+  locationLine?: string | null;
 };
 
 /**
@@ -518,6 +524,8 @@ export function buildCohortInviteEmail(params: CohortInviteParams): EmailBody {
 
   const groupName = cohortInviteGroupName(params);
   const subject = cohortInviteSubject(params);
+  // The club by name (owner, 2026-10-12), never "confirmed in your email".
+  const where = params.locationLine?.trim() || cohortWhereLine({ locationId: "" });
 
   const priceMath =
     creditCents > 0
@@ -548,7 +556,7 @@ export function buildCohortInviteEmail(params: CohortInviteParams): EmailBody {
       ${detailRow("Group", `${cohortLabel}`)}
       ${detailRow("Schedule", `${dayTimeLabel} · ${weeks} week${weeks === 1 ? "" : "s"}`)}
       ${detailRow("Starts", startDateLabel)}
-      ${detailRow("Where", "Court details are confirmed in your enrollment email.")}
+      ${detailRow("Where", where)}
       ${detailRow("Price", priceMath)}
     </table>
     <p style="margin:20px 0 0;font-size:14px;color:${INK_STRONG};">
@@ -567,7 +575,7 @@ We've built ${withArticle(programTitle)} group around your level and the availab
   Group:    ${cohortLabel}
   Schedule: ${dayTimeLabel} · ${weeks} week${weeks === 1 ? "" : "s"}
   Starts:   ${startDateLabel}
-  Where:    Court details are confirmed in your enrollment email.
+  Where:    ${where}
   Price:    ${priceMathText}
 
 Your spot is held for ${holdHours} hours.

@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import type { Program } from "@/types/program";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
-import { VENUE_LINE } from "@/lib/membership";
+import { locationForCohort } from "@/content/locations";
 import { COOLING_OFF_DAYS } from "@/content/policies";
 import { trackEvent, trackEnrollStart } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
@@ -42,7 +42,8 @@ import {
   hintIdFor,
 } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
-import { TEXT_LINK_MUTED, TextLink } from "@/components/ui/TextLink";
+import { TEXT_LINK_LIME, TEXT_LINK_MUTED, TextLink } from "@/components/ui/TextLink";
+import { MapLink } from "@/components/locations/LocationLine";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -234,8 +235,24 @@ function OrderSummary({
   seatsRemaining: number | null;
 }) {
   const price = formatCohortPrice(cohort);
+  const location = locationForCohort(cohort);
   return (
     <div className="space-y-5">
+      {/* Where, first (owner, 2026-10-12: enrollment shows the location
+          first). One location today, so it is a fact, not a choice. */}
+      {location && (
+        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Location</p>
+          <div className="flex flex-wrap items-center justify-between gap-x-4">
+            <div className="min-w-0 py-1">
+              <p className="text-base font-semibold text-white">{location.name}</p>
+              <p className="text-xs text-white/60">{location.area}</p>
+            </div>
+            <MapLink location={location} className={TEXT_LINK_LIME} />
+          </div>
+        </div>
+      )}
+
       {/* The program's Court Plate (design specs §4.8): the strip frame,
           profiled by the cohort's band and side-picked by its id. Visual
           only; nothing below reads it. */}
@@ -273,26 +290,6 @@ function OrderSummary({
       </div>
 
       <div className="border-t border-white/10" />
-
-      {/* Location */}
-      <div className="flex items-start gap-2.5">
-        <svg
-          aria-hidden="true"
-          focusable="false"
-          className="mt-0.5 h-4 w-4 shrink-0 text-[#B4E655]"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.8}
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
-          />
-        </svg>
-        <p className="text-sm text-white/70">{VENUE_LINE}</p>
-      </div>
 
       {/* Schedule */}
       <div className="grid gap-2 sm:grid-cols-2">

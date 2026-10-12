@@ -9,6 +9,7 @@ import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { Coaches } from "@/components/sections/Coaches";
 import { EventsList } from "@/components/sections/EventsList";
 import { QuizBand } from "@/components/sections/QuizBand";
+import { LocationSection } from "@/components/locations/LocationSection";
 import { PageStack } from "@/components/layout/PageStack";
 
 import { listedPrograms } from "@/content/programs";
@@ -46,10 +47,12 @@ export default function HomePage() {
 
       {/* One Container, one rhythm (audit H2). Programs come first: the three
           programs as spec-sheet cards with their photographs and a quiz line
-          under them (H7; owner 2026-10-12). The page closes on the quiz,
-          then the newsletter, the tertiary CTA (M12, M13). */}
+          under them (H7; owner 2026-10-12), then where they train (owner,
+          2026-10-12). The page closes on the quiz, then the newsletter, the
+          tertiary CTA (M12, M13). */}
       <PageStack>
         <ProgramsGrid programs={listedPrograms} title="Our Programs" quizLine />
+        <LocationSection />
         <Coaches coaches={coaches} />
         {hasRealEvents && <EventsList events={events} title="Upcoming Events" />}
         <QuizBand source="home-closing" />

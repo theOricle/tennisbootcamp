@@ -21,6 +21,7 @@ import {
   type PlayerRecord,
 } from "@/lib/players";
 import { programs } from "@/content/programs";
+import { cohortWhereLine } from "@/lib/locationCatalog";
 import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
 import { tierRangeForLevels } from "@/lib/tiers";
 import {
@@ -336,6 +337,7 @@ export async function createInvites(
         creditCents: credit ? Math.min(credit.creditCents, cohort.priceCents) : 0,
         holdHours,
         enrollUrl,
+        locationLine: cohortWhereLine(cohort),
       });
       if (canEmail) emailed++;
     } catch (err) {

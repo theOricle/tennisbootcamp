@@ -119,12 +119,15 @@ export const PLACEMENT_LINE =
 // 11–15 Beginner – Intermediate; 2:00 High Performance ages 12–17
 // Intermediate – Elite. Adult Bootcamps, Sundays, 16 and up: 4:00 Beginner –
 // Novice; 5:00 Intermediate; 6:00 Advanced – Elite. Private Lessons: any age
-// and level, by arrangement. Level bands are whole tiers (x.0–y.5).
+// and level, by arrangement. Level bands are whole tiers (x.0–y.5). Every
+// group trains at Newtonbrook Tennis Club, our one location today (owner,
+// 2026-10-12; src/content/locations.ts).
 
 export const programGroups: ProgramGroup[] = [
   {
     id: "youth-7-10",
     programSlug: "youth-programs",
+    locationId: "newtonbrook",
     name: "Ages 7–10",
     ageMin: 7,
     ageMax: 10,
@@ -140,6 +143,7 @@ export const programGroups: ProgramGroup[] = [
   {
     id: "youth-11-15",
     programSlug: "youth-programs",
+    locationId: "newtonbrook",
     name: "Ages 11–15",
     ageMin: 11,
     ageMax: 15,
@@ -156,6 +160,7 @@ export const programGroups: ProgramGroup[] = [
     // The competitive track (voice.md: tournament dialect allowed here only).
     id: "high-performance",
     programSlug: "youth-programs",
+    locationId: "newtonbrook",
     name: "High Performance",
     ageMin: 12,
     ageMax: 17,
@@ -173,6 +178,7 @@ export const programGroups: ProgramGroup[] = [
   {
     id: "adult-newer",
     programSlug: "bootcamps",
+    locationId: "newtonbrook",
     name: "Newer players",
     ageMin: 16,
     ageMax: null,
@@ -188,6 +194,7 @@ export const programGroups: ProgramGroup[] = [
   {
     id: "adult-intermediate",
     programSlug: "bootcamps",
+    locationId: "newtonbrook",
     name: "Intermediate",
     ageMin: 16,
     ageMax: null,
@@ -203,6 +210,7 @@ export const programGroups: ProgramGroup[] = [
   {
     id: "adult-advanced",
     programSlug: "bootcamps",
+    locationId: "newtonbrook",
     name: "Advanced",
     ageMin: 16,
     ageMax: null,
@@ -218,6 +226,7 @@ export const programGroups: ProgramGroup[] = [
   {
     id: "private-lessons",
     programSlug: "private-lessons",
+    locationId: "newtonbrook",
     name: "One-to-one coaching",
     ageMin: null,
     ageMax: null,
