@@ -93,6 +93,24 @@ export function StatusChip({ status }: { status: ProgramStatus }) {
     );
   }
   if (status.kind === "coming-soon") return <span className={CHIP_COMING_SOON}>{status.label}</span>;
+  // The joining flow (owner, 2026-10-12): an open group carries a solid lime
+  // dot, a by-approval group a hollow ring, so the two read apart at a glance
+  // without a second colour. The words carry the meaning; the dots are decoration.
+  if (status.kind === "open" || status.kind === "approval") {
+    return (
+      <span className={CHIP_NEUTRAL}>
+        <span
+          aria-hidden="true"
+          className={
+            status.kind === "open"
+              ? "h-1.5 w-1.5 rounded-full bg-[#B4E655]"
+              : "h-2 w-2 rounded-full border border-white/70"
+          }
+        />
+        {status.label}
+      </span>
+    );
+  }
   return <span className={CHIP_NEUTRAL}>{status.label}</span>;
 }
 

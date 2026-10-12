@@ -252,6 +252,8 @@ function ProgramMatchCard({ rec }: { rec: Recommendation }) {
                 {groups.map((g) => (
                   <li key={g.id}>
                     <span className="font-semibold text-white">{g.name}</span>
+                    {/* High Performance joins by approval (owner, 2026-10-12). */}
+                    {g.joining === "approval" && <span className="text-white/70"> · By approval</span>}
                     <span className="block text-white/70">
                       {groupSummaryLine(g)} · {formatTierSpan(g.levelMin, g.levelMax)}
                     </span>
@@ -309,7 +311,6 @@ const PROVISIONAL_CHIP =
  * shown the seven tiers, with no guess.
  */
 function LikelyTierBlock({ tier, firstName }: { tier: Tier | null; firstName?: string }) {
-  const whom = firstName ? firstName : "you";
   if (!tier) {
     return (
       <div className="mt-6 border-t border-white/10 pt-5">
@@ -346,8 +347,9 @@ function LikelyTierBlock({ tier, firstName }: { tier: Tier | null; firstName?: s
         provisional
         className="mt-5"
       />
+      {/* Provisional until the coach sees the player (joining flow, owner 2026-10-12). */}
       <p className="mt-4 text-sm leading-relaxed text-white/70">
-        From your answers. Our coaches confirm {firstName ? `${firstName}'s` : "your"} tier when they place {whom}.
+        From your answers, so it stays provisional until our coaches confirm {firstName ? `${firstName}'s` : "your"} level on court in week one.
       </p>
     </div>
   );
@@ -443,13 +445,15 @@ function AssessmentSuggestion({
   const child = household ? undefined : playerFirst;
   return (
     <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-      <p className="text-sm font-semibold text-white">Optional: an on-court assessment</p>
+      {/* Certainty before paying, never a step (joining flow, owner 2026-10-12):
+          the level is confirmed in week one either way. */}
+      <p className="text-sm font-semibold text-white">Optional: want certainty first?</p>
       <p className="mt-1 text-sm leading-relaxed text-white/70">
         {household
-          ? "If you'd like a player's level confirmed on court before they're placed, you can book a 20-minute assessment with the coach, one player per slot. The assessment is $20 per player, and if that player enrolls in a program afterward their $20 comes off the price."
+          ? "If you'd like a player's level confirmed on court before you enroll them, you can book a 20-minute assessment with the coach, one player per slot. The assessment is $20 per player, and if that player enrolls in a program afterward their $20 comes off the price."
           : child
-            ? `If you'd like ${child}'s level confirmed on court before ${child} is placed, you can book a 20-minute assessment with the coach. The assessment is $20, and if ${child} enrolls in a program afterward that $20 comes off the price.`
-            : "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with the coach. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."}
+            ? `If you'd like ${child}'s level confirmed on court before ${child} enrolls, you can book a 20-minute assessment with the coach. The assessment is $20, and if ${child} enrolls in a program afterward that $20 comes off the price.`
+            : "If you'd like your level confirmed on court before you enroll, you can book a 20-minute assessment with the coach. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."}
       </p>
       <button type="button" onClick={onBook} className={cn("mt-4", OUTLINE_BUTTON)}>
         Book Your Assessment
@@ -591,7 +595,7 @@ function HouseholdMatchScreen({
             <TierLine variant="ladder" orientation="responsive" density="compact" className="mt-6" />
             <p className="mt-4 text-sm leading-relaxed text-white/70">
               {anyTier
-                ? "From your answers. Our coaches confirm each player's tier when they place them."
+                ? "From your answers, so each stays provisional until our coaches confirm the player's level on court in week one."
                 : `Our coaches place every player on one of seven tiers, ${TIER_LADDER_SPAN}.`}
             </p>
           </div>

@@ -273,8 +273,10 @@ export type NextStepInput = {
   now: string;
 };
 
+// Every level is confirmed on court in week one; the assessment is optional,
+// for certainty before paying (joining flow, owner 2026-10-12).
 const ASSESSMENT_LINE =
-  "If you want a level confirmed on court first, the 20-minute assessment is optional. It costs $20, and if you enroll in a program afterward that $20 comes off the price.";
+  "Our coaches confirm every level on court in week one. For certainty before you enroll, the 20-minute assessment is optional. It costs $20, and if you enroll in a program afterward that $20 comes off the price.";
 const BRING_LINE = "Bring a racquet if you have one, water, and court shoes.";
 
 function programTitle(programs: readonly ProgramRef[], cohort: Cohort | undefined, fallback: string): string {

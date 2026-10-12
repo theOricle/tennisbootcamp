@@ -145,6 +145,7 @@ check("formatSlotWhen", formatSlotWhen(youth.timetable![0]) === "Sat 12:00–1:0
 const hp = programGroups.find((g) => g.id === "high-performance")!;
 const newer = programGroups.find((g) => g.id === "adult-newer")!;
 const solo = programGroups.find((g) => g.id === "private-lessons")!;
+const first7 = programGroups.find((g) => g.id === "youth-7-10")!;
 check("formatGroupWhen", formatGroupWhen(hp) === "Saturdays 2:00–3:00 pm" && formatGroupWhen(solo) === "By arrangement");
 check("formatGroupStart", formatGroupStart(newer) === "Sun 4:00" && formatGroupStart(solo) === "By arrangement");
 check("groupAgeLabel: a range, an open top, any age", groupAgeLabel(hp) === "12–17" && groupAgeLabel(newer) === "16 and up" && groupAgeLabel(solo) === "Any age");
@@ -161,7 +162,8 @@ check("groups forming by default", programStatus(youth)?.label === "Groups formi
 
 console.log("groupStatus precedence");
 check("next cohort first", groupStatus({ ...hp, status: "full" }, cohort)?.kind === "next-cohort");
-check("full, then invite only, then forming", groupStatus({ ...hp, status: "full" })?.label === "Full" && groupStatus({ ...hp, status: "invite-only" })?.label === "Invite only" && groupStatus(hp)?.label === "Groups forming");
+check("full, then invite only, then open to join", groupStatus({ ...first7, status: "full" })?.label === "Full" && groupStatus({ ...first7, status: "invite-only" })?.label === "Invite only" && groupStatus(first7)?.label === "Open to join" && groupStatus(first7)?.kind === "open");
+check("by approval (High Performance) beats the next cohort, never full or invite only", groupStatus(hp)?.label === "By approval" && groupStatus(hp, cohort)?.kind === "approval" && groupStatus({ ...hp, status: "full" })?.label === "Full" && groupStatus({ ...hp, status: "invite-only" })?.label === "Invite only");
 check("an arranged group shows no chip", groupStatus(solo) === null);
 
 console.log("cohorts and groups");
@@ -335,7 +337,7 @@ const panelOpen = at(detail, "<ProgramViewerPanel");
 const panelClose = at(detail, "</ProgramViewerPanel>");
 check(
   "detail: the assessment button is inside the viewer panel (a guest's), for a scheduled program only",
-  panelOpen < at(detail, 'href="/assessment/book"') && at(detail, 'href="/assessment/book"') < panelClose && /\{!arranged && \(\s*<TrackedButton[\s\S]{0,200}?href="\/assessment\/book"/.test(detail)
+  panelOpen < at(detail, 'href="/assessment/book"') && at(detail, 'href="/assessment/book"') < panelClose && /\{!arranged && \(\s*<>\s*<TrackedButton[\s\S]{0,200}?href="\/assessment\/book"/.test(detail)
 );
 check(
   "detail: a program booked by arrangement offers the inbox outside the viewer panel, so a signed-in holder sees it too",

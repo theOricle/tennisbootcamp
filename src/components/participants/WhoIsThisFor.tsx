@@ -402,11 +402,12 @@ function AgeBandField({
 /**
  * The quiz's hint under the self-estimate (audit M17; design specs §3.7):
  * once an answer maps to a provisional tier (owner D4), a provisional rail
- * and "Likely tier: Novice. Our coaches confirm it when they place you." "Not sure"
- * and "Prefer not to say" show nothing. Polite live region, so a
- * screen-reader user hears the tier change without leaving the select.
+ * and "Likely tier: Novice. Our coaches confirm it on court in week one." (the
+ * same moment the quiz result names). "Not sure" and "Prefer not to say" show
+ * nothing. Polite live region, so a screen-reader user hears the tier change
+ * without leaving the select.
  */
-function LikelyTierHint({ value, self }: { value: string; self: boolean }) {
+function LikelyTierHint({ value }: { value: string }) {
   const tier = provisionalTierFor(value);
   return (
     <div aria-live="polite" className="min-w-0">
@@ -415,7 +416,7 @@ function LikelyTierHint({ value, self }: { value: string; self: boolean }) {
           <TierLine variant="rail" size="sm" level={tier.id} provisional labels="none" />
           <p className={`${HINT_CLASS} mt-2`}>
             Likely tier: <span className="font-semibold text-white">{tier.name}</span>. Our
-            coaches confirm it when they place {self ? "you" : "them"}.
+            coaches confirm it on court in week one.
           </p>
         </div>
       )}
@@ -486,7 +487,7 @@ function SelfLevelField({
           {note}
         </p>
       )}
-      {tierHint && <LikelyTierHint value={value} self={self} />}
+      {tierHint && <LikelyTierHint value={value} />}
       <FieldError fieldId={id} message={error} />
     </div>
   );

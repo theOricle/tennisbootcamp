@@ -12,7 +12,14 @@ import { levelNumber, levelWithinRange } from "@/lib/tiers";
 
 export type LevelRange = { min: number; max: number };
 
-export type ProgramStatusKind = "coming-soon" | "next-cohort" | "invite-only" | "full" | "forming";
+export type ProgramStatusKind =
+  | "coming-soon"
+  | "next-cohort"
+  | "invite-only"
+  | "full"
+  | "forming"
+  | "open"
+  | "approval";
 
 export type ProgramStatus = { kind: ProgramStatusKind; label: string };
 
@@ -33,18 +40,25 @@ export function programStatus(p: Program, nextCohort?: Cohort | null): ProgramSt
 }
 
 /**
- * A group's status chip: the next public cohort's start first, then the
- * group's own status ("Full", "Invite only", "Groups forming"). An arranged
- * group (private lessons) shows no chip: the card's Time row already says so.
+ * A group's status chip (joining flow, owner 2026-10-12): how a player gets
+ * in. A by-approval group (High Performance) reads "By approval" whatever its
+ * dates, since that is the fact a visitor needs first (the Next row still
+ * carries a public cohort), unless it is full or invite only. Otherwise the
+ * next public cohort's start, then "Full", "Invite only", and "Open to join"
+ * for a group taking players. An arranged group (private lessons) shows no
+ * chip: the card's Time row already says so.
  */
 export function groupStatus(g: ProgramGroup, nextCohort?: Cohort | null): ProgramStatus | null {
+  if (g.joining === "approval" && g.status !== "full" && g.status !== "invite-only") {
+    return { kind: "approval", label: "By approval" };
+  }
   if (nextCohort) {
     return { kind: "next-cohort", label: `Next cohort ${formatStartDate(nextCohort.startDate)}` };
   }
   if (g.status === "full") return { kind: "full", label: "Full" };
   if (g.status === "invite-only") return { kind: "invite-only", label: "Invite only" };
   if (g.status === "arranged") return null;
-  return { kind: "forming", label: "Groups forming" };
+  return { kind: "open", label: "Open to join" };
 }
 
 /** What the eyebrow reads: the bands, the timetable's days, else the schedule line or the type. */
