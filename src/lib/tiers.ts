@@ -3,8 +3,13 @@
 // The coach assigns a placement-grade numeric level on court (profiles.level and
 // assessment_bookings.level_result, NTRP-style 1.0–7.0 in half steps). Tiers
 // give that number a name to climb toward. Each tier spans one whole level, so a
-// half step reads as progress *within* a tier: level 2.5 is "Rally · 2.5", still
-// a Rally, halfway to Deuce.
+// half step reads as progress *within* a tier: level 2.5 is "Novice · 2.5",
+// still Novice, halfway to Intermediate.
+//
+// The names are plain words (owner, 2026-10-12): Beginner, Novice,
+// Intermediate, Advanced, Elite, Pro, World Class. They replaced the tennis-
+// score names (Love … Grand Slam); the numbers, colours and emblems did not
+// change, and LEGACY_TIER_SLUGS keeps every old emblem URL working.
 //
 // This module is deterministic and data-only (no JSX, no DB). Every surface that
 // shows a tier derives it here — the stored value is always the number. The
@@ -31,64 +36,62 @@ export type Tier = {
    * (pinned by test-tiers.ts).
    */
   color: string;
-  /** Plain-language label (owner D8). Unset until decided; renders nothing. */
-  plain?: string;
 };
 
-/** The ladder, low to high. Index 0 is Love (tier 1). */
+/** The ladder, low to high. Index 0 is Beginner (tier 1). */
 export const TIERS: readonly Tier[] = [
   {
     id: 1,
-    name: "Love",
-    slug: "love",
+    name: "Beginner",
+    slug: "beginner",
     band: "1.0–1.5",
     blurb: "First swings. You're learning the court.",
     color: "#7D8CA3",
   },
   {
     id: 2,
-    name: "Rally",
-    slug: "rally",
+    name: "Novice",
+    slug: "novice",
     band: "2.0–2.5",
     blurb: "You can keep the ball alive across the net.",
     color: "#AEBBCD",
   },
   {
     id: 3,
-    name: "Deuce",
-    slug: "deuce",
+    name: "Intermediate",
+    slug: "intermediate",
     band: "3.0–3.5",
     blurb: "Consistent strokes. Points played out, balanced play.",
     color: "#8CC63F",
   },
   {
     id: 4,
-    name: "Break",
-    slug: "break",
+    name: "Advanced",
+    slug: "advanced",
     band: "4.0–4.5",
     blurb: "You break down a rally and take control.",
     color: "#B4E655",
   },
   {
     id: 5,
-    name: "Ace",
-    slug: "ace",
+    name: "Elite",
+    slug: "elite",
     band: "5.0–5.5",
     blurb: "Weapons on serve and groundstrokes.",
     color: "#D2F28A",
   },
   {
     id: 6,
-    name: "Match Point",
-    slug: "match-point",
+    name: "Pro",
+    slug: "pro",
     band: "6.0–6.5",
     blurb: "Tournament-tested. You close matches out.",
     color: "#E6EBF0",
   },
   {
     id: 7,
-    name: "Grand Slam",
-    slug: "grand-slam",
+    name: "World Class",
+    slug: "world-class",
     band: "7.0",
     blurb: "The top of the ladder.",
     color: "#E3C46F",
@@ -97,6 +100,38 @@ export const TIERS: readonly Tier[] = [
 
 /** How many tiers there are — copy says "Tier 3 of {TIER_COUNT}". */
 export const TIER_COUNT = TIERS.length;
+
+/**
+ * "Beginner to World Class": the ladder's two ends, for every sentence that
+ * names the whole ladder ("Seven tiers, Beginner to World Class."). Derived,
+ * so no copy surface types a tier name of its own.
+ */
+export const TIER_LADDER_SPAN = `${TIERS[0].name} to ${TIERS[TIERS.length - 1].name}`;
+
+/**
+ * "a Beginner group" · "an Intermediate group": the indefinite article for a
+ * phrase that leads with a tier name. Three of the plain names start with a
+ * vowel (Intermediate, Advanced, Elite), so copy never hard-codes "a".
+ */
+export function withArticle(phrase: string): string {
+  return `${/^[aeiou]/i.test(phrase.trim()) ? "an" : "a"} ${phrase}`;
+}
+
+/**
+ * The retired tennis-score slugs (Love … Grand Slam) and the slug each one
+ * became (owner, 2026-10-12). next.config.ts turns these into permanent
+ * redirects, so a tier-emblem image in an email sent before the rename still
+ * loads.
+ */
+export const LEGACY_TIER_SLUGS: Readonly<Record<string, string>> = {
+  love: "beginner",
+  rally: "novice",
+  deuce: "intermediate",
+  break: "advanced",
+  ace: "elite",
+  "match-point": "pro",
+  "grand-slam": "world-class",
+};
 
 /** The tier colours by id, derived from TIERS (one source). */
 export const TIER_COLORS: Record<TierId, string> = Object.fromEntries(
@@ -110,7 +145,7 @@ export const LEVEL_STEPS: readonly number[] = Array.from(
 );
 
 /**
- * The one level picker list for admin selects (audit M29): "3.0 · Deuce".
+ * The one level picker list for admin selects (audit M29): "3.0 · Intermediate".
  * Replaces the three bare "1.0"…"7.0" arrays the admin clients used to keep.
  */
 export const LEVEL_OPTIONS: readonly { value: string; label: string }[] =
@@ -120,7 +155,7 @@ export const LEVEL_OPTIONS: readonly { value: string; label: string }[] =
   }));
 
 /**
- * How and when a level moves (audit L18, owner D7). Null until Sina gives the
+ * How and when a level moves (audit L18, owner D7). Null until the owner gives the
  * sentence; every surface that would show it renders nothing while null.
  */
 export const TIER_RERATE_LINE: string | null = null;
@@ -141,7 +176,7 @@ export function levelNumber(
 
 /**
  * The tier for a numeric level, or `null` when unranked. Floors to the whole
- * tier — 2.5 → Rally (floor(2.5) = 2) — and clamps into 1–7 so an out-of-range
+ * tier — 2.5 → Novice (floor(2.5) = 2) — and clamps into 1–7 so an out-of-range
  * value can never index off the ladder.
  */
 export function tierForLevel(
@@ -159,7 +194,7 @@ export function tierById(id: TierId): Tier {
   return TIERS[id - 1];
 }
 
-/** The tier above, or null at Grand Slam. */
+/** The tier above, or null at World Class. */
 export function nextTier(tier: Tier): Tier | null {
   return tier.id >= 7 ? null : TIERS[tier.id];
 }
@@ -178,7 +213,7 @@ export function formatLevelNumber(
 }
 
 /**
- * "Rally · 2.5" — tier name plus the numeric level, so a player reads both where
+ * "Novice · 2.5" — tier name plus the numeric level, so a player reads both where
  * they stand and how far into the tier they've climbed. Returns "" when unranked.
  */
 export function formatTierLevel(
@@ -200,13 +235,13 @@ export type TierProgress = {
   level: number;
   /** Which half step of the tier the player is on: x.0 is 1, x.5 is 2. */
   step: 1 | 2;
-  /** Half steps in the tier: 2, or 1 at Grand Slam. */
+  /** Half steps in the tier: 2, or 1 at World Class. */
   steps: 1 | 2;
   next: Tier | null;
   /** The level the next tier starts at, or null at the top. */
   nextLevel: number | null;
   /**
-   * "Next tier: Deuce at 3.0." · "Halfway to Deuce. Next tier at 3.0." ·
+   * "Next tier: Intermediate at 3.0." · "Halfway to Intermediate. Next tier at 3.0." ·
    * "Top of the ladder."
    */
   caption: string;
@@ -271,7 +306,7 @@ export function tierRangeForLevels(
     : { min: maxTier, max: minTier };
 }
 
-/** "Deuce" for a single-tier band, "Deuce – Break" for a spread. */
+/** "Intermediate" for a single-tier band, "Intermediate – Advanced" for a spread. */
 export function formatTierRange(
   levelMin: number | string | null | undefined,
   levelMax: number | string | null | undefined
@@ -283,7 +318,7 @@ export function formatTierRange(
     : `${range.min.name} – ${range.max.name}`;
 }
 
-/** True when a span runs the whole ladder, Love to Grand Slam (min ≤ 1, max ≥ 7). */
+/** True when a span runs the whole ladder, Beginner to World Class (min ≤ 1, max ≥ 7). */
 export function coversWholeLadder(
   levelMin: number | string | null | undefined,
   levelMax: number | string | null | undefined
@@ -293,7 +328,7 @@ export function coversWholeLadder(
 }
 
 /**
- * The span as words: "Deuce" · "Love – Rally" · "Break and up" (reaches the
+ * The span as words: "Intermediate" · "Beginner – Novice" · "Advanced and up" (reaches the
  * top) · "All levels" (the whole ladder) · "" when unset. Open-ended spans are
  * written as levelMax 7.0, never as a missing bound, because a missing bound
  * means min = max for a cohort.
@@ -361,7 +396,7 @@ export function levelWithinRange(
  * numerically and inclusive. The dashboard's "Open for your tier" list, the
  * /enroll page, /api/enroll, /api/checkout and /api/enroll/etransfer all
  * read this, so a cohort the list offers is a cohort the gate admits. Admin
- * bands may sit on half steps (3.0–3.0 is a Deuce cohort a 3.5 player is not
+ * bands may sit on half steps (3.0–3.0 is an Intermediate cohort a 3.5 player is not
  * in), which is why nothing compares whole tiers any more.
  */
 export function cohortAdmitsLevel(
@@ -391,9 +426,9 @@ export function tierInCohortRange(
 }
 
 // ─── Placed state (audit L17, owner D6-B) ────────────────────────────────────
-// A quiz-placed player has no coach-set level, but when Sina has put them in a
+// A quiz-placed player has no coach-set level, but when the coach has put them in a
 // level-banded cohort the band says where they train. The RankCard shows that
-// as "Deuce group" instead of "Unranked" — a fact, never an assessment pitch.
+// as "Intermediate group" instead of "Unranked" — a fact, never an assessment pitch.
 
 export type PlacedSpan = { min: number | null; max: number | null };
 

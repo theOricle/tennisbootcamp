@@ -22,6 +22,9 @@ type EmailCaptureProps = {
  * The newsletter signup: the tertiary CTA (brand.md), so an outline button,
  * never the lime primary, and placed after the programs (audit M12). Sets no
  * horizontal padding or max-width: the page's Container does (audit H2).
+ * The copy promises only what the form can keep: it takes an email, not a
+ * level, so it says when a cohort opens and nothing about matching (QA
+ * 2026-10-10).
  */
 export function EmailCapture({ source }: EmailCaptureProps) {
   const [email, setEmail] = useState("");
@@ -69,10 +72,10 @@ export function EmailCapture({ source }: EmailCaptureProps) {
       <div className={`${CARD_CLASS} p-6 md:flex md:items-center md:justify-between md:gap-8`}>
         <div className="min-w-0">
           <h2 id={titleId} className="text-lg font-semibold tracking-tight text-white">
-            Be first to know when new sessions open
+            Be first to know when a new cohort opens
           </h2>
           <p className="mt-1 text-sm text-white/70">
-            We&apos;ll reach out when programs matching your level become available.
+            Leave your email and we&apos;ll tell you when one opens.
           </p>
         </div>
 

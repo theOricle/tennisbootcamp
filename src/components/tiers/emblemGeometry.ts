@@ -42,7 +42,7 @@ const WHITE = "#FFFFFF";
 /** The plain hexagon the first four tiers wear. */
 export const HEX = "32,3 57,17.5 57,46.5 32,61 7,46.5 7,17.5";
 
-/** The notched hexagon (4.5 cut from each vertex) for Ace and above. */
+/** The notched hexagon (4.5 cut from each vertex) for Elite (tier 5) and above. */
 export const NOTCHED_HEX =
   "28.11,5.26 35.89,5.26 53.11,15.24 57,22 57,42 53.11,48.76 35.89,58.74 28.11,58.74 10.89,48.76 7,42 7,22 10.89,15.24";
 
@@ -99,7 +99,7 @@ export function emblemVariantForSize(size: number): EmblemVariant {
 type Inks = { primary: string; secondary: string; field: string };
 
 const MOTIFS: Record<TierId, (ink: Inks) => Shape[]> = {
-  // 1 · Love — a single ball
+  // 1 · Beginner — a single ball
   1: ({ primary, field }) => [
     { kind: "circle", cx: 32, cy: 32, r: 7, fill: primary },
     {
@@ -111,7 +111,7 @@ const MOTIFS: Record<TierId, (ink: Inks) => Shape[]> = {
       strokeLinecap: "round",
     },
   ],
-  // 2 · Rally — two volleying arcs
+  // 2 · Novice — two volleying arcs
   2: ({ primary, secondary }) => [
     {
       kind: "path",
@@ -131,21 +131,21 @@ const MOTIFS: Record<TierId, (ink: Inks) => Shape[]> = {
     },
     { kind: "circle", cx: 32, cy: 32, r: 3.4, fill: primary },
   ],
-  // 3 · Deuce — two balanced balls
+  // 3 · Intermediate — two balanced balls
   3: ({ primary, secondary }) => [
     { kind: "circle", cx: 24, cy: 29, r: 6, fill: "none", stroke: secondary, strokeWidth: 2.6 },
     { kind: "circle", cx: 40, cy: 29, r: 6, fill: primary },
     { kind: "line", x1: 16, y1: 41, x2: 48, y2: 41, stroke: secondary, strokeWidth: 2.4, strokeLinecap: "round" },
     { kind: "path", d: "M32 41 L29 45 L35 45 Z", fill: primary },
   ],
-  // 4 · Break — a broken line
+  // 4 · Advanced — a broken line
   4: ({ primary, secondary }) => [
     { kind: "line", x1: 17, y1: 43, x2: 29, y2: 31, stroke: primary, strokeWidth: 3, strokeLinecap: "round" },
     { kind: "line", x1: 35, y1: 33, x2: 47, y2: 21, stroke: primary, strokeWidth: 3, strokeLinecap: "round" },
     { kind: "circle", cx: 29, cy: 31, r: 2.4, fill: secondary },
     { kind: "circle", cx: 35, cy: 33, r: 2.4, fill: secondary },
   ],
-  // 5 · Ace — a star
+  // 5 · Elite — a star
   5: ({ primary, secondary }) => [
     {
       kind: "path",
@@ -156,7 +156,7 @@ const MOTIFS: Record<TierId, (ink: Inks) => Shape[]> = {
       strokeLinejoin: "round",
     },
   ],
-  // 6 · Match Point — a crown
+  // 6 · Pro — a crown
   6: ({ primary, secondary }) => [
     {
       kind: "path",
@@ -171,7 +171,7 @@ const MOTIFS: Record<TierId, (ink: Inks) => Shape[]> = {
     { kind: "circle", cx: 32, cy: 22, r: 2.2, fill: secondary },
     { kind: "circle", cx: 45, cy: 25, r: 2.2, fill: secondary },
   ],
-  // 7 · Grand Slam — a trophy with laurel
+  // 7 · World Class — a trophy with laurel
   7: ({ primary, secondary }) => [
     { kind: "path", d: "M15 43 C12 34 15 25 22 21", fill: "none", stroke: secondary, strokeWidth: 1.8, strokeLinecap: "round" },
     { kind: "path", d: "M49 43 C52 34 49 25 42 21", fill: "none", stroke: secondary, strokeWidth: 1.8, strokeLinecap: "round" },
@@ -311,7 +311,7 @@ export function GHOST_SHAPES(variant: EmblemVariant = "full"): Shape[] {
   ];
 }
 
-/** "Deuce, tier 3 of 7" · "Likely Rally, provisional" · "Unranked". */
+/** "Intermediate, tier 3 of 7" · "Likely Novice, provisional" · "Unranked". */
 export function emblemLabel(id: TierId | null, state: EmblemState = "earned"): string {
   if (id === null || state === "ghost") return "Unranked";
   const tier = tierById(id);

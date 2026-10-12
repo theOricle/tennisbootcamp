@@ -122,7 +122,7 @@ export function removalBlocker(
   history: { bookings: number; invites: number; enrollments: number }
 ): string | null {
   if (player.relationship === "self") return "The account holder stays on the account.";
-  if (hasLevelValue(player.level)) return "Sina has set this player's level, so they stay on file.";
+  if (hasLevelValue(player.level)) return "Our coaches have set this player's level, so they stay on file.";
   if (history.bookings + history.invites + history.enrollments > 0) {
     return "This player has a booking or enrollment on file, so they stay on the account.";
   }

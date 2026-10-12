@@ -110,7 +110,7 @@ export function ProfileView({
       {/* Players on this account (audit M34) */}
       {others.length > 0 && (
         <section className="mb-12" aria-labelledby="players-on-account">
-          <SectionTitle id="players-on-account" sub="Each player's name, age group and tier. Sina sets every level.">
+          <SectionTitle id="players-on-account" sub="Each player's name, age group and tier. Our coaches set every level.">
             Players on this account
           </SectionTitle>
           <ul className="space-y-4">

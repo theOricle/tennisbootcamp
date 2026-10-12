@@ -47,7 +47,7 @@ export function statusLabel(table: Record<string, string>, status: string | null
 }
 
 /**
- * "Quiz: I can rally (≈ Rally)" — the player's own answer and the tier it
+ * "Quiz: I can rally (≈ Novice)" — the player's own answer and the tier it
  * maps to (owner D4), always marked as approximate; "Quiz: Not sure" with no
  * tier. Empty when there is no answer on file.
  */

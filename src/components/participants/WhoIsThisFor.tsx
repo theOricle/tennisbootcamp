@@ -402,7 +402,7 @@ function AgeBandField({
 /**
  * The quiz's hint under the self-estimate (audit M17; design specs §3.7):
  * once an answer maps to a provisional tier (owner D4), a provisional rail
- * and "Likely tier: Rally. Sina confirms it when he places you." "Not sure"
+ * and "Likely tier: Novice. Our coaches confirm it when they place you." "Not sure"
  * and "Prefer not to say" show nothing. Polite live region, so a
  * screen-reader user hears the tier change without leaving the select.
  */
@@ -414,8 +414,8 @@ function LikelyTierHint({ value, self }: { value: string; self: boolean }) {
         <div className="mt-1">
           <TierLine variant="rail" size="sm" level={tier.id} provisional labels="none" />
           <p className={`${HINT_CLASS} mt-2`}>
-            Likely tier: <span className="font-semibold text-white">{tier.name}</span>. Sina
-            confirms it when he places {self ? "you" : "them"}.
+            Likely tier: <span className="font-semibold text-white">{tier.name}</span>. Our
+            coaches confirm it when they place {self ? "you" : "them"}.
           </p>
         </div>
       )}
@@ -500,7 +500,7 @@ function relationshipNote(p: ParticipantOption): string {
   const rel = (RELATIONSHIPS as readonly string[]).includes(p.relationship)
     ? RELATIONSHIP_LABELS[p.relationship as Relationship]
     : "";
-  // "Rally · 2.5", the tier with its level, or the one no-level word.
+  // "Novice · 2.5", the tier with its level, or the one no-level word.
   const level = p.level != null ? formatTierLevel(p.level) : "Unranked";
   return [rel, level].filter(Boolean).join(" · ");
 }
@@ -616,7 +616,7 @@ function AddPersonForm({
           if (fieldErrors.level && next) setFieldErrors((f) => ({ ...f, level: undefined }));
         }}
         required={requireLevel}
-        note="A starting point only — Sina sets their level."
+        note="A starting point only — our coaches set their level."
         error={fieldErrors.level}
         tierHint={requireLevel}
       />

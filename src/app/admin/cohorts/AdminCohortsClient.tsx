@@ -22,7 +22,7 @@ const inputClass =
   "placeholder:text-white/45 focus:border-[#B4E655]/60 focus:outline-none focus:ring-2 focus:ring-[#B4E655]/30";
 
 // The level band stays numeric; tier names are display only (LEVEL_OPTIONS
-// reads "3.0 · Deuce", audit M29).
+// reads "3.0 · Intermediate", audit M29).
 
 const DAYS: SessionSlot["day"][] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -175,7 +175,7 @@ function CreateCohortForm({
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="Saturday 12pm — Deuce"
+          placeholder="Saturday 12pm — Intermediate"
           required
           className={inputClass}
         />

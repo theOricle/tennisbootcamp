@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Container } from "@/components/layout/Container";
 import { TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
+import { TIER_LADDER_SPAN } from "@/lib/tiers";
 
 /**
  * The home tier band (audit M36, design specs §3.7): the seven tiers, named
@@ -23,11 +24,12 @@ export function TierBand() {
               id="tier-band-title"
               className="mt-3 text-2xl font-semibold tracking-tight text-white md:text-3xl"
             >
-              Seven tiers. Love to Grand Slam.
+              {/* The span never breaks inside "World Class": the line wraps after "Seven tiers." instead. */}
+              Seven tiers. <span className="whitespace-nowrap">{TIER_LADDER_SPAN}.</span>
             </h2>
             <p className="mt-3 text-pretty text-base text-white/75">
-              Every player trains at a tier. Sina places you from your quiz
-              answers, or on court if you book the optional 20-minute
+              Every player trains at a tier. Our coaches place you from your
+              quiz answers, or on court if you book the optional 20-minute
               assessment.
             </p>
             <Link href="/assessment#ladder" className={`mt-2 ${TEXT_LINK_LIME}`}>
@@ -35,7 +37,8 @@ export function TierBand() {
             </Link>
           </div>
           <div className="mt-8 min-w-0 lg:mt-0">
-            <TierLine variant="ladder" orientation="horizontal" density="compact" />
+            {/* Vertical on phones: seven plain names do not fit seven ~45px columns (specs §3.3). */}
+            <TierLine variant="ladder" orientation="responsive" density="compact" />
           </div>
         </div>
       </Container>

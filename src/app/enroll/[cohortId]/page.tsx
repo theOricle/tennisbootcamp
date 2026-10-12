@@ -77,7 +77,7 @@ function InviteGate({ expired, signInHref }: { expired: boolean; signInHref: str
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-white/65">
             Enrollment in this group opens by email invitation. Take the
-            2-minute quiz and Sina places you in a group that fits your
+            2-minute quiz and our coaches place you in a group that fits your
             level and your schedule. Want your level confirmed on court
             first? The 20-minute assessment is optional.
           </p>
@@ -140,12 +140,12 @@ function FullGate({
     <GateShell eyebrow={programTitle}>
       <h1 className="mt-3 text-2xl font-semibold">This group is full</h1>
       <p className="mt-3 text-sm leading-relaxed text-white/65">
-        Every spot in {cohortLabel} is taken. Sina will place you in the next
+        Every spot in {cohortLabel} is taken. Our coaches will place you in the next
         group that fits your level and schedule — you&apos;ll hear by email.
       </p>
       {!signedIn && (
         <p className="mt-3 text-sm leading-relaxed text-white/65">
-          Not on Sina&apos;s list yet? The 2-minute quiz puts you on it.
+          Not on our list yet? The 2-minute quiz puts you on it.
         </p>
       )}
       <div className="mt-6 flex flex-wrap justify-center gap-3">

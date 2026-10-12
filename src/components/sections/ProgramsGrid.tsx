@@ -67,7 +67,7 @@ export async function ProgramsGrid({
           >
             {QUIZ_CTA_LABEL}
           </TrackedLink>{" "}
-          and Sina places you by level and schedule.
+          and our coaches place you by level and schedule.
         </p>
       )}
     </section>

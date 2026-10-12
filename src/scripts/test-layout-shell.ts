@@ -141,6 +141,9 @@ check("newsletter button never wraps", capture.includes("shrink-0 whitespace-now
 check("every EmailCapture call names its source", ["src/app/page.tsx", "src/app/programs/page.tsx", "src/app/programs/[slug]/page.tsx", "src/app/events/page.tsx", "src/app/video-lessons/page.tsx"].every((f) => !read(f).includes("<EmailCapture />")));
 check("detail: Book Your Assessment is an outline pill", /<(?:Tracked)?Button\s+variant="secondary"\s+href="\/assessment\/book"[^>]*>\s*Book Your Assessment\s*<\/(?:Tracked)?Button>/.test(detail));
 check("detail: no 'Or Book Your Assessment' grey link", !detail.includes("Or Book Your Assessment"));
+// QA 2026-10-10: /assessment hand-rolled two lime pills, the quiz CTA's style.
+const assessmentPage = read("src/app/assessment/page.tsx");
+check("/assessment: both Book Your Assessment buttons are outline pills", (assessmentPage.match(/<(?:Tracked)?Button\s+variant="secondary"\s+href="\/assessment\/book"[^>]*>\s*Book Your Assessment\s*<\/(?:Tracked)?Button>/g) ?? []).length === 2);
 check("detail: closes on the quiz band (M13)", detail.includes("<QuizBand href={quizHref}"));
 check("detail: timetable quiz CTA is marked for the bar", /<(?:Tracked)?Button\s+variant="primary"\s+href=\{quizHref\}[^>]*data-quiz-cta/.test(detail));
 const button = read("src/components/ui/Button.tsx");
@@ -167,6 +170,11 @@ check("Escape closes the drawer and returns focus", navbar.includes('e.key === "
 check("focus moves into the drawer on open", navbar.includes("firstLinkRef.current?.focus()"));
 check("outside taps use pointerdown", navbar.includes('"pointerdown"') && !navbar.includes('"mousedown"'));
 check("page scroll locks while the drawer is open", navbar.includes('html.style.overflow = "hidden"'));
+// QA 2026-10-10 (high): a body lock made body the sticky header's scroll
+// container, so after a scroll the open menu sat off-screen. Root only; the
+// runtime check (header at top 0, menu open, after a scroll) is in
+// check-overflow.ts.
+check("the lock is on the root only, never on body", !navbar.includes("document.body.style.overflow"));
 check("header is solid navy from the top, no blur", navbar.includes("bg-[#061427]") && !navbar.includes("backdrop-blur"));
 check("current page is marked", navbar.includes("aria-current={current}"));
 check("header quiz CTA uses the locked label", navbar.includes("{QUIZ_CTA_LABEL}"));

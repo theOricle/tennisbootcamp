@@ -2,14 +2,14 @@
 // everywhere a rank or a span is shown.
 //
 // `rail`: seven tier groups of thirteen pips that step up in height and
-// colour, Love to Grand Slam — the game-rank meter. It shows a player's
+// colour, Beginner to World Class — the game-rank meter. It shows a player's
 // position (lit up to the current pip, a caret above it), a provisional
 // estimate (the likely tier outlined), a span (lit inside the band), a span
 // with a named marker, or nothing (ghost). It never scrolls: every pip stays
 // at least 14px wide at 272px.
 //
 // `ladder`: the seven emblems on a connected line, horizontal (seven
-// columns) or vertical (Grand Slam on top, DOM order Love-first), with node
+// columns) or vertical (World Class on top, DOM order Beginner-first), with node
 // states for a level or a span and blurbs when asked. Never a horizontal
 // scroller — any md+ surface narrower than 480px uses `vertical` or the rail.
 //
@@ -19,6 +19,7 @@
 import {
   TIERS,
   TIER_COUNT,
+  TIER_LADDER_SPAN,
   LEVEL_STEPS,
   formatLevelNumber,
   levelNumber,
@@ -174,7 +175,7 @@ function Rail(props: TierLineProps) {
       }`,
     };
   } else {
-    a11y = { role: "img", "aria-label": "Unranked. Seven tiers, Love to Grand Slam." };
+    a11y = { role: "img", "aria-label": `Unranked. Seven tiers, ${TIER_LADDER_SPAN}.` };
   }
 
   // Which names light up under the groups.
@@ -200,7 +201,7 @@ function Rail(props: TierLineProps) {
       }
       return { left: `${range.min.name} ${lo.toFixed(1)}`, right: `${range.max.name} ${hi.toFixed(1)}` };
     }
-    return { left: "Love", right: "Grand Slam" };
+    return { left: TIERS[0].name, right: TIERS[TIERS.length - 1].name };
   })();
 
   // An unranked rail has nothing to emphasise: both ends read the same.
@@ -323,7 +324,23 @@ const NODE_COMPACT_CURRENT: Record<TierId, string> = {
   7: "h-[48px] w-[48px] md:h-[60px] md:w-[60px]",
 };
 
-const LADDER_LABEL = "The seven tiers, Love (lowest) to Grand Slam (highest)";
+// Where a long plain name may break in a narrow ladder column (a soft hyphen
+// shows only when the word has to break). Browsers' own hyphenation is not
+// available everywhere, so the break points are written here; a name that no
+// longer matches its entry falls back to the plain name.
+const SOFT_HYPHEN = "\u00AD";
+const LADDER_BREAKS: Partial<Record<TierId, string>> = {
+  1: `Begin${SOFT_HYPHEN}ner`,
+  3: `Inter${SOFT_HYPHEN}mediate`,
+  4: `Ad${SOFT_HYPHEN}vanced`,
+};
+
+function ladderName(tier: Tier): string {
+  const broken = LADDER_BREAKS[tier.id];
+  return broken && broken.split(SOFT_HYPHEN).join("") === tier.name ? broken : tier.name;
+}
+
+const LADDER_LABEL =`The seven tiers, ${TIERS[0].name} (lowest) to ${TIERS[TIERS.length - 1].name} (highest)`;
 
 function HorizontalLadder({
   nodes,
@@ -373,8 +390,11 @@ function HorizontalLadder({
                 <TierEmblem tier={n.tier.id} state={n.state} fluid decorative />
               </span>
             </div>
-            <span className="mt-1.5 text-xs font-semibold leading-tight text-white sm:text-sm">
-              {n.tier.name}
+            {/* A name wider than its column breaks at its soft hyphen
+                ("Inter-mediate") rather than running into its neighbours;
+                compact ladders keep 12px at every width. */}
+            <span className={`mt-1.5 max-w-full text-xs font-semibold leading-tight text-white ${compact ? "" : "sm:text-sm"}`.trim()}>
+              {ladderName(n.tier)}
               <span className="sr-only">{n.suffix}</span>
             </span>
             {n.current && level !== null && n.state !== "provisional" ? (

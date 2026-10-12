@@ -78,7 +78,7 @@ const JUNIOR_BANDS: AgeBand[] = ["junior"];
 
 // The assessment is optional: Sina places each player (backlog #20 review).
 export const PLACEMENT_LINE =
-  "Sina places each player by level and schedule, and a 20-minute assessment is available if you want your level confirmed on court first. It is $20, and if you enroll in a program afterward that $20 comes off the price.";
+  "Our coaches place each player by level and schedule, and a 20-minute assessment is available if you want your level confirmed on court first. It is $20, and if you enroll in a program afterward that $20 comes off the price.";
 
 export const programs: Program[] = [
   {
@@ -102,7 +102,7 @@ export const programs: Program[] = [
       "Court diagram: a cross-court rally, three shots landing deep in the target zone, then recovery to the middle.",
     plateCaption: "Cross-court rallies. Every rep aimed past the service line.",
     ageBands: YOUTH_BANDS,
-    // Owner decision D2 (2026-10-09): Love – Break.
+    // Owner decision D2 (2026-10-09): Beginner – Advanced.
     levelMin: 1.0,
     levelMax: 4.5,
     levelNote: "First season to club player, grouped by level in each class",
@@ -146,8 +146,8 @@ export const programs: Program[] = [
     plateCaption: "Serve to the T, then the next shot into the open court.",
     // Any age (the copy says so); owner D5 confirms whether juniors 7–13 join.
     ageBands: ANY_AGE_BANDS,
-    // Owner decision D2 (2026-10-09): Deuce and up, in step with the quiz's
-    // competitive → Deuce map (D4) because recommend.ts sends competitive
+    // Owner decision D2 (2026-10-09): Intermediate and up, in step with the
+    // quiz's competitive → Intermediate map (D4) because recommend.ts sends competitive
     // players here.
     levelMin: 3.0,
     levelMax: 7.0,
@@ -194,7 +194,7 @@ export const programs: Program[] = [
       "Court diagram: three ball flights from the same spot, from a high arc landing short to a flat drive landing deep.",
     plateCaption: "Three levels on Sunday. As the level goes up, the ball flies flatter and lands deeper.",
     ageBands: ADULT_BANDS,
-    // Owner decision D2/D3 (2026-10-09): Love – Ace, one tier band per class
+    // Owner decision D2/D3 (2026-10-09): Beginner – Elite, one tier band per class
     // (whole-tier bounds, so no tier name appears in two classes).
     levelMin: 1.0,
     levelMax: 5.5,

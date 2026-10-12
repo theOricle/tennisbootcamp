@@ -49,7 +49,7 @@ export function AvailabilityMatrix({
     [players, levelMin, levelMax]
   );
 
-  // "Deuce · 3.0–3.5" (audit M29): the tier words and the numeric band.
+  // "Intermediate · 3.0–3.5" (audit M29): the tier words and the numeric band.
   const bandLabel = matrix.unbanded
     ? "all leveled players"
     : [formatTierSpan(levelMin, levelMax), formatLevelBand(levelMin, levelMax)]

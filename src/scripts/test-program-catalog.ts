@@ -124,7 +124,7 @@ check("eyebrow: Adult Bootcamps", programEyebrow(adult) === "Adults · Sundays",
 check("eyebrow: Kids' Summer Camp", programEyebrow(camp) === "Juniors · Summer Camp", programEyebrow(camp));
 check("formatSlotWhen: Sat 12:00–1:00 pm", formatSlotWhen(youth.timetable![0]) === "Sat 12:00–1:00 pm", formatSlotWhen(youth.timetable![0]));
 check("formatSlotWhen: Sun 4:00–5:00 pm", formatSlotWhen(adult.timetable![0]) === "Sun 4:00–5:00 pm", formatSlotWhen(adult.timetable![0]));
-check("slotLevelRange: Adult 4:00 is Love – Rally", JSON.stringify(slotLevelRange(adult.timetable![0])) === JSON.stringify({ min: 1.0, max: 2.5 }));
+check("slotLevelRange: Adult 4:00 is Beginner – Novice", JSON.stringify(slotLevelRange(adult.timetable![0])) === JSON.stringify({ min: 1.0, max: 2.5 }));
 check("slotLevelRange: Youth 12:00 is unbanded", slotLevelRange(youth.timetable![0]) === null);
 check("programLevelRange: Youth 1.0–4.5", JSON.stringify(programLevelRange(youth)) === JSON.stringify({ min: 1.0, max: 4.5 }));
 const unspanned: Program = { ...youth, levelMin: undefined, levelMax: undefined };
@@ -158,8 +158,8 @@ check("programFitsAge: Any age takes minors and adults", programFitsAge(hp, true
 
 // The card and the recommender agree: for every age band and self-estimate,
 // the recommender's first program fits a player of that band at the
-// provisional tier (owner D4: new → Love, rally → Rally, competitive →
-// Deuce, elite → Break).
+// provisional tier (owner D4: new → Beginner, rally → Novice, competitive →
+// Intermediate, elite → Advanced).
 console.log("Card and recommender agree (D2, D4)");
 const PROVISIONAL_LEVEL = { new: 1.0, rally: 2.0, competitive: 3.0, elite: 4.0 } as const;
 for (const band of AGE_BANDS) {
@@ -264,7 +264,7 @@ const priceDd = card.match(/<dt[^>]*>Price<\/dt><dd[^>]*>([\s\S]*?)<\/dd>/)?.[1]
 check("the price is stacked: lead in white, total in white/60, no middot", priceDd.includes(`font-semibold text-white">${priceLead}<`) && priceRest.every((part) => priceDd.includes(`text-white/60">${part}<`)) && !priceDd.includes("·") && count(priceDd, 'class="block ') === 1 + priceRest.length, priceDd);
 check("each class on its own line with its age chip", card.includes("Sat 12:00–1:00 pm") && card.includes("Sat 1:00–2:00 pm") && count(card, "Junior (7–13)") === 2);
 check("the Level block names the span", card.includes(`>${formatTierSpan(youth.levelMin, youth.levelMax)}<`) && card.includes("1.0–4.5"));
-check("the rail is in span mode", card.includes('aria-label="Built for Love to Break, levels 1.0 to 4.5"'));
+check("the rail is in span mode", card.includes('aria-label="Built for Beginner to Advanced, levels 1.0 to 4.5"'));
 check("the level note is under the rail", card.includes(youth.levelNote!));
 check("the CTA line is decoration", /<span aria-hidden="true"[^>]*>View Program/.test(card));
 check("no Learn more, no second button", !card.includes("Learn more") && !card.includes("<button"));
@@ -294,19 +294,19 @@ check("Next: the row variant renders the same wrapped parts", rowNextDd.length >
 
 const fitMaya = render(createElement(ProgramCard, { program: youth, fit: { name: "Maya", level: 2.5 }, variant: "compact" }));
 check("fit → Fits Maya eyebrow", fitMaya.includes("Fits Maya") && !fitMaya.includes("Juniors and teens · Saturdays"));
-check("fit → the caption names her tier and level", fitMaya.includes("Maya: Rally · 2.5"));
-check("fit → the rail carries her marker", fitMaya.includes("Maya&#x27;s tier, Rally, is in this range.") || fitMaya.includes("Maya's tier, Rally, is in this range."));
+check("fit → the caption names her tier and level", fitMaya.includes("Maya: Novice · 2.5"));
+check("fit → the rail carries her marker", fitMaya.includes("Maya&#x27;s tier, Novice, is in this range.") || fitMaya.includes("Maya's tier, Novice, is in this range."));
 const fitYou = render(createElement(ProgramCard, { program: adult, fit: { name: null, level: 2.5 }, variant: "compact" }));
-check("fit with no name → Fits you, Your level", fitYou.includes("Fits you") && fitYou.includes("Your level: Rally · 2.5"));
+check("fit with no name → Fits you, Your level", fitYou.includes("Fits you") && fitYou.includes("Your level: Novice · 2.5"));
 const outOfRange = render(createElement(ProgramCard, { program: hp, fit: { name: "Maya", level: 2.5 }, variant: "compact" }));
 check("a fit outside the span keeps the plain eyebrow", outOfRange.includes("Any age · Saturdays") && !outOfRange.includes("Fits Maya"));
 
 const adultCard = render(createElement(ProgramCard, { program: adult, variant: "compact" }));
-check("Adult Bootcamps shows the climb per class", ["Love – Rally", "Deuce", "Break – Ace"].every((s) => adultCard.includes(`>${s}<`)));
-check("Adult Bootcamps span reads Love – Ace", adultCard.includes(">Love – Ace<"));
+check("Adult Bootcamps shows the climb per class", ["Beginner – Novice", "Intermediate", "Advanced – Elite"].every((s) => adultCard.includes(`>${s}<`)));
+check("Adult Bootcamps span reads Beginner – Elite", adultCard.includes(">Beginner – Elite<"));
 const hpCard = render(createElement(ProgramCard, { program: hp, variant: "compact" }));
 check("High Performance: Any age chip, no slot qualifier", hpCard.includes(">Any age<") && !hpCard.includes("Competitive and elite players"));
-check("High Performance span reads Deuce and up", hpCard.includes(">Deuce and up<"));
+check("High Performance span reads Intermediate and up", hpCard.includes(">Intermediate and up<"));
 
 const comingSoon = render(createElement(ProgramCard, { program: camp, variant: "compact" }));
 check("coming soon → one dashed chip over the art, no status chip", count(comingSoon, "Coming Soon") === 1 && !comingSoon.includes("Groups forming"));
@@ -324,7 +324,7 @@ check("row variant: the art column centres the box at md", rowCard.includes('cla
 check("row variant: the art box is 16:10 at md, never stretched", rowCard.includes("md:aspect-[16/10]") && !rowCard.includes("md:h-full md:min-h") && !rowCard.includes("md:aspect-auto"));
 check("auto variant: the band frame keeps 2:1 in every state, the column resets at lg", h2.includes('viewBox="0 100 1600 800"') && h2.includes("lg:block lg:h-auto lg:border-r-0") && !h2.includes("md:aspect-") && !h2.includes("min-h-["));
 check("row variant reads Timetable at md and When below", rowCard.includes(">Timetable</span>") && rowCard.includes(">When</span>"));
-check("row variant carries both rails, one hidden per breakpoint", count(rowCard, 'aria-label="Built for Love to Ace') === 2 && rowCard.includes("hidden md:block"));
+check("row variant carries both rails, one hidden per breakpoint", count(rowCard, 'aria-label="Built for Beginner to Elite') === 2 && rowCard.includes("hidden md:block"));
 // Fix round 3: in the row variant's Timetable column the class label follows
 // the time, and the middot between them rides with the time (aria-hidden,
 // shown and hidden with the label), so a wrapped line in the narrow md column
@@ -353,7 +353,7 @@ const band = render(createElement(ProgramComingSoonBand, { program: camp }));
 check("coming-soon band: one link, the title", count(band, "<a ") === 1 && band.includes("Kids&#x27; Summer Camp"));
 check("coming-soon band: dashed, with the chip", band.includes("border-dashed") && band.includes("Coming Soon"));
 check("coming-soon band: one meta line", band.includes(`Junior (7–13) · ${camp.schedule} · ${CAMP_PRICE_SUMMARY}`));
-check("coming-soon band: the span and its rail", band.includes(">All levels<") && band.includes('aria-label="Built for Love to Grand Slam'));
+check("coming-soon band: the span and its rail", band.includes(">All levels<") && band.includes('aria-label="Built for Beginner to World Class'));
 check("coming-soon band: the plate is dashed", band.includes('stroke-dasharray="10 7"'));
 
 // ── Surfaces ────────────────────────────────────────────────────────────────
@@ -366,12 +366,12 @@ check("card: the art box is never stretched to the row (fix round 1)", !cardSrc.
 check("card: one StatusChip, rendered inside the art column", count(cardSrc, "<StatusChip status={status} />") === 1 && !cardSrc.includes("justify-between gap-x-3 gap-y-1.5"));
 const gridSrc = read("src/components/sections/ProgramsGrid.tsx");
 check("grid renders ProgramCardList and reads cohorts once", gridSrc.includes("<ProgramCardList") && count(gridSrc, "getPublicCohorts()") === 1);
-check("grid: the quiz line with the locked label", gridSrc.includes("Not sure which fits?") && gridSrc.includes("{QUIZ_CTA_LABEL}") && gridSrc.includes("Sina places you by level and schedule"));
+check("grid: the quiz line with the locked label", gridSrc.includes("Not sure which fits?") && gridSrc.includes("{QUIZ_CTA_LABEL}") && gridSrc.includes("our coaches place you by level and schedule"));
 const home = read("src/app/page.tsx");
 check("home: live programs with the quiz line", home.includes("quizLine") && home.includes("!p.comingSoon"));
 const programsPage = read("src/app/programs/page.tsx");
 check("/programs: tier legend in the header", /aria-labelledby="levels"[\s\S]*<TierLine variant="ladder"/.test(programsPage));
-check("/programs: the legend line", programsPage.includes("Seven tiers, Love to Grand Slam."));
+check("/programs: the legend line", programsPage.includes("Seven tiers, {TIER_LADDER_SPAN}."));
 check("/programs: Weekend classes as rows", programsPage.includes("Weekend classes") && programsPage.includes('layout="rows"'));
 check("/programs: coming-soon band, not a card", programsPage.includes("<ProgramComingSoonBand"));
 check("/programs: quiz band before the newsletter, newsletter last", at(programsPage, "<ProgramsGrid") < at(programsPage, "<QuizBand") && at(programsPage, "<QuizBand") < at(programsPage, "<EmailCapture"));
@@ -382,7 +382,7 @@ check("detail: Levels in this program ladder in span mode", detail.includes("Lev
 check("detail: How tiers work link", detail.includes('href="/assessment#ladder"'));
 // Fix round 1: the camp has no decided intake path (owner D10), so the
 // placement line renders only for a live program; the span and ladder stay.
-check("detail: the placement line is gated off a coming-soon program (D10)", /\{!program\.comingSoon && \(\s*<p[^>]*>\s*Sina places every player on the ladder, from the quiz or on court\.\s*<\/p>\s*\)\}/.test(detail));
+check("detail: the placement line is gated off a coming-soon program (D10)", /\{!program\.comingSoon && \(\s*<p[^>]*>\s*Our coaches place every player on the ladder, from the quiz or on court\.\s*<\/p>\s*\)\}/.test(detail));
 check("detail: a TierRangeBadges per timetable slot", detail.includes("<TierRangeBadges levelMin={slot.levelMin} levelMax={slot.levelMax} />"));
 check("detail: cohort cards carry the mark and the rail", detail.includes("<PlateMark plate={program.plate}") && detail.includes("artFocusForCohort(program, cohort)") && /tierGated &&[\s\S]*<TierLine[\s\S]*variant="rail"/.test(detail));
 check("detail: the start date helper is shared", detail.includes("formatStartDate(") && !detail.includes("fmtStartDate"));

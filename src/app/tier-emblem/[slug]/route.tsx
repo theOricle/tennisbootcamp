@@ -6,7 +6,9 @@ import { emblemSvgString } from "@/components/tiers/emblemGeometry";
 // /tier-emblem/{slug} — one per tier, 128px, prerendered at build time from
 // the same shape data the site renders, so the emblem in an email is the
 // emblem on the dashboard. Email clients get a PNG because most of them
-// refuse inline SVG. Unknown slugs 404 (dynamicParams is off).
+// refuse inline SVG. Unknown slugs 404 (dynamicParams is off). The retired
+// tennis-score slugs (/tier-emblem/deuce …) redirect permanently to the plain
+// names before they reach this route (next.config.ts, LEGACY_TIER_SLUGS).
 
 export const dynamic = "force-static";
 export const dynamicParams = false;

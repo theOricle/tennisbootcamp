@@ -10,7 +10,7 @@ export const contentType = "image/png";
 
 export default async function OgImage() {
   return new ImageResponse(
-    buildOgImage("The 2-minute quiz", "A few questions · Sina places you by level and schedule"),
+    buildOgImage("The 2-minute quiz", "A few questions · Placed by level and schedule"),
     { ...size, fonts: await ogFonts() }
   );
 }

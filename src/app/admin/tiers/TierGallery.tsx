@@ -91,7 +91,7 @@ export function TierGallery() {
           </table>
         </div>
         <div>
-          <h3 className={H3}>Sizes (Deuce)</h3>
+          <h3 className={H3}>Sizes (Intermediate)</h3>
           <div className="mt-3 flex flex-wrap items-end gap-5">
             {SIZES.map((px) => (
               <div key={px} className="flex flex-col items-center gap-1.5">
@@ -187,7 +187,7 @@ export function TierGallery() {
           <TierLine variant="ladder" orientation="horizontal" level={2.5} className="mt-4" />
         </div>
         <div className={CARD}>
-          <h3 className={H3}>Provisional Rally · horizontal · compact</h3>
+          <h3 className={H3}>Provisional Novice · horizontal · compact</h3>
           <TierLine variant="ladder" orientation="horizontal" density="compact" level={2} provisional className="mt-4" />
         </div>
         <div className={CARD}>

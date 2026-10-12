@@ -235,7 +235,7 @@ const recommendation = {
 const PLAYER_EMAILS: [string, () => EmailBody, string][] = [
   [
     "quiz result",
-    () => buildRecommendationEmail("Maya Chen", [recommendation], "Deuce"),
+    () => buildRecommendationEmail("Maya Chen", [recommendation], "Intermediate"),
     UNSUB_GENERAL,
   ],
   [
@@ -269,7 +269,7 @@ const PLAYER_EMAILS: [string, () => EmailBody, string][] = [
       buildCohortInviteEmail({
         participantName: null,
         levelLabel: "3.0",
-        tierNames: ["Deuce"],
+        tierNames: ["Intermediate"],
         programTitle: "Adult Bootcamps",
         cohortLabel: "Fall A",
         dayTimeLabel: "Saturdays 9–10am",

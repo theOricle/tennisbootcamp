@@ -15,6 +15,7 @@ import { PageStack } from "@/components/layout/PageStack";
 import { Heading } from "@/components/ui/Heading";
 import { TrackedButton } from "@/components/ui/TrackedButton";
 import { TierLine } from "@/components/tiers";
+import { TIER_LADDER_SPAN } from "@/lib/tiers";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 
 // Incremental static regeneration (audit M39): the program grid's "next
@@ -43,12 +44,12 @@ export default function ProgramsPage() {
           <div className="lg:grid lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-12">
             <div>
               <Heading as="h1">Our Programs</Heading>
-              {/* No self-enrollment: Sina places every player (audit M3). */}
+              {/* No self-enrollment: our coaches place every player (audit M3). */}
               <p className="mt-3 max-w-2xl text-pretty text-base text-white/75">
                 Weekend classes for juniors, teens and adults. Each cohort is a fixed
                 group that trains together for {COHORT_LENGTH}, one {SESSION_MINUTES}-minute
-                class a week. Take the 2-minute quiz and Sina places you by level and
-                schedule.
+                class a week. Take the 2-minute quiz and our coaches place you by level
+                and schedule.
               </p>
               <TrackedButton
                 variant="primary"
@@ -70,8 +71,8 @@ export default function ProgramsPage() {
                 Levels
               </h2>
               <p className="mt-2 text-sm text-white/75">
-                Seven tiers, Love to Grand Slam. Each program shows the tiers it is
-                built for, and Sina places every player on the ladder.
+                Seven tiers, {TIER_LADDER_SPAN}. Each program shows the tiers it is
+                built for, and our coaches place every player on the ladder.
               </p>
               <TierLine variant="ladder" orientation="responsive" density="compact" className="mt-5" />
             </section>

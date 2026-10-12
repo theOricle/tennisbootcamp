@@ -87,11 +87,20 @@ function commercialFooter(kind: FooterKind): string {
   </div>`;
 }
 
+/**
+ * Who signs every email (owner, 2026-10-12): the coaching team, never one
+ * coach by name. The supplier is still named where the law asks for it, in
+ * the CASL sender line (src/lib/casl.ts).
+ */
+export const SIGN_OFF_NAME = "The Tennis Bootcamp coaching team";
+
+/** The plain-text sign-off, word for word the HTML one. */
+const SIGN_OFF_TEXT = `See you on the court,\n${SIGN_OFF_NAME}`;
+
 function signOff(): string {
   return `<p style="margin:28px 0 0;font-size:14px;color:${INK_BODY};">
     See you on the court,<br/>
-    <strong style="color:#fff;">Sina Kassaian</strong><br/>
-    <span style="color:${INK_MUTED};">Head Coach, Tennis Bootcamp</span>
+    <strong style="color:#fff;">${SIGN_OFF_NAME}</strong>
   </p>`;
 }
 
@@ -175,7 +184,8 @@ const TIER_LINE_WIDTH = LEVEL_STEPS.reduce(
  * The tier line as a table (design specs §3.9), so it reads with images off:
  * thirteen `<td bgcolor>` cells, 2px apart within a tier and 6px between
  * tiers, lit in each tier's colour up to the player's level and unlit above
- * it, with "Love" and "Grand Slam" captions under the ends.
+ * it, with the lowest and highest tier names ("Beginner", "World Class")
+ * captioned under the ends.
  */
 export function tierLineTable(level: number): string {
   const steps = LEVEL_STEPS.map((step, i) => {
@@ -192,13 +202,13 @@ export function tierLineTable(level: number): string {
     </table>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${TIER_LINE_WIDTH}" style="border-collapse:collapse;width:${TIER_LINE_WIDTH}px;">
       <tr>
-        <td style="padding:6px 0 0;font-size:13px;color:${INK_MUTED};">Love</td>
-        <td align="right" style="padding:6px 0 0;font-size:13px;color:${INK_MUTED};text-align:right;">Grand Slam</td>
+        <td style="padding:6px 0 0;font-size:13px;color:${INK_MUTED};">${TIERS[0].name}</td>
+        <td align="right" style="padding:6px 0 0;font-size:13px;color:${INK_MUTED};text-align:right;">${TIERS[TIERS.length - 1].name}</td>
       </tr>
     </table>`;
 }
 
-/** "Tier 3 of 7. Next tier: Break at 4.0." · "Tier 7 of 7. That's the top of the ladder." */
+/** "Tier 3 of 7. Next tier: Advanced at 4.0." · "Tier 7 of 7. That's the top of the ladder." */
 export function tierStandingLine(level: number | string): string {
   const progress = tierProgress(level);
   if (!progress) return "";
@@ -224,7 +234,7 @@ export function buildLinkEmail(
   return {
     subject,
     html: emailLayout(bodyHtml),
-    text: `Click the link below to ${actionLabel}:\n${link}\n\nThis link expires in 24 hours.\n\n— Sina Kassaian, Tennis Bootcamp`,
+    text: `Click the link below to ${actionLabel}:\n${link}\n\nThis link expires in 24 hours.\n\n${SIGN_OFF_TEXT}`,
   };
 }
 
@@ -252,22 +262,22 @@ export function buildRecommendationEmail(
   // Confirmation first; the assessment is a suggestion, never a required step
   // (backlog #19). HTML and text say the same thing in the same order.
   const done =
-    "Your answers to the 2-minute quiz are in and there's nothing else you need to do. I review each player's level and schedule, then place them in a group and a time that fit.";
+    "Your answers to the 2-minute quiz are in and there's nothing else you need to do. Our coaches review each player's level and schedule, then place them in a group and a time that fit.";
   const newAccount =
     "The first time you use an email address with us, we send it a link to set a password.";
   const tierSentence = provisionalTierName
-    ? `From your answers, ${who.possessive} likely tier is ${provisionalTierName}. It's provisional — I confirm it when I place ${who.isSelf ? "you" : who.playerFirst}.`
+    ? `From your answers, ${who.possessive} likely tier is ${provisionalTierName}. It's provisional — we confirm it when we place ${who.isSelf ? "you" : who.playerFirst}.`
     : `Thanks for telling us about ${who.possessive} game.`;
   const tierHtml = provisionalTierName
-    ? `From your answers, ${who.possessive} likely tier is <strong style="color:#fff;">${provisionalTierName}</strong>. It's provisional — I confirm it when I place ${who.isSelf ? "you" : who.playerFirst}.`
+    ? `From your answers, ${who.possessive} likely tier is <strong style="color:#fff;">${provisionalTierName}</strong>. It's provisional — we confirm it when we place ${who.isSelf ? "you" : who.playerFirst}.`
     : `Thanks for telling us about ${who.possessive} game.`;
   const fit = `Based on your answers, ${programTitle} looks like ${who.possessive} fit.`;
   const fitHtml = `Based on your answers, <strong style="color:#B4E655;">${programTitle}</strong> looks like ${who.possessive} fit.`;
   const dashboardLine =
-    "Your dashboard shows the availability you gave us and, once I set it, every player's tier.";
+    "Your dashboard shows the availability you gave us and, once our coaches set it, every player's tier.";
   const suggestion = who.isSelf
-    ? "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with me. It's optional. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."
-    : `If you'd like ${who.playerFirst}'s level confirmed on court before they're placed, you can book a 20-minute assessment with me. It's optional. The assessment is $20, and if ${who.playerFirst} enrolls in a program afterward that $20 comes off the price.`;
+    ? "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with one of our coaches. It's optional. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."
+    : `If you'd like ${who.playerFirst}'s level confirmed on court before they're placed, you can book a 20-minute assessment with one of our coaches. It's optional. The assessment is $20, and if ${who.playerFirst} enrolls in a program afterward that $20 comes off the price.`;
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Hi ${firstName},</p>
@@ -289,7 +299,7 @@ export function buildRecommendationEmail(
   return {
     subject,
     html: emailLayout(bodyHtml),
-    text: `Hi ${firstName},\n\n${done}\n\n${newAccount}\n\n${tierSentence} ${fit}\n\n${dashboardLine}\n\nSee it on your dashboard: ${DASHBOARD_URL}\n\n${suggestion}\n\nBook Your Assessment: ${BASE_URL}/assessment/book\n\nSee you on the court,\nSina Kassaian\nHead Coach, Tennis Bootcamp\n${BASE_URL}\n\n${commercialFooterText("general")}`,
+    text: `Hi ${firstName},\n\n${done}\n\n${newAccount}\n\n${tierSentence} ${fit}\n\n${dashboardLine}\n\nSee it on your dashboard: ${DASHBOARD_URL}\n\n${suggestion}\n\nBook Your Assessment: ${BASE_URL}/assessment/book\n\n${SIGN_OFF_TEXT}\n${BASE_URL}\n\n${commercialFooterText("general")}`,
   };
 }
 
@@ -353,7 +363,7 @@ Need to move it? One free reschedule with 24 hours' notice — just reply to thi
 
 ${membership}
 
-— Sina Kassaian, Tennis Bootcamp
+${SIGN_OFF_TEXT}
 
 ${commercialFooterText("general")}`;
 
@@ -395,7 +405,7 @@ No payment now — we'll confirm your time first. The assessment is $20, and if 
 
 Anything change on your end? Just reply to this email.
 
-— Sina Kassaian, Tennis Bootcamp
+${SIGN_OFF_TEXT}
 
 ${commercialFooterText("general")}`;
 
@@ -459,7 +469,7 @@ export type CohortInviteParams = {
   /** Which player on the account the spot is for. */
   participantName?: string | null;
   levelLabel: string | null; // "3.0" or "3.0–3.5"; null when not tier-gated
-  tierNames: string[];       // ["Deuce"] or ["Deuce","Break"]; [] when not tier-gated
+  tierNames: string[];       // ["Intermediate"] or ["Intermediate","Advanced"]; [] when not tier-gated
   programTitle: string;
   cohortLabel: string;
   dayTimeLabel: string;      // "Tuesdays 6–7pm"
@@ -472,8 +482,9 @@ export type CohortInviteParams = {
 };
 
 /**
- * "Alex's Deuce group (3.0)" (owner D9): the tier name leads, the numeric
- * band follows in brackets; a spread reads "Deuce – Break group (3.0–4.5)".
+ * "Alex's Intermediate group (3.0)" (owner D9): the tier name leads, the
+ * numeric band follows in brackets; a spread reads "Intermediate – Advanced
+ * group (3.0–4.5)".
  * An untiered cohort stays "Alex's Adult Bootcamps group".
  */
 export function cohortInviteGroupName(
@@ -564,7 +575,7 @@ Claim my spot: ${enrollUrl}
 
 The link is personal to you. Terms: ${BASE_URL}/legal/refund-policy
 
-— Sina Kassaian, Tennis Bootcamp
+${SIGN_OFF_TEXT}
 
 ${commercialFooterText("invitation")}`;
 
@@ -627,7 +638,7 @@ ${dashboardLine}
 
 See it on your dashboard: ${DASHBOARD_URL}
 
-— Sina Kassaian, Tennis Bootcamp
+${SIGN_OFF_TEXT}
 
 ${commercialFooterText("general")}`;
 
@@ -677,7 +688,7 @@ ${
 
 Full rules: ${BASE_URL}/legal/refund-policy
 
-— Sina Kassaian, Tennis Bootcamp
+${SIGN_OFF_TEXT}
 
 ${commercialFooterText("general")}`;
 
@@ -687,8 +698,9 @@ ${commercialFooterText("general")}`;
 // ─── Assessment complete ──────────────────────────────────────────────────────
 
 /**
- * The level moment (audit M35): the tier's emblem, "You're a Deuce.", where
- * that sits on the ladder ("Tier 3 of 7. Next tier: Break at 4.0.") and the
+ * The level moment (audit M35): the tier's emblem, "You're in the
+ * Intermediate tier.", where that sits on the ladder ("Tier 3 of 7. Next
+ * tier: Advanced at 4.0.") and the
  * tier line as a table that reads with images off. The dashboard shows the
  * same card. HTML and text carry the same facts in the same order.
  */
@@ -713,7 +725,7 @@ export function buildAssessmentCompleteEmail(params: {
   const intro = who.isSelf
     ? "Here's your read from the court."
     : `Here's ${who.playerFirst}'s level and what comes next.`;
-  const tierSentence = tier ? `${who.isSelf ? "You're" : `${who.playerFirst} is`} a ${tier.name}.` : "";
+  const tierSentence = tier ? `${who.isSelf ? "You're" : `${who.playerFirst} is`} in the ${tier.name} tier.` : "";
   const forming = `We're forming ${who.possessive} ${levelLabel} group around everyone's availability — invitations go out by email.`;
   const dashboardLine = `${who.Possessive} tier, level and what comes next are on your dashboard.`;
   const sooner = "Want to move sooner?";
@@ -771,7 +783,7 @@ ${sooner}
 
 Browse Programs: ${BASE_URL}/programs
 
-— Sina Kassaian, Tennis Bootcamp
+${SIGN_OFF_TEXT}
 
 ${commercialFooterText("general")}`;
 
@@ -844,7 +856,7 @@ Put the message on the transfer exactly as shown — it's how we match your paym
 Prefer to pay by card? ${cardUrl}
 Refund terms: ${BASE_URL}/legal/refund-policy
 
-— Sina Kassaian, Tennis Bootcamp
+${SIGN_OFF_TEXT}
 
 ${commercialFooterText("general")}`;
 
@@ -911,7 +923,7 @@ See it on your dashboard: ${DASHBOARD_URL}
 
 Refund terms: ${BASE_URL}/legal/refund-policy
 
-— Sina Kassaian, Tennis Bootcamp
+${SIGN_OFF_TEXT}
 
 ${commercialFooterText("general")}`;
 
@@ -984,7 +996,7 @@ Open your dashboard: ${dashboardUrl}
 
 ${signInLine}
 
-— Sina Kassaian, Tennis Bootcamp
+${SIGN_OFF_TEXT}
 
 ${commercialFooterText("general")}`;
 

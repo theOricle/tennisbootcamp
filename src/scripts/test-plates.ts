@@ -108,13 +108,13 @@ check("PRICE_SUMMARY is one line from the constants", /^\$\d+ a session · \$\d+
 // Owner decision 2026-10-09 (D2/D3), shipped visible: pinned so a drift shows.
 console.log("Level spans (owner D2/D3, 2026-10-09)");
 const byId = Object.fromEntries(programs.map((p) => [p.id, p]));
-check("Youth Programs 1.0–4.5 (Love – Break)", byId["youth-programs"].levelMin === 1.0 && byId["youth-programs"].levelMax === 4.5);
-check("High Performance 3.0–7.0 (Deuce and up)", byId["high-performance"].levelMin === 3.0 && byId["high-performance"].levelMax === 7.0);
-check("High Performance floor is Deuce, matching the quiz map competitive → Deuce (D4)", tierForLevel(byId["high-performance"].levelMin)?.name === "Deuce");
-check("Adult Bootcamps 1.0–5.5 (Love – Ace)", byId["bootcamps"].levelMin === 1.0 && byId["bootcamps"].levelMax === 5.5);
-check("Adult 4:00 Love – Rally", byId["bootcamps"].timetable?.[0].levelMin === 1.0 && byId["bootcamps"].timetable?.[0].levelMax === 2.5);
-check("Adult 5:00 Deuce", byId["bootcamps"].timetable?.[1].levelMin === 3.0 && byId["bootcamps"].timetable?.[1].levelMax === 3.5);
-check("Adult 6:00 Break – Ace", byId["bootcamps"].timetable?.[2].levelMin === 4.0 && byId["bootcamps"].timetable?.[2].levelMax === 5.5);
+check("Youth Programs 1.0–4.5 (Beginner – Advanced)", byId["youth-programs"].levelMin === 1.0 && byId["youth-programs"].levelMax === 4.5);
+check("High Performance 3.0–7.0 (Intermediate and up)", byId["high-performance"].levelMin === 3.0 && byId["high-performance"].levelMax === 7.0);
+check("High Performance floor is Intermediate, matching the quiz map competitive → Intermediate (D4)", tierForLevel(byId["high-performance"].levelMin)?.name === "Intermediate");
+check("Adult Bootcamps 1.0–5.5 (Beginner – Elite)", byId["bootcamps"].levelMin === 1.0 && byId["bootcamps"].levelMax === 5.5);
+check("Adult 4:00 Beginner – Novice", byId["bootcamps"].timetable?.[0].levelMin === 1.0 && byId["bootcamps"].timetable?.[0].levelMax === 2.5);
+check("Adult 5:00 Intermediate", byId["bootcamps"].timetable?.[1].levelMin === 3.0 && byId["bootcamps"].timetable?.[1].levelMax === 3.5);
+check("Adult 6:00 Advanced – Elite", byId["bootcamps"].timetable?.[2].levelMin === 4.0 && byId["bootcamps"].timetable?.[2].levelMax === 5.5);
 check("Kids' Summer Camp all levels 1.0–7.0", byId["kids-summer-camp"].levelMin === 1.0 && byId["kids-summer-camp"].levelMax === 7.0);
 check("Youth slots carry their age band", byId["youth-programs"].timetable?.[0].ageBand === "junior" && byId["youth-programs"].timetable?.[1].ageBand === "teen");
 check("High Performance is any age", ageBandsLabel(byId["high-performance"].ageBands) === "Any age");

@@ -204,7 +204,7 @@ function PlayerCard({
         </div>
         <div className="shrink-0 text-right">
           <div className="flex items-center justify-end gap-2">
-            {/* "Deuce · 3.0", or the Unranked tag while no level is set. */}
+            {/* "Intermediate · 3.0", or the Unranked tag while no level is set. */}
             <TierChip level={player.level} showLevel />
           </div>
           {player.level_assessed_at && (
