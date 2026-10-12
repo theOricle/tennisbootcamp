@@ -3,17 +3,17 @@
 import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { recommendPrograms, type Recommendation } from "@/lib/recommend";
+import { groupSummaryLine, matchGroupsLabel, recommendPrograms, recommendationHref, type Recommendation } from "@/lib/recommend";
+import { quizCatalogHref } from "@/lib/programFilters";
 import { trackEvent, trackAssessmentCtaClick } from "@/lib/analytics";
 import { useBotCheck } from "@/lib/useBotCheck";
 import { MIN_FILL_TIME_MS } from "@/lib/botCheck";
 import { LEAD_SOURCE_FIELD } from "@/lib/leadSource";
 import { storedFirstTouch } from "@/lib/firstTouchBrowser";
 import { provisionalTierFor, selfEstimateToLevel, type SelfLevel } from "@/lib/level";
-import { AGE_BAND_LABELS, ageBandToWho, type AgeBand } from "@/lib/ageBand";
-import { TIER_LADDER_SPAN, levelWithinRange, type Tier } from "@/lib/tiers";
+import { ageBandToWho, type AgeBand } from "@/lib/ageBand";
+import { TIER_LADDER_SPAN, formatTierSpan, type Tier } from "@/lib/tiers";
 import { TierChip, TierEmblem, TierLine } from "@/components/tiers";
-import type { Program, TimetableSlot } from "@/types/program";
 import {
   availabilityToLegacySlots,
   parseAvailability,
@@ -222,64 +222,49 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 
 // ─── Tentative-match result screens (funnel flip) ─────────────────────────────
 
-/** "12:00–1:00 pm" → "12:00", the class start as the timetable states it. */
-function startOf(slot: TimetableSlot): string {
-  return slot.time.split("–")[0];
-}
-
-/**
- * The class this player would join, from the program's own timetable (audit
- * M17): the slot for their age band, or the slot whose level band holds their
- * provisional tier, or the program's one class. "Saturdays 12:00–1:00 pm ·
- * Junior (7–13)". Null when the timetable is empty or nothing matches, and the
- * program's schedule line stands in.
- */
-function classLineFor(program: Program, ageBand: AgeBand, tier: Tier | null): string | null {
-  const slots = program.timetable ?? [];
-  if (slots.length === 0) return null;
-  const byAge = slots.find((s) => s.ageBand === ageBand);
-  const byTier =
-    tier && slots.find((s) => s.levelMin !== undefined && levelWithinRange(tier.id, s.levelMin, s.levelMax));
-  const slot = byAge ?? byTier ?? (slots.length === 1 ? slots[0] : null);
-  if (!slot) {
-    // Several banded classes and no tier to pick one: name the day and every start.
-    const day = `${slots[0].day}s`;
-    const starts = slots.map(startOf);
-    const list = starts.length > 1 ? `${starts.slice(0, -1).join(", ")} and ${starts[starts.length - 1]}` : starts[0];
-    return `${day} ${list}`;
-  }
-  const qualifier = slot.ageBand ? AGE_BAND_LABELS[slot.ageBand] : slot.levelMin !== undefined ? slot.group : null;
-  return [`${slot.day}s ${slot.time}`, qualifier].filter(Boolean).join(" · ");
-}
-
 /**
  * The one program card, identical wherever a player's match is shown: a link
- * to the program page carrying the class line and the price (audit M17).
- * The whole card is the link; the arrow is decoration.
+ * to the program page carrying the groups that fit this player — their age
+ * band and provisional tier against each group's ages and level band (owner,
+ * 2026-10-12) — and the price (audit M17). One fitting scheduled group links
+ * straight to that group's card; several, or an arranged group, link to the
+ * program, where our coaches' placement decides (recommendationHref). The
+ * whole card is the link; the arrow is decoration.
  */
-function ProgramMatchCard({
-  rec,
-  ageBand,
-  tier,
-}: {
-  rec: Recommendation;
-  ageBand: AgeBand;
-  tier: Tier | null;
-}) {
-  const { program } = rec;
-  const when = classLineFor(program, ageBand, tier) ?? program.schedule ?? null;
+function ProgramMatchCard({ rec }: { rec: Recommendation }) {
+  const { program, groups } = rec;
+  const href = recommendationHref(rec);
   return (
     <Link
-      href={`/programs/${program.slug}`}
+      href={href}
       className={`group mt-5 block rounded-2xl border border-[#B4E655]/30 bg-[#B4E655]/5 p-5 transition hover:border-[#B4E655]/60 ${FOCUS_RING}`}
     >
       <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">{program.type}</span>
       <span className="mt-1 block text-lg font-semibold text-white">{program.title}</span>
       <dl className="mt-3 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1.5 text-sm">
-        {when && (
+        {groups.length > 0 && (
+          <>
+            <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60 pt-0.5">
+              {matchGroupsLabel(groups)}
+            </dt>
+            <dd className="text-white/90">
+              <ul role="list" className="space-y-1">
+                {groups.map((g) => (
+                  <li key={g.id}>
+                    <span className="font-semibold text-white">{g.name}</span>
+                    <span className="block text-white/70">
+                      {groupSummaryLine(g)} · {formatTierSpan(g.levelMin, g.levelMax)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        )}
+        {groups.length === 0 && program.schedule && (
           <>
             <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60 pt-0.5">When</dt>
-            <dd className="text-white/90">{when}</dd>
+            <dd className="text-white/90">{program.schedule}</dd>
           </>
         )}
         {program.priceSummary && (
@@ -473,8 +458,12 @@ function AssessmentSuggestion({
   );
 }
 
-/** The two demoted links, shared by every result screen: 44px targets (audit L4). */
-function ResultLinks() {
+/**
+ * The two demoted links, shared by every result screen: 44px targets (audit
+ * L4). "Browse Programs" opens the catalog filtered to the player's age band
+ * and likely tier when the screen is about one player (owner, 2026-10-12).
+ */
+function ResultLinks({ catalogHref = "/programs" }: { catalogHref?: string }) {
   return (
     <div className="mt-6 flex flex-wrap gap-3">
       <Link
@@ -484,7 +473,7 @@ function ResultLinks() {
         Back to Home
       </Link>
       <Link
-        href="/programs"
+        href={catalogHref}
         className={`inline-flex min-h-[44px] items-center rounded-full border border-white/25 px-5 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white ${FOCUS_RING}`}
       >
         Browse Programs
@@ -530,7 +519,7 @@ function TentativeMatchScreen({
               <span className="text-xs font-semibold uppercase tracking-wide text-white/60">
                 {playerFirst ? `${playerFirst}'s tentative match` : "Your tentative match"}
               </span>
-              <ProgramMatchCard rec={top} ageBand={result.ageBand} tier={tier} />
+              <ProgramMatchCard rec={top} />
             </div>
           )}
 
@@ -540,7 +529,7 @@ function TentativeMatchScreen({
             onBook={() => goToBooking(router, form, result.level)}
           />
 
-          <ResultLinks />
+          <ResultLinks catalogHref={quizCatalogHref(result.ageBand, tier)} />
         </div>
       </div>
     </main>
@@ -619,7 +608,7 @@ function HouseholdMatchScreen({
                   <div key={r.key} className="border-t border-white/10 pt-5 first:border-t-0 first:pt-2">
                     <p className="text-base font-semibold text-white">{r.name}</p>
                     {top ? (
-                      <ProgramMatchCard rec={top} ageBand={r.ageBand} tier={provisionalTierFor(r.level)} />
+                      <ProgramMatchCard rec={top} />
                     ) : (
                       <p className="mt-3 text-sm text-white/70">
                         Nothing lines up on paper — our coaches place them from their answers.
@@ -700,9 +689,11 @@ function IntakePageInner() {
   // Keep pre-selection so ?program=bootcamps still seeds the recommendation engine
   const slugToOptionId: Record<string, string> = {
     "youth-programs": "youth",
+    // The old High Performance page redirects to the youth page's HP group;
+    // a link that still carries its slug seeds the same program.
     "high-performance": "high-performance",
     bootcamps: "bootcamp",
-    "kids-summer-camp": "camp",
+    "private-lessons": "private",
     "group-lessons": "group",
   };
   const preselectedProgram =

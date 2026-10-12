@@ -6,7 +6,7 @@
 import { programs } from "@/content/programs";
 import { provisionalTierFor, selfLevelLabel } from "@/lib/level";
 
-/** "Youth Programs" for "youth-programs"; the id itself when unknown. */
+/** "Youth Bootcamps" for "youth-programs"; the id itself when unknown. */
 export function programTitleFor(programId: string): string {
   return programs.find((p) => p.id === programId)?.title ?? programId;
 }

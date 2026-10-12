@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { LEGACY_TIER_SLUGS } from "./src/lib/tiers";
+import { LEGACY_PROGRAM_REDIRECTS } from "./src/lib/programRedirects";
 
 /** Sent on every route (backlog #30): full URL to our own origin, origin only
  * to anyone else, nothing over a downgrade — so an invite link's token never
@@ -34,6 +35,18 @@ export const TIER_EMBLEM_REDIRECTS = Object.entries(LEGACY_TIER_SLUGS).map(([fro
   permanent: true,
 }));
 
+/**
+ * Program pages that left the catalog on 2026-10-12 (owner): High
+ * Performance is a group inside Youth Bootcamps, so its old page lands on
+ * that group's card; Kids' Summer Camp lands on /programs
+ * (src/lib/programRedirects.ts).
+ */
+export const PROGRAM_REDIRECTS = LEGACY_PROGRAM_REDIRECTS.map(({ from, to }) => ({
+  source: `/programs/${from}`,
+  destination: to,
+  permanent: true,
+}));
+
 /** A month: next/image keeps an optimized image this long (audit L24). */
 export const IMAGE_CACHE_TTL_SECONDS = 60 * 60 * 24 * 31;
 
@@ -46,7 +59,7 @@ const nextConfig: NextConfig = {
     minimumCacheTTL: IMAGE_CACHE_TTL_SECONDS,
   },
   async redirects() {
-    return [...TIER_EMBLEM_REDIRECTS];
+    return [...TIER_EMBLEM_REDIRECTS, ...PROGRAM_REDIRECTS];
   },
   async headers() {
     return [

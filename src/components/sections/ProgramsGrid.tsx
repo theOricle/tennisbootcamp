@@ -13,8 +13,6 @@ type ProgramsGridProps = {
   title?: string | null;
   /** "Browse Programs →" to /programs; off on /programs itself (audit H2). */
   browseLink?: boolean;
-  /** `grid`: auto cards, three across from lg (home). `rows`: one row card per program (/programs). */
-  layout?: "grid" | "rows";
   /** Home: one line under the grid pointing to the quiz, where a visitor is still choosing. */
   quizLine?: boolean;
   /** Which ranked player each program fits, by program id (dashboard). */
@@ -22,16 +20,16 @@ type ProgramsGridProps = {
 };
 
 /**
- * The program card list with its heading. It reads the public cohorts once
- * (ISR, audit M39) and sets no horizontal padding or max-width: the page puts
- * it inside its Container (audit H2). A read failure renders the cards with
- * no "Next cohort" chip, never an error.
+ * The program card list with its heading: the three programs with their
+ * photographs, three across from lg. It reads the public cohorts once (ISR,
+ * audit M39) and sets no horizontal padding or max-width: the page puts it
+ * inside its Container (audit H2). A read failure renders the cards with no
+ * "Next cohort" chip, never an error.
  */
 export async function ProgramsGrid({
   programs,
   title = "Our Programs",
   browseLink = true,
-  layout = "grid",
   quizLine = false,
   fits,
 }: ProgramsGridProps) {
@@ -54,7 +52,7 @@ export async function ProgramsGrid({
         </div>
       )}
 
-      <ProgramCardList programs={programs} publicCohorts={publicCohorts} fits={fits} layout={layout} />
+      <ProgramCardList programs={programs} publicCohorts={publicCohorts} fits={fits} />
 
       {quizLine && (
         <p className="mt-6 text-sm text-white/75">

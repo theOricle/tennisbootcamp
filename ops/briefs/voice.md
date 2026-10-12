@@ -32,7 +32,8 @@ Not a salesperson. Not a tech company. Not a hype account. The coach has nothing
 
 ## Locked strings — never rewrite
 
-- All prices (2026-10-01, backlog #20): weekend classes **$35 a session** · **$210 per six-week cohort** (Youth Programs, High Performance, Adult Bootcamps) · Assessment **$20** · Kids Camp **$499/week** (coming soon). The $20 mechanic on program pages: "$35 a session, $210 for the six weeks. If you took the $20 assessment, that $20 comes off the price."
+- All prices (2026-10-01, backlog #20; lineup 2026-10-12): weekend classes **$35 a session** · **$210 per six-week cohort** (every Youth Bootcamps and Adult Bootcamps group, High Performance included) · Assessment **$20** · Private Lessons **"Rates on request"** (owner, 2026-10-12; never a number). Kids' Summer Camp ($499/week) left the catalog on 2026-10-12 and is not listed anywhere. The $20 mechanic on program pages: "$35 a session, $210 for the six weeks. If you took the $20 assessment, that $20 comes off the price."
+- The three programs and their names (owner, 2026-10-12): **Youth Bootcamps** (slug `youth-programs`), **Adult Bootcamps** (slug `bootcamps`), **Private Lessons** (slug `private-lessons`). "Youth Programs" is retired as a name. **High Performance** is a group inside Youth Bootcamps, never a program; the group names are the card titles in `src/content/programs.ts` ("Ages 7–10", "Ages 11–15", "High Performance", "Newer players", "Intermediate", "Advanced", "One-to-one coaching").
 - The cohort length and every total that depends on it (the cohort price, the instalment, "six weeks", "six-week") come from `SESSION_PRICE` and `COHORT_WEEKS` in `src/content/programs.ts` (backlog #27). The numbers quoted in this file are today's values at `COHORT_WEEKS = 6`; if the setting changes, the site follows it and these quotes follow the site. In code, never type the length or a total — use the exported constants.
 - Retired 2026-10-01: Bootcamps **$649** and Group Lessons **$599**. Do not quote either price anywhere.
 - The $20 mechanic and its condition (comes off the price **when you enroll in a program afterward**) — rephrase length, never the facts.
@@ -88,7 +89,7 @@ The brand welcomes every level. The training is serious from Beginner to World C
 
 ## Jargon budget (2026-08-04)
 
-Tournament dialect is allowed **only on High Performance surfaces** (the High Performance card, its detail page content, and High Performance recommendation reasons; moved from Bootcamps 2026-10-01). On all-levels surfaces (Youth Programs, Adult Bootcamps, Kids' Camp, About, intake, assessment pages) translate insider terms to plain language:
+Tournament dialect is allowed **only on High Performance surfaces** (the High Performance group card and its note, the Youth Bootcamps page's line about that group, and High Performance recommendation reasons; moved from Bootcamps 2026-10-01, a youth group since 2026-10-12). On all-levels surfaces (the other Youth Bootcamps groups, Adult Bootcamps, Private Lessons, About, intake, assessment pages) translate insider terms to plain language:
 
 | Insider term | Plain replacement |
 |---|---|

@@ -91,7 +91,9 @@ export const PLATE_SPECS: Record<PlateId, PlateSpec> = {
   "kids-summer-camp": {
     id: "kids-summer-camp",
     name: "Movement games, then rally play",
-    copy: ["Kids' Summer Camp is for Junior (7–13) players"],
+    // The camp left the catalog on 2026-10-12 (owner); the plate stays in the
+    // registry, drawn dashed, for the day a junior camp returns.
+    copy: ["A summer camp for juniors, 7–13"],
     cones: [[-10.6, -3.6], [-9.0, -1.8], [-7.4, -3.6], [-5.8, -1.8], [-4.2, -3.6]],
     footwork: {
       lime: true,

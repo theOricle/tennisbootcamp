@@ -44,17 +44,12 @@ export default function HomePage() {
           (audit M36, H6). */}
       <TierBand />
 
-      {/* One Container, one rhythm (audit H2). Programs come first: the live
-          weekend classes as spec-sheet cards with a quiz line under them
-          (H7); the coming-soon camp lives on /programs. The page closes on
-          the quiz, then the newsletter, the tertiary CTA (M12, M13). */}
+      {/* One Container, one rhythm (audit H2). Programs come first: the three
+          programs as spec-sheet cards with their photographs and a quiz line
+          under them (H7; owner 2026-10-12). The page closes on the quiz,
+          then the newsletter, the tertiary CTA (M12, M13). */}
       <PageStack>
-        <ProgramsGrid
-          programs={listedPrograms.filter((p) => !p.comingSoon)}
-          title="Our Programs"
-          layout="grid"
-          quizLine
-        />
+        <ProgramsGrid programs={listedPrograms} title="Our Programs" quizLine />
         <Coaches coaches={coaches} />
         {hasRealEvents && <EventsList events={events} title="Upcoming Events" />}
         <QuizBand source="home-closing" />

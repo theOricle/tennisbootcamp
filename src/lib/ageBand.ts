@@ -5,10 +5,12 @@
 // The band now lives on the participant, next to their name.
 //
 // The bands are the ones the programs are written for (src/content/programs.ts
-// carries each program's `ageBands`; audit M37):
-//   junior  7–13   Youth Programs (Saturday 12:00), Kids' Summer Camp, High Performance
-//   teen    14–17  Youth Programs (Saturday 1:00), High Performance
-//   adult   18+    Adult Bootcamps, High Performance
+// carries each program's `ageBands`; audit M37). Exact ages live on the
+// groups (owner, 2026-10-12): Youth Bootcamps takes 7–17 across three groups,
+// Adult Bootcamps 16 and up, Private Lessons any age.
+//   junior  7–13   Youth Bootcamps, Private Lessons
+//   teen    14–17  Youth Bootcamps, Private Lessons (16 and 17 may join Adult Bootcamps)
+//   adult   18+    Adult Bootcamps, Private Lessons
 //
 // Pure and server-safe: `src/lib/household.ts` reads it, so nothing here may
 // depend on React or on a "use client" module.

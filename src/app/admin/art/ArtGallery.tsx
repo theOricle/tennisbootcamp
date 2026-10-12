@@ -43,8 +43,11 @@ function Caption({ children }: { children: React.ReactNode }) {
 // Listed programs only: the retired Group Lessons entry is unlisted and still
 // points at "court", and the fallback row must read as the plate a new
 // program starts on (solid), not as that retired program (design specs §4.11).
+// A plate whose program left the catalog (High Performance, now a youth
+// group; Kids' Summer Camp) is titled by its own name.
 const programOf = (id: PlateId) => programs.find((p) => p.plate === id && !p.unlisted);
-const titleOf = (id: PlateId) => programOf(id)?.title ?? "Fallback (any new program)";
+const titleOf = (id: PlateId) =>
+  programOf(id)?.title ?? (id === "court" ? "Fallback (any new program)" : `Retired plate: ${PLATE_SPECS[id].name}`);
 
 export function ArtGallery() {
   const youth = programs.find((p) => p.plate === "youth-programs");
@@ -103,7 +106,7 @@ export function ArtGallery() {
       <Section
         id="coming-soon"
         title="Coming soon"
-        body="Long-dashed traces and outline-only bounce marks. The same plate goes solid when the program opens; the Kids' Summer Camp plate is in this state today."
+        body="Long-dashed traces and outline-only bounce marks. The same plate goes solid when the program opens; no listed program is in this state today."
       >
         <div className="grid gap-4 md:grid-cols-3">
           {(["youth-programs", "high-performance", "bootcamps"] as PlateId[]).map((id) => (
@@ -138,7 +141,7 @@ export function ArtGallery() {
 
       <Section
         id="profile"
-        title="Youth Programs: level profile"
+        title="Youth Bootcamps: level profile"
         body="A cohort's level band profiles the signature flight: the higher the tier, the flatter the ball and the deeper it lands. Base plate first, then Beginner, Advanced and World Class cohorts."
       >
         <div className="grid gap-4 md:grid-cols-4">

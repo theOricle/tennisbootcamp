@@ -76,8 +76,9 @@ export function tentativeLevelLabel(level?: string | null): string | null {
  * Self-estimate → provisional tier (owner decision D4, 2026-10-09; names
  * 2026-10-12): new → Beginner, rally → Novice, competitive → Intermediate,
  * elite → Advanced. "competitive" lands on Intermediate because recommend.ts
- * sends competitive players to High Performance, whose span starts at
- * Intermediate (3.0); test-tiers.ts pins the two together. An entry missing here means that answer shows no tier.
+ * sends a competitive junior or teen to the High Performance group, whose
+ * band starts at Intermediate (3.0); test-tiers.ts pins the two together.
+ * An entry missing here means that answer shows no tier.
  */
 export const PROVISIONAL_TIER: Partial<Record<SelfLevel, TierId>> = {
   new: 1,

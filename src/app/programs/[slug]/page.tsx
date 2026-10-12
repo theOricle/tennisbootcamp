@@ -1,13 +1,16 @@
 import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
-import { SESSION_PRICE_LABEL, programs } from "@/content/programs";
+import { CONTACT_EMAIL, SESSION_PRICE_LABEL, groupsForProgram, programs } from "@/content/programs";
 import type { Program } from "@/types/program";
-import { ProgramInterestForm } from "@/components/sections/ProgramInterestForm";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { QuizBand } from "@/components/sections/QuizBand";
+import { ProgramGroupCard } from "@/components/sections/ProgramGroupCard";
+import { CHIP_NEUTRAL } from "@/components/sections/ProgramCard";
 import { Container } from "@/components/layout/Container";
 import { Heading } from "@/components/ui/Heading";
+import { Button } from "@/components/ui/Button";
 import { TrackedButton } from "@/components/ui/TrackedButton";
 import {
   formatDateRange,
@@ -18,26 +21,24 @@ import {
 import { getPublicCohorts } from "@/lib/cohortsDb";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { VENUE_LINE } from "@/lib/membership";
-import { programLevelRange } from "@/lib/programCatalog";
+import { agesChipLabel, nextCohortForGroup, programLevelRange } from "@/lib/programCatalog";
 import { TIER_LADDER_SPAN, formatLevelBand, formatTierSpan } from "@/lib/tiers";
 import { artFocusForCohort } from "@/lib/plates/variant";
 import { TierLine, TierRangeBadges } from "@/components/tiers";
-import { AgeBandChips } from "@/components/programs/AgeBandChips";
 import { PlateMark } from "@/components/plates/PlateMark";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import { JsonLd } from "@/components/JsonLd";
 import { courseJsonLd } from "@/lib/structuredData";
-import { ProgramPlate } from "@/components/plates/ProgramPlate";
 import { ProgramViewerPanel, ViewerSwap } from "@/components/programs/ProgramViewer";
 
 /**
  * The phone summary under the H1 (audit M13): which day and what it costs,
  * so the decision facts sit above the fold; who it is for, and the tier
  * span, are the chip row under the description (L8). Weekend classes only;
- * a coming-soon program's card line already states its price. Each fact is
+ * a program with no fixed class states its terms in the panel. Each fact is
  * joined with no-break spaces, so a line wraps only between facts.
  */
-const NBSP = "\u00A0";
+const NBSP = " ";
 
 function summaryFacts(program: Program): string[] {
   const days = [...new Set((program.timetable ?? []).map((slot) => `${slot.day}s`))];
@@ -74,14 +75,14 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const program = programs.find((p) => p.slug === slug);
   if (!program) notFound();
-  // Retired programs keep their id for old rows but have no public page.
+  // Retired programs keep their id for old rows but have no public page
+  // (next.config.ts redirects the known ones before the page is reached).
   if (program.unlisted) permanentRedirect("/programs");
 
   // Supabase only (backlog #1): public, inviting/confirmed, not yet started.
   // Draft, cancelled and past cohorts never reach this page.
-  const openCohorts = (await getPublicCohorts()).filter(
-    (c) => c.programId === program.id
-  );
+  const publicCohorts = await getPublicCohorts();
+  const openCohorts = publicCohorts.filter((c) => c.programId === program.id);
 
   // Fetch live seat counts for all cohorts in parallel (null = credentials not set)
   const seatCountEntries = await Promise.all(
@@ -95,11 +96,21 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // No public Enroll button yet (backlog #20): a public enroll flow would ask
   // for an e-transfer before the written agreement is delivered (backlog #2b).
   const quizHref = `/intake?program=${program.slug}`;
-  // Null for coming-soon programs: no stated price, so no Course markup.
+  // Null for a program with no stated session price: no Course markup.
   const courseLd = courseJsonLd(program);
   const summary = summaryFacts(program);
-  // The tier span the program is built for (owner D2); unset renders nothing.
+  // The tier span the program is built for: the union of its groups.
   const range = programLevelRange(program);
+  const groups = groupsForProgram(program.slug);
+  // A program with fixed classes lists them as group cards (owner,
+  // 2026-10-12); one with no fixed class (private lessons) states its terms
+  // in the panel instead, so the page never shows the same card twice.
+  const scheduledGroups = groups.filter((g) => g.day !== null);
+  const arranged = scheduledGroups.length === 0 && !program.comingSoon;
+  const groupsHeading =
+    scheduledGroups.length > 0
+      ? `${scheduledGroups.length === 3 ? "Three" : String(scheduledGroups.length)} groups on ${scheduledGroups[0].day}s`
+      : "Groups";
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -126,30 +137,26 @@ export default async function ProgramDetailPage({ params }: PageProps) {
         </Container>
       </div>
 
-      {/* Hero: Court Plate left + content right (audit H1, design specs §4.8).
-          On phones the plate sits above the title; from md it stays put while
-          the content scrolls. */}
+      {/* Hero: the program's photograph left, content right (owner 2026-10-12:
+          people, not court diagrams). On phones the photo sits above the
+          title; from md it stays put while the content scrolls. */}
       <Container className="py-10 md:py-14">
         <div className="flex flex-col gap-8 md:flex-row md:gap-12">
-
-          {/* Plate: the program's own court diagram, drawn in code. Text-free;
-              the figcaption and plateAlt carry the meaning. Draws once on
-              load, motion-safe only. */}
-          <figure className="w-full shrink-0 md:sticky md:top-24 md:w-[38%] md:self-start">
-            <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-white/10 bg-[#061427]">
-              <ProgramPlate
-                plate={program.plate}
-                frame="master"
-                density="hero"
-                comingSoon={program.comingSoon}
-                label={program.plateAlt}
-                animate
-              />
-            </div>
-            {program.plateCaption && (
-              <figcaption className="mt-2 text-xs text-white/60">{program.plateCaption}</figcaption>
-            )}
-          </figure>
+          {program.photo && (
+            <figure className="w-full shrink-0 md:sticky md:top-24 md:w-[38%] md:self-start">
+              <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-white/10 bg-[#061427]">
+                <Image
+                  src={program.photo.src}
+                  alt={program.photo.alt}
+                  width={program.photo.width}
+                  height={program.photo.height}
+                  sizes="(min-width: 768px) 38vw, 100vw"
+                  priority
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            </figure>
+          )}
 
           {/* Content */}
           <div className="flex flex-col justify-center md:flex-1">
@@ -173,10 +180,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
             )}
             <p className="mt-2 text-base text-white/60">{program.description}</p>
 
-            {/* Who it is for and the tiers it is built for, as chips: age in
-                neutral white, the span with its tier marks (audit L8, M37). */}
+            {/* Who it is for and the tiers it is built for, as chips: the
+                ages from the groups in neutral white, the span with its tier
+                marks (audit L8, M37). */}
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              <AgeBandChips bands={program.ageBands} />
+              <span className={CHIP_NEUTRAL}>{agesChipLabel(groups)}</span>
               {range && <TierRangeBadges levelMin={range.min} levelMax={range.max} />}
             </div>
 
@@ -184,59 +192,36 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               {program.longDescription}
             </p>
 
-            {/* ── Timetable, price, quiz ─────────────────────────────────── */}
-            {!program.comingSoon ? (
-              <div className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
-                {program.timetable && program.timetable.length > 0 && (
-                  <>
-                    <h2 className="text-sm font-semibold text-[#B4E655]">Weekend timetable</h2>
-                    <ul className="mt-2 space-y-1.5">
-                      {program.timetable.map((slot) => (
-                        <li
-                          key={`${slot.day}-${slot.time}`}
-                          className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-white/85"
-                        >
-                          <span>
-                            {slot.day} {slot.time}
-                          </span>
-                          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="text-white/60">{slot.group}</span>
-                            {/* The class's tier band (owner D3): the Adult climb reads
-                                Beginner – Novice, Intermediate, Advanced – Elite. Unbanded slots show nothing. */}
-                            <TierRangeBadges levelMin={slot.levelMin} levelMax={slot.levelMax} />
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-                {program.schedule && (
-                  <p className="mt-3 text-xs text-white/60">{program.schedule}</p>
-                )}
-                {program.priceLine && (
-                  <p className="mt-3 text-sm text-white">{program.priceLine}</p>
-                )}
-                {nextOpenCohort && (
-                  <p className="mt-3 text-sm font-semibold text-[#B4E655]">
-                    Next cohort starts {formatStartDate(nextOpenCohort.startDate)}
-                  </p>
-                )}
-                {/* Primary, then the optional assessment as an outline pill
-                    at 44px, not 12px grey text (audit M12). A signed-in
-                    holder is already on our list: they see their
-                    players' tiers against this span instead of a second
-                    quiz (audit M32). */}
-                <ProgramViewerPanel span={range}>
-                  <TrackedButton
-                    variant="primary"
-                    href={quizHref}
-                    track="quiz"
-                    source="program-detail"
-                    className="mt-4 w-full"
-                    data-quiz-cta
-                  >
-                    Take the 2-minute quiz
-                  </TrackedButton>
+            {/* ── Price, next cohort, quiz ────────────────────────────────── */}
+            <div className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
+              {program.schedule && (
+                <p className="text-xs text-white/60">{program.schedule}</p>
+              )}
+              {program.priceLine && (
+                <p className="mt-3 text-sm text-white">{program.priceLine}</p>
+              )}
+              {nextOpenCohort && (
+                <p className="mt-3 text-sm font-semibold text-[#B4E655]">
+                  Next cohort starts {formatStartDate(nextOpenCohort.startDate)}
+                </p>
+              )}
+              {/* Primary, then the optional assessment as an outline pill
+                  at 44px, not 12px grey text (audit M12), for a scheduled
+                  program. A signed-in holder is already on our list: the
+                  panel shows them their players' tiers against this span
+                  instead of a second quiz (M32). */}
+              <ProgramViewerPanel span={range}>
+                <TrackedButton
+                  variant="primary"
+                  href={quizHref}
+                  track="quiz"
+                  source="program-detail"
+                  className="mt-4 w-full"
+                  data-quiz-cta
+                >
+                  Take the 2-minute quiz
+                </TrackedButton>
+                {!arranged && (
                   <TrackedButton
                     variant="secondary"
                     href="/assessment/book"
@@ -246,22 +231,49 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   >
                     Book Your Assessment
                   </TrackedButton>
-                </ProgramViewerPanel>
-              </div>
-            ) : (
-              // The one notify form on the page (audit H8), anchored at #notify.
-              <div id="notify" className="mt-6 scroll-mt-24 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
-                <p className="text-sm font-semibold text-white">Not open for enrollment yet</p>
-                <p className="mt-1 text-sm text-white/70">
-                  Leave your email and we&apos;ll tell you when enrollment opens.
-                </p>
-                <div className="mt-3">
-                  <ProgramInterestForm programSlug={program.slug} programTitle={program.title} />
-                </div>
-              </div>
-            )}
+                )}
+              </ProgramViewerPanel>
+              {/* A program booked by arrangement offers the inbox to
+                  everyone, so it sits outside the panel: a signed-in holder,
+                  whose panel replaces the quiz, still has a way to ask for a
+                  lesson. */}
+              {arranged && (
+                <Button variant="secondary" href={`mailto:${CONTACT_EMAIL}`} className="mt-3 w-full">
+                  Email {CONTACT_EMAIL}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* The groups (owner, 2026-10-12): each its own card with the age
+            range, the level band on the rail, the time, the price, the
+            status and the quiz. The High Performance card is the anchor
+            /programs/high-performance redirects to. */}
+        {scheduledGroups.length > 0 && (
+          <>
+            <div className="mt-12 border-t border-white/10" />
+            <section aria-labelledby="groups" className="mt-10">
+              <h2 id="groups" className="text-xl font-semibold text-white">{groupsHeading}</h2>
+              <p className="mt-2 max-w-2xl text-sm text-white/70">
+                Our coaches place each player in the group that fits their age and level. Take
+                the 2-minute quiz and we place you; the group&apos;s level band is where you train.
+              </p>
+              <ul role="list" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {scheduledGroups.map((g) => (
+                  <li key={g.id} className="flex [&>*]:w-full">
+                    <ProgramGroupCard
+                      group={g}
+                      program={program}
+                      nextCohort={nextCohortForGroup(publicCohorts, g)}
+                      source="program-group"
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </>
+        )}
 
         {/* What's included */}
         {program.includes && program.includes.length > 0 && (
@@ -291,7 +303,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
 
         {/* Levels in this program (audit M36, design specs §5.7): the span in
             words, the program's own plain line, and the ladder lit inside the
-            span, World Class on top. Only when the span is set (owner D2). */}
+            span, World Class on top. Only when the span is set. */}
         {range && (
           <>
             <div className="mt-12 border-t border-white/10" />
@@ -310,7 +322,6 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 {program.levelNote && (
                   <p className="mt-2 text-sm leading-relaxed text-white/70">{program.levelNote}.</p>
                 )}
-                {/* A coming-soon program has no decided intake path yet (owner D10): only confirmed facts. */}
                 {!program.comingSoon && (
                   <p className="mt-2 text-sm leading-relaxed text-white/70">
                     Our coaches place every player on the ladder, from the quiz or on court.
@@ -327,152 +338,152 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           </>
         )}
 
-        {/* Divider */}
-        <div className="mt-12 border-t border-white/10" />
+        {/* Cohort cards, or the empty state, for programs that run cohorts. */}
+        {!arranged && (
+          <>
+            <div className="mt-12 border-t border-white/10" />
+            <div className="mt-10">
+              {hasOpenCohorts ? (
+                /* Available: cohort cards from Supabase */
+                <div>
+                  <h2 id="cohorts" className="mb-2 text-xl font-semibold text-white">Upcoming cohorts</h2>
+                  <p className="mb-6 text-sm text-white/60">{VENUE_LINE}</p>
 
-        {/* Cohort cards or coming-soon */}
-        <div className="mt-10">
-          {!program.comingSoon && hasOpenCohorts ? (
-            /* Available: cohort cards from Supabase */
-            <div>
-              <h2 id="cohorts" className="mb-2 text-xl font-semibold text-white">Upcoming cohorts</h2>
-              <p className="mb-6 text-sm text-white/60">{VENUE_LINE}</p>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {openCohorts.map((cohort) => {
-                  const seats = seatCounts[cohort.id] ?? null;
-                  const isFull = seats !== null && seats <= 0;
-                  const isLowStock = seats !== null && seats > 0 && seats <= 3;
-                  const tierGated = cohort.levelMin != null || cohort.levelMax != null;
-                  return (
-                    <div
-                      key={cohort.id}
-                      className="rounded-xl border border-white/10 bg-white/5 px-5 py-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        {/* The program's mark (the Adult class the cohort trains
-                            in lit), the label, the tier chip and the dates (L8). */}
-                        <div className="flex min-w-0 items-start gap-3">
-                          <PlateMark plate={program.plate} size={48} focusSlot={artFocusForCohort(program, cohort)} />
-                          <div className="min-w-0">
-                            <p className="font-semibold text-white">{cohort.label}</p>
-                            <TierRangeBadges
-                              levelMin={cohort.levelMin}
-                              levelMax={cohort.levelMax}
-                              className="mt-1"
-                            />
-                            <p className="mt-1 text-sm text-[#B4E655]">
-                              {formatDateRange(cohort)}
-                            </p>
-                            <p className="mt-0.5 text-sm text-white/60">
-                              {formatDaysTimes(cohort)}
-                            </p>
-                            <p className="mt-0.5 text-sm text-white/60">
-                              {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
-                            </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {openCohorts.map((cohort) => {
+                      const seats = seatCounts[cohort.id] ?? null;
+                      const isFull = seats !== null && seats <= 0;
+                      const isLowStock = seats !== null && seats > 0 && seats <= 3;
+                      const tierGated = cohort.levelMin != null || cohort.levelMax != null;
+                      return (
+                        <div
+                          key={cohort.id}
+                          className="rounded-xl border border-white/10 bg-white/5 px-5 py-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            {/* The program's mark (the Adult class the cohort trains
+                                in lit), the label, the tier chip and the dates (L8). */}
+                            <div className="flex min-w-0 items-start gap-3">
+                              <PlateMark plate={program.plate} size={48} focusSlot={artFocusForCohort(program, cohort)} />
+                              <div className="min-w-0">
+                                <p className="font-semibold text-white">{cohort.label}</p>
+                                <TierRangeBadges
+                                  levelMin={cohort.levelMin}
+                                  levelMax={cohort.levelMax}
+                                  className="mt-1"
+                                />
+                                <p className="mt-1 text-sm text-[#B4E655]">
+                                  {formatDateRange(cohort)}
+                                </p>
+                                <p className="mt-0.5 text-sm text-white/60">
+                                  {formatDaysTimes(cohort)}
+                                </p>
+                                <p className="mt-0.5 text-sm text-white/60">
+                                  {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
+                                </p>
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className="text-sm font-semibold text-white">
+                                {formatCohortPrice(cohort)}
+                              </p>
+                              <span
+                                className={`mt-1 inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
+                                  isFull
+                                    ? "border border-white/15 bg-white/5 text-white/85"
+                                    : "bg-[#B4E655]/10 text-[#B4E655]"
+                                }`}
+                              >
+                                {isFull
+                                  ? "Full"
+                                  : isLowStock
+                                  ? `${seats} spot${seats === 1 ? "" : "s"} left`
+                                  : "Spots open"}
+                              </span>
+                            </div>
                           </div>
+                          {/* The cohort's band on the rail, so the chip above reads as a place on the ladder. */}
+                          {tierGated && (
+                            <TierLine
+                              variant="rail"
+                              size="sm"
+                              span={{ min: cohort.levelMin, max: cohort.levelMax }}
+                              labels="none"
+                              className="mt-3"
+                            />
+                          )}
                         </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-sm font-semibold text-white">
-                            {formatCohortPrice(cohort)}
-                          </p>
-                          <span
-                            className={`mt-1 inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
-                              isFull
-                                ? "border border-white/15 bg-white/5 text-white/85"
-                                : "bg-[#B4E655]/10 text-[#B4E655]"
-                            }`}
-                          >
-                            {isFull
-                              ? "Full"
-                              : isLowStock
-                              ? `${seats} spot${seats === 1 ? "" : "s"} left`
-                              : "Spots open"}
-                          </span>
-                        </div>
-                      </div>
-                      {/* The cohort's band on the rail, so the chip above reads as a place on the ladder. */}
-                      {tierGated && (
-                        <TierLine
-                          variant="rail"
-                          size="sm"
-                          span={{ min: cohort.levelMin, max: cohort.levelMax }}
-                          labels="none"
-                          className="mt-3"
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="mt-6 text-sm text-white/60">
-                Our coaches place each player by level and schedule.{" "}
-                <ViewerSwap
-                  guest={
-                    <>
-                      <Link href={quizHref} className="text-[#B4E655] hover:underline">
-                        Take the 2-minute quiz
-                      </Link>{" "}
-                      to start.
-                    </>
-                  }
-                  member={<>You&apos;re on our list already.</>}
-                />
-              </p>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-6 text-sm text-white/60">
+                    Our coaches place each player by level and schedule.{" "}
+                    <ViewerSwap
+                      guest={
+                        <>
+                          <Link href={quizHref} className="text-[#B4E655] hover:underline">
+                            Take the 2-minute quiz
+                          </Link>{" "}
+                          to start.
+                        </>
+                      }
+                      member={<>You&apos;re on our list already.</>}
+                    />
+                  </p>
+                </div>
+              ) : (
+                /* Zero renderable cohorts: empty state, no card, no enroll link */
+                <div>
+                  <h2 id="cohorts" className="text-xl font-semibold text-white">
+                    Upcoming cohorts
+                  </h2>
+                  {/* The groups above are real; the dated cohorts are not public
+                      yet (fall 2026 runs with the coach's private students). Status
+                      wording follows owner default D11, "Groups forming". */}
+                  <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
+                    Groups are forming. Cohort dates aren&apos;t public yet.{" "}
+                    <ViewerSwap
+                      guest={
+                        <>
+                          <Link href={quizHref} className="text-[#B4E655] hover:underline">
+                            Take the 2-minute quiz
+                          </Link>{" "}
+                          and our coaches place you in a group by level and schedule, or leave
+                          your email and we&apos;ll tell you when a cohort opens.
+                        </>
+                      }
+                      member={
+                        <>
+                          You&apos;re on our list: our coaches place you in a group by level
+                          and schedule, and your group, dates and price land on your dashboard.
+                        </>
+                      }
+                    />
+                  </p>
+                  <div className="mt-6">
+                    <EmailCapture source={`program_${program.slug}_email_capture`} />
+                  </div>
+                </div>
+              )}
             </div>
-          ) : !program.comingSoon ? (
-            /* Zero renderable cohorts: empty state, no card, no enroll link */
-            <div>
-              <h2 id="cohorts" className="text-xl font-semibold text-white">
-                Upcoming cohorts
-              </h2>
-              {/* The timetable above is real; the dated cohorts are not public
-                  yet (fall 2026 runs with the coach's private students). Status
-                  wording follows owner default D11, "Groups forming". */}
-              <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
-                Groups are forming. Cohort dates aren&apos;t public yet.{" "}
-                <ViewerSwap
-                  guest={
-                    <>
-                      <Link href={quizHref} className="text-[#B4E655] hover:underline">
-                        Take the 2-minute quiz
-                      </Link>{" "}
-                      and our coaches place you in a class by level and schedule, or leave
-                      your email and we&apos;ll tell you when a cohort opens.
-                    </>
-                  }
-                  member={
-                    <>
-                      You&apos;re on our list: our coaches place you in a class by level
-                      and schedule, and your group, dates and price land on your dashboard.
-                    </>
-                  }
-                />
-              </p>
-              <div className="mt-6">
-                <EmailCapture source={`program_${program.slug}_email_capture`} />
-              </div>
-            </div>
-          ) : null}
-          {/* A coming-soon program has one notify form, at the top (#notify):
-              the second, triangle-marked copy is gone (audit H8). */}
+          </>
+        )}
 
-          {program.related && (
-            <p className="mt-6 text-sm leading-relaxed text-white/70 first:mt-0">
-              {program.related.text}{" "}
-              <Link
-                href={program.related.href}
-                className="font-semibold text-[#B4E655] hover:underline"
-              >
-                {program.related.label} →
-              </Link>
-            </p>
-          )}
-        </div>
+        {program.related && (
+          <p className="mt-10 text-sm leading-relaxed text-white/70">
+            {program.related.text}{" "}
+            <Link
+              href={program.related.href}
+              className="font-semibold text-[#B4E655] hover:underline"
+            >
+              {program.related.label} →
+            </Link>
+          </p>
+        )}
 
         {/* The page closes on the primary CTA, not a newsletter box (audit
             M13) — for a visitor. A signed-in holder already took the quiz
-            (audit M32); their next step sits in the timetable card. */}
+            (audit M32); their next step sits in the panel. */}
         <ViewerSwap
           guest={
             <div className="mt-12">

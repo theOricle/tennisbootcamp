@@ -1,14 +1,15 @@
+import Image from "next/image";
 import Link from "next/link";
-import type { Program, TimetableSlot } from "@/types/program";
+import type { Program, ProgramGroup } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
 import { formatCohortSchedule } from "@/lib/cohorts";
-import { AGE_BAND_LABELS } from "@/lib/ageBand";
+import { groupsForProgram } from "@/content/programs";
 import {
-  formatSlotWhen,
+  formatGroupStart,
+  programAgeLabel,
   programEyebrow,
   programLevelRange,
   programStatus,
-  slotLevelRange,
   type ProgramFit,
   type ProgramStatus,
 } from "@/lib/programCatalog";
@@ -20,42 +21,34 @@ import {
   levelWithinRange,
   tierRangeForLevels,
 } from "@/lib/tiers";
-import { ProgramPlate } from "@/components/plates/ProgramPlate";
-import { AgeBandChips } from "@/components/programs/AgeBandChips";
-import { TierEmblem, TierLine, TierRangeBadges } from "@/components/tiers";
+import { TierEmblem, TierLine } from "@/components/tiers";
 
-// The one program card (audit H7; design specs §5.3): a spec sheet. The
-// program's Court Plate on top with the status chip in its corner, then the
-// eyebrow on a line of its own, the title as the card's one link, a two-line
-// description, and the decision rows — Ages, When, Price, Next — on
-// hairlines, then the Level block (tier span, mark, rail and the program's
-// own plain line) when the program carries a span. Nothing appears on hover;
+// The one program card (audit H7; owner 2026-10-12): a spec sheet with a
+// photograph of people playing on top — the Court Plates moved to the
+// dashboard strip, the admin and the OG card — then the status chip in the
+// photo's corner, the eyebrow on a line of its own, the title as the card's
+// one link, a two-line description, the decision rows — Ages, When (one line
+// per group), Price, Next — on hairlines, and the Level block (tier span,
+// mark, rail and the program's own plain line). Nothing appears on hover;
 // one action per card.
 //
 // One link, one tab stop: the title's Link is stretched over the whole card
 // with an ::after pseudo-element, the article is the only positioned ancestor
-// between the two, and no other element in the card is interactive. The art
-// column is positioned too, for the chip it carries, but it is the body's
-// sibling, never an ancestor of the link. The CTA line is decoration
-// (aria-hidden) and the plate is decorative, so the card's accessible name is
-// its title.
+// between the two, and no other element in the card is interactive. The
+// photo column is positioned too, for the chip it carries, but it is the
+// body's sibling, never an ancestor of the link. The CTA line is decoration
+// (aria-hidden); the photo keeps its real alt text, so a reader hears who is
+// on court and then the title.
 //
-// Rendered by the homepage grid, /programs, and the dashboard's "Suggested
-// for you" row, so all three stay identical.
-
-export type ProgramCardVariant = "auto" | "compact" | "row";
+// Rendered by the homepage grid and the dashboard's "Suggested for you" row,
+// so both stay identical. From md to lg the card lies on its side (photo
+// left, body right) so a tablet never shows a 2 + 1 orphan; at lg the
+// three-column grid stacks it again.
 
 export type ProgramCardProps = {
   program: Program;
   /** Earliest public cohort for this program, if any (the status chip and the Next row). */
   nextCohort?: Cohort;
-  /**
-   * `compact`: the stacked card. `row` (/programs, md+): art left, a
-   * two-column spec sheet right. `auto` (home, dashboard): compact below md,
-   * row layout with a single-column spec from md to lg, compact again in the
-   * lg three-column grid, so a tablet never shows a 2 + 1 orphan.
-   */
-  variant?: ProgramCardVariant;
   /** Dashboard only: the ranked player this program fits, for "Fits Maya" and the rail marker. */
   fit?: ProgramFit;
   /** The title's heading level; h3 under a section heading, h2 when the page's H1 names the list. */
@@ -63,14 +56,14 @@ export type ProgramCardProps = {
 };
 
 export const CHIP_BASE = "inline-flex min-h-6 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium";
-const CHIP_NEUTRAL = `${CHIP_BASE} border border-white/15 bg-white/5 text-white/85`;
+export const CHIP_NEUTRAL = `${CHIP_BASE} border border-white/15 bg-white/5 text-white/85`;
 const CHIP_NEXT = `${CHIP_BASE} bg-[#B4E655]/10 text-[#B4E655]`;
 export const CHIP_COMING_SOON = `${CHIP_BASE} border border-dashed border-white/25 bg-[#061427] text-white/85`;
 
 export const EYEBROW_CLASS = "text-xs font-semibold uppercase tracking-[0.12em] text-[#B4E655]";
-const LABEL_CLASS = "text-xs font-semibold uppercase tracking-[0.12em] text-white/60";
-const VALUE_CLASS = "min-w-0 text-sm tabular-nums text-white/90";
-const ROW_CLASS = "grid grid-cols-[4.5rem_1fr] gap-x-3";
+export const LABEL_CLASS = "text-xs font-semibold uppercase tracking-[0.12em] text-white/60";
+export const VALUE_CLASS = "min-w-0 text-sm tabular-nums text-white/90";
+export const ROW_CLASS = "grid grid-cols-[4.5rem_1fr] gap-x-3";
 
 /**
  * The card surface with its hover and keyboard-focus states: the border
@@ -86,6 +79,9 @@ export const CARD_SHELL =
 /** The title link, stretched over the card. The focus ring is drawn by the article. */
 export const STRETCHED_LINK =
   "after:absolute after:inset-0 after:z-10 after:rounded-2xl after:content-[''] focus:outline-none";
+
+/** The photo's responsive widths: full width on phones, half on a tablet, a third of the container at lg. */
+const PHOTO_SIZES = "(min-width: 1024px) 352px, (min-width: 768px) 40vw, 100vw";
 
 export function StatusChip({ status }: { status: ProgramStatus }) {
   if (status.kind === "next-cohort") {
@@ -116,10 +112,10 @@ export function CtaLine({ text, className = "" }: { text: string; className?: st
  * The price (PRICE_SUMMARY: the session price, then the cohort total) stacked:
  * the per-session figure leading in white, the total on its own line in
  * white/60. Stacked on purpose, with no separator, so a narrow Price column
- * never wraps to a stray "· $…" line (the audit L8 pattern). The camp's
- * "$499 a week" is a single part.
+ * never wraps to a stray "· $…" line (the audit L8 pattern). "Rates on
+ * request" is a single part.
  */
-function PriceSummary({ text }: { text: string }) {
+export function PriceSummary({ text }: { text: string }) {
   const [lead, ...rest] = text.split(" · ");
   return (
     <span className="block">
@@ -136,14 +132,11 @@ function PriceSummary({ text }: { text: string }) {
 /**
  * The Next row: the public cohort's schedule (formatCohortSchedule, four
  * parts joined by " · ") as parts that wrap whole. Each part is
- * `whitespace-nowrap`, so a narrow column never splits a date range
- * ("Oct 18 – Nov" / "22"), and the middot rides with the part before it, so
- * a second line never opens with a separator (the audit L8 pattern the Price
- * row already avoids). The separators are decoration; the parts are the
- * text. `gap-x-1` matches the space before the middot, so the spacing on
- * both sides of it reads the same.
+ * `whitespace-nowrap`, so a narrow column never splits a date range, and the
+ * middot rides with the part before it, so a second line never opens with a
+ * separator (the audit L8 pattern the Price row already avoids).
  */
-function CohortSchedule({ cohort }: { cohort: Cohort }) {
+export function CohortSchedule({ cohort }: { cohort: Cohort }) {
   const parts = formatCohortSchedule(cohort).split(" · ");
   const last = parts.length - 1;
   return (
@@ -158,234 +151,140 @@ function CohortSchedule({ cohort }: { cohort: Cohort }) {
   );
 }
 
-// ─── Slot qualifier (design specs §5.3.1) ─────────────────────────────────────
-// The first matching rule wins: the slot's level band as TierRangeBadges (so
-// Adult Bootcamps shows Beginner – Novice / Intermediate / Advanced – Elite, the visible
-// climb); else its age band as a neutral chip; else, when the timetable has
-// more than one class, the class label; otherwise nothing.
-
-type QualifierKind = "tier" | "age" | "group" | "none";
-
-function qualifierKind(slot: TimetableSlot, slotCount: number): QualifierKind {
-  if (slotLevelRange(slot)) return "tier";
-  if (slot.ageBand) return "age";
-  if (slotCount > 1) return "group";
-  return "none";
-}
-
-function SlotQualifier({ slot, kind }: { slot: TimetableSlot; kind: QualifierKind }) {
-  if (kind === "tier") return <TierRangeBadges levelMin={slot.levelMin} levelMax={slot.levelMax} />;
-  if (kind === "age" && slot.ageBand) return <span className={CHIP_NEUTRAL}>{AGE_BAND_LABELS[slot.ageBand]}</span>;
-  if (kind === "group") return <span className={CHIP_NEUTRAL}>{slot.group}</span>;
-  return null;
-}
-
-// ─── Layout per variant ───────────────────────────────────────────────────────
-// Every class is a complete literal so the JIT keeps it. `row` switches at md;
-// `auto` switches at md and back at lg.
-//
-// The art column and the art box are two elements on purpose. Side by side
-// (md), the column fills the row's height and centres the box, which keeps
-// the plate's own aspect ratio (16:10 master in `row`, 2:1 band in `auto`),
-// so the frame is never sliced to the row: a spec sheet runs 580–680px tall,
-// and a plate stretched to that showed a quarter of its width. The column is
-// `relative` for the status chip in its corner; it is never between the
-// article and the title link.
-
-type Layout = {
-  article: string;
-  /** The art column: side by side at md it is the tall dark panel the box sits in. */
-  artColumn: string;
-  /** The art box: owns the plate's aspect ratio in every state. */
-  art: string;
-  body: string;
-  title: string;
-  description: string;
-  /** The spec list: `row` splits it into Timetable | Ages · Price · Next at md. */
-  dl: string;
-  /** One dt/dd row: `row` stacks the label above its value at md, so the two columns keep their width. */
-  specRow: string;
-  dlWhen: string;
-  dlAges: string;
-  dlPrice: string;
-  dlNext: string;
-  /** `row` only: at md the spec sheet is two columns and the When row reads "Timetable". */
-  rowSpec: boolean;
-  /** A timetable line: `row` spreads it across the column with hairlines at md. */
-  slot: string;
-  /** `row` only: the class label beside the time at md. */
-  slotGroup: string;
-  /** `row` only: the md+ rail replaces the sm rail. */
-  railSm: string;
-  railMd: string;
-};
-
-const LAYOUT: Record<ProgramCardVariant, Layout> = {
-  compact: {
-    article: "",
-    artColumn: "",
-    art: "",
-    body: "",
-    title: "text-lg",
-    description: "line-clamp-2",
-    dl: "space-y-2.5",
-    specRow: "",
-    dlWhen: "",
-    dlAges: "",
-    dlPrice: "",
-    dlNext: "",
-    rowSpec: false,
-    slot: "",
-    slotGroup: "hidden",
-    railSm: "",
-    railMd: "hidden",
-  },
-  row: {
-    article: "md:grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]",
-    artColumn: "md:flex md:h-full md:items-center md:border-r md:border-white/10 md:bg-[#061427]",
-    art: "md:aspect-[16/10] md:border-b-0",
-    body: "md:p-8",
-    title: "text-lg md:text-2xl",
-    description: "line-clamp-2 md:line-clamp-none",
-    dl: "space-y-2.5 md:grid md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:gap-x-8 md:gap-y-4 md:space-y-0",
-    specRow: "md:block md:space-y-1.5",
-    dlWhen: "md:col-start-1 md:row-start-1 md:row-span-3",
-    dlAges: "md:col-start-2 md:row-start-1",
-    dlPrice: "md:col-start-2 md:row-start-2",
-    dlNext: "md:col-start-2 md:row-start-3",
-    rowSpec: true,
-    slot: "md:justify-between md:border-b md:border-white/5 md:py-1.5 md:last:border-0",
-    slotGroup: "hidden md:inline",
-    railSm: "md:hidden",
-    railMd: "hidden md:block",
-  },
-  auto: {
-    article: "md:grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:flex",
-    artColumn:
-      "md:flex md:h-full md:items-center md:border-r md:border-white/10 md:bg-[#061427] lg:block lg:h-auto lg:border-r-0",
-    art: "md:border-b-0 lg:border-b",
-    body: "md:p-8 lg:p-6",
-    title: "text-lg md:text-2xl lg:text-lg",
-    description: "line-clamp-2 md:line-clamp-none lg:line-clamp-2",
-    dl: "space-y-2.5",
-    specRow: "",
-    dlWhen: "",
-    dlAges: "",
-    dlPrice: "",
-    dlNext: "",
-    rowSpec: false,
-    slot: "",
-    slotGroup: "hidden",
-    railSm: "",
-    railMd: "hidden",
-  },
-};
-
-export function ProgramCard({
-  program: p,
-  nextCohort,
-  variant = "auto",
+/**
+ * The Level block shared by the program and group cards: the span in words,
+ * the min tier's mark, the numeric band, the rail (with a named marker when a
+ * player fits) and one plain line.
+ */
+export function LevelBlock({
+  range,
+  note,
   fit = null,
-  headingLevel = 3,
-}: ProgramCardProps) {
-  const L = LAYOUT[variant];
+  className = "",
+}: {
+  range: { min: number; max: number };
+  note?: string;
+  fit?: ProgramFit;
+  className?: string;
+}) {
+  const minTier = tierRangeForLevels(range.min, range.max)?.min;
+  if (!minTier) return null;
+  const fitInRange = !!fit && levelWithinRange(fit.level, range.min, range.max);
+  return (
+    <div className={className}>
+      <p className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span className={LABEL_CLASS}>Level</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <TierEmblem tier={minTier.id} size={20} decorative className="shrink-0" />
+          <span className="text-sm font-semibold text-white">{formatTierSpan(range.min, range.max)}</span>
+          <span aria-hidden="true" className="text-xs tabular-nums text-white/60">
+            {formatLevelBand(range.min, range.max)}
+          </span>
+          <span className="sr-only">
+            , levels {range.min.toFixed(1)} to {range.max.toFixed(1)} on the seven-tier ladder from {TIER_LADDER_SPAN}
+          </span>
+        </span>
+      </p>
+      <TierLine
+        variant="rail"
+        size="sm"
+        span={range}
+        marker={fit ? { level: fit.level, label: fit.name ?? "You" } : null}
+        labels="none"
+        className="mt-3"
+      />
+      {note && <p className="mt-2 text-xs text-white/60">{note}</p>}
+      {fitInRange && fit && (
+        <p className="mt-1 text-xs text-white/75">
+          {fit.name ? `${fit.name}: ` : "Your level: "}
+          {formatTierLevel(fit.level)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** One "When" line per group: "Sat 12:00 · Ages 7–10". */
+function GroupLines({ groups }: { groups: ProgramGroup[] }) {
+  return (
+    <ul role="list" className="space-y-1">
+      {groups.map((g) => (
+        <li key={g.id} className="flex flex-wrap items-baseline gap-x-1">
+          <span className="whitespace-nowrap">
+            {formatGroupStart(g)}
+            <span aria-hidden="true" className="text-white/65"> ·</span>
+          </span>
+          <span className="min-w-0 text-white/65">{g.name}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function ProgramCard({ program: p, nextCohort, fit = null, headingLevel = 3 }: ProgramCardProps) {
   const Title = headingLevel === 2 ? "h2" : "h3";
   const status = programStatus(p, nextCohort);
   const range = programLevelRange(p);
   const fitInRange = !!fit && !!range && levelWithinRange(fit.level, range.min, range.max);
   const eyebrow = fitInRange ? `Fits ${fit?.name ?? "you"}` : programEyebrow(p);
-  const slots = p.timetable ?? [];
-  const minTier = range ? tierRangeForLevels(range.min, range.max)?.min : undefined;
+  const groups = groupsForProgram(p.slug);
+  const scheduled = groups.filter((g) => g.day !== null);
 
   return (
-    <article className={`${CARD_SHELL} ${L.article}`.trim()}>
-      {/* The art column: the plate, text-free and decorative (design specs
-          rule 2), and the status chip in its top-right corner in every state,
-          so the eyebrow below always has its line to itself. The column is
-          the body's sibling, so the stretched link still measures from the
-          article. */}
-      <div className={`relative ${L.artColumn}`.trim()}>
-        <div className={`aspect-[2/1] w-full overflow-hidden border-b border-white/10 bg-[#061427] ${L.art}`.trim()}>
-          {variant === "row" ? (
-            // The row card's art sits in a tall left column, so it takes the full master frame.
-            <ProgramPlate plate={p.plate} frame="master" density="compact" comingSoon={p.comingSoon} interactive />
+    <article className={`${CARD_SHELL} md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:flex`}>
+      {/* The photo column: the program's photograph with its real alt text,
+          and the status chip in its top-right corner, so the eyebrow below
+          always has its line to itself. The column is the body's sibling, so
+          the stretched link still measures from the article. */}
+      <div className="relative md:h-full lg:h-auto">
+        <div className="aspect-[16/10] w-full overflow-hidden border-b border-white/10 bg-[#061427] md:aspect-auto md:h-full md:border-b-0 md:border-r lg:aspect-[16/10] lg:h-auto lg:border-b lg:border-r-0">
+          {p.photo ? (
+            <Image
+              src={p.photo.src}
+              alt={p.photo.alt}
+              width={p.photo.width}
+              height={p.photo.height}
+              sizes={PHOTO_SIZES}
+              className="h-full w-full object-cover"
+            />
           ) : (
-            <ProgramPlate plate={p.plate} frame="band" density="compact" comingSoon={p.comingSoon} interactive />
+            <div aria-hidden="true" className="h-full w-full bg-white/10" />
           )}
         </div>
-        {/* An opaque disc of the plate's own ground under the chip, so a
-            translucent chip stays legible over the court lines. */}
-        <span className="absolute right-3 top-3 flex rounded-full bg-[#061427]">
-          <StatusChip status={status} />
-        </span>
+        {/* An opaque navy disc under the chip, so a translucent chip stays
+            legible over a photo. A program with no fixed class has no chip. */}
+        {status && (
+          <span className="absolute right-3 top-3 flex rounded-full bg-[#061427]">
+            <StatusChip status={status} />
+          </span>
+        )}
       </div>
 
-      <div className={`flex min-w-0 flex-1 flex-col p-5 md:p-6 ${L.body}`.trim()}>
+      <div className="flex min-w-0 flex-1 flex-col p-5 md:p-6">
         <p className={EYEBROW_CLASS}>{eyebrow}</p>
 
-        <Title className={`mt-3 font-semibold tracking-tight text-white ${L.title}`}>
+        <Title className="mt-3 text-lg font-semibold tracking-tight text-white">
           <Link href={p.ctaHref} className={STRETCHED_LINK}>
             {p.title}
           </Link>
         </Title>
-        <p className={`mt-1.5 text-sm leading-relaxed text-white/70 ${L.description}`}>{p.description}</p>
+        <p className="mt-1.5 text-sm leading-relaxed text-white/70">{p.description}</p>
 
-        <dl className={`mt-5 border-t border-white/10 pt-4 ${L.dl}`}>
-          <div className={`${ROW_CLASS} ${L.specRow} ${L.dlAges}`.trim()}>
+        <dl className="mt-5 space-y-2.5 border-t border-white/10 pt-4">
+          <div className={ROW_CLASS}>
             <dt className={`${LABEL_CLASS} pt-0.5`}>Ages</dt>
-            <dd className={VALUE_CLASS}>
-              <AgeBandChips bands={p.ageBands} />
-            </dd>
+            <dd className={VALUE_CLASS}>{programAgeLabel(groups)}</dd>
           </div>
 
-          <div className={`${ROW_CLASS} ${L.specRow} ${L.dlWhen}`.trim()}>
-            <dt className={`${LABEL_CLASS} pt-0.5`}>
-              {L.rowSpec ? (
-                <>
-                  <span className="md:hidden">When</span>
-                  <span className="hidden md:inline">Timetable</span>
-                </>
-              ) : (
-                "When"
-              )}
-            </dt>
+          <div className={ROW_CLASS}>
+            <dt className={`${LABEL_CLASS} pt-0.5`}>When</dt>
             <dd className={VALUE_CLASS}>
-              {slots.length > 0 ? (
-                <ul role="list" className="space-y-1">
-                  {slots.map((slot) => {
-                    const kind = qualifierKind(slot, slots.length);
-                    // `row` at md: the class label beside the time. The middot
-                    // between them rides with the time (decoration, shown and
-                    // hidden with the label), so when the narrow Timetable
-                    // column wraps, the label's line never opens with "·"
-                    // (audit L8, as the Next and Price rows). `gap-x-1` matches
-                    // the space before the middot.
-                    const showGroup = L.rowSpec && (kind === "tier" || kind === "none");
-                    return (
-                      <li
-                        key={`${slot.day}-${slot.time}`}
-                        className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${L.slot}`.trim()}
-                      >
-                        <span className="flex min-w-0 flex-wrap items-baseline gap-x-1">
-                          <span className="whitespace-nowrap">
-                            {formatSlotWhen(slot)}
-                            {showGroup && <span aria-hidden="true" className={`text-white/65 ${L.slotGroup}`}> ·</span>}
-                          </span>
-                          {showGroup && <span className={`min-w-0 text-white/65 ${L.slotGroup}`}>{slot.group}</span>}
-                        </span>
-                        <SlotQualifier slot={slot} kind={kind} />
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                p.schedule
-              )}
+              {scheduled.length > 0 ? <GroupLines groups={scheduled} /> : p.schedule}
             </dd>
           </div>
 
           {p.priceSummary && (
-            <div className={`${ROW_CLASS} ${L.specRow} ${L.dlPrice}`.trim()}>
+            <div className={ROW_CLASS}>
               <dt className={`${LABEL_CLASS} pt-0.5`}>Price</dt>
               <dd className={VALUE_CLASS}>
                 <PriceSummary text={p.priceSummary} />
@@ -394,7 +293,7 @@ export function ProgramCard({
           )}
 
           {nextCohort && (
-            <div className={`${ROW_CLASS} ${L.specRow} ${L.dlNext}`.trim()}>
+            <div className={ROW_CLASS}>
               <dt className={`${LABEL_CLASS} pt-0.5`}>Next</dt>
               <dd className={VALUE_CLASS}>
                 <CohortSchedule cohort={nextCohort} />
@@ -403,58 +302,15 @@ export function ProgramCard({
           )}
 
           {!range && p.levelNote && (
-            <div className={`${ROW_CLASS} ${L.specRow}`.trim()}>
+            <div className={ROW_CLASS}>
               <dt className={`${LABEL_CLASS} pt-0.5`}>Level</dt>
               <dd className={VALUE_CLASS}>{p.levelNote}</dd>
             </div>
           )}
         </dl>
 
-        {/* The Level block: tier span in words, the min tier's mark, the
-            numeric band, the rail, and the program's own plain line. Only
-            when the span is set; never "TBA". */}
-        {range && minTier && (
-          <div className="mt-4 border-t border-white/10 pt-4">
-            <p className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-              <span className={LABEL_CLASS}>Level</span>
-              <span className="flex min-w-0 items-center gap-2">
-                <TierEmblem tier={minTier.id} size={20} decorative className="shrink-0" />
-                <span className="text-sm font-semibold text-white">{formatTierSpan(range.min, range.max)}</span>
-                <span aria-hidden="true" className="text-xs tabular-nums text-white/60">
-                  {formatLevelBand(range.min, range.max)}
-                </span>
-                <span className="sr-only">
-                  , levels {range.min.toFixed(1)} to {range.max.toFixed(1)} on the seven-tier ladder from {TIER_LADDER_SPAN}
-                </span>
-              </span>
-            </p>
-            <TierLine
-              variant="rail"
-              size="sm"
-              span={range}
-              marker={fit ? { level: fit.level, label: fit.name ?? "You" } : null}
-              labels="none"
-              className={`mt-3 ${L.railSm}`.trim()}
-            />
-            {L.rowSpec && (
-              <TierLine
-                variant="rail"
-                size="md"
-                span={range}
-                marker={fit ? { level: fit.level, label: fit.name ?? "You" } : null}
-                labels="ends"
-                className={`mt-3 ${L.railMd}`}
-              />
-            )}
-            {p.levelNote && <p className="mt-2 text-xs text-white/60">{p.levelNote}</p>}
-            {fitInRange && fit && (
-              <p className="mt-1 text-xs text-white/75">
-                {fit.name ? `${fit.name}: ` : "Your level: "}
-                {formatTierLevel(fit.level)}
-              </p>
-            )}
-          </div>
-        )}
+        {/* The Level block only when the span is set; never "TBA". */}
+        {range && <LevelBlock range={range} note={p.levelNote} fit={fit} className="mt-4 border-t border-white/10 pt-4" />}
 
         <CtaLine text={p.ctaText} className="mt-auto pt-5" />
       </div>
@@ -475,32 +331,22 @@ export type ProgramCardListProps = {
   publicCohorts: Cohort[];
   /** Dashboard only: which ranked player each program fits, by program id. */
   fits?: Record<string, ProgramFit>;
-  /** `grid`: auto cards, three across from lg. `rows`: one row card per program. */
-  layout?: "grid" | "rows";
   headingLevel?: 2 | 3;
 };
 
 /**
  * The list the grid and the dashboard both render: a real list of cards,
- * each stretched to its row's height. Sync and database-free, so a server
- * page can call it with cohorts it already holds.
+ * each stretched to its row's height, three across from lg. Sync and
+ * database-free, so a server page can call it with cohorts it already holds.
  */
-export function ProgramCardList({
-  programs,
-  publicCohorts,
-  fits,
-  layout = "grid",
-  headingLevel,
-}: ProgramCardListProps) {
-  const rows = layout === "rows";
+export function ProgramCardList({ programs, publicCohorts, fits, headingLevel }: ProgramCardListProps) {
   return (
-    <ul role="list" className={rows ? "space-y-4" : "grid gap-4 lg:grid-cols-3"}>
+    <ul role="list" className="grid gap-4 lg:grid-cols-3">
       {programs.map((p) => (
         <li key={p.id} className="flex [&>*]:w-full">
           <ProgramCard
             program={p}
             nextCohort={nextCohortFor(publicCohorts, p.id)}
-            variant={rows ? "row" : "auto"}
             fit={fits?.[p.id] ?? null}
             headingLevel={headingLevel}
           />

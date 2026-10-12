@@ -2,21 +2,71 @@ import type { AgeBand } from "@/lib/ageBand";
 import type { PlateId } from "@/lib/plates/specs";
 
 // The eyebrow above a program's title, so it never repeats the title.
-export type ProgramType = "Weekend group class" | "Group Lessons" | "Summer Camp";
+export type ProgramType = "Weekend group class" | "One-to-one coaching" | "Group Lessons";
 
-/** One weekly class in a program's weekend timetable. */
+export type ClassDay = "Saturday" | "Sunday";
+
+/**
+ * A group's state this season. "forming" and "invite-only" are the owner's
+ * status chips (D11); "full" is a group with no room; "arranged" is a
+ * program with no fixed class, booked with the player (private lessons).
+ */
+export type GroupStatus = "forming" | "invite-only" | "full" | "arranged";
+
+/**
+ * One group a player can be placed in (owner, 2026-10-12): an age range, a
+ * level band, a class day and time, a price and a status. Groups are the
+ * unit the catalog filters, the program pages list and the quiz points at;
+ * a program's timetable and level span are derived from its groups, so the
+ * lineup lives in one editable list in src/content/programs.ts.
+ */
+export type ProgramGroup = {
+  /** Stable id; also the card's anchor on the program page (#high-performance). */
+  id: string;
+  /** The program the group belongs to (Program.slug). */
+  programSlug: string;
+  /** The card title: "Ages 7–10", "High Performance", "Newer players". */
+  name: string;
+  /** Youngest age the group takes, or null for any age. */
+  ageMin: number | null;
+  /** Oldest age the group takes, or null for no upper bound ("16 and up"). */
+  ageMax: number | null;
+  /** The level band, 1.0–7.0 in half steps, whole tiers (x.0–y.5). */
+  levelMin: number;
+  levelMax: number;
+  /** The class day, or null when the time is arranged with the player. */
+  day: ClassDay | null;
+  /** 24-hour start and end ("12:00", "13:00"); null when arranged. */
+  start: string | null;
+  end: string | null;
+  /** The price in one line, from the constants in programs.ts only. */
+  price: string;
+  status: GroupStatus;
+  /** One plain line on who the group is for, when the name alone is not enough. */
+  note?: string;
+};
+
+/**
+ * A program's photograph (owner, 2026-10-12: real people playing, in place
+ * of the Court Plates on cards). Free-licence stock for now, swapped for
+ * consented session photos later; public/images/programs/CREDITS.md names
+ * the source of each file. 16:10, at most 1600px wide and 250 KB.
+ */
+export type ProgramPhoto = {
+  src: string;
+  width: number;
+  height: number;
+  /** What the photo shows, in words. Never the program name, never "photo of". */
+  alt: string;
+};
+
+/** One weekly class in a program's weekend timetable, derived from its groups. */
 export type TimetableSlot = {
-  day: "Saturday" | "Sunday";
+  day: ClassDay;
   time: string;
-  /** The class label as the recommender and its test match it; unchanged by M37. */
+  /** The group's name as the recommender and the structured data read it. */
   group: string;
-  /** The band this class is for, when the program splits its classes by age. */
-  ageBand?: AgeBand;
-  /**
-   * The level band this class is built for (owner decision D3, 2026-10-09),
-   * 1.0–7.0 in half steps. Either both are set or neither; a program's
-   * banded slots are contiguous, ascending and together cover the program span.
-   */
+  /** The group's level band (always set for a derived slot). */
   levelMin?: number;
   levelMax?: number;
 };
@@ -38,26 +88,33 @@ export type Program = {
   ctaText: string;
   ctaHref: string;
 
+  /** The program's photograph, on its card and its page. Listed programs always carry one. */
+  photo?: ProgramPhoto;
+
   /**
-   * The program's Court Plate (audit H1, design specs §4): a code-drawn court
-   * diagram, one composition per program. There is no image field: no photo
-   * or title is ever baked into program art. A new program starts as "court".
+   * The program's Court Plate (design specs §4): a code-drawn court diagram,
+   * now the secondary art — the dashboard strip, the admin marks and the OG
+   * card — since photos took the cards and the page hero (owner, 2026-10-12).
+   * A new program starts as "court".
    */
   plate: PlateId;
-  /** The plate's accessible name on the detail page; elsewhere the plate is decorative. */
+  /** The plate's accessible name where it is the only art; elsewhere it is decorative. */
   plateAlt: string;
-  /** The visible figcaption under the detail-page plate. */
+  /** The plate's one-line caption, where a surface shows one. */
   plateCaption?: string;
 
   /**
-   * Who the program is for (audit M37), youngest first. All three bands mean
-   * "Any age". `ageGroup` is derived from this and stays for the enroll wizard
-   * and the dashboard until they switch to the bands.
+   * The age bands the program takes (audit M37), youngest first, for the
+   * band-level rules (the quiz recommender, the dashboard fit). All three
+   * bands mean "Any age". Exact ages live on the groups: Adult Bootcamps is
+   * `["adult"]` here while its groups take players from 16, because a band
+   * cannot say "16 and up" and a 14-year-old must never be offered an adult
+   * group on the band alone. `ageGroup` is derived from this.
    */
   ageBands: AgeBand[];
   /**
-   * The tier span the program is built for (owner decision D2, 2026-10-09),
-   * 1.0–7.0 in half steps. Unset renders nothing, never a guess.
+   * The tier span the program is built for, 1.0–7.0 in half steps: the union
+   * of its groups' bands. Unset renders nothing, never a guess.
    */
   levelMin?: number;
   levelMax?: number;
@@ -75,11 +132,11 @@ export type Program = {
   locationId?: string;
   includes?: string[];
 
-  /** Weekend classes, one 60-minute session each (backlog #20). */
+  /** Weekend classes, one per group, derived from the groups (backlog #20). */
   timetable?: TimetableSlot[];
   /** The price with its mechanic, spelled out (ops/briefs/voice.md rule 2). */
   priceLine?: string;
-  /** One line pointing a coming-soon program's visitor to a live program. */
+  /** One line pointing a visitor to a related program. */
   related?: { text: string; label: string; href: string };
   /**
    * Retired from public listings (programs page, sitemap, admin picker,
