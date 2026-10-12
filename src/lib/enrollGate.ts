@@ -17,7 +17,9 @@
 
 import type { Cohort } from "@/types/cohort";
 import type { ProgramGroup } from "@/types/program";
+import { programGroups } from "@/content/programs";
 import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
+import { cohortMatchesGroup } from "@/lib/programCatalog";
 import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 import { emailBelongsToAccount } from "@/lib/enrollmentLink";
@@ -342,6 +344,37 @@ export type ResolvedEnrollGate = {
 /** Sent back with a 403 when a private cohort has no admitting invite. */
 export const INVITE_ONLY_ERROR =
   "This cohort is invite-only — email info@tennisbootcamp.ca for an invite.";
+
+/**
+ * Sent back with a 403 when a public cohort in a by-approval group (High
+ * Performance) is posted to with no live invitation: the same words as the
+ * page's ApprovalGate, one line.
+ */
+export const APPROVAL_ONLY_ERROR =
+  "This group is by approval — take the 2-minute quiz and our coaches approve each spot. Already approved? Open the link in your invitation email.";
+
+/**
+ * The by-approval gate, as the payment routes run it (fix round 2). The page
+ * sends a walk-in on a public High Performance cohort to ApprovalGate; a
+ * direct POST to /api/checkout or /api/enroll/etransfer must meet the same
+ * wall, else a Stripe session or an e-transfer row exists for a spot the
+ * coaches never approved. Reads the cohort's group the way the page does
+ * (`cohortMatchesGroup`) and the request's invitation the way the page does
+ * (`claimedInvite`), so an invitee holding the link on a public cohort still
+ * pays. Null when nothing stands in the way, or the cohort trains in no group.
+ */
+export function approvalRefusal(
+  cohort: Pick<Cohort, "programId" | "sessions"> | null | undefined,
+  gate: Pick<ResolvedEnrollGate, "decision" | "lookup">,
+  groups: readonly ProgramGroup[] = programGroups
+): { error: string; status: 403 } | null {
+  if (!cohort) return null;
+  const group = groups.find((g) => cohortMatchesGroup(cohort, g));
+  if (!group) return null;
+  return approvalGateApplies({ group, decision: gate.decision, claimed: claimedInvite(gate.lookup) })
+    ? { error: APPROVAL_ONLY_ERROR, status: 403 }
+    : null;
+}
 
 /**
  * The JSON a payment route (or /api/enroll) answers a refused gate with. A

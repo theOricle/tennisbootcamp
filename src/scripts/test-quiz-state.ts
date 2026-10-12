@@ -10,14 +10,16 @@
 //      player, a player already in the cohort shown disabled, ages checked
 //      and blocked with the right group offered, levels noted and never a
 //      block, an invitation's player locked, the account cap, a typed twin
-//      reused, and the optional "create your account now" step;
+//      reused, a ticked row that gained a reason still untickable, and no
+//      password step inside the wizard (fix round 2: the set-up email is the
+//      one way an account opens);
 //   3. the guest enrollment's one account email (buildAccountSetupEmail),
 //      sent to an account never activated, once per cohort, retryable by
 //      the admin; an activated account hears "you're enrolled" instead.
 // Pure rules are driven directly; the surfaces are source checks, since the
 // repo has no DOM test runner. Exits non-zero on any failure.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -43,12 +45,9 @@ import {
 } from "../lib/quizStatus";
 import {
   ACCOUNT_EMAIL_NOT_OFFERED,
-  ACCOUNT_STEP_COPY,
-  EMPTY_ACCOUNT_STEP,
   accountAtCap,
   accountEmailOffered,
   accountNeedsSetup,
-  accountStepIssues,
   ageBandBlock,
   alreadyInCohortReason,
   dobAgeError,
@@ -228,15 +227,18 @@ check("one seat left for two players says choose one", seatCapIssue(1, 2) === "O
 check("two seats left for three players says at most two", seatCapIssue(2, 3) === "Only 2 spots are left in this group, so choose at most 2 players.");
 check("no seats left says so", seatCapIssue(0, 1) === "This group has no spots left.");
 
-console.log("The optional account step (owner: \"or while enrolling\")");
-check("skipped, it never blocks", accountStepIssues(EMPTY_ACCOUNT_STEP).length === 0 && accountStepIssues({ create: false, password: "x", confirm: "y" }).length === 0);
-check("ticked, the /set-password rules apply: eight characters, typed twice", JSON.stringify(accountStepIssues({ create: true, password: "short", confirm: "" }).map((i) => i.field)) === JSON.stringify(["password", "confirm"]) && accountStepIssues({ create: true, password: "longenough", confirm: "longenougH" })[0]?.field === "confirm" && accountStepIssues({ create: true, password: "longenough", confirm: "longenough" }).length === 0);
-check("the copy says skipping means the email link", ACCOUNT_STEP_COPY.skip === "Skip — we will email you a link to set it up" && ACCOUNT_STEP_COPY.intro.includes("we email you a link") && ACCOUNT_STEP_COPY.title.includes("optional"));
-check("the intro says the address is confirmed by the emailed link, and the password works after it", ACCOUNT_STEP_COPY.intro.includes("link that confirms this address") && ACCOUNT_STEP_COPY.intro.includes("sign in with your password from then on"));
-check("done reads the same whether or not the address had an account, and points at the email", ACCOUNT_STEP_COPY.done === "Done. After you enroll, check this address for the link to your account." && !("exists" in ACCOUNT_STEP_COPY));
-check("no line says whether an address has an account (no enumeration oracle)", Object.values(ACCOUNT_STEP_COPY).every((s) => !/already has an account|Sign in instead|no account/i.test(s)));
-check("a failure offers to continue without it", ACCOUNT_STEP_COPY.failed.includes("Continue without it"));
-check("no exclamation marks, no SaaS words", Object.values(ACCOUNT_STEP_COPY).every((s) => !s.includes("!") && !/journey|seamless|unlock/i.test(s)));
+console.log("No password step inside the wizard (fix round 2)");
+{
+  // A password typed by a visitor nobody has verified would be a latent
+  // credential on an unconfirmed account: live the moment the real address
+  // owner clicks any confirming link and leaves /set-password without
+  // setting one. The step, its copy and its route are gone; the set-up
+  // email after the enrollment is the one way an account opens.
+  const players = read("src/lib/enrollPlayers.ts");
+  check("enrollPlayers exports no account-step value, rule or copy", !players.includes("ACCOUNT_STEP_COPY") && !players.includes("accountStepIssues") && !players.includes("AccountStepValue") && !players.includes("newPasswordError"));
+  check("the route that took the password is gone", !existsSync(join(ROOT, "src/app/api/enroll/account/route.ts")) && !existsSync(join(ROOT, "src/app/api/enroll/account")));
+  check("nothing in src posts to it or names it", !read("src/app/enroll/[cohortId]/EnrollWizard.tsx").includes("/api/enroll/account") && !read("src/lib/analytics.ts").includes("enroll_account_created"));
+}
 
 console.log("After the enrollment: who hears what");
 check("no user, or one never confirmed and never signed in, needs setting up", accountNeedsSetup(null) && accountNeedsSetup({ email_confirmed_at: null, last_sign_in_at: null }));
@@ -343,6 +345,8 @@ const chooser = read("src/components/participants/WhoIsThisFor.tsx");
 check("signed out: new player first, the sign-in line second, back to the same page", chooser.includes("signInHref") && chooser.includes("Sign in to choose your player →") && at(chooser, "+ Add another person") < at(chooser, 'Have an account?{" "}'));
 check("signed in: age group and level or provisional tier on each row", chooser.includes("AGE_BAND_LABELS[p.ageBand]") && chooser.includes("`Provisional: ${provisional.name}`") && chooser.includes("selfLevel?: string | null"));
 check("rows disabled with their reason; an invited player locked", chooser.includes("disabledReasons?: Record<string, string>") && chooser.includes("lockedIds?: readonly string[]") && chooser.includes("if (locked(id) && value.selectedIds.includes(id)) return;") && chooser.includes("This invitation is for them"));
+check("a ticked row that gained a reason (a player added with a band outside the group, once the account reloaded) stays live and can be unticked, so 'Untick them to continue.' is a way out", chooser.includes("if (!canPick(id) && !value.selectedIds.includes(id)) return;") && !chooser.includes("if (!canPick(id)) return;") && chooser.includes("disabled={!pickable && !selected}") && !chooser.includes("disabled={!pickable}\n"));
+check("…one seat: unticking the blocked player leaves nobody chosen rather than re-picking them", chooser.includes("} else if (!canPick(id)) {\n        // One seat") && chooser.includes("onChange({ ...value, selectedIds: [] });"));
 check("the level-band reason still reads, dimmed, with no tick box", chooser.includes("Outside this group's level band") && chooser.includes("bg-transparent opacity-60") && chooser.includes("(pickable || selected) &&"));
 check("New player: a typed twin is picked and said; the cap is said before the form", chooser.includes("+ New player") && chooser.includes("matchingPlayer(participants, fullName)") && chooser.includes("reusedPlayerNote(") && chooser.includes("accountAtCap(participants.length)") && chooser.includes("{PARTICIPANT_CAP_ERROR}"));
 check("…but a twin the chooser has disabled is never picked by typing its name: the reason is said before any selection", (() => { const added = chooser.slice(at(chooser, "onAdded={(p, profile, note) => {"), at(chooser, "onCancel={() => setAdding(false)}")); return added.includes("const reason = reasonFor(p.id);") && added.includes("setReusedNote(twinBlockedNote(p.name, reason));") && at(added, "if (reason) {") < at(added, "onChange({"); })());
@@ -365,16 +369,10 @@ check("See the groups for their age under the DOB only when the age is the probl
 check("a chosen player who carries a reason stops the who step", wizard.includes("const reason = disabledReasons[id];") && wizard.includes("pickedButBlockedIssue(p?.name, reason)"));
 check("seats: the wizard stops more players than seats before the routes do", wizard.includes("seatCapIssue(seatsRemaining, players.length)"));
 check("levels are noted under the chooser, never a block", wizard.includes("levelNote(") && wizard.includes("levelNotes.map((note) =>") && !wizard.includes("levelBlock"));
-check("the optional account step is a guest's, last on the registrant step, skippable", wizard.includes("function AccountStep") && wizard.includes("{!signedIn && (\n        <AccountStep") && wizard.includes("{ACCOUNT_STEP_COPY.skip}") && wizard.includes("accountStepIssues(account)"));
-check("the password goes to /api/enroll/account and nowhere else, and is never logged", wizard.includes('fetch("/api/enroll/account"') && !wizard.includes("signInWithPassword") && !wizard.includes("@/lib/supabase/browser") && !/console\.(log|warn|error)\([^)]*password/i.test(wizard) && !wizard.includes("localStorage") && !wizard.includes("sessionStorage"));
-check("after the account is requested the wizard carries on as a guest: no sign-in, the password out of memory, the done note for that address", wizard.includes("setAccount(EMPTY_ACCOUNT_STEP);\n      setAccountDoneFor(email.toLowerCase());") && wizard.includes("accountDoneFor === form.contactEmail.trim().toLowerCase()") && wizard.includes("{ACCOUNT_STEP_COPY.done}") && !wizard.includes('fetch("/api/participants", {\n            method: "POST"'));
-check("a failure never blocks (Continue without it); nothing says whether the address had an account", wizard.includes("Continue without it →") && wizard.includes("onContinueWithoutAccount") && !wizard.includes("Sign in instead") && !wizard.includes('"exists"'));
+check("the registrant step asks a guest for no password: no account step, no password field, no sign-in, no browser SDK, no client-side storage", !wizard.includes("AccountStep") && !/type=\{?"password"/.test(wizard) && !wizard.includes('autoComplete="new-password"') && !wizard.includes("PasswordToggleIcon") && !wizard.includes("signInWithPassword") && !wizard.includes("@/lib/supabase/browser") && !wizard.includes("localStorage") && !wizard.includes("sessionStorage") && !wizard.includes('fetch("/api/participants", {\n            method: "POST"'));
+check("the guest's one route to an account is the set-up email: the wizard names it where the step was", wizard.includes("No password is asked for here (fix round 2)") && wizard.includes("set-up email after the enrollment opens their account"));
 check("e-transfer and card both carry every player's participant id (unchanged)", wizard.includes("participantId: p.participantId,") && wizard.includes("participants: players.map((p) => ({"));
-const accountRoute = read("src/app/api/enroll/account/route.ts");
-check("the account route: a valid email, the /set-password rule, no change to an existing account, the same answer either way", accountRoute.includes("isValidEmail(email)") && accountRoute.includes("newPasswordError(password)") && accountRoute.includes("if (existing) return NextResponse.json({ ok: true });"));
-check("the account route never confirms an address nobody has proved: created unconfirmed, like every other create", accountRoute.includes("email_confirm: false") && !accountRoute.includes("email_confirm: true") && read("src/lib/players.ts").includes("email_confirm: false"));
-check("the account route never logs the password or the address", !/console\.(log|warn|error)\([^)]*(password|email)/i.test(accountRoute) && accountRoute.includes("bodyTooLarge("));
-check("the account route refuses a signed-in caller and attaches the holder's own player", accountRoute.includes("if (await currentUser())") && accountRoute.includes("ensureSelfParticipant(userId"));
+check("every account the enrollment creates is created unconfirmed (players.ts), and the set-up email confirms it", read("src/lib/players.ts").includes("email_confirm: false") && !read("src/lib/players.ts").includes("email_confirm: true"));
 
 console.log("After the enrollment: one account email, once, retryable");
 const actions = read("src/lib/supabase/enrollmentActions.ts");

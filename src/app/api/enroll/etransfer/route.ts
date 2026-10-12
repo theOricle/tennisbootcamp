@@ -4,6 +4,7 @@ import { getCohortById } from "@/lib/cohortsDb";
 import {
   COHORT_FULL_ERROR,
   RECORDS_UNAVAILABLE_ERROR,
+  approvalRefusal,
   contactEmailRefusal,
   gateRefusal,
   requestedParticipantIds,
@@ -85,6 +86,13 @@ export async function POST(req: NextRequest) {
     const refused = gateRefusal(gate);
     if (refused) {
       return NextResponse.json({ error: refused.error }, { status: refused.status });
+    }
+    // A public by-approval cohort (High Performance) takes no walk-in here
+    // either: the same wall as the page and /api/checkout, before any invite
+    // row or Sheet write. An invitee holding the link walks through.
+    const byApproval = approvalRefusal(cohort, gate);
+    if (byApproval) {
+      return NextResponse.json({ error: byApproval.error }, { status: byApproval.status });
     }
 
     // One player per invite: a parent sending one transfer for two children

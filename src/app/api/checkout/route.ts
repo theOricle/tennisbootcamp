@@ -18,6 +18,7 @@ import {
   COHORT_FULL_ERROR,
   RECORDS_UNAVAILABLE_ERROR,
   ROW_MISMATCH_ERROR,
+  approvalRefusal,
   cohortRequiresInvite,
   contactEmailRefusal,
   foreignRows,
@@ -134,6 +135,14 @@ export async function POST(req: NextRequest) {
     const refused = gateRefusal(gate);
     if (refused) {
       return NextResponse.json({ error: refused.error }, { status: refused.status });
+    }
+    // A public cohort in a by-approval group (High Performance) takes no
+    // walk-in: the page shows ApprovalGate, and this route refuses the same
+    // request before a Stripe session exists. An invitee holding the link
+    // walks through, exactly as on the page.
+    const byApproval = approvalRefusal(cohort, gate);
+    if (byApproval) {
+      return NextResponse.json({ error: byApproval.error }, { status: byApproval.status });
     }
 
     // Every player this payment covers. A body without the household field is

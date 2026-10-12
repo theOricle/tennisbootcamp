@@ -936,7 +936,11 @@ export function WhoIsThisFor({
     }
 
     function toggle(id: string) {
-      if (!canPick(id)) return;
+      // A row that can't take a seat is never picked — but a picked row that
+      // gained its reason afterwards (a player added through "+ New player"
+      // with an age band outside the group, once the account reloaded) can
+      // still be unticked, or the step would never pass (fix round 2).
+      if (!canPick(id) && !value.selectedIds.includes(id)) return;
       // The invited player stays picked.
       if (locked(id) && value.selectedIds.includes(id)) return;
       if (multiple) {
@@ -944,6 +948,10 @@ export function WhoIsThisFor({
           ? value.selectedIds.filter((x) => x !== id)
           : [...value.selectedIds, id];
         onChange({ ...value, selectedIds: next });
+      } else if (!canPick(id)) {
+        // One seat: unticking the blocked player leaves nobody chosen until
+        // the holder picks someone who fits.
+        onChange({ ...value, selectedIds: [] });
       } else {
         onChange({ ...value, selectedIds: [id] });
       }
@@ -974,7 +982,9 @@ export function WhoIsThisFor({
                   id={i === 0 ? householdFieldIds.choose : undefined}
                   onClick={() => toggle(p.id)}
                   aria-pressed={selected}
-                  disabled={!pickable}
+                  // A ticked row stays live even once it carries a reason, so
+                  // it can be unticked ("Untick them to continue.").
+                  disabled={!pickable && !selected}
                   {...(i === 0 ? fieldA11y(householdFieldIds.choose, { error: chooseError }) : {})}
                   className={[
                     "flex min-h-[44px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition",

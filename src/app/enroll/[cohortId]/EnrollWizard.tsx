@@ -26,9 +26,6 @@ import {
   type ParticipantOption,
 } from "@/components/participants/WhoIsThisFor";
 import {
-  ACCOUNT_STEP_COPY,
-  EMPTY_ACCOUNT_STEP,
-  accountStepIssues,
   ageBandBlock,
   dobAgeError,
   groupAgesLabel,
@@ -37,7 +34,6 @@ import {
   pickedButBlockedIssue,
   rightGroupHref,
   seatCapIssue,
-  type AccountStepValue,
   type BlockedPlayer,
 } from "@/lib/enrollPlayers";
 import {
@@ -63,7 +59,6 @@ import {
   hintIdFor,
 } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
-import { PasswordToggleIcon } from "@/components/ui/PasswordToggleIcon";
 import { TEXT_LINK_LIME, TEXT_LINK_MUTED, TextLink } from "@/components/ui/TextLink";
 import { MapLink } from "@/components/locations/LocationLine";
 
@@ -222,8 +217,6 @@ const FIELD_IDS = {
   guardianName: "enroll-guardian-name",
   guardianEmail: "enroll-guardian-email",
   guardianPhone: "enroll-guardian-phone",
-  accountPassword: "enroll-account-password",
-  accountConfirm: "enroll-account-confirm",
   consent: "enroll-consent",
   signature: "enroll-signature",
 } as const;
@@ -393,141 +386,6 @@ function OrderSummary({
   );
 }
 
-/**
- * The optional account step inside a guest enrollment (owner, 2026-10-12:
- * "or while enrolling"). Off by default — skipping it never blocks
- * enrolling; the set-up email after the enrollment covers that path. On,
- * it asks for a password twice, with the same rules as /set-password, and
- * the password goes nowhere but Supabase. The address is unproven here, so
- * the account is created unconfirmed and the wizard carries on as a guest
- * (`done`): the enrollment's set-up email confirms the address, and the
- * note reads the same whether or not the address already had an account.
- */
-function AccountStep({
-  value,
-  onChange,
-  errors,
-  notice,
-  done,
-  onContinueWithout,
-}: {
-  value: AccountStepValue;
-  onChange: (next: AccountStepValue) => void;
-  errors: Record<string, string>;
-  /** "failed" — the account could not be created just now. */
-  notice: "failed" | null;
-  /** The account was requested for this address; the password is out of memory. */
-  done: boolean;
-  onContinueWithout: () => void;
-}) {
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const pwId = FIELD_IDS.accountPassword;
-  const confirmId = FIELD_IDS.accountConfirm;
-  if (done) {
-    return (
-      <fieldset className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
-        <legend className="sr-only">{ACCOUNT_STEP_COPY.title}</legend>
-        <p aria-hidden="true" className="text-sm font-semibold text-white">
-          {ACCOUNT_STEP_COPY.title}
-        </p>
-        <p role="status" className="mt-1 text-xs leading-relaxed text-white/70">
-          {ACCOUNT_STEP_COPY.done}
-        </p>
-      </fieldset>
-    );
-  }
-  return (
-    <fieldset className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
-      <legend className="sr-only">{ACCOUNT_STEP_COPY.title}</legend>
-      <p aria-hidden="true" className="text-sm font-semibold text-white">
-        {ACCOUNT_STEP_COPY.title}
-      </p>
-      <p className="mt-1 text-xs leading-relaxed text-white/70">{ACCOUNT_STEP_COPY.intro}</p>
-      <label className="mt-3 flex min-h-[44px] cursor-pointer items-center gap-3">
-        <input
-          type="checkbox"
-          checked={value.create}
-          onChange={(e) => onChange({ ...value, create: e.target.checked })}
-          className={`h-4 w-4 shrink-0 accent-[#B4E655] ${FOCUS_RING}`}
-        />
-        <span className="text-sm text-white/85">{ACCOUNT_STEP_COPY.toggle}</span>
-      </label>
-      {!value.create && <p className={HINT_CLASS}>{ACCOUNT_STEP_COPY.skip}</p>}
-      {value.create && (
-        <div className="mt-3 space-y-3">
-          <div className="grid gap-1.5">
-            <label htmlFor={pwId} className={LABEL_CLASS}>
-              Password
-            </label>
-            <div className="relative">
-              <input
-                id={pwId}
-                type={showPassword ? "text" : "password"}
-                autoComplete="new-password"
-                value={value.password}
-                onChange={(e) => onChange({ ...value, password: e.target.value })}
-                className={`${INPUT_CLASS} pr-12`}
-                {...fieldA11y(pwId, { error: errors[pwId], hint: !errors[pwId] })}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                className={`absolute inset-y-0 right-0 flex items-center rounded-r-2xl px-3 text-white/70 hover:text-white ${FOCUS_RING}`}
-              >
-                <PasswordToggleIcon visible={showPassword} />
-              </button>
-            </div>
-            {!errors[pwId] && (
-              <p id={hintIdFor(pwId)} className={HINT_CLASS}>
-                At least 8 characters.
-              </p>
-            )}
-            <FieldError fieldId={pwId} message={errors[pwId]} />
-          </div>
-          <div className="grid gap-1.5">
-            <label htmlFor={confirmId} className={LABEL_CLASS}>
-              Confirm password
-            </label>
-            <div className="relative">
-              <input
-                id={confirmId}
-                type={showConfirm ? "text" : "password"}
-                autoComplete="new-password"
-                value={value.confirm}
-                onChange={(e) => onChange({ ...value, confirm: e.target.value })}
-                placeholder="Repeat password"
-                className={`${INPUT_CLASS} pr-12`}
-                {...fieldA11y(confirmId, { error: errors[confirmId] })}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm((v) => !v)}
-                aria-label={showConfirm ? "Hide password" : "Show password"}
-                className={`absolute inset-y-0 right-0 flex items-center rounded-r-2xl px-3 text-white/70 hover:text-white ${FOCUS_RING}`}
-              >
-                <PasswordToggleIcon visible={showConfirm} />
-              </button>
-            </div>
-            <FieldError fieldId={confirmId} message={errors[confirmId]} />
-          </div>
-          {notice && (
-            <div role="status" className="rounded-2xl border border-yellow-200/30 bg-yellow-200/5 px-4 py-3 text-sm text-white/80">
-              <p>{ACCOUNT_STEP_COPY.failed}</p>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                <button type="button" onClick={onContinueWithout} className={TEXT_LINK_LIME}>
-                  Continue without it →
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </fieldset>
-  );
-}
-
 function RegistrantStep({
   form,
   setForm,
@@ -540,11 +398,6 @@ function RegistrantStep({
   onEnterSubmit,
   errors,
   group,
-  account,
-  setAccount,
-  accountNotice,
-  accountDone,
-  onContinueWithoutAccount,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
@@ -557,11 +410,6 @@ function RegistrantStep({
   onEnterSubmit: () => void;
   errors: Record<string, string>;
   group: ProgramGroup | null;
-  account: AccountStepValue;
-  setAccount: (next: AccountStepValue) => void;
-  accountNotice: "failed" | null;
-  accountDone: boolean;
-  onContinueWithoutAccount: () => void;
 }) {
   return (
     // An explicit action keeps the invite token out of GA's form_destination
@@ -732,18 +580,8 @@ function RegistrantStep({
         </fieldset>
       )}
 
-      {/* The optional account, last on the step and only for a guest (owner,
-          2026-10-12). A signed-in holder already has one. */}
-      {!signedIn && (
-        <AccountStep
-          value={account}
-          onChange={setAccount}
-          errors={errors}
-          notice={accountNotice}
-          done={accountDone}
-          onContinueWithout={onContinueWithoutAccount}
-        />
-      )}
+      {/* No password is asked for here (fix round 2): a guest enrolls, and the
+          set-up email after the enrollment opens their account. */}
       {/* Enables Enter-to-advance from any field; the visible CTA lives in the footer */}
       <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
         Continue
@@ -1041,16 +879,6 @@ export function EnrollWizard({
   const [dobs, setDobs] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  // The optional account (owner, 2026-10-12): off until ticked.
-  const [account, setAccount] = useState<AccountStepValue>(EMPTY_ACCOUNT_STEP);
-  const [accountBusy, setAccountBusy] = useState(false);
-  const [accountNotice, setAccountNotice] = useState<"failed" | null>(null);
-  // The address an account was requested for. The step shows its done note
-  // while the email field still reads that address; change the email and
-  // the step is fresh again, so the new address can get its own account.
-  const [accountDoneFor, setAccountDoneFor] = useState<string | null>(null);
-  const accountDone =
-    accountDoneFor !== null && accountDoneFor === form.contactEmail.trim().toLowerCase();
   // Field ids whose problems are on screen, added when Continue is pressed
   // (audit M19); the list under the button follows the same press.
   const [shown, setShown] = useState<Set<string>>(() => new Set());
@@ -1215,14 +1043,6 @@ export function EnrollWizard({
         if (ge) out.push({ id: FIELD_IDS.guardianEmail, message: ge });
         const gp = phoneError(form.guardianPhone);
         if (gp) out.push({ id: FIELD_IDS.guardianPhone, message: gp });
-      }
-      if (!household.signedIn) {
-        for (const issue of accountStepIssues(account)) {
-          out.push({
-            id: issue.field === "password" ? FIELD_IDS.accountPassword : FIELD_IDS.accountConfirm,
-            message: issue.message,
-          });
-        }
       }
       return out;
     }
@@ -1443,55 +1263,10 @@ export function EnrollWizard({
     }
   }
 
-  /**
-   * "Create my account now" (owner, 2026-10-12): the account is created on
-   * the server, unconfirmed — nobody has proved the address yet — and the
-   * wizard carries on as a guest, exactly as it would have with the step
-   * skipped. The enrollment's save paths hang the typed players off the
-   * email's account (household.ts), and its set-up email confirms the
-   * address, after which the typed password works. The password goes to
-   * /api/enroll/account and nowhere else; it leaves memory here. Nothing is
-   * signed in from the wizard, and the route's answer is the same whether
-   * or not the address already had an account, so the step reads the same
-   * either way. A failure leaves the enrollment untouched: the notice
-   * offers to continue without it. Resolves to true when the step may
-   * advance.
-   */
-  async function createAccountNow(): Promise<boolean> {
-    setAccountBusy(true);
-    setAccountNotice(null);
-    const email = form.contactEmail.trim();
-    try {
-      const res = await fetch("/api/enroll/account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password: account.password,
-          fullName: holderName,
-          phone: form.contactPhone,
-        }),
-      });
-      if (!res.ok) {
-        setAccountNotice("failed");
-        return false;
-      }
-      setAccount(EMPTY_ACCOUNT_STEP);
-      setAccountDoneFor(email.toLowerCase());
-      trackEvent("enroll_account_created", { cohort_id: cohort.id });
-      return true;
-    } catch {
-      setAccountNotice("failed");
-      return false;
-    } finally {
-      setAccountBusy(false);
-    }
-  }
-
   // Continue is always enabled (audit M19): pressing it with gaps shows each
   // problem by its field, lists them under the button and focuses the first.
   async function next() {
-    if (submitting || accountBusy) return;
+    if (submitting) return;
     const found = stepIssues();
     if (found.length > 0) {
       setShown((s) => {
@@ -1505,10 +1280,6 @@ export function EnrollWizard({
       return;
     }
     setPressedWithGaps(false);
-    if (step === 2 && !household.signedIn && account.create) {
-      const ok = await createAccountNow();
-      if (!ok) return;
-    }
     if (etransfer) {
       if (step === CARD_STEPS - 1) void continueToEtransfer();
       else if (step === ETRANSFER_STEPS - 1) void sendEtransfer();
@@ -1537,9 +1308,7 @@ export function EnrollWizard({
   );
 
   let ctaLabel: string;
-  if (accountBusy) {
-    ctaLabel = "Creating your account…";
-  } else if (submitting) {
+  if (submitting) {
     ctaLabel = etransfer && isLastStep ? "Sending…" : etransfer && isConsentStep ? "Saving…" : "Redirecting…";
   } else if (etransfer && isLastStep) {
     ctaLabel = "I've sent the e-transfer →";
@@ -1664,18 +1433,6 @@ export function EnrollWizard({
               onEnterSubmit={() => void next()}
               errors={errors}
               group={group}
-              account={account}
-              setAccount={(nextValue) => {
-                setAccount(nextValue);
-                if (accountNotice) setAccountNotice(null);
-              }}
-              accountNotice={accountNotice}
-              accountDone={accountDone}
-              onContinueWithoutAccount={() => {
-                setAccount(EMPTY_ACCOUNT_STEP);
-                setAccountNotice(null);
-                setStep((s) => s + 1);
-              }}
             />
           )}
           {step === 3 && (
@@ -1709,7 +1466,7 @@ export function EnrollWizard({
                 <button
                   type="button"
                   onClick={back}
-                  disabled={submitting || accountBusy}
+                  disabled={submitting}
                   className={`min-h-[44px] rounded-full bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:bg-white/5 disabled:text-white/30 ${FOCUS_RING}`}
                 >
                   Back
@@ -1718,17 +1475,17 @@ export function EnrollWizard({
               <button
                 type="button"
                 onClick={() => void next()}
-                aria-disabled={submitting || accountBusy || undefined}
+                aria-disabled={submitting || undefined}
                 aria-describedby={
                   pressedWithGaps && visibleIssues.length > 1 ? "enroll-missing" : undefined
                 }
                 className={cn(
                   "ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] transition",
                   FOCUS_RING,
-                  submitting || accountBusy ? "cursor-wait" : "hover:brightness-110"
+                  submitting ? "cursor-wait" : "hover:brightness-110"
                 )}
               >
-                {(submitting || accountBusy) && (
+                {submitting && (
                   <svg className="h-4 w-4 motion-safe:animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -1753,13 +1510,11 @@ export function EnrollWizard({
             {submitError && <FormAlert>{submitError}</FormAlert>}
             <LiveStatus
               message={
-                accountBusy
-                  ? "Creating your account…"
-                  : submitting
-                    ? etransfer && isLastStep
-                      ? "Recording your e-transfer…"
-                      : "Saving your enrollment…"
-                    : ""
+                submitting
+                  ? etransfer && isLastStep
+                    ? "Recording your e-transfer…"
+                    : "Saving your enrollment…"
+                  : ""
               }
             />
           </div>

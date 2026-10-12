@@ -17,7 +17,6 @@ import {
   levelNumber,
 } from "@/lib/tiers";
 import { MAX_PARTICIPANTS_PER_ACCOUNT, normalizeParticipantName } from "@/lib/participantInput";
-import { FIELD_MESSAGES, newPasswordError } from "@/lib/formValidation";
 
 // ─── Age fit ──────────────────────────────────────────────────────────────────
 
@@ -239,55 +238,15 @@ export function seatCapIssue(seatsRemaining: number | null, playerCount: number)
     : `Only ${seatsRemaining} spots are left in this group, so choose at most ${seatsRemaining} players.`;
 }
 
-// ─── The optional account step (owner, 2026-10-12: "or while enrolling") ─────
-
-export type AccountStepValue = {
-  /** "Create my account now" ticked. */
-  create: boolean;
-  password: string;
-  confirm: string;
-};
-
-export const EMPTY_ACCOUNT_STEP: AccountStepValue = { create: false, password: "", confirm: "" };
-
-export type AccountStepIssue = { field: "password" | "confirm"; message: string };
-
-/**
- * What stops the account step: nothing when it is skipped (the step never
- * blocks enrolling), else the same rules as /set-password — at least eight
- * characters, typed twice the same.
- */
-export function accountStepIssues(value: AccountStepValue): AccountStepIssue[] {
-  if (!value.create) return [];
-  const out: AccountStepIssue[] = [];
-  const pw = newPasswordError(value.password);
-  if (pw) out.push({ field: "password", message: pw });
-  if (!value.confirm) out.push({ field: "confirm", message: "Type the same password again." });
-  else if (value.confirm !== value.password) {
-    out.push({ field: "confirm", message: FIELD_MESSAGES.passwordMismatch });
-  }
-  return out;
-}
-
-/**
- * The copy the account step shows, in one place for the tests. The address
- * is unproven while the wizard runs, so the account is created unconfirmed
- * and the enrollment's own set-up email confirms it (fix round 1): the copy
- * names that link, and never says whether the address already has an
- * account — the step reads the same either way.
- */
-export const ACCOUNT_STEP_COPY = {
-  title: "Your account (optional)",
-  intro:
-    "Set a password now. After you enroll, we email you a link that confirms this address; sign in with your password from then on. Or skip it: after you enroll, we email you a link to set it up.",
-  toggle: "Create my account now",
-  skip: "Skip — we will email you a link to set it up",
-  done: "Done. After you enroll, check this address for the link to your account.",
-  failed:
-    "We couldn't create your account just now. Continue without it and we'll email you a link to set it up after you enroll.",
-} as const;
-
 // ─── After the enrollment: the account email ─────────────────────────────────
+//
+// There is no password step inside the wizard (fix round 2). A guest enrolls
+// with an email address nobody has proved yet, so a password typed there
+// could only be honoured after the address is confirmed — and the set-up
+// email that confirms it already lands on /set-password, where the owner
+// sets one. The owner's "or while enrolling" (decisions.md 2026-10-12) is
+// logged as a follow-up that needs an emailed code verified inside the
+// wizard before a typed password is kept.
 
 /** The slice of a GoTrue user the set-up rule reads. */
 export type AccountSetupUser = {
