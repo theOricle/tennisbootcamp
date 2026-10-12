@@ -103,7 +103,7 @@ export const RIGHT_GROUP_PROMISE_SHORT =
 
 /** How a by-approval group (High Performance) is joined, on its card and the How joining works section. */
 export const APPROVAL_LINE =
-  "Take the 2-minute quiz and our coaches approve each place. No assessment needed.";
+  "Take the 2-minute quiz and our coaches approve each spot. No assessment needed.";
 
 /** The optional assessment, for certainty before paying, with its mechanic spelled out (voice.md rule 2). */
 export const ASSESSMENT_CERTAINTY_LINE =

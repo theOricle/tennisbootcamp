@@ -59,7 +59,7 @@ check(
   "the promise on a card",
   RIGHT_GROUP_PROMISE_SHORT === "Your coach confirms your level. If another group fits better, we move you; if none does, full refund."
 );
-check("High Performance joins by the quiz and our coaches' approval, no assessment", APPROVAL_LINE === "Take the 2-minute quiz and our coaches approve each place. No assessment needed.");
+check("High Performance joins by the quiz and our coaches' approval, no assessment", APPROVAL_LINE === "Take the 2-minute quiz and our coaches approve each spot. No assessment needed.");
 check(
   "the assessment line: optional, the $20 mechanic spelled out (voice.md rule 2)",
   ASSESSMENT_CERTAINTY_LINE.includes("optional") &&
