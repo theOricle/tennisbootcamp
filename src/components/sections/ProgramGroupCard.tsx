@@ -37,7 +37,8 @@ export type ProgramGroupCardProps = {
   showProgram?: boolean;
   /** The quiz link's analytics source. */
   source?: string;
-  headingLevel?: 2 | 3;
+  /** The title's level: h3 under a page section's h2 (the program page); h4 under the catalog's program h3. */
+  headingLevel?: 2 | 3 | 4;
 };
 
 export function ProgramGroupCard({
@@ -48,7 +49,7 @@ export function ProgramGroupCard({
   source = "group-card",
   headingLevel = 3,
 }: ProgramGroupCardProps) {
-  const Title = headingLevel === 2 ? "h2" : "h3";
+  const Title = headingLevel === 2 ? "h2" : headingLevel === 4 ? "h4" : "h3";
   const status = groupStatus(g, nextCohort);
   const when = g.day ? `${g.day}s` : "By arrangement";
   const eyebrow = showProgram ? `${program.title} · ${when}` : when;
@@ -62,7 +63,6 @@ export function ProgramGroupCard({
       </div>
 
       <Title className="mt-3 text-lg font-semibold tracking-tight text-white">{g.name}</Title>
-      {g.note && <p className="mt-1.5 text-sm leading-relaxed text-white/70">{g.note}</p>}
 
       <dl className="mt-4 space-y-2.5 border-t border-white/10 pt-4">
         <div className={ROW_CLASS}>
@@ -90,6 +90,11 @@ export function ProgramGroupCard({
       </dl>
 
       <LevelBlock range={range} className="mt-4 border-t border-white/10 pt-4" />
+
+      {/* The group's one plain line (High Performance's competitive note)
+          sits under the Level block, not under the title, so the Ages, Time
+          and Price rows line up across sibling cards in a row. */}
+      {g.note && <p className="mt-3 text-sm leading-relaxed text-white/70">{g.note}</p>}
 
       {/* The one link: the quiz, named for this group. The arrow is decoration. */}
       <p className="mt-auto pt-5 text-sm font-semibold text-[#B4E655]">

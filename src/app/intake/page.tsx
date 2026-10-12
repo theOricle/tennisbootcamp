@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { groupSummaryLine, recommendPrograms, type Recommendation } from "@/lib/recommend";
+import { groupSummaryLine, recommendPrograms, recommendationHref, type Recommendation } from "@/lib/recommend";
 import { quizCatalogHref } from "@/lib/programFilters";
 import { trackEvent, trackAssessmentCtaClick } from "@/lib/analytics";
 import { useBotCheck } from "@/lib/useBotCheck";
@@ -226,13 +226,14 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
  * The one program card, identical wherever a player's match is shown: a link
  * to the program page carrying the groups that fit this player — their age
  * band and provisional tier against each group's ages and level band (owner,
- * 2026-10-12) — and the price (audit M17). One fitting group links straight
- * to that group's card; several link to the program, where our coaches'
- * placement decides. The whole card is the link; the arrow is decoration.
+ * 2026-10-12) — and the price (audit M17). One fitting scheduled group links
+ * straight to that group's card; several, or an arranged group, link to the
+ * program, where our coaches' placement decides (recommendationHref). The
+ * whole card is the link; the arrow is decoration.
  */
 function ProgramMatchCard({ rec }: { rec: Recommendation }) {
   const { program, groups } = rec;
-  const href = groups.length === 1 ? `/programs/${program.slug}#${groups[0].id}` : `/programs/${program.slug}`;
+  const href = recommendationHref(rec);
   return (
     <Link
       href={href}

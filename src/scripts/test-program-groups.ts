@@ -37,7 +37,7 @@ import {
   resultsLine,
   tierQueryFor,
 } from "../lib/programFilters";
-import { groupSummaryLine, groupsFor, recommendPrograms } from "../lib/recommend";
+import { groupSummaryLine, groupsFor, recommendPrograms, recommendationHref } from "../lib/recommend";
 import { TIERS, tierById } from "../lib/tiers";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { ProgramCatalogView, type CatalogProgram } from "../components/sections/ProgramCatalog";
@@ -58,6 +58,7 @@ function check(name: string, ok: boolean, detail = "") {
 
 const ROOT = process.cwd();
 const read = (path: string) => readFileSync(join(ROOT, path), "utf8");
+const at = (hay: string, needle: string) => hay.indexOf(needle);
 const count = (hay: string, needle: string) => hay.split(needle).length - 1;
 const onGrid = (n: number) => Number.isFinite(n) && n >= 1 && n <= 7 && Math.round(n * 2) === n * 2;
 const ids = (list: { id: string }[]) => list.map((g) => g.id).join(",");
@@ -138,7 +139,15 @@ check("the status chip reads Groups forming", hpCard.includes("Groups forming"))
 check("Ages, Time and Price rows", /<dt[^>]*>Ages<\/dt><dd[^>]*>12–17<\/dd>/.test(hpCard) && /<dt[^>]*>Time<\/dt><dd[^>]*>Saturdays 2:00–3:00 pm<\/dd>/.test(hpCard) && /<dt[^>]*>Price<\/dt>/.test(hpCard) && hpCard.includes(PRICE_SUMMARY.split(" · ")[0]));
 check("the Level block with the band on the rail", hpCard.includes(">Intermediate – Elite<") && hpCard.includes("3.0–5.5") && hpCard.includes('aria-label="Built for Intermediate to Elite, levels 3.0 to 5.5"'));
 check("the competitive note is shown", hpCard.includes("The competitive track"));
+check(
+  "the note sits under the Level block, above the CTA, so sibling cards' rows line up",
+  at(hpCard, "The competitive track") > at(hpCard, "</dl>") &&
+    at(hpCard, "The competitive track") > at(hpCard, 'aria-label="Built for Intermediate to Elite') &&
+    at(hpCard, "The competitive track") < at(hpCard, "Take the 2-minute quiz")
+);
 check("no photo, no plate on a group card", !hpCard.includes("<img") && !hpCard.includes('viewBox="0 100 1600 800"'));
+const h4Card = render(createElement(ProgramGroupCard, { group: g("high-performance"), program: youth, headingLevel: 4 }));
+check("headingLevel 4 renders the title as an h4", h4Card.includes(">High Performance</h4>") && !h4Card.includes("<h3") && !h4Card.includes("<h2"));
 const withProgram = render(createElement(ProgramGroupCard, { group: g("adult-newer"), program: listedPrograms[1], showProgram: true }));
 check("showProgram leads the eyebrow with the program", withProgram.includes(">Adult Bootcamps · Sundays</p>") && withProgram.includes(">16 and up<"));
 const soloCard = render(createElement(ProgramGroupCard, { group: g("private-lessons"), program: privateProgram }));
@@ -156,6 +165,11 @@ const view = (query = EMPTY_QUERY, groups = programGroups) =>
   render(createElement(ProgramCatalogView, { programs: catalogPrograms, groups, nextCohorts: {}, query, onChange: () => {} }));
 const all = view();
 check("every group as a card under its program, three sections", count(all, "<article") === programGroups.length && listedPrograms.every((p) => all.includes(`id="catalog-${p.slug}"`)));
+check(
+  "one h2, a program title h3 per section, a group title h4 per card: no two levels share a rank",
+  count(all, "<h2") === 1 && count(all, "<h3") === listedPrograms.length && count(all, "<h4") === programGroups.length && programGroups.every((x) => all.includes(`>${x.name}</h4>`)),
+  `h2 ${count(all, "<h2")} · h3 ${count(all, "<h3")} · h4 ${count(all, "<h4")}`
+);
 check("two labelled selects and a Clear button", count(all, "<select") === 2 && all.includes(">Player’s age</label>".replace("’", "&#x27;")) && all.includes(">Level</label>") && all.includes(">Clear filters</button>"));
 check("the results line is a live region", /<p role="status" aria-live="polite"[^>]*>7 groups<\/p>/.test(all));
 check("the age select offers the bands and the exact ages", all.includes('<optgroup label="Age group">') && all.includes('<optgroup label="Exact age">') && all.includes('<option value="14">14</option>') && all.includes('<option value="adult">Adult (18+)</option>'));
@@ -181,15 +195,16 @@ check("teen, level unsure → every group a teen can join", ids(rec("teen")[0].g
 check("adult beginner → Adult Bootcamps, the newer group", rec("adult", "new")[0].program.id === "bootcamps" && ids(rec("adult", "new")[0].groups) === "adult-newer");
 check("adult competitive → the intermediate group; tournament → advanced", ids(rec("adult", "competitive")[0].groups) === "adult-intermediate" && ids(rec("adult", "elite")[0].groups) === "adult-advanced");
 check("adult, level unsure → all three adult groups", ids(rec("adult")[0].groups) === "adult-newer,adult-intermediate,adult-advanced");
-check("private lessons only when asked for, after the group program", rec("adult", "rally").length === 1 && ids(rec("adult", "rally", ["private"]).map((r) => r.program)) === "bootcamps,private-lessons");
+check("private lessons only when asked for; asked for, first (every surface shows the first match)", rec("adult", "rally").length === 1 && ids(rec("adult", "rally", ["private"]).map((r) => r.program)) === "private-lessons,bootcamps", ids(rec("adult", "rally", ["private"]).map((r) => r.program)));
 check("a competitive adult is never sent to the youth High Performance group", rec("adult", "competitive").every((r) => !r.groups.some((x) => x.id === "high-performance")));
 const hpReason = rec("teen", "elite")[0].reason;
 check("the High Performance reason names its day and start", hpReason.includes("every Saturday at 2:00") && hpReason.includes("competitive track"), hpReason);
 check("a one-group youth reason leads with the group, the day and the start", rec("teen", "new")[0].reason.startsWith("Ages 11–15 group, Saturday at 1:00"), rec("teen", "new")[0].reason);
 check("groupsFor never returns an empty list", listedPrograms.every((p) => groupsFor(p, { ...base, ageBand: "junior", level: "elite" }).length > 0));
 check("groupSummaryLine", groupSummaryLine(g("high-performance")) === "Saturdays 2:00–3:00 pm · Ages 12–17" && groupSummaryLine(g("adult-newer")) === "Sundays 4:00–5:00 pm · Ages 16 and up" && groupSummaryLine(g("private-lessons")) === "By arrangement · Any age");
+check("recommendationHref: one scheduled group → its card; several → the program; private lessons → the page, no anchor", recommendationHref(rec("teen", "elite")[0]) === "/programs/youth-programs#high-performance" && recommendationHref(rec("junior", "new")[0]) === "/programs/youth-programs" && recommendationHref(rec("adult", "rally", ["private"])[0]) === "/programs/private-lessons", recommendationHref(rec("adult", "rally", ["private"])[0]));
 const intake = read("src/app/intake/page.tsx");
-check("the quiz's match card lists the groups and links to the one group or the program", intake.includes("const href = groups.length === 1 ? `/programs/${program.slug}#${groups[0].id}` : `/programs/${program.slug}`;") && intake.includes("groupSummaryLine(g)"));
+check("the quiz's match card lists the groups and links through recommendationHref", intake.includes("const href = recommendationHref(rec);") && intake.includes("groupSummaryLine(g)"));
 check("Browse Programs on a one-player result opens the filtered catalog", intake.includes("<ResultLinks catalogHref={quizCatalogHref(result.ageBand, tier)} />"));
 check("?program=private-lessons seeds the private option", intake.includes('"private-lessons": "private"') && !intake.includes('"kids-summer-camp"'));
 

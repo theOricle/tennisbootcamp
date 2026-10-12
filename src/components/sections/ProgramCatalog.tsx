@@ -206,12 +206,14 @@ export function ProgramCatalogView({
               <ul role="list" className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {list.map((g) => (
                   <li key={g.id} className="flex [&>*]:w-full">
+                    {/* The program's title above is an h3, so each group is an h4 under it. */}
                     <ProgramGroupCard
                       group={g}
                       program={program}
                       nextCohort={nextCohorts[g.id]}
                       showProgram={false}
                       source="programs-group"
+                      headingLevel={4}
                     />
                   </li>
                 ))}

@@ -251,10 +251,13 @@ export function ProgramCard({ program: p, nextCohort, fit = null, headingLevel =
             <div aria-hidden="true" className="h-full w-full bg-white/10" />
           )}
         </div>
-        {/* An opaque navy disc under the chip, so a translucent chip stays legible over a photo. */}
-        <span className="absolute right-3 top-3 flex rounded-full bg-[#061427]">
-          <StatusChip status={status} />
-        </span>
+        {/* An opaque navy disc under the chip, so a translucent chip stays
+            legible over a photo. A program with no fixed class has no chip. */}
+        {status && (
+          <span className="absolute right-3 top-3 flex rounded-full bg-[#061427]">
+            <StatusChip status={status} />
+          </span>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col p-5 md:p-6">

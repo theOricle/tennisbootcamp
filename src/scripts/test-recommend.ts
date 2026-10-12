@@ -4,9 +4,10 @@
 //   junior or teen        → Youth Bootcamps (id "youth-programs"); a competitive
 //                           or tournament player's first group is High Performance
 //   adult                 → Adult Bootcamps (id "bootcamps")
-//   "private" chosen      → Private Lessons as well, after the group program
+//   "private" chosen      → Private Lessons first (every surface shows only
+//                           the first match), then the group program
 //   nothing recommends a retired program (High Performance's old id, Group Lessons)
-import { recommendPrograms, type IntakeFormSnapshot } from "../lib/recommend";
+import { recommendPrograms, recommendationHref, type IntakeFormSnapshot } from "../lib/recommend";
 import { AGE_BANDS } from "../lib/ageBand";
 import { groupById } from "../content/programs";
 
@@ -94,9 +95,38 @@ check(
   "a teen preselecting bootcamp still gets Youth Bootcamps",
   top({ ...base, who: "youth", ageBand: "teen", level: "competitive", programs: ["bootcamp"] }) === "youth-programs"
 );
+// A visitor who came from the Private Lessons card or page (?program=private-lessons)
+// sees Private Lessons: the result screen, the household screen, the email
+// and Sheet column 20 all read the first match alone.
 check(
-  "?program=private adds Private Lessons second",
-  JSON.stringify(ids({ ...base, who: "adult", ageBand: "adult", level: "rally", programs: ["private"] })) === JSON.stringify(["bootcamps", "private-lessons"])
+  "?program=private puts Private Lessons first, the group program second",
+  JSON.stringify(ids({ ...base, who: "adult", ageBand: "adult", level: "rally", programs: ["private"] })) === JSON.stringify(["private-lessons", "bootcamps"])
+);
+check(
+  "a tournament adult asking for private lessons still gets Private Lessons first",
+  JSON.stringify(ids({ ...base, who: "adult", ageBand: "adult", level: "elite", programs: ["private"] })) === JSON.stringify(["private-lessons", "bootcamps"])
+);
+check(
+  "a teen asking for private lessons gets Private Lessons first, Youth Bootcamps second",
+  JSON.stringify(ids({ ...base, who: "youth", ageBand: "teen", level: "competitive", programs: ["private"] })) === JSON.stringify(["private-lessons", "youth-programs"])
+);
+check(
+  "Private Lessons outranks a group program that was chosen as well",
+  top({ ...base, who: "adult", ageBand: "adult", level: "elite", programs: ["bootcamp", "private"] }) === "private-lessons"
+);
+check(
+  "a chosen group program still outranks the unchosen one's score",
+  recommendPrograms({ ...base, who: "adult", ageBand: "adult", level: "rally", programs: ["bootcamp"] })[0]?.score === 65
+);
+
+// Where the match card links: the program, or its one fitting scheduled group's card
+const href = (form: IntakeFormSnapshot) => recommendationHref(recommendPrograms(form)[0]);
+check("one fitting scheduled group → that group's card", href({ ...base, who: "youth", ageBand: "teen", level: "elite" }) === "/programs/youth-programs#high-performance", href({ ...base, who: "youth", ageBand: "teen", level: "elite" }));
+check("several fitting groups → the program page", href({ ...base, who: "youth", ageBand: "junior", level: "new" }) === "/programs/youth-programs", href({ ...base, who: "youth", ageBand: "junior", level: "new" }));
+check(
+  "private lessons → the program page with no anchor (it has no group card)",
+  href({ ...base, who: "adult", ageBand: "adult", level: "rally", programs: ["private"] }) === "/programs/private-lessons",
+  href({ ...base, who: "adult", ageBand: "adult", level: "rally", programs: ["private"] })
 );
 
 // Nothing ever recommends a retired program

@@ -206,10 +206,10 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 </p>
               )}
               {/* Primary, then the optional assessment as an outline pill
-                  at 44px, not 12px grey text (audit M12); a program booked
-                  by arrangement offers the inbox instead. A signed-in
-                  holder is already on our list: they see their players'
-                  tiers against this span instead of a second quiz (M32). */}
+                  at 44px, not 12px grey text (audit M12), for a scheduled
+                  program. A signed-in holder is already on our list: the
+                  panel shows them their players' tiers against this span
+                  instead of a second quiz (M32). */}
               <ProgramViewerPanel span={range}>
                 <TrackedButton
                   variant="primary"
@@ -221,11 +221,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 >
                   Take the 2-minute quiz
                 </TrackedButton>
-                {arranged ? (
-                  <Button variant="secondary" href={`mailto:${CONTACT_EMAIL}`} className="mt-3 w-full">
-                    Email {CONTACT_EMAIL}
-                  </Button>
-                ) : (
+                {!arranged && (
                   <TrackedButton
                     variant="secondary"
                     href="/assessment/book"
@@ -237,6 +233,15 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   </TrackedButton>
                 )}
               </ProgramViewerPanel>
+              {/* A program booked by arrangement offers the inbox to
+                  everyone, so it sits outside the panel: a signed-in holder,
+                  whose panel replaces the quiz, still has a way to ask for a
+                  lesson. */}
+              {arranged && (
+                <Button variant="secondary" href={`mailto:${CONTACT_EMAIL}`} className="mt-3 w-full">
+                  Email {CONTACT_EMAIL}
+                </Button>
+              )}
             </div>
           </div>
         </div>

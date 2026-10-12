@@ -12,21 +12,23 @@ import { levelNumber, levelWithinRange } from "@/lib/tiers";
 
 export type LevelRange = { min: number; max: number };
 
-export type ProgramStatusKind = "coming-soon" | "next-cohort" | "invite-only" | "full" | "forming" | "arranged";
+export type ProgramStatusKind = "coming-soon" | "next-cohort" | "invite-only" | "full" | "forming";
 
 export type ProgramStatus = { kind: ProgramStatusKind; label: string };
 
 /**
  * This season's status chip. Precedence: coming soon, then the next public
- * cohort's start, then "Invite only", else "Groups forming" (owner D11).
+ * cohort's start, then "Invite only", else "Groups forming" (owner D11). A
+ * program with no fixed class (private lessons) shows no chip, as its group
+ * shows none: the card's eyebrow and When row already read "By arrangement".
  */
-export function programStatus(p: Program, nextCohort?: Cohort | null): ProgramStatus {
+export function programStatus(p: Program, nextCohort?: Cohort | null): ProgramStatus | null {
   if (p.comingSoon) return { kind: "coming-soon", label: "Coming Soon" };
   if (nextCohort) {
     return { kind: "next-cohort", label: `Next cohort ${formatStartDate(nextCohort.startDate)}` };
   }
   if (p.enrollmentStatus === "invite-only") return { kind: "invite-only", label: "Invite only" };
-  if (!p.timetable?.length) return { kind: "arranged", label: "By arrangement" };
+  if (!p.timetable?.length) return null;
   return { kind: "forming", label: "Groups forming" };
 }
 

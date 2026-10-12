@@ -152,11 +152,12 @@ check("programAgeLabel: youth 7–17, adult 16 and up, private any age", program
 check("agesChipLabel: Ages 7–17, Ages 16 and up, Any age (never Ages Any age)", agesChipLabel(groupsForProgram("youth-programs")) === "Ages 7–17" && agesChipLabel(groupsForProgram("bootcamps")) === "Ages 16 and up" && agesChipLabel(groupsForProgram("private-lessons")) === "Any age");
 
 console.log("programStatus precedence");
-check("coming soon wins", programStatus({ ...youth, comingSoon: true }, cohort).kind === "coming-soon");
-check("next cohort beats invite only", programStatus({ ...youth, enrollmentStatus: "invite-only" }, cohort).label === `Next cohort ${formatStartDate(cohort.startDate)}`);
-check("invite only", programStatus({ ...youth, enrollmentStatus: "invite-only" }).label === "Invite only");
-check("by arrangement for a program with no timetable", programStatus(privateLessons).label === "By arrangement");
-check("groups forming by default", programStatus(youth).label === "Groups forming");
+check("coming soon wins", programStatus({ ...youth, comingSoon: true }, cohort)?.kind === "coming-soon");
+check("next cohort beats invite only", programStatus({ ...youth, enrollmentStatus: "invite-only" }, cohort)?.label === `Next cohort ${formatStartDate(cohort.startDate)}`);
+check("invite only", programStatus({ ...youth, enrollmentStatus: "invite-only" })?.label === "Invite only");
+check("no chip for a program with no timetable (its When row already says By arrangement)", programStatus(privateLessons) === null);
+check("a public cohort still gives an arranged program the Next cohort chip", programStatus(privateLessons, { ...cohort, programId: "private-lessons" })?.kind === "next-cohort");
+check("groups forming by default", programStatus(youth)?.label === "Groups forming");
 
 console.log("groupStatus precedence");
 check("next cohort first", groupStatus({ ...hp, status: "full" }, cohort)?.kind === "next-cohort");
@@ -285,7 +286,12 @@ check("Adult Bootcamps span reads Beginner – Elite", adultCard.includes(">Begi
 
 const privateCard = render(createElement(ProgramCard, { program: privateLessons }));
 check("Private Lessons: any age, by arrangement, rates on request, all levels", privateCard.includes(">Any age<") && privateCard.includes(">By arrangement<") && privateCard.includes(`>${PRIVATE_LESSONS_PRICE}<`) && privateCard.includes(">All levels<"));
-check("Private Lessons: the chip reads By arrangement, never Groups forming", count(privateCard, "By arrangement") === 3 && !privateCard.includes("Groups forming"));
+check(
+  "Private Lessons: no status chip, so By arrangement reads twice (eyebrow, When row), never three times, never Groups forming",
+  count(privateCard, "By arrangement") === 2 && !privateCard.includes('class="absolute right-3 top-3') && !privateCard.includes("Groups forming"),
+  `${count(privateCard, "By arrangement")} × By arrangement`
+);
+check("the youth card keeps its chip over the photo", card.includes('class="absolute right-3 top-3 flex rounded-full bg-[#061427]"'));
 
 const h2 = render(createElement(ProgramCard, { program: youth, headingLevel: 2 }));
 check("headingLevel 2 renders an h2", h2.includes("<h2") && !h2.includes("<h3"));
@@ -325,7 +331,16 @@ check("detail: Levels in this program ladder in span mode", detail.includes("Lev
 check("detail: How tiers work link", detail.includes('href="/assessment#ladder"'));
 check("detail: cohort cards carry the mark and the rail", detail.includes("<PlateMark plate={program.plate}") && detail.includes("artFocusForCohort(program, cohort)") && /tierGated &&[\s\S]*<TierLine[\s\S]*variant="rail"/.test(detail));
 check("detail: the start date helper is shared", detail.includes("formatStartDate(") && !detail.includes("fmtStartDate"));
-check("detail: a program booked by arrangement offers the inbox, not the assessment", detail.includes("arranged ? (") && detail.includes("href={`mailto:${CONTACT_EMAIL}`}"));
+const panelOpen = at(detail, "<ProgramViewerPanel");
+const panelClose = at(detail, "</ProgramViewerPanel>");
+check(
+  "detail: the assessment button is inside the viewer panel (a guest's), for a scheduled program only",
+  panelOpen < at(detail, 'href="/assessment/book"') && at(detail, 'href="/assessment/book"') < panelClose && /\{!arranged && \(\s*<TrackedButton[\s\S]{0,200}?href="\/assessment\/book"/.test(detail)
+);
+check(
+  "detail: a program booked by arrangement offers the inbox outside the viewer panel, so a signed-in holder sees it too",
+  at(detail, "href={`mailto:${CONTACT_EMAIL}`}") > panelClose && /\{arranged && \(\s*<Button[^>]*href=\{`mailto:\$\{CONTACT_EMAIL\}`\}/.test(detail)
+);
 const dashboardPage = read("src/app/dashboard/page.tsx");
 check("dashboard: suggestions through suggestProgramsFor", dashboardPage.includes("suggestProgramsFor(roster, listedPrograms, enrolledProgramIds)"));
 const dashboardView = read("src/app/dashboard/DashboardView.tsx");

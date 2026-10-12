@@ -47,7 +47,10 @@ export type Recommendation = {
 //   junior or teen   → Youth Bootcamps (id "youth-programs"); a competitive or
 //                      tournament player's first group is High Performance
 //   adult            → Adult Bootcamps (id "bootcamps"), the group by level
-//   "private" chosen → Private Lessons as well, after the group program
+//   "private" chosen → Private Lessons first, then the group program: every
+//                      surface (the result screen, the household screen, the
+//                      email, Sheet column 20) reads recommendations[0] alone,
+//                      so a visitor who asked about private lessons sees them
 // Retired programs are never recommended.
 
 function isYouth(form: IntakeFormSnapshot): boolean {
@@ -138,8 +141,11 @@ export function recommendPrograms(form: IntakeFormSnapshot): Recommendation[] {
       score = 60;
     } else if (program.id === "private-lessons") {
       // Only when asked for: a one-to-one lesson is never the default pitch.
+      // Asked for, it outranks the group program (70 against its 60, or 65
+      // when that program was chosen too), so the one match every surface
+      // shows is the program the visitor clicked through from.
       if (!selectedPrograms.includes("private")) continue;
-      score = 50;
+      score = 70;
     } else {
       continue;
     }
@@ -148,7 +154,6 @@ export function recommendPrograms(form: IntakeFormSnapshot): Recommendation[] {
     if (program.id === "youth-programs" && (selectedPrograms.includes("youth") || selectedPrograms.includes("high-performance")))
       score += 5;
     if (program.id === "bootcamps" && selectedPrograms.includes("bootcamp")) score += 5;
-    if (program.id === "private-lessons") score += 5;
 
     const groups = groupsFor(program, form);
     results.push({
@@ -160,6 +165,18 @@ export function recommendPrograms(form: IntakeFormSnapshot): Recommendation[] {
   }
 
   return results.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Where a match card sends the player: the program page, or the one fitting
+ * group's card on it ("/programs/youth-programs#high-performance"). A group
+ * with no fixed class (private lessons) has no card on its page, so its link
+ * carries no anchor.
+ */
+export function recommendationHref(rec: Pick<Recommendation, "program" | "groups">): string {
+  const page = `/programs/${rec.program.slug}`;
+  const [only] = rec.groups;
+  return rec.groups.length === 1 && only.day ? `${page}#${only.id}` : page;
 }
 
 /** "Saturdays 2:00–3:00 pm · Ages 12–17": one line per fitting group, for the quiz result. */
