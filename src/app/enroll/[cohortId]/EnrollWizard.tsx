@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
-import type { Program } from "@/types/program";
+import type { Program, ProgramGroup } from "@/types/program";
+import type { AgeBand } from "@/lib/ageBand";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
 import { locationForCohort } from "@/content/locations";
 import { membershipNote } from "@/lib/membership";
 import { COOLING_OFF_DAYS } from "@/content/policies";
+import { RIGHT_GROUP_PROMISE_SHORT } from "@/content/programs";
 import { trackEvent, trackEnrollStart } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
 import { ProgramPlate } from "@/components/plates/ProgramPlate";
@@ -17,9 +19,26 @@ import {
   WhoIsThisFor,
   useHousehold,
   EMPTY_HOUSEHOLD,
+  emptyGuest,
   householdIssues,
+  isRelationshipValue,
   type HouseholdValue,
+  type ParticipantOption,
 } from "@/components/participants/WhoIsThisFor";
+import {
+  ACCOUNT_STEP_COPY,
+  EMPTY_ACCOUNT_STEP,
+  accountStepIssues,
+  ageBandBlock,
+  dobAgeError,
+  groupAgesLabel,
+  invitedLockReasons,
+  levelNote,
+  rightGroupHref,
+  seatCapIssue,
+  type AccountStepValue,
+  type BlockedPlayer,
+} from "@/lib/enrollPlayers";
 import {
   FIELD_MESSAGES,
   emailError,
@@ -43,6 +62,7 @@ import {
   hintIdFor,
 } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
+import { PasswordToggleIcon } from "@/components/ui/PasswordToggleIcon";
 import { TEXT_LINK_LIME, TEXT_LINK_MUTED, TextLink } from "@/components/ui/TextLink";
 import { MapLink } from "@/components/locations/LocationLine";
 
@@ -61,6 +81,21 @@ const ETRANSFER_STEPS = 5;
 export type EtransferInfo = {
   recipientEmail: string;
   creditCents: number; // unused assessment credit that comes off the price
+};
+
+/**
+ * The player an invitation names (migration 0007). On the signed-in
+ * account that owns them the chooser locks to them; signed out, the typed
+ * block starts on them and the sign-in line brings their account back.
+ */
+export type InvitedPlayer = {
+  id: string;
+  name: string | null;
+  relationship: string;
+  isMinor: boolean;
+  ageBand: AgeBand | null;
+  /** True when the signed-in account owns this player. */
+  onAccount: boolean;
 };
 
 function moneyCAD(cents: number): string {
@@ -177,13 +212,17 @@ function TextInput({
 
 /** Field ids, so a press of Continue can focus the first problem. */
 const FIELD_IDS = {
+  who: "enroll-who",
   player: (key: string) => `enroll-player-${key}`,
   dob: (key: string) => `enroll-dob-${key}`,
+  guestAge: (key: string) => `guest-${key}-age`,
   email: "enroll-email",
   phone: "enroll-phone",
   guardianName: "enroll-guardian-name",
   guardianEmail: "enroll-guardian-email",
   guardianPhone: "enroll-guardian-phone",
+  accountPassword: "enroll-account-password",
+  accountConfirm: "enroll-account-confirm",
   consent: "enroll-consent",
   signature: "enroll-signature",
 } as const;
@@ -353,6 +392,129 @@ function OrderSummary({
   );
 }
 
+/**
+ * The optional account step inside a guest enrollment (owner, 2026-10-12:
+ * "or while enrolling"). Off by default — skipping it never blocks
+ * enrolling; the set-up email after the enrollment covers that path. On,
+ * it asks for a password twice, with the same rules as /set-password, and
+ * the password goes nowhere but Supabase.
+ */
+function AccountStep({
+  value,
+  onChange,
+  errors,
+  notice,
+  signInHref,
+  onContinueWithout,
+}: {
+  value: AccountStepValue;
+  onChange: (next: AccountStepValue) => void;
+  errors: Record<string, string>;
+  /** "exists" — the sign-in with that password failed; "failed" — the account could not be created. */
+  notice: "exists" | "failed" | null;
+  signInHref: string;
+  onContinueWithout: () => void;
+}) {
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const pwId = FIELD_IDS.accountPassword;
+  const confirmId = FIELD_IDS.accountConfirm;
+  return (
+    <fieldset className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
+      <legend className="sr-only">{ACCOUNT_STEP_COPY.title}</legend>
+      <p aria-hidden="true" className="text-sm font-semibold text-white">
+        {ACCOUNT_STEP_COPY.title}
+      </p>
+      <p className="mt-1 text-xs leading-relaxed text-white/70">{ACCOUNT_STEP_COPY.intro}</p>
+      <label className="mt-3 flex min-h-[44px] cursor-pointer items-center gap-3">
+        <input
+          type="checkbox"
+          checked={value.create}
+          onChange={(e) => onChange({ ...value, create: e.target.checked })}
+          className={`h-4 w-4 shrink-0 accent-[#B4E655] ${FOCUS_RING}`}
+        />
+        <span className="text-sm text-white/85">{ACCOUNT_STEP_COPY.toggle}</span>
+      </label>
+      {!value.create && <p className={HINT_CLASS}>{ACCOUNT_STEP_COPY.skip}</p>}
+      {value.create && (
+        <div className="mt-3 space-y-3">
+          <div className="grid gap-1.5">
+            <label htmlFor={pwId} className={LABEL_CLASS}>
+              Password
+            </label>
+            <div className="relative">
+              <input
+                id={pwId}
+                type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
+                value={value.password}
+                onChange={(e) => onChange({ ...value, password: e.target.value })}
+                className={`${INPUT_CLASS} pr-12`}
+                {...fieldA11y(pwId, { error: errors[pwId], hint: !errors[pwId] })}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className={`absolute inset-y-0 right-0 flex items-center rounded-r-2xl px-3 text-white/70 hover:text-white ${FOCUS_RING}`}
+              >
+                <PasswordToggleIcon visible={showPassword} />
+              </button>
+            </div>
+            {!errors[pwId] && (
+              <p id={hintIdFor(pwId)} className={HINT_CLASS}>
+                At least 8 characters.
+              </p>
+            )}
+            <FieldError fieldId={pwId} message={errors[pwId]} />
+          </div>
+          <div className="grid gap-1.5">
+            <label htmlFor={confirmId} className={LABEL_CLASS}>
+              Confirm password
+            </label>
+            <div className="relative">
+              <input
+                id={confirmId}
+                type={showConfirm ? "text" : "password"}
+                autoComplete="new-password"
+                value={value.confirm}
+                onChange={(e) => onChange({ ...value, confirm: e.target.value })}
+                placeholder="Repeat password"
+                className={`${INPUT_CLASS} pr-12`}
+                {...fieldA11y(confirmId, { error: errors[confirmId] })}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm((v) => !v)}
+                aria-label={showConfirm ? "Hide password" : "Show password"}
+                className={`absolute inset-y-0 right-0 flex items-center rounded-r-2xl px-3 text-white/70 hover:text-white ${FOCUS_RING}`}
+              >
+                <PasswordToggleIcon visible={showConfirm} />
+              </button>
+            </div>
+            <FieldError fieldId={confirmId} message={errors[confirmId]} />
+          </div>
+          {notice && (
+            <div role="status" className="rounded-2xl border border-yellow-200/30 bg-yellow-200/5 px-4 py-3 text-sm text-white/80">
+              <p>{notice === "exists" ? ACCOUNT_STEP_COPY.exists : ACCOUNT_STEP_COPY.failed}</p>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                {notice === "exists" && (
+                  <Link href={signInHref} className={TEXT_LINK_LIME}>
+                    Sign in instead →
+                  </Link>
+                )}
+                <button type="button" onClick={onContinueWithout} className={TEXT_LINK_LIME}>
+                  Continue without it →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 function RegistrantStep({
   form,
   setForm,
@@ -364,6 +526,12 @@ function RegistrantStep({
   cohortId,
   onEnterSubmit,
   errors,
+  group,
+  account,
+  setAccount,
+  accountNotice,
+  signInHref,
+  onContinueWithoutAccount,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
@@ -375,6 +543,12 @@ function RegistrantStep({
   cohortId: string;
   onEnterSubmit: () => void;
   errors: Record<string, string>;
+  group: ProgramGroup | null;
+  account: AccountStepValue;
+  setAccount: (next: AccountStepValue) => void;
+  accountNotice: "exists" | "failed" | null;
+  signInHref: string;
+  onContinueWithoutAccount: () => void;
 }) {
   return (
     // An explicit action keeps the invite token out of GA's form_destination
@@ -423,6 +597,7 @@ function RegistrantStep({
               id={FIELD_IDS.dob(player.key)}
               label="Date of birth"
               error={errors[FIELD_IDS.dob(player.key)]}
+              hint={group && groupAgesLabel(group) ? `This group takes ages ${groupAgesLabel(group)}.` : undefined}
             >
               <TextInput
                 id={FIELD_IDS.dob(player.key)}
@@ -437,8 +612,14 @@ function RegistrantStep({
                 }
                 required
                 error={errors[FIELD_IDS.dob(player.key)]}
+                hint={Boolean(group && groupAgesLabel(group))}
               />
             </FieldGroup>
+            {errors[FIELD_IDS.dob(player.key)] && group && (
+              <Link href={rightGroupHref(null, group.locationId)} className={TEXT_LINK_LIME}>
+                See the groups for their age →
+              </Link>
+            )}
           </fieldset>
         ))}
       </div>
@@ -532,6 +713,19 @@ function RegistrantStep({
             </FieldGroup>
           </div>
         </fieldset>
+      )}
+
+      {/* The optional account, last on the step and only for a guest (owner,
+          2026-10-12). A signed-in holder already has one. */}
+      {!signedIn && (
+        <AccountStep
+          value={account}
+          onChange={setAccount}
+          errors={errors}
+          notice={accountNotice}
+          signInHref={signInHref}
+          onContinueWithout={onContinueWithoutAccount}
+        />
       )}
       {/* Enables Enter-to-advance from any field; the visible CTA lives in the footer */}
       <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
@@ -765,17 +959,41 @@ const STEP_SUBTITLES = [
   "Your spot is held while the coach confirms the transfer arrived.",
 ];
 
+/** The guest block an invitation for a named player starts on (signed out). */
+function guestFromInvited(invited: InvitedPlayer | null): HouseholdValue {
+  if (!invited || invited.onAccount) return EMPTY_HOUSEHOLD;
+  const relationship = isRelationshipValue(invited.relationship) ? invited.relationship : "self";
+  const guest = emptyGuest(relationship);
+  return {
+    ...EMPTY_HOUSEHOLD,
+    guests: [
+      {
+        ...guest,
+        name: invited.name?.trim() ?? "",
+        ageBand: invited.ageBand ?? guest.ageBand,
+        isMinor: invited.ageBand ? invited.ageBand !== "adult" : invited.isMinor,
+      },
+    ],
+  };
+}
+
 export function EnrollWizard({
   cohort,
   program,
+  group = null,
   seatsRemaining,
   inviteToken = null,
   initialEmail = null,
   etransfer = null,
   eligibleParticipantIds = null,
+  blocked = [],
+  invited = null,
+  signInHref,
 }: {
   cohort: Cohort;
   program: Program | undefined;
+  /** The group this cohort trains in (its ages), or null when none matches. */
+  group?: ProgramGroup | null;
   seatsRemaining: number | null;
   inviteToken?: string | null;
   initialEmail?: string | null;
@@ -786,6 +1004,12 @@ export function EnrollWizard({
    * be picked; null means everyone on the account may be.
    */
   eligibleParticipantIds?: string[] | null;
+  /** Players on the account already in this cohort, with the reason (owner, 2026-10-12). */
+  blocked?: BlockedPlayer[];
+  /** The player the invitation names, when it names one. */
+  invited?: InvitedPlayer | null;
+  /** Where "Sign in to choose your player" goes: back here, token kept. */
+  signInHref: string;
 }) {
   const totalSteps = etransfer ? ETRANSFER_STEPS : CARD_STEPS;
   const [step, setStep] = useState(0);
@@ -796,10 +1020,14 @@ export function EnrollWizard({
 
   // Who is this for? (backlog #11) One seat per player, one payment.
   const household = useHousehold();
-  const [who, setWho] = useState<HouseholdValue>(EMPTY_HOUSEHOLD);
+  const [who, setWho] = useState<HouseholdValue>(() => guestFromInvited(invited));
   const [dobs, setDobs] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // The optional account (owner, 2026-10-12): off until ticked.
+  const [account, setAccount] = useState<AccountStepValue>(EMPTY_ACCOUNT_STEP);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountNotice, setAccountNotice] = useState<"exists" | "failed" | null>(null);
   // Field ids whose problems are on screen, added when Continue is pressed
   // (audit M19); the list under the button follows the same press.
   const [shown, setShown] = useState<Set<string>>(() => new Set());
@@ -860,10 +1088,64 @@ export function EnrollWizard({
   const isMinor = players.some(
     (p) => p.isMinor || ((a) => a !== null && a < 18)(computeAge(p.dob))
   );
+
+  // Who on the account cannot take a seat here, and why (owner, 2026-10-12):
+  // already in this cohort, outside the group's ages, or not the player the
+  // invitation names. The level band is the chooser's own rule (eligibleIds).
+  const lockedIds = invited?.onAccount ? [invited.id] : undefined;
+  const disabledReasons: Record<string, string> = {
+    ...invitedLockReasons(household.participants, invited?.onAccount ? invited.id : null),
+  };
+  for (const b of blocked) disabledReasons[b.id] = b.reason;
+  if (group) {
+    for (const p of household.participants) {
+      const band: AgeBand | null = p.ageBand ?? null;
+      const reason = ageBandBlock(group, band);
+      if (reason && !disabledReasons[p.id]) disabledReasons[p.id] = reason;
+    }
+  }
+  // The bands the chooser's disabled rows point at, for "See the groups for their age".
+  const blockedBands = group
+    ? household.participants
+        .filter((p) => p.ageBand && ageBandBlock(group, p.ageBand))
+        .map((p) => p.ageBand as AgeBand)
+    : [];
+
+  /** Where each chosen player stands against the cohort's band, when there is something to say. */
+  const levelNotes = household.signedIn
+    ? who.selectedIds
+        .map((id) => household.participants.find((p) => p.id === id))
+        .filter((p): p is ParticipantOption => Boolean(p))
+        .map((p) =>
+          levelNote(
+            { name: p.name?.trim() || "This player", level: p.level, selfLevel: p.selfLevel ?? null },
+            { min: cohort.levelMin, max: cohort.levelMax }
+          )
+        )
+        .filter((n): n is string => Boolean(n))
+    : [];
+
   /** What stops the current step, one issue per field, in screen order. */
   function stepIssues(): FieldIssue[] {
     if (step === 1) {
-      return householdIssues(who, household.signedIn, household.participants);
+      const out = householdIssues(who, household.signedIn, household.participants);
+      // A typed player outside the group's ages is stopped on their band,
+      // with the right groups a link away (owner, 2026-10-12).
+      if (!household.signedIn && group) {
+        for (const g of who.guests) {
+          if (!g.name.trim()) continue;
+          const reason = ageBandBlock(group, g.ageBand);
+          if (reason) {
+            out.push({
+              id: FIELD_IDS.guestAge(g.key),
+              message: `${g.name.trim()} is outside this group's ages (${groupAgesLabel(group)}). Pick the group for their age below, or change the age group.`,
+            });
+          }
+        }
+      }
+      const seats = seatCapIssue(seatsRemaining, players.length);
+      if (seats) out.push({ id: FIELD_IDS.who, message: seats });
+      return out;
     }
     if (step === 2) {
       const out: FieldIssue[] = [];
@@ -874,8 +1156,14 @@ export function EnrollWizard({
           out.push({ id: FIELD_IDS.player(p.key), message: FIELD_MESSAGES.playerNameMissing });
         }
         const id = FIELD_IDS.dob(p.key);
+        const age = computeAge(p.dob);
         if (!p.dob) out.push({ id, message: FIELD_MESSAGES.dobMissing });
-        else if (computeAge(p.dob) === null) out.push({ id, message: FIELD_MESSAGES.dobInvalid });
+        else if (age === null) out.push({ id, message: FIELD_MESSAGES.dobInvalid });
+        else {
+          // The exact age against the group's range (owner, 2026-10-12).
+          const outside = dobAgeError(group, age);
+          if (outside) out.push({ id, message: outside });
+        }
       }
       if (!household.signedIn) {
         const e = emailError(form.contactEmail);
@@ -892,6 +1180,14 @@ export function EnrollWizard({
         if (ge) out.push({ id: FIELD_IDS.guardianEmail, message: ge });
         const gp = phoneError(form.guardianPhone);
         if (gp) out.push({ id: FIELD_IDS.guardianPhone, message: gp });
+      }
+      if (!household.signedIn) {
+        for (const issue of accountStepIssues(account)) {
+          out.push({
+            id: issue.field === "password" ? FIELD_IDS.accountPassword : FIELD_IDS.accountConfirm,
+            message: issue.message,
+          });
+        }
       }
       return out;
     }
@@ -912,6 +1208,9 @@ export function EnrollWizard({
   const contactEmail = household.signedIn
     ? household.accountEmail || form.contactEmail
     : form.contactEmail;
+
+  /** The holder's own name: the guardian, else the first player (themselves). */
+  const holderName = isMinor ? form.guardianName : players[0]?.name ?? "";
 
   function enrollmentMeta(consentAgreedAt: string) {
     const first = players[0];
@@ -962,7 +1261,7 @@ export function EnrollWizard({
         participantName: players[0]?.name ?? form.participantName,
         participantDob: players[0]?.dob ?? form.participantDob,
         isMinor,
-        accountName: isMinor ? form.guardianName : players[0]?.name ?? "",
+        accountName: holderName,
         contactEmail,
         contactPhone: form.contactPhone,
         guardianName: isMinor ? form.guardianName : "",
@@ -1109,10 +1408,103 @@ export function EnrollWizard({
     }
   }
 
+  /**
+   * "Create my account now" (owner, 2026-10-12): the account is created on
+   * the server, the browser signs in with the same password, the typed
+   * players become players on the new account, and the wizard carries on
+   * signed in — so the rows and the players attach to it and no set-up
+   * email is needed. The password goes to /api/enroll/account and to
+   * Supabase's sign-in, nowhere else. Anything that fails leaves the
+   * enrollment untouched: the notice offers to continue without it.
+   * Resolves to true when the step may advance.
+   */
+  async function createAccountNow(): Promise<boolean> {
+    setAccountBusy(true);
+    setAccountNotice(null);
+    try {
+      const res = await fetch("/api/enroll/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: form.contactEmail.trim(),
+          password: account.password,
+          fullName: holderName,
+          phone: form.contactPhone,
+        }),
+      });
+      if (!res.ok) {
+        setAccountNotice("failed");
+        return false;
+      }
+      const { createClient } = await import("@/lib/supabase/browser");
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithPassword({
+        email: form.contactEmail.trim(),
+        password: account.password,
+      });
+      if (error) {
+        // The address already had an account with another password (the
+        // route answers the same either way), or the sign-in did not land.
+        setAccountNotice("exists");
+        return false;
+      }
+      // The typed players, as players on the account: the holder's own row
+      // for "Myself", a new (or matching, deduped by the route) row for
+      // everyone else. Their dates of birth follow them.
+      const listRes = await fetch("/api/participants", { credentials: "same-origin" });
+      const list = (await listRes.json().catch(() => ({}))) as {
+        participants?: ParticipantOption[];
+      };
+      const existing = Array.isArray(list.participants) ? list.participants : [];
+      const self = existing.find((p) => p.relationship === "self") ?? null;
+      const ids: string[] = [];
+      const nextDobs: Record<string, string> = { ...dobs };
+      for (const g of who.guests) {
+        if (!g.name.trim()) continue;
+        let id: string | null = null;
+        if (g.relationship === "self" && self) {
+          id = self.id;
+        } else {
+          const addRes = await fetch("/api/participants", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fullName: g.name.trim(),
+              relationship: g.relationship,
+              isMinor: g.isMinor,
+              ageBand: g.ageBand,
+            }),
+          });
+          const added = (await addRes.json().catch(() => ({}))) as {
+            participant?: ParticipantOption;
+          };
+          id = addRes.ok && added.participant ? added.participant.id : null;
+        }
+        if (!id) {
+          setAccountNotice("failed");
+          return false;
+        }
+        if (!ids.includes(id)) ids.push(id);
+        if (dobs[g.key]) nextDobs[id] = dobs[g.key];
+      }
+      setDobs(nextDobs);
+      setWho({ selectedIds: ids, guests: [], profiles: {} });
+      setAccount(EMPTY_ACCOUNT_STEP);
+      household.reload();
+      trackEvent("enroll_account_created", { cohort_id: cohort.id });
+      return true;
+    } catch {
+      setAccountNotice("failed");
+      return false;
+    } finally {
+      setAccountBusy(false);
+    }
+  }
+
   // Continue is always enabled (audit M19): pressing it with gaps shows each
   // problem by its field, lists them under the button and focuses the first.
-  function next() {
-    if (submitting) return;
+  async function next() {
+    if (submitting || accountBusy) return;
     const found = stepIssues();
     if (found.length > 0) {
       setShown((s) => {
@@ -1126,6 +1518,10 @@ export function EnrollWizard({
       return;
     }
     setPressedWithGaps(false);
+    if (step === 2 && !household.signedIn && account.create) {
+      const ok = await createAccountNow();
+      if (!ok) return;
+    }
     if (etransfer) {
       if (step === CARD_STEPS - 1) void continueToEtransfer();
       else if (step === ETRANSFER_STEPS - 1) void sendEtransfer();
@@ -1154,7 +1550,9 @@ export function EnrollWizard({
   );
 
   let ctaLabel: string;
-  if (submitting) {
+  if (accountBusy) {
+    ctaLabel = "Creating your account…";
+  } else if (submitting) {
     ctaLabel = etransfer && isLastStep ? "Sending…" : etransfer && isConsentStep ? "Saving…" : "Redirecting…";
   } else if (etransfer && isLastStep) {
     ctaLabel = "I've sent the e-transfer →";
@@ -1163,6 +1561,14 @@ export function EnrollWizard({
   } else {
     ctaLabel = "Continue →";
   }
+
+  const whoIntro = invited?.onAccount
+    ? `This invitation is for ${invited.name?.trim() || "one player"}. Their seat is picked for you.`
+    : invited && !household.signedIn
+      ? `This invitation is for ${invited.name?.trim() || "one player"}. Have an account? Sign in below to choose from your players.`
+      : eligibleParticipantIds
+        ? "This group is for players inside its level band. Every player takes their own seat."
+        : "Every player takes their own seat. Add everyone now and pay once.";
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -1210,19 +1616,53 @@ export function EnrollWizard({
             />
           )}
           {step === 1 && (
-            <WhoIsThisFor
-              household={household}
-              value={who}
-              onChange={setWho}
-              multiple
-              intro={
-                eligibleParticipantIds
-                  ? "This group is for players inside its level band. Every player takes their own seat."
-                  : "Every player takes their own seat. Add everyone now and pay once."
-              }
-              eligibleIds={eligibleParticipantIds}
-              errors={errors}
-            />
+            // The block takes focus when the seat rule stops the step.
+            <div
+              id={FIELD_IDS.who}
+              tabIndex={-1}
+              aria-describedby={errors[FIELD_IDS.who] ? errorIdFor(FIELD_IDS.who) : undefined}
+              className={`space-y-4 rounded-2xl ${FOCUS_RING}`}
+            >
+              <WhoIsThisFor
+                household={household}
+                value={who}
+                onChange={setWho}
+                multiple={!invited?.onAccount}
+                intro={whoIntro}
+                eligibleIds={eligibleParticipantIds}
+                disabledReasons={disabledReasons}
+                lockedIds={lockedIds}
+                signInHref={signInHref}
+                errors={errors}
+              />
+              <FieldError fieldId={FIELD_IDS.who} message={errors[FIELD_IDS.who]} />
+              {/* Where a chosen player stands against the group's band; the
+                  coach confirms every level on court in week one (joining
+                  flow, owner 2026-10-12). Never a block. */}
+              {levelNotes.length > 0 && (
+                <ul role="list" className="space-y-1 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs leading-relaxed text-white/70">
+                  {levelNotes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              )}
+              {group && groupAgesLabel(group) && (
+                <p className="text-xs text-white/60">
+                  This group takes ages {groupAgesLabel(group)}. {RIGHT_GROUP_PROMISE_SHORT}
+                  {(blockedBands.length > 0 || Object.values(errors).some((m) => m.includes("outside this group's ages"))) && (
+                    <>
+                      {" "}
+                      <Link
+                        href={rightGroupHref(blockedBands[0] ?? null, cohort.locationId)}
+                        className="rounded font-semibold text-[#B4E655] underline-offset-2 hover:underline"
+                      >
+                        See the groups for their age →
+                      </Link>
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
           )}
           {step === 2 && (
             <RegistrantStep
@@ -1234,8 +1674,21 @@ export function EnrollWizard({
               signedIn={household.signedIn}
               accountEmail={household.accountEmail}
               cohortId={cohort.id}
-              onEnterSubmit={next}
+              onEnterSubmit={() => void next()}
               errors={errors}
+              group={group}
+              account={account}
+              setAccount={(nextValue) => {
+                setAccount(nextValue);
+                if (accountNotice) setAccountNotice(null);
+              }}
+              accountNotice={accountNotice}
+              signInHref={signInHref}
+              onContinueWithoutAccount={() => {
+                setAccount(EMPTY_ACCOUNT_STEP);
+                setAccountNotice(null);
+                setStep((s) => s + 1);
+              }}
             />
           )}
           {step === 3 && (
@@ -1269,7 +1722,7 @@ export function EnrollWizard({
                 <button
                   type="button"
                   onClick={back}
-                  disabled={submitting}
+                  disabled={submitting || accountBusy}
                   className={`min-h-[44px] rounded-full bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:bg-white/5 disabled:text-white/30 ${FOCUS_RING}`}
                 >
                   Back
@@ -1277,18 +1730,18 @@ export function EnrollWizard({
               )}
               <button
                 type="button"
-                onClick={next}
-                aria-disabled={submitting || undefined}
+                onClick={() => void next()}
+                aria-disabled={submitting || accountBusy || undefined}
                 aria-describedby={
                   pressedWithGaps && visibleIssues.length > 1 ? "enroll-missing" : undefined
                 }
                 className={cn(
                   "ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427] transition",
                   FOCUS_RING,
-                  submitting ? "cursor-wait" : "hover:brightness-110"
+                  submitting || accountBusy ? "cursor-wait" : "hover:brightness-110"
                 )}
               >
-                {submitting && (
+                {(submitting || accountBusy) && (
                   <svg className="h-4 w-4 motion-safe:animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -1313,11 +1766,13 @@ export function EnrollWizard({
             {submitError && <FormAlert>{submitError}</FormAlert>}
             <LiveStatus
               message={
-                submitting
-                  ? etransfer && isLastStep
-                    ? "Recording your e-transfer…"
-                    : "Saving your enrollment…"
-                  : ""
+                accountBusy
+                  ? "Creating your account…"
+                  : submitting
+                    ? etransfer && isLastStep
+                      ? "Recording your e-transfer…"
+                      : "Saving your enrollment…"
+                    : ""
               }
             />
           </div>

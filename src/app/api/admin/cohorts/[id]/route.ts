@@ -16,6 +16,8 @@ import {
   inviteAmountDueCents,
   type CohortInput,
 } from "@/lib/cohortActions";
+import { resendAccountEmail } from "@/lib/supabase/enrollmentActions";
+import { programs } from "@/content/programs";
 
 // Admin cohort detail: invites, sessions, and the state-changing actions —
 // invite (by email, or by player: audit M28), cancel_session (→ make-up
@@ -182,6 +184,29 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
       return NextResponse.json({ ok: true });
+    }
+
+    // The account email again (owner, 2026-10-12): a guest enrollment's
+    // set-up email that never arrived, or the "you're enrolled" note. Sent
+    // to the invite's own address, deliberately, whatever was sent before.
+    if (action === "account_link") {
+      const inviteId = String(body.inviteId ?? "").trim();
+      if (!inviteId) {
+        return NextResponse.json({ error: "Pick the invite." }, { status: 400 });
+      }
+      const cohort = await getCohortById(id);
+      if (!cohort) return NextResponse.json({ error: "Cohort not found." }, { status: 404 });
+      const invite = (await listInvites(id)).find((i) => i.id === inviteId);
+      if (!invite) return NextResponse.json({ error: "Invite not found." }, { status: 404 });
+      const outcome = await resendAccountEmail({
+        email: invite.email,
+        cohortId: id,
+        programTitle: programs.find((p) => p.id === cohort.programId)?.title ?? cohort.programId,
+        cohortLabel: cohort.label,
+        playerNames: invite.participant_name ? [invite.participant_name] : [],
+        paid: invite.status === "paid",
+      });
+      return NextResponse.json({ ok: true, accountEmail: outcome });
     }
 
     if (action === "update") {

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/legal/privacy" },
 };
 
-const EFFECTIVE_DATE = "October 8, 2026";
+const EFFECTIVE_DATE = "October 12, 2026";
 
 function Email() {
   return (
@@ -183,6 +183,18 @@ export default function PrivacyPolicyPage() {
                 tools.google.com/dlpage/gaoptout
               </a>
               .
+            </p>
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-base font-semibold text-white">Cookies the site sets itself</h2>
+            <p className="mb-3">
+              Signing in sets the cookies that keep you signed in. After you take the 2-minute
+              quiz, the site sets a first-party cookie, mirrored in your browser&apos;s storage,
+              so it stops asking you to take it and can link you to the groups that fit. It
+              holds no name or email: only that the quiz was taken, how many players it covered,
+              and the age group and likely level you chose. It is kept for a year. Clearing your
+              browser&apos;s cookies and site data removes it.
             </p>
           </section>
 

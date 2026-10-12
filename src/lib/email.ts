@@ -17,6 +17,7 @@ import {
   buildEtransferInstructionsEmail,
   buildPaymentReceivedEmail,
   buildEnrolledEmail,
+  buildAccountSetupEmail,
   buildEtransferPendingAdminEmail,
   buildPaymentUnmatchedAdminEmail,
   moneyCAD,
@@ -342,6 +343,29 @@ export async function sendEnrolledEmail(params: {
     return;
   }
   await deliver({ to, ...email, replyTo: CONTACT_EMAIL });
+}
+
+/**
+ * A guest enrollment's one account email (owner, 2026-10-12): the players
+ * it enrolled, the fact, and the set-password link that opens the dashboard.
+ * Sent to an address with no usable account yet — brand new, or provisioned
+ * silently and never signed in. An activation link, so no commercial footer.
+ */
+export async function sendAccountSetupEmail(params: {
+  to: string;
+  playerNames: readonly string[];
+  programTitle: string;
+  cohortLabel: string;
+  paid: boolean;
+  link: string;
+}): Promise<void> {
+  const { to, ...rest } = params;
+  const email = buildAccountSetupEmail(rest);
+  if (!process.env.RESEND_API_KEY) {
+    console.log(`[STUB EMAIL — set RESEND_API_KEY] ${email.subject} for ${to}:\n${rest.link}`);
+    return;
+  }
+  await deliver({ to, ...email });
 }
 
 /** Inbox notification: a player says their e-transfer is on its way. */

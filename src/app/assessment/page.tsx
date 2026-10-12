@@ -3,6 +3,7 @@ import { ASSESSMENT_CREDIT_MONTHS } from "@/content/policies";
 import { TierLine } from "@/components/tiers";
 import { TIER_LADDER_SPAN, TIER_RERATE_LINE } from "@/lib/tiers";
 import { TrackedButton, TrackedLink } from "@/components/ui/TrackedButton";
+import { QuizSwap } from "@/components/quiz/QuizSwap";
 
 const LEAVE_WITH = [
   "Your level, assigned by the coach",
@@ -66,16 +67,37 @@ export default function AssessmentLandingPage() {
             that matches both your level and your schedule.
           </p>
           <p className="mt-4 text-sm text-white/60">
-            Not sure you need it?{" "}
-            <TrackedLink
-              track="quiz"
-              source="assessment-page"
-              href="/intake"
-              className="font-semibold text-[#B4E655] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
-            >
-              Take the 2-minute quiz
-            </TrackedLink>{" "}
-            and our coaches place you from your answers.
+            {/* A quiz-taker is not sent back to the quiz (owner, 2026-10-12). */}
+            <QuizSwap
+              guest={
+                <>
+                  Not sure you need it?{" "}
+                  <TrackedLink
+                    track="quiz"
+                    source="assessment-page"
+                    href="/intake"
+                    className="font-semibold text-[#B4E655] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
+                  >
+                    Take the 2-minute quiz
+                  </TrackedLink>{" "}
+                  and our coaches place you from your answers.
+                </>
+              }
+              taken={
+                <>
+                  You&apos;ve taken the quiz, so our coaches place you from your answers either
+                  way.{" "}
+                  <TrackedLink
+                    track="quiz"
+                    source="assessment-page"
+                    href="/intake"
+                    className="font-semibold text-[#B4E655] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427] rounded"
+                  >
+                    Take the 2-minute quiz
+                  </TrackedLink>
+                </>
+              }
+            />
           </p>
         </section>
 

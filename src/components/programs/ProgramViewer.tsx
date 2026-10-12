@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { TierLine } from "@/components/tiers";
 import { cohortAdmitsLevel, formatTierLevel, formatTierSpan, levelNumber } from "@/lib/tiers";
+import { useQuizStatus } from "@/lib/useQuizStatus";
 
 // The signed-in state of a program page (audit M32). The page itself is
 // static (ISR, audit M39), so who is looking is read in the browser from
@@ -52,10 +53,25 @@ function useViewer(): Viewer {
   return viewer;
 }
 
-/** `guest` for visitors (and while loading), `member` for a signed-in holder. */
-export function ViewerSwap({ guest, member }: { guest: ReactNode; member: ReactNode }) {
+/**
+ * `guest` for visitors (and while loading), `member` for a signed-in holder,
+ * and `taken` (when given) for a signed-out visitor this device remembers
+ * taking the quiz (owner, 2026-10-12) — they are on our list already too.
+ */
+export function ViewerSwap({
+  guest,
+  member,
+  taken,
+}: {
+  guest: ReactNode;
+  member: ReactNode;
+  taken?: ReactNode;
+}) {
   const viewer = useViewer();
-  return <>{viewer.state === "member" ? member : guest}</>;
+  const quiz = useQuizStatus();
+  if (viewer.state === "member") return <>{member}</>;
+  if (taken !== undefined && quiz.state === "taken" && !quiz.signedIn) return <>{taken}</>;
+  return <>{guest}</>;
 }
 
 function firstName(full: string | null): string {

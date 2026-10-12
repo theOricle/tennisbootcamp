@@ -194,13 +194,17 @@ export async function POST(req: NextRequest) {
           userId: ownerId,
         });
         if (i === 0) {
-          // A new email gets the set-password link; an existing account gets
-          // "Your spot is on your account" with the dashboard link (H5). The
-          // e-transfer instructions themselves went out in recordEtransferIntent.
+          // A new email gets the set-up email naming every player on the
+          // transfer (owner, 2026-10-12); an existing, activated account
+          // gets "Your spot is on your account" with the dashboard link (H5).
+          // The e-transfer instructions themselves went out in
+          // recordEtransferIntent. One account email per cohort, whatever
+          // is retried.
           await notifyEnrollmentAccount({
             email: enrollmentMeta.contactEmail,
             enrollmentId,
             userId: ownerId,
+            cohortId,
             enrolled: {
               programTitle:
                 programs.find((p) => p.id === cohort?.programId)?.title ??
@@ -208,6 +212,9 @@ export async function POST(req: NextRequest) {
                 "your program",
               cohortLabel: cohort?.label ?? cohortId,
               participantName: player.name ?? enrollmentMeta.participantName ?? null,
+              playerNames: players
+                .map((p) => (p.name ?? "").trim())
+                .filter(Boolean),
               paid: false,
             },
           }).catch((err) =>

@@ -333,6 +333,7 @@ export async function POST(req: NextRequest) {
           email: enrollmentMeta.contactEmail,
           enrollmentId: supabaseEnrollmentId,
           userId: ownerId,
+          cohortId,
           enrolled: {
             programTitle:
               programs.find((p) => p.id === cohort?.programId)?.title ??
@@ -340,6 +341,8 @@ export async function POST(req: NextRequest) {
               "your program",
             cohortLabel: cohort?.label ?? cohortId,
             participantName: players[0]?.name ?? enrollmentMeta.participantName ?? null,
+            // Every player on the payment, for the set-up email (owner, 2026-10-12).
+            playerNames: players.map((p) => (p.name ?? "").trim()).filter(Boolean),
             paid: true,
           },
         }).catch((err) =>

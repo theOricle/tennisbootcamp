@@ -4,6 +4,7 @@ import { google } from "googleapis";
 import {
   saveEnrollmentToSupabase,
   notifyEnrollmentAccount,
+  participantNamesOf,
   resolveEnrollmentUserId,
 } from "@/lib/supabase/enrollmentActions";
 import { inviteLinkFromMetadata } from "@/lib/checkoutInvite";
@@ -227,6 +228,7 @@ export async function POST(req: NextRequest) {
           email: contactEmail,
           enrollmentId: newId,
           userId: ownerId,
+          cohortId,
           enrolled: { ...enrolled, participantName: null },
         }).catch((err) => console.error("Activation link failed (non-blocking):", err));
       }
@@ -239,12 +241,16 @@ export async function POST(req: NextRequest) {
         .from("enrollments")
         .update({ status: "paid" })
         .in("id", paidEnrollmentIds);
+      // Every player's name is on the rows saved at checkout, so the set-up
+      // email can name them all (owner, 2026-10-12).
+      const playerNames = await participantNamesOf(paidEnrollmentIds).catch(() => []);
       await notifyEnrollmentAccount({
         email: contactEmail,
         enrollmentId: supabaseEnrollmentId,
         userId: ownerId,
+        cohortId,
         // The player's name is on the row saved at checkout.
-        enrolled,
+        enrolled: { ...enrolled, playerNames },
       }).catch((err) => console.error("Activation link failed (non-blocking):", err));
     }
   }

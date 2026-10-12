@@ -23,7 +23,16 @@ import { emailBelongsToAccount } from "@/lib/enrollmentLink";
 
 /** What getInviteByToken reported, as far as the gate cares. */
 export type GateInviteLookup =
-  | { state: "valid"; invite: { id: string; email?: string; cohort_id?: string } }
+  | {
+      state: "valid";
+      invite: {
+        id: string;
+        email?: string;
+        cohort_id?: string;
+        /** The player the invitation names (migration 0007), when it names one. */
+        participant_id?: string | null;
+      };
+    }
   | { state: "expired" | "invalid" };
 
 export type EnrollGateDecision =

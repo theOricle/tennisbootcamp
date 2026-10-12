@@ -26,6 +26,7 @@ import { programTakesPlayerAge, suggestProgramsFor } from "@/lib/programCatalog"
 import { hasLevel, placedSpanFor, type PlacedSpan } from "@/lib/tiers";
 import { rosterVoice, trainingRoster } from "@/lib/householdView";
 import { creditLine, nextStepFor, welcomeHeading } from "@/lib/dashboardState";
+import { accountQuizStatus } from "@/lib/quizStatus";
 import { DashboardView, SURFACE, type DashboardEnrollment } from "./DashboardView";
 
 export const metadata: Metadata = {
@@ -302,6 +303,9 @@ async function DashboardContent({
       programs={programs}
       placedSpans={placedSpans}
       today={today}
+      // The same rule the site chrome reads through /api/quiz-status (owner,
+      // 2026-10-12): any player with a quiz answer, quiz availability or a level.
+      quizTaken={accountQuizStatus(players).taken}
     />
   );
 }

@@ -44,8 +44,10 @@ import {
 } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { TEXT_LINK_LIME, TextLink } from "@/components/ui/TextLink";
+import { QuizSwap } from "@/components/quiz/QuizSwap";
 import { TierLine } from "@/components/tiers";
 import { TIER_LADDER_SPAN } from "@/lib/tiers";
+import { loginHref } from "@/lib/authFlow";
 
 type PublicSlot = { slotStart: string; timeLabel: string; taken: boolean };
 type PublicBlock = {
@@ -645,6 +647,9 @@ export default function BookAssessmentPage() {
           value={chooserValue}
           onChange={onChooserChange}
           errors={errors}
+          // A returning holder signs in to pick from their players and comes
+          // straight back here (owner, 2026-10-12: booking always asks who).
+          signInHref={loginHref("/assessment/book")}
           intro={
             choosingAmongGuests
               ? undefined
@@ -716,14 +721,27 @@ export default function BookAssessmentPage() {
                 details.
               </p>
               <p className="mt-3 text-sm text-white/70">
-                Not sure where you stand?{" "}
-                <Link
-                  href="/intake"
-                  className="font-semibold text-[#B4E655] underline-offset-2 hover:underline"
-                >
-                  Take the 2-minute quiz first
-                </Link>
-                .
+                {/* A quiz-taker is not sent back to the quiz (owner, 2026-10-12). */}
+                <QuizSwap
+                  guest={
+                    <>
+                      Not sure where you stand?{" "}
+                      <Link
+                        href="/intake"
+                        className="font-semibold text-[#B4E655] underline-offset-2 hover:underline"
+                      >
+                        Take the 2-minute quiz first
+                      </Link>
+                      .
+                    </>
+                  }
+                  taken={
+                    <>
+                      You&apos;ve taken the quiz, so our coaches already place you from your
+                      answers. The assessment is for certainty before you enroll.
+                    </>
+                  }
+                />
               </p>
               <LeaveWith className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 lg:hidden" />
             </div>
