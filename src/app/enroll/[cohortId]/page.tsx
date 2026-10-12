@@ -7,7 +7,7 @@ import type { ProgramGroup } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
 import { getCohortById } from "@/lib/cohortsDb";
 import { isCohortRenderable } from "@/lib/cohortVisibility";
-import { resolveEnrollGate } from "@/lib/enrollGate";
+import { approvalGateApplies, claimedInvite, resolveEnrollGate } from "@/lib/enrollGate";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { createClient } from "@/lib/supabase/server";
 import { findUnusedCredit } from "@/lib/assessmentCredit";
@@ -336,12 +336,17 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
     );
   }
   const inviteToken = gate.decision.via === "invite" ? tokenParam : null;
-  const inviteEmail = gate.inviteEmail;
+  // The invitation the link carries, on a public cohort as much as a private
+  // one (the gate's `via` says "public" there even with a valid token): it
+  // names the player, the invite being claimed, and the holder's email.
+  const claimed = claimedInvite(gate.lookup);
+  const inviteEmail = gate.inviteEmail ?? claimed?.email ?? null;
 
   // The group this cohort trains in (owner, 2026-10-12): its ages decide who
-  // fits, and a by-approval group (High Performance) takes no walk-in.
+  // fits, and a by-approval group (High Performance) takes no walk-in — but
+  // the player holding the invitation link is never sent back to it.
   const group = programGroups.find((g) => cohortMatchesGroup(cohort, g)) ?? null;
-  if (group?.joining === "approval" && gate.decision.via === "public") {
+  if (group && approvalGateApplies({ group, decision: gate.decision, claimed })) {
     return (
       <ApprovalGate group={group} programSlug={program?.slug ?? group.programSlug} signInHref={signInHref} />
     );
@@ -373,12 +378,8 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
 
   // Who the invitation names (migration 0007), and who on the signed-in
   // account is already in this cohort (owner, 2026-10-12).
-  const invitedParticipantId =
-    gate.decision.via === "invite" && gate.lookup?.state === "valid"
-      ? gate.lookup.invite.participant_id ?? null
-      : null;
-  const claimingInviteId =
-    gate.decision.via === "invite" && gate.lookup?.state === "valid" ? gate.lookup.invite.id : null;
+  const invitedParticipantId = claimed?.participant_id ?? null;
+  const claimingInviteId = claimed?.id ?? null;
   const user = await currentUser();
   let blocked: BlockedPlayer[] = [];
   let invited: InvitedPlayer | null = null;

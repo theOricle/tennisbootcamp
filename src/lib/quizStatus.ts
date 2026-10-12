@@ -36,6 +36,17 @@ export const QUIZ_FLAG_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 export const SEE_GROUPS_LABEL = "See your groups";
 export const OPEN_DASHBOARD_LABEL = "Open your dashboard";
 export const RETAKE_QUIZ_LABEL = "Retake the quiz";
+
+/**
+ * The link under "Retake the quiz": the quiz with `?retake=1`, which skips
+ * the already-taken panel, so a taker opens the first step at once instead
+ * of being told they took it and pressing Retake a second time. Keeps any
+ * query the surface passes (`/intake?program=bootcamps`); idempotent.
+ */
+export function retakeQuizHref(href: string = "/intake"): string {
+  if (/[?&]retake=/.test(href)) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}retake=1`;
+}
 export const ADD_PLAYER_LABEL = "Add another player";
 
 /** What the device remembers about the quiz: enough to link to the matched groups, no name, no email. */

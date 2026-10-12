@@ -34,6 +34,7 @@ import {
   groupAgesLabel,
   invitedLockReasons,
   levelNote,
+  pickedButBlockedIssue,
   rightGroupHref,
   seatCapIssue,
   type AccountStepValue,
@@ -397,28 +398,45 @@ function OrderSummary({
  * "or while enrolling"). Off by default — skipping it never blocks
  * enrolling; the set-up email after the enrollment covers that path. On,
  * it asks for a password twice, with the same rules as /set-password, and
- * the password goes nowhere but Supabase.
+ * the password goes nowhere but Supabase. The address is unproven here, so
+ * the account is created unconfirmed and the wizard carries on as a guest
+ * (`done`): the enrollment's set-up email confirms the address, and the
+ * note reads the same whether or not the address already had an account.
  */
 function AccountStep({
   value,
   onChange,
   errors,
   notice,
-  signInHref,
+  done,
   onContinueWithout,
 }: {
   value: AccountStepValue;
   onChange: (next: AccountStepValue) => void;
   errors: Record<string, string>;
-  /** "exists" — the sign-in with that password failed; "failed" — the account could not be created. */
-  notice: "exists" | "failed" | null;
-  signInHref: string;
+  /** "failed" — the account could not be created just now. */
+  notice: "failed" | null;
+  /** The account was requested for this address; the password is out of memory. */
+  done: boolean;
   onContinueWithout: () => void;
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const pwId = FIELD_IDS.accountPassword;
   const confirmId = FIELD_IDS.accountConfirm;
+  if (done) {
+    return (
+      <fieldset className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
+        <legend className="sr-only">{ACCOUNT_STEP_COPY.title}</legend>
+        <p aria-hidden="true" className="text-sm font-semibold text-white">
+          {ACCOUNT_STEP_COPY.title}
+        </p>
+        <p role="status" className="mt-1 text-xs leading-relaxed text-white/70">
+          {ACCOUNT_STEP_COPY.done}
+        </p>
+      </fieldset>
+    );
+  }
   return (
     <fieldset className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
       <legend className="sr-only">{ACCOUNT_STEP_COPY.title}</legend>
@@ -496,13 +514,8 @@ function AccountStep({
           </div>
           {notice && (
             <div role="status" className="rounded-2xl border border-yellow-200/30 bg-yellow-200/5 px-4 py-3 text-sm text-white/80">
-              <p>{notice === "exists" ? ACCOUNT_STEP_COPY.exists : ACCOUNT_STEP_COPY.failed}</p>
+              <p>{ACCOUNT_STEP_COPY.failed}</p>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                {notice === "exists" && (
-                  <Link href={signInHref} className={TEXT_LINK_LIME}>
-                    Sign in instead →
-                  </Link>
-                )}
                 <button type="button" onClick={onContinueWithout} className={TEXT_LINK_LIME}>
                   Continue without it →
                 </button>
@@ -530,7 +543,7 @@ function RegistrantStep({
   account,
   setAccount,
   accountNotice,
-  signInHref,
+  accountDone,
   onContinueWithoutAccount,
 }: {
   form: FormState;
@@ -546,8 +559,8 @@ function RegistrantStep({
   group: ProgramGroup | null;
   account: AccountStepValue;
   setAccount: (next: AccountStepValue) => void;
-  accountNotice: "exists" | "failed" | null;
-  signInHref: string;
+  accountNotice: "failed" | null;
+  accountDone: boolean;
   onContinueWithoutAccount: () => void;
 }) {
   return (
@@ -615,11 +628,15 @@ function RegistrantStep({
                 hint={Boolean(group && groupAgesLabel(group))}
               />
             </FieldGroup>
-            {errors[FIELD_IDS.dob(player.key)] && group && (
-              <Link href={rightGroupHref(null, group.locationId)} className={TEXT_LINK_LIME}>
-                See the groups for their age →
-              </Link>
-            )}
+            {/* The right groups are a link away only when the problem IS the
+                age: a missing or malformed date gets no detour. */}
+            {errors[FIELD_IDS.dob(player.key)] &&
+              group &&
+              dobAgeError(group, computeAge(player.dob)) && (
+                <Link href={rightGroupHref(null, group.locationId)} className={TEXT_LINK_LIME}>
+                  See the groups for their age →
+                </Link>
+              )}
           </fieldset>
         ))}
       </div>
@@ -723,7 +740,7 @@ function RegistrantStep({
           onChange={setAccount}
           errors={errors}
           notice={accountNotice}
-          signInHref={signInHref}
+          done={accountDone}
           onContinueWithout={onContinueWithoutAccount}
         />
       )}
@@ -1027,7 +1044,13 @@ export function EnrollWizard({
   // The optional account (owner, 2026-10-12): off until ticked.
   const [account, setAccount] = useState<AccountStepValue>(EMPTY_ACCOUNT_STEP);
   const [accountBusy, setAccountBusy] = useState(false);
-  const [accountNotice, setAccountNotice] = useState<"exists" | "failed" | null>(null);
+  const [accountNotice, setAccountNotice] = useState<"failed" | null>(null);
+  // The address an account was requested for. The step shows its done note
+  // while the email field still reads that address; change the email and
+  // the step is fresh again, so the new address can get its own account.
+  const [accountDoneFor, setAccountDoneFor] = useState<string | null>(null);
+  const accountDone =
+    accountDoneFor !== null && accountDoneFor === form.contactEmail.trim().toLowerCase();
   // Field ids whose problems are on screen, added when Continue is pressed
   // (audit M19); the list under the button follows the same press.
   const [shown, setShown] = useState<Set<string>>(() => new Set());
@@ -1141,6 +1164,18 @@ export function EnrollWizard({
               message: `${g.name.trim()} is outside this group's ages (${groupAgesLabel(group)}). Pick the group for their age below, or change the age group.`,
             });
           }
+        }
+      }
+      // A chosen player who carries a reason not to take a seat — a player
+      // added a moment ago whose age band is outside the group, once the
+      // account reloaded — stops the step here, with the reason. The
+      // chooser never picks a disabled row itself; this closes the gap.
+      if (household.signedIn) {
+        for (const id of who.selectedIds) {
+          const reason = disabledReasons[id];
+          if (!reason) continue;
+          const p = household.participants.find((x) => x.id === id);
+          out.push({ id: FIELD_IDS.who, message: pickedButBlockedIssue(p?.name, reason) });
         }
       }
       const seats = seatCapIssue(seatsRemaining, players.length);
@@ -1410,23 +1445,28 @@ export function EnrollWizard({
 
   /**
    * "Create my account now" (owner, 2026-10-12): the account is created on
-   * the server, the browser signs in with the same password, the typed
-   * players become players on the new account, and the wizard carries on
-   * signed in — so the rows and the players attach to it and no set-up
-   * email is needed. The password goes to /api/enroll/account and to
-   * Supabase's sign-in, nowhere else. Anything that fails leaves the
-   * enrollment untouched: the notice offers to continue without it.
-   * Resolves to true when the step may advance.
+   * the server, unconfirmed — nobody has proved the address yet — and the
+   * wizard carries on as a guest, exactly as it would have with the step
+   * skipped. The enrollment's save paths hang the typed players off the
+   * email's account (household.ts), and its set-up email confirms the
+   * address, after which the typed password works. The password goes to
+   * /api/enroll/account and nowhere else; it leaves memory here. Nothing is
+   * signed in from the wizard, and the route's answer is the same whether
+   * or not the address already had an account, so the step reads the same
+   * either way. A failure leaves the enrollment untouched: the notice
+   * offers to continue without it. Resolves to true when the step may
+   * advance.
    */
   async function createAccountNow(): Promise<boolean> {
     setAccountBusy(true);
     setAccountNotice(null);
+    const email = form.contactEmail.trim();
     try {
       const res = await fetch("/api/enroll/account", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: form.contactEmail.trim(),
+          email,
           password: account.password,
           fullName: holderName,
           phone: form.contactPhone,
@@ -1436,61 +1476,8 @@ export function EnrollWizard({
         setAccountNotice("failed");
         return false;
       }
-      const { createClient } = await import("@/lib/supabase/browser");
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({
-        email: form.contactEmail.trim(),
-        password: account.password,
-      });
-      if (error) {
-        // The address already had an account with another password (the
-        // route answers the same either way), or the sign-in did not land.
-        setAccountNotice("exists");
-        return false;
-      }
-      // The typed players, as players on the account: the holder's own row
-      // for "Myself", a new (or matching, deduped by the route) row for
-      // everyone else. Their dates of birth follow them.
-      const listRes = await fetch("/api/participants", { credentials: "same-origin" });
-      const list = (await listRes.json().catch(() => ({}))) as {
-        participants?: ParticipantOption[];
-      };
-      const existing = Array.isArray(list.participants) ? list.participants : [];
-      const self = existing.find((p) => p.relationship === "self") ?? null;
-      const ids: string[] = [];
-      const nextDobs: Record<string, string> = { ...dobs };
-      for (const g of who.guests) {
-        if (!g.name.trim()) continue;
-        let id: string | null = null;
-        if (g.relationship === "self" && self) {
-          id = self.id;
-        } else {
-          const addRes = await fetch("/api/participants", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fullName: g.name.trim(),
-              relationship: g.relationship,
-              isMinor: g.isMinor,
-              ageBand: g.ageBand,
-            }),
-          });
-          const added = (await addRes.json().catch(() => ({}))) as {
-            participant?: ParticipantOption;
-          };
-          id = addRes.ok && added.participant ? added.participant.id : null;
-        }
-        if (!id) {
-          setAccountNotice("failed");
-          return false;
-        }
-        if (!ids.includes(id)) ids.push(id);
-        if (dobs[g.key]) nextDobs[id] = dobs[g.key];
-      }
-      setDobs(nextDobs);
-      setWho({ selectedIds: ids, guests: [], profiles: {} });
       setAccount(EMPTY_ACCOUNT_STEP);
-      household.reload();
+      setAccountDoneFor(email.toLowerCase());
       trackEvent("enroll_account_created", { cohort_id: cohort.id });
       return true;
     } catch {
@@ -1683,7 +1670,7 @@ export function EnrollWizard({
                 if (accountNotice) setAccountNotice(null);
               }}
               accountNotice={accountNotice}
-              signInHref={signInHref}
+              accountDone={accountDone}
               onContinueWithoutAccount={() => {
                 setAccount(EMPTY_ACCOUNT_STEP);
                 setAccountNotice(null);

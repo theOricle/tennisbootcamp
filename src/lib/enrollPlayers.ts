@@ -181,6 +181,49 @@ export function reusedPlayerNote(name: string): string {
   return `${name.trim()} is already on your account, so we picked them.`;
 }
 
+function lowerFirst(s: string): string {
+  return s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+}
+
+/**
+ * What the chooser says when the typed name is a player on the account who
+ * cannot take a seat here (already in this group, outside its ages, outside
+ * its level band): the row's own reason, instead of picking them — typing
+ * the name is not a way around a disabled row.
+ */
+export function twinBlockedNote(name: string | null | undefined, reason: string): string {
+  return `${(name ?? "").trim() || "That player"} is already on your account — ${lowerFirst(reason)}.`;
+}
+
+/**
+ * The issue the wizard raises when a chosen player carries a reason not to
+ * take a seat (a player added a moment ago whose age band is outside the
+ * group, once the account reloads): the step stops on it, with the reason.
+ */
+export function pickedButBlockedIssue(name: string | null | undefined, reason: string): string {
+  return `${(name ?? "").trim() || "This player"} can't take a seat here — ${lowerFirst(reason)}. Untick them to continue.`;
+}
+
+/**
+ * "Send account email" (admin) is offered only where there is an enrollment
+ * to speak of: a paid invite, or an e-transfer on its way. For a bare or
+ * expired invitation nobody enrolled, so the set-up email ("X is down for
+ * Fall A") and the enrolled note would both be false, and the send would
+ * mint an account for an address that never enrolled. The route refuses the
+ * same cases.
+ */
+export function accountEmailOffered(invite: {
+  status: string;
+  payment_method?: string | null;
+}): boolean {
+  if (invite.status === "paid") return true;
+  return invite.status !== "declined" && invite.payment_method === "etransfer";
+}
+
+/** The route's refusal for an invite the account email is not offered on. */
+export const ACCOUNT_EMAIL_NOT_OFFERED =
+  "The account email goes only to a paid invite, or one with an e-transfer on its way.";
+
 // ─── Seats ───────────────────────────────────────────────────────────────────
 
 /**
@@ -226,15 +269,20 @@ export function accountStepIssues(value: AccountStepValue): AccountStepIssue[] {
   return out;
 }
 
-/** The copy the account step shows, in one place for the tests. */
+/**
+ * The copy the account step shows, in one place for the tests. The address
+ * is unproven while the wizard runs, so the account is created unconfirmed
+ * and the enrollment's own set-up email confirms it (fix round 1): the copy
+ * names that link, and never says whether the address already has an
+ * account — the step reads the same either way.
+ */
 export const ACCOUNT_STEP_COPY = {
   title: "Your account (optional)",
   intro:
-    "Set a password now and this enrollment lands on your dashboard the moment it is saved. Or skip it: after you enroll, we email you a link to set it up.",
+    "Set a password now. After you enroll, we email you a link that confirms this address; sign in with your password from then on. Or skip it: after you enroll, we email you a link to set it up.",
   toggle: "Create my account now",
   skip: "Skip — we will email you a link to set it up",
-  exists:
-    "That email already has an account. Sign in instead, or continue without a password and we link this enrollment to it by email.",
+  done: "Done. After you enroll, check this address for the link to your account.",
   failed:
     "We couldn't create your account just now. Continue without it and we'll email you a link to set it up after you enroll.",
 } as const;

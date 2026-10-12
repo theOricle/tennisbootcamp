@@ -13,7 +13,12 @@ import { formatTierLevel } from "@/lib/tiers";
 import { TierLine } from "@/components/tiers";
 import { withHumanFallback, type FieldIssue } from "@/lib/formValidation";
 import { PARTICIPANT_CAP_ERROR } from "@/lib/participantInput";
-import { accountAtCap, matchingPlayer, reusedPlayerNote } from "@/lib/enrollPlayers";
+import {
+  accountAtCap,
+  matchingPlayer,
+  reusedPlayerNote,
+  twinBlockedNote,
+} from "@/lib/enrollPlayers";
 import {
   FieldError,
   HINT_CLASS,
@@ -1106,8 +1111,17 @@ export function WhoIsThisFor({
             participants={participants}
             onAdded={(p, profile, note) => {
               setAdding(false);
-              setReusedNote(note ?? null);
               reload();
+              // A typed twin (matched here by name, or the route's reused
+              // row) is still the row it matches: one the chooser has
+              // disabled cannot be picked by typing its name. Say the row's
+              // reason instead (fix round 1).
+              const reason = reasonFor(p.id);
+              if (reason) {
+                setReusedNote(twinBlockedNote(p.name, reason));
+                return;
+              }
+              setReusedNote(note ?? null);
               onChange({
                 ...value,
                 selectedIds: multiple

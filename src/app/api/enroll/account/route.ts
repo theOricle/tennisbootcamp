@@ -8,17 +8,21 @@ import { bodyTooLarge, REQUEST_TOO_LARGE } from "@/lib/botCheck";
 // "Create your account now" inside a guest enrollment (owner, 2026-10-12:
 // "or while enrolling"). The wizard posts the holder's email and the password
 // they typed; nothing else in the flow ever sees the password, and it goes
-// nowhere but Supabase. The account is created with the email confirmed —
-// the enrollment's own emails go to that address, and a stranger who typed
-// someone else's email gains nothing: the real owner's next quiz, booking or
-// enrollment finds an "existing" account and gets a set-password link that
-// replaces the password (see the PR body's risk note).
+// nowhere but Supabase.
+//
+// Nobody has proved the address at this point, so the account is created
+// UNCONFIRMED (`email_confirm: false`, as every other create in the repo:
+// players.ts ensureAccountForEmail) and the wizard carries on as a guest —
+// it never signs in here. The enrollment's own set-up email then goes to the
+// address (notifyEnrollmentAccount: the account was never confirmed and never
+// signed in, so accountNeedsSetup is true); its link confirms the address,
+// and from then on the typed password works. A stranger who types someone
+// else's email gets an account they cannot sign in to, and the real owner's
+// set-up link lands on /set-password, where they set their own.
 //
 // The answer is the same whether the account was created or the address
-// already had one (no enumeration beyond what sign-in reveals): the wizard
-// then signs in with the password, and a failed sign-in is its cue to offer
-// "Sign in instead" or to continue as a guest — the set-up email after the
-// enrollment covers that case, exactly as it covers a skipped step.
+// already had one, and the wizard shows the same note either way: nothing
+// here says whether an address has an account.
 
 const NAME_MAX = 120;
 const PHONE_MAX = 40;
@@ -60,7 +64,8 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,
+      // Unproven address: the enrollment's set-up link confirms it. Never true.
+      email_confirm: false,
       user_metadata: fullName ? { full_name: fullName } : undefined,
     });
     if (error || !data.user?.id) {

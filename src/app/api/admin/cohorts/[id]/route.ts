@@ -17,6 +17,7 @@ import {
   type CohortInput,
 } from "@/lib/cohortActions";
 import { resendAccountEmail } from "@/lib/supabase/enrollmentActions";
+import { ACCOUNT_EMAIL_NOT_OFFERED, accountEmailOffered } from "@/lib/enrollPlayers";
 import { programs } from "@/content/programs";
 
 // Admin cohort detail: invites, sessions, and the state-changing actions —
@@ -188,7 +189,11 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     // The account email again (owner, 2026-10-12): a guest enrollment's
     // set-up email that never arrived, or the "you're enrolled" note. Sent
-    // to the invite's own address, deliberately, whatever was sent before.
+    // to the invite's own address, deliberately, whatever was sent before —
+    // but only for an invite someone enrolled on (paid, or an e-transfer on
+    // its way): for a bare or expired invitation both messages would be
+    // false, and the send would mint an account for an address that never
+    // enrolled (fix round 1).
     if (action === "account_link") {
       const inviteId = String(body.inviteId ?? "").trim();
       if (!inviteId) {
@@ -198,6 +203,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       if (!cohort) return NextResponse.json({ error: "Cohort not found." }, { status: 404 });
       const invite = (await listInvites(id)).find((i) => i.id === inviteId);
       if (!invite) return NextResponse.json({ error: "Invite not found." }, { status: 404 });
+      if (!accountEmailOffered(invite)) {
+        return NextResponse.json({ error: ACCOUNT_EMAIL_NOT_OFFERED }, { status: 400 });
+      }
       const outcome = await resendAccountEmail({
         email: invite.email,
         cohortId: id,

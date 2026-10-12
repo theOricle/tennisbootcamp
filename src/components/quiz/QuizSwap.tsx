@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useQuizStatus } from "@/lib/useQuizStatus";
-import { RETAKE_QUIZ_LABEL } from "@/lib/quizStatus";
+import { RETAKE_QUIZ_LABEL, retakeQuizHref } from "@/lib/quizStatus";
 import { TrackedLink } from "@/components/ui/TrackedButton";
 
 /**
@@ -30,7 +30,11 @@ export function QuizSwap({
 
 /**
  * The small secondary link a quiz-taker keeps (never the primary): it always
- * opens the quiz, whatever the device remembers.
+ * opens the quiz, whatever the device remembers — on its first step, since
+ * `?retake=1` skips the already-taken panel (the hero's and the closing
+ * band's links went to plain /intake, where a taker met the panel again and
+ * had to press Retake twice). `href` is the quiz link the surface uses,
+ * query and all; the retake flag is added here.
  */
 export function RetakeQuizLink({
   href = "/intake",
@@ -44,7 +48,13 @@ export function RetakeQuizLink({
   children?: ReactNode;
 }) {
   return (
-    <TrackedLink href={href} track="quiz" source={source} quizAware={false} className={className}>
+    <TrackedLink
+      href={retakeQuizHref(href)}
+      track="quiz"
+      source={source}
+      quizAware={false}
+      className={className}
+    >
       {children}
     </TrackedLink>
   );

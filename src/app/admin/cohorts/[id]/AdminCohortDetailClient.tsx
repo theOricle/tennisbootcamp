@@ -9,6 +9,7 @@ import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
 import { PlayerPreview } from "@/components/admin/PlayerPreview";
 import type { MatrixPlayer } from "@/lib/availabilityMatrix";
 import { dayNameForDate } from "@/lib/makeup";
+import { accountEmailOffered } from "@/lib/enrollPlayers";
 import {
   COHORT_STATUS_LABELS,
   INVITE_STATUS_LABELS,
@@ -256,7 +257,10 @@ function InviteItem({
               Undo
             </button>
           )}
-          {invite.status !== "declined" && mode === "idle" && (
+          {/* Only where someone enrolled: paid, or an e-transfer on its way.
+              A bare or expired invitation has no enrollment for the email to
+              describe, and the route refuses it too. */}
+          {accountEmailOffered(invite) && mode === "idle" && (
             <button
               type="button"
               disabled={busy}

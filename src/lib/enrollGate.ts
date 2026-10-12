@@ -16,6 +16,7 @@
 // src/scripts/test-checkout-gate.ts); `resolveEnrollGate` does the I/O.
 
 import type { Cohort } from "@/types/cohort";
+import type { ProgramGroup } from "@/types/program";
 import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
 import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
@@ -39,6 +40,43 @@ export type EnrollGateDecision =
   | { allowed: true; via: "public" | "invite" | "level" }
   | { allowed: false; status: 404 }
   | { allowed: false; status: 403; expired: boolean };
+
+/** The invite row a valid token lookup found. */
+export type ClaimedInvite = Extract<GateInviteLookup, { state: "valid" }>["invite"];
+
+/**
+ * The invitation the request actually carries: the token was sent, looked
+ * up and found live in this cohort. The decision's `via` is not that: a
+ * public cohort answers "public" even when a valid token came with the
+ * request (resolveEnrollGate looks tokens up on public cohorts too, so a
+ * payment links to its invite row), and public cohorts are the ones that
+ * render on program pages and receive the quiz's invitations. The page
+ * reads this to know who the invitation names and which invite is being
+ * claimed, whatever the cohort's visibility.
+ */
+export function claimedInvite(lookup: GateInviteLookup | null | undefined): ClaimedInvite | null {
+  return lookup?.state === "valid" ? lookup.invite : null;
+}
+
+/**
+ * Whether the by-approval gate (High Performance, joining flow 2026-10-12)
+ * stands between this visitor and the wizard: a public cohort in a
+ * by-approval group, reached with no live invitation. A player holding the
+ * invitation link walks through; a private cohort's own gate has already
+ * decided (an invite or a level admitted them).
+ */
+export function approvalGateApplies(input: {
+  group: Pick<ProgramGroup, "joining"> | null | undefined;
+  decision: EnrollGateDecision;
+  claimed: { id: string } | null | undefined;
+}): boolean {
+  return (
+    input.group?.joining === "approval" &&
+    input.decision.allowed &&
+    input.decision.via === "public" &&
+    !input.claimed
+  );
+}
 
 /**
  * The gate rule itself, shared by the page and both payment routes.

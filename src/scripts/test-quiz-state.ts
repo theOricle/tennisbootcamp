@@ -39,11 +39,14 @@ import {
   quizNextStep,
   quizView,
   readQuizFlagFromCookies,
+  retakeQuizHref,
 } from "../lib/quizStatus";
 import {
+  ACCOUNT_EMAIL_NOT_OFFERED,
   ACCOUNT_STEP_COPY,
   EMPTY_ACCOUNT_STEP,
   accountAtCap,
+  accountEmailOffered,
   accountNeedsSetup,
   accountStepIssues,
   ageBandBlock,
@@ -55,13 +58,16 @@ import {
   invitedLockReasons,
   levelNote,
   matchingPlayer,
+  pickedButBlockedIssue,
   playersPhrase,
   recordSetupEmail,
   reusedPlayerNote,
   rightGroupHref,
   seatCapIssue,
   setupEmailSentFor,
+  twinBlockedNote,
 } from "../lib/enrollPlayers";
+import { approvalGateApplies, claimedInvite, type EnrollGateDecision } from "../lib/enrollGate";
 import { groupById, programGroups } from "../content/programs";
 import { defaultLocation } from "../content/locations";
 import { MAX_PARTICIPANTS_PER_ACCOUNT } from "../lib/participantInput";
@@ -150,6 +156,10 @@ check("signed in while the account read is in flight is unknown", quizView({ sig
 check("signed in, the account decides and a family device's flag is ignored", quizView({ signedIn: true, account: { taken: false, playerCount: 1, matchedHref: "/programs" }, device: { playerCount: 1, ageBand: "adult", tierSlug: null } }).state === "new");
 check("signed in and taken goes to the dashboard", (() => { const v = quizView({ signedIn: true, account: status, device: null }); return v.state === "taken" && v.next.href === "/dashboard"; })());
 
+console.log("Retake the quiz opens the first step, not the already-taken panel");
+check("the retake link adds ?retake=1 to the quiz link", retakeQuizHref() === "/intake?retake=1" && retakeQuizHref("/intake") === "/intake?retake=1");
+check("…keeps a program page's query, and never doubles the flag", retakeQuizHref("/intake?program=bootcamps") === "/intake?program=bootcamps&retake=1" && retakeQuizHref("/intake?retake=1") === "/intake?retake=1" && retakeQuizHref("/intake?program=x&retake=1") === "/intake?program=x&retake=1");
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. Who an enrollment is for
 // ═══════════════════════════════════════════════════════════════════════════
@@ -191,6 +201,26 @@ check("already in the cohort: the three reasons", alreadyInCohortReason("enrolle
 check("the cap: 12 players, the holder included", !accountAtCap(MAX_PARTICIPANTS_PER_ACCOUNT - 1) && accountAtCap(MAX_PARTICIPANTS_PER_ACCOUNT) && MAX_PARTICIPANTS_PER_ACCOUNT === 12);
 check("a typed twin is the player already there (spaces and case aside)", matchingPlayer(people, "  maya   CHEN ")?.id === "maya" && matchingPlayer(people, "Maya Chen-Lee") === null && matchingPlayer(people, "") === null);
 check("…and the user is told", reusedPlayerNote("Maya Chen") === "Maya Chen is already on your account, so we picked them.");
+check("a typed twin the chooser has disabled is said, not picked: the row's reason", twinBlockedNote("Maya Chen", alreadyInCohortReason("enrolled")) === "Maya Chen is already on your account — already enrolled in this group." && twinBlockedNote(" ", "Outside this group's ages (7–10)") === "That player is already on your account — outside this group's ages (7–10)." && twinBlockedNote(null, "This invitation is for Leo Chen") === "That player is already on your account — this invitation is for Leo Chen.");
+check("a chosen player with a reason stops the who step, with the reason and the way out", pickedButBlockedIssue("Leo Chen", "Outside this group's ages (7–10)") === "Leo Chen can't take a seat here — outside this group's ages (7–10). Untick them to continue." && pickedButBlockedIssue(undefined, "Already enrolled in this group").startsWith("This player can't take a seat here"));
+
+console.log("The invitation a link carries, on a public cohort too");
+{
+  const live = { state: "valid" as const, invite: { id: "inv-1", email: "dana@example.com", participant_id: "maya" } };
+  check("a valid lookup is the claimed invite; expired, invalid or none is not", claimedInvite(live)?.id === "inv-1" && claimedInvite(live)?.participant_id === "maya" && claimedInvite({ state: "expired" }) === null && claimedInvite({ state: "invalid" }) === null && claimedInvite(null) === null && claimedInvite(undefined) === null);
+  const pub: EnrollGateDecision = { allowed: true, via: "public" };
+  const byInvite: EnrollGateDecision = { allowed: true, via: "invite" };
+  const byLevel: EnrollGateDecision = { allowed: true, via: "level" };
+  const refused: EnrollGateDecision = { allowed: false, status: 403, expired: false };
+  check("a public High Performance cohort with no invitation is by approval", approvalGateApplies({ group: hp, decision: pub, claimed: null }));
+  check("…but the player holding the invitation link walks through (the gate still says public)", !approvalGateApplies({ group: hp, decision: pub, claimed: claimedInvite(live) }));
+  check("a private cohort's own gate decided already; an open group never gates", !approvalGateApplies({ group: hp, decision: byInvite, claimed: null }) && !approvalGateApplies({ group: hp, decision: byLevel, claimed: null }) && !approvalGateApplies({ group: hp, decision: refused, claimed: null }) && !approvalGateApplies({ group: g710, decision: pub, claimed: null }) && !approvalGateApplies({ group: null, decision: pub, claimed: null }));
+}
+
+console.log("Send account email (admin): only where someone enrolled");
+check("a paid invite, or an e-transfer on its way, gets it", accountEmailOffered({ status: "paid", payment_method: "card" }) && accountEmailOffered({ status: "paid", payment_method: null }) && accountEmailOffered({ status: "invited", payment_method: "etransfer" }) && accountEmailOffered({ status: "expired", payment_method: "etransfer" }));
+check("a bare, expired or declined invitation does not (nobody enrolled)", !accountEmailOffered({ status: "invited", payment_method: null }) && !accountEmailOffered({ status: "invited", payment_method: "card" }) && !accountEmailOffered({ status: "expired", payment_method: null }) && !accountEmailOffered({ status: "declined", payment_method: "etransfer" }) && !accountEmailOffered({ status: "declined" }));
+check("the refusal says who gets it, plainly", ACCOUNT_EMAIL_NOT_OFFERED.includes("paid invite") && ACCOUNT_EMAIL_NOT_OFFERED.includes("e-transfer") && !ACCOUNT_EMAIL_NOT_OFFERED.includes("!"));
 
 console.log("Seats: one per player, never more than are left");
 check("room, or an unknown count, stops nobody", seatCapIssue(3, 2) === null && seatCapIssue(null, 9) === null && seatCapIssue(2, 2) === null);
@@ -202,7 +232,10 @@ console.log("The optional account step (owner: \"or while enrolling\")");
 check("skipped, it never blocks", accountStepIssues(EMPTY_ACCOUNT_STEP).length === 0 && accountStepIssues({ create: false, password: "x", confirm: "y" }).length === 0);
 check("ticked, the /set-password rules apply: eight characters, typed twice", JSON.stringify(accountStepIssues({ create: true, password: "short", confirm: "" }).map((i) => i.field)) === JSON.stringify(["password", "confirm"]) && accountStepIssues({ create: true, password: "longenough", confirm: "longenougH" })[0]?.field === "confirm" && accountStepIssues({ create: true, password: "longenough", confirm: "longenough" }).length === 0);
 check("the copy says skipping means the email link", ACCOUNT_STEP_COPY.skip === "Skip — we will email you a link to set it up" && ACCOUNT_STEP_COPY.intro.includes("we email you a link") && ACCOUNT_STEP_COPY.title.includes("optional"));
-check("an existing address is offered Sign in instead, or to continue without", ACCOUNT_STEP_COPY.exists.includes("Sign in instead") && ACCOUNT_STEP_COPY.exists.includes("continue without a password") && ACCOUNT_STEP_COPY.failed.includes("Continue without it"));
+check("the intro says the address is confirmed by the emailed link, and the password works after it", ACCOUNT_STEP_COPY.intro.includes("link that confirms this address") && ACCOUNT_STEP_COPY.intro.includes("sign in with your password from then on"));
+check("done reads the same whether or not the address had an account, and points at the email", ACCOUNT_STEP_COPY.done === "Done. After you enroll, check this address for the link to your account." && !("exists" in ACCOUNT_STEP_COPY));
+check("no line says whether an address has an account (no enumeration oracle)", Object.values(ACCOUNT_STEP_COPY).every((s) => !/already has an account|Sign in instead|no account/i.test(s)));
+check("a failure offers to continue without it", ACCOUNT_STEP_COPY.failed.includes("Continue without it"));
 check("no exclamation marks, no SaaS words", Object.values(ACCOUNT_STEP_COPY).every((s) => !s.includes("!") && !/journey|seamless|unlock/i.test(s)));
 
 console.log("After the enrollment: who hears what");
@@ -247,6 +280,7 @@ const tracked = read("src/components/ui/TrackedButton.tsx");
 check("a quiz CTA swaps to the taker's next step once known, an assessment CTA never", tracked.includes('track === "quiz" && quizAware !== false && quiz.state === "taken"') && tracked.includes("useQuizStatus()"));
 check("the swapped click is tagged -taken for analytics", tracked.includes("`${source}-taken`"));
 check("quizAware={false} keeps the quiz (Retake the quiz)", read("src/components/quiz/QuizSwap.tsx").includes("quizAware={false}") && read("src/components/quiz/QuizSwap.tsx").includes("RETAKE_QUIZ_LABEL"));
+check("every Retake link opens the first step: the hero's default and the band's program link both go through retakeQuizHref", read("src/components/quiz/QuizSwap.tsx").includes("href={retakeQuizHref(href)}") && read("src/components/sections/QuizBand.tsx").includes("<RetakeQuizLink\n                href={href}") && !read("src/components/sections/Hero.tsx").includes('<RetakeQuizLink href="/intake"'));
 {
   const ssr = render(createElement(TrackedButton, { href: "/intake", track: "quiz", source: "test", variant: "primary" }, QUIZ_CTA_LABEL));
   check("the server render is the visitor's quiz: href and label", ssr.includes('href="/intake"') && ssr.includes(QUIZ_CTA_LABEL) && !ssr.includes(SEE_GROUPS_LABEL));
@@ -311,30 +345,34 @@ check("signed in: age group and level or provisional tier on each row", chooser.
 check("rows disabled with their reason; an invited player locked", chooser.includes("disabledReasons?: Record<string, string>") && chooser.includes("lockedIds?: readonly string[]") && chooser.includes("if (locked(id) && value.selectedIds.includes(id)) return;") && chooser.includes("This invitation is for them"));
 check("the level-band reason still reads, dimmed, with no tick box", chooser.includes("Outside this group's level band") && chooser.includes("bg-transparent opacity-60") && chooser.includes("(pickable || selected) &&"));
 check("New player: a typed twin is picked and said; the cap is said before the form", chooser.includes("+ New player") && chooser.includes("matchingPlayer(participants, fullName)") && chooser.includes("reusedPlayerNote(") && chooser.includes("accountAtCap(participants.length)") && chooser.includes("{PARTICIPANT_CAP_ERROR}"));
+check("…but a twin the chooser has disabled is never picked by typing its name: the reason is said before any selection", (() => { const added = chooser.slice(at(chooser, "onAdded={(p, profile, note) => {"), at(chooser, "onCancel={() => setAdding(false)}")); return added.includes("const reason = reasonFor(p.id);") && added.includes("setReusedNote(twinBlockedNote(p.name, reason));") && at(added, "if (reason) {") < at(added, "onChange({"); })());
 const participantsRoute = read("src/app/api/participants/route.ts");
 check("/api/participants exposes the self-estimate and reuses a twin instead of adding one", participantsRoute.includes("selfLevel: p.self_level ?? null") && participantsRoute.includes("findExistingParticipant(existing, { fullName, relationship })") && participantsRoute.includes("reused: true"));
 check("the booking page offers the sign-in line too", read("src/app/assessment/book/page.tsx").includes('signInHref={loginHref("/assessment/book")}'));
 
 console.log("Enrollment: the page's facts and the wizard's rules");
 const enrollPage = read("src/app/enroll/[cohortId]/page.tsx");
-check("the page finds the cohort's group and gates a by-approval group with no invite", enrollPage.includes("programGroups.find((g) => cohortMatchesGroup(cohort, g))") && enrollPage.includes('group?.joining === "approval" && gate.decision.via === "public"') && enrollPage.includes("function ApprovalGate") && enrollPage.includes("{APPROVAL_LINE}"));
+check("the page finds the cohort's group and gates a by-approval group with no invite — read from the lookup, so an invitee holding the link on a public cohort walks through", enrollPage.includes("programGroups.find((g) => cohortMatchesGroup(cohort, g))") && enrollPage.includes("const claimed = claimedInvite(gate.lookup);") && enrollPage.includes("approvalGateApplies({ group, decision: gate.decision, claimed })") && !enrollPage.includes('gate.decision.via === "public"') && enrollPage.includes("function ApprovalGate") && enrollPage.includes("{APPROVAL_LINE}"));
 check("the page lists who is already in the cohort: paid, pending and live invites, and paid rows by name", enrollPage.includes("async function blockedPlayers") && enrollPage.includes('alreadyInCohortReason("enrolled")') && enrollPage.includes('alreadyInCohortReason("pending")') && enrollPage.includes('alreadyInCohortReason("invited")') && enrollPage.includes("matchingPlayer(input.participants, row.participant_name"));
 check("the invite being claimed never blocks its own player", enrollPage.includes("if (invite.id === input.claimingInviteId) continue;"));
-check("an invitation's player: locked on its account, prefilled for a guest", enrollPage.includes("gate.lookup.invite.participant_id ?? null") && enrollPage.includes("onAccount: true") && enrollPage.includes("onAccount: false") && enrollPage.includes("getParticipant(invitedParticipantId)"));
+check("an invitation's player: locked on its account, prefilled for a guest, on a public cohort as much as a private one", enrollPage.includes("const invitedParticipantId = claimed?.participant_id ?? null;") && enrollPage.includes("const claimingInviteId = claimed?.id ?? null;") && enrollPage.includes("const inviteEmail = gate.inviteEmail ?? claimed?.email ?? null;") && !enrollPage.includes('gate.decision.via === "invite" && gate.lookup') && enrollPage.includes("onAccount: true") && enrollPage.includes("onAccount: false") && enrollPage.includes("getParticipant(invitedParticipantId)"));
 check("sign-in comes back to this page with the token", enrollPage.includes("`/enroll/${cohort.id}?invite=${encodeURIComponent(queryToken)}`") && enrollPage.includes("const signInHref = loginHref(thisPage);") && enrollPage.includes("signInHref={signInHref}"));
 const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
 check("the chooser gets the reasons, the lock, the sign-in line, and one seat for an invited player", wizard.includes("disabledReasons={disabledReasons}") && wizard.includes("lockedIds={lockedIds}") && wizard.includes("signInHref={signInHref}") && wizard.includes("multiple={!invited?.onAccount}"));
 check("ages: a band outside the group blocks (signed in: disabled; guest: an issue on the band), with the right groups a link away", wizard.includes("ageBandBlock(group, band)") && wizard.includes("ageBandBlock(group, g.ageBand)") && wizard.includes("rightGroupHref(") && wizard.includes("See the groups for their age →"));
 check("the date of birth is checked against the group's exact ages", wizard.includes("dobAgeError(group, age)") && wizard.includes("This group takes ages ${groupAgesLabel(group)}."));
+check("See the groups for their age under the DOB only when the age is the problem, not for a missing or malformed date", wizard.includes("errors[FIELD_IDS.dob(player.key)] &&\n              group &&\n              dobAgeError(group, computeAge(player.dob)) && ("));
+check("a chosen player who carries a reason stops the who step", wizard.includes("const reason = disabledReasons[id];") && wizard.includes("pickedButBlockedIssue(p?.name, reason)"));
 check("seats: the wizard stops more players than seats before the routes do", wizard.includes("seatCapIssue(seatsRemaining, players.length)"));
 check("levels are noted under the chooser, never a block", wizard.includes("levelNote(") && wizard.includes("levelNotes.map((note) =>") && !wizard.includes("levelBlock"));
 check("the optional account step is a guest's, last on the registrant step, skippable", wizard.includes("function AccountStep") && wizard.includes("{!signedIn && (\n        <AccountStep") && wizard.includes("{ACCOUNT_STEP_COPY.skip}") && wizard.includes("accountStepIssues(account)"));
-check("the password goes to /api/enroll/account and Supabase's sign-in, nowhere else, and is never logged", wizard.includes('fetch("/api/enroll/account"') && wizard.includes("signInWithPassword({") && !/console\.(log|warn|error)\([^)]*password/i.test(wizard) && !wizard.includes("localStorage") && !wizard.includes("sessionStorage"));
-check("after the account is created the typed players join it and the wizard carries on signed in", wizard.includes("setWho({ selectedIds: ids, guests: [], profiles: {} });") && wizard.includes("household.reload();") && wizard.includes('fetch("/api/participants", {\n            method: "POST"'));
-check("a failed or existing account never blocks: Sign in instead, or Continue without it", wizard.includes("Sign in instead →") && wizard.includes("Continue without it →") && wizard.includes("onContinueWithoutAccount"));
+check("the password goes to /api/enroll/account and nowhere else, and is never logged", wizard.includes('fetch("/api/enroll/account"') && !wizard.includes("signInWithPassword") && !wizard.includes("@/lib/supabase/browser") && !/console\.(log|warn|error)\([^)]*password/i.test(wizard) && !wizard.includes("localStorage") && !wizard.includes("sessionStorage"));
+check("after the account is requested the wizard carries on as a guest: no sign-in, the password out of memory, the done note for that address", wizard.includes("setAccount(EMPTY_ACCOUNT_STEP);\n      setAccountDoneFor(email.toLowerCase());") && wizard.includes("accountDoneFor === form.contactEmail.trim().toLowerCase()") && wizard.includes("{ACCOUNT_STEP_COPY.done}") && !wizard.includes('fetch("/api/participants", {\n            method: "POST"'));
+check("a failure never blocks (Continue without it); nothing says whether the address had an account", wizard.includes("Continue without it →") && wizard.includes("onContinueWithoutAccount") && !wizard.includes("Sign in instead") && !wizard.includes('"exists"'));
 check("e-transfer and card both carry every player's participant id (unchanged)", wizard.includes("participantId: p.participantId,") && wizard.includes("participants: players.map((p) => ({"));
 const accountRoute = read("src/app/api/enroll/account/route.ts");
-check("the account route: a valid email, the /set-password rule, no change to an existing account, the same answer either way", accountRoute.includes("isValidEmail(email)") && accountRoute.includes("newPasswordError(password)") && accountRoute.includes("if (existing) return NextResponse.json({ ok: true });") && accountRoute.includes("email_confirm: true"));
+check("the account route: a valid email, the /set-password rule, no change to an existing account, the same answer either way", accountRoute.includes("isValidEmail(email)") && accountRoute.includes("newPasswordError(password)") && accountRoute.includes("if (existing) return NextResponse.json({ ok: true });"));
+check("the account route never confirms an address nobody has proved: created unconfirmed, like every other create", accountRoute.includes("email_confirm: false") && !accountRoute.includes("email_confirm: true") && read("src/lib/players.ts").includes("email_confirm: false"));
 check("the account route never logs the password or the address", !/console\.(log|warn|error)\([^)]*(password|email)/i.test(accountRoute) && accountRoute.includes("bodyTooLarge("));
 check("the account route refuses a signed-in caller and attaches the holder's own player", accountRoute.includes("if (await currentUser())") && accountRoute.includes("ensureSelfParticipant(userId"));
 
@@ -344,6 +382,7 @@ check("a new address gets the set-up email through the invite branch", actions.i
 check("an account never activated gets it through the magic-link branch, once per cohort", actions.includes("if (accountNeedsSetup(user)) {") && actions.includes("setupEmailSentFor(user?.user_metadata ?? null, cohortId)") && actions.includes("markSetupEmailSent("));
 check("an activated account gets You're enrolled, never a second set-password email", at(actions, "await sendEnrolledEmail({") > at(actions, "if (accountNeedsSetup(user)) {"));
 check("the admin can send it again on purpose", actions.includes("export async function resendAccountEmail") && actions.includes("force: true") && read("src/app/api/admin/cohorts/[id]/route.ts").includes('action === "account_link"') && read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx").includes("Send account email"));
+check("…only on an invite someone enrolled on: the button and the route both read accountEmailOffered", read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx").includes("{accountEmailOffered(invite) && mode === \"idle\" && (") && !read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx").includes('invite.status !== "declined" && mode === "idle"') && read("src/app/api/admin/cohorts/[id]/route.ts").includes("if (!accountEmailOffered(invite)) {") && read("src/app/api/admin/cohorts/[id]/route.ts").includes("ACCOUNT_EMAIL_NOT_OFFERED"));
 check("owner writes still only touch an unowned row", (actions.match(/\.update\(\{ user_id: \w+ \}\)[^;]*;/g) ?? []).every((w) => w.includes('.is("user_id", null)')));
 for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
   const src = read(route);
