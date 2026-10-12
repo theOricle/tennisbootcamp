@@ -20,7 +20,8 @@ import { listInvitesForAccount, type AccountInvite } from "@/lib/cohortActions";
 import { listUpcomingBookingsForAccount, type AccountBooking } from "@/lib/assessments";
 import { listUnusedCreditsForAccount, type AccountCredit } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
-import { VENUE_LINE } from "@/lib/membership";
+import { locations } from "@/content/locations";
+import { LocationBlock } from "@/components/locations/LocationLine";
 import { programTakesPlayerAge, suggestProgramsFor } from "@/lib/programCatalog";
 import { hasLevel, placedSpanFor, type PlacedSpan } from "@/lib/tiers";
 import { rosterVoice, trainingRoster } from "@/lib/householdView";
@@ -109,7 +110,7 @@ function DashboardSkeleton() {
           ))}
         </div>
 
-        {/* Side column — week card ghost, then the static venue line */}
+        {/* Side column — week card ghost, then where we train (static) */}
         <div className="space-y-6">
           <div className={`${SURFACE} p-5 md:p-6`}>
             <div className="h-5 w-24 rounded bg-white/10" />
@@ -118,7 +119,13 @@ function DashboardSkeleton() {
           </div>
           <div className={`${SURFACE} p-5 md:p-6`}>
             <h2 className="text-base font-semibold text-white">Where we train</h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/70">{VENUE_LINE}</p>
+            <ul role="list" className="mt-3 space-y-3">
+              {locations.map((l) => (
+                <li key={l.id}>
+                  <LocationBlock location={l} />
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>

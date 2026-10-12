@@ -3,10 +3,16 @@
 // Pins backlog #7: the home page Organization and the /programs/[slug] Course
 // JSON-LD carry their required fields, every absolute URL starts with
 // SITE_URL, the Offer price follows SESSION_PRICE and COHORT_WEEKS, and no
-// invented data (ratings, reviews, street address) appears. Exits non-zero on
-// any failure.
+// invented data (ratings, reviews, street address) appears. Since 2026-10-12
+// (owner: "Right now we are only at Newtonbrook Tennis Club in North York")
+// the club is named: a Place in the Organization's areaServed and on each
+// CourseInstance, with a PostalAddress of locality, province and country
+// only. "location" and "address" are allowed in that shape and no other.
+// Exits non-zero on any failure.
 
 import { COHORT_WEEKS, SESSION_MINUTES, SESSION_PRICE, listedPrograms } from "../content/programs";
+import { locations } from "../content/locations";
+import { locationsForProgram } from "../lib/locationCatalog";
 import { coaches } from "../content/coaches";
 import { site } from "../content/site";
 import { SITE_URL } from "../lib/siteUrl";
@@ -15,6 +21,7 @@ import {
   courseJsonLd,
   isoDuration,
   organizationJsonLd,
+  placeJsonLd,
   serializeJsonLd,
   type JsonLdObject,
 } from "../lib/structuredData";
@@ -29,7 +36,41 @@ function check(name: string, ok: boolean, detail = "") {
   }
 }
 
-const BANNED_KEYS = ["aggregateRating", "review", "reviews", "address", "streetAddress", "telephone", "location"];
+// No ratings or reviews, and nothing about the club the owner has not given:
+// no street address, postal code, phone, coordinates, hours or map.
+const BANNED_KEYS = [
+  "aggregateRating", "review", "reviews", "streetAddress", "postalCode", "telephone",
+  "geo", "hasMap", "openingHours", "openingHoursSpecification", "postOfficeBoxNumber",
+];
+const ADDRESS_KEYS = ["@type", "addressLocality", "addressRegion", "addressCountry"];
+
+/** Every value stored under `key`, anywhere in the tree. */
+function valuesOf(key: string, value: unknown, out: unknown[] = []): unknown[] {
+  if (Array.isArray(value)) value.forEach((v) => valuesOf(key, v, out));
+  else if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value)) {
+      if (k === key) out.push(v);
+      valuesOf(key, v, out);
+    }
+  }
+  return out;
+}
+
+/** A Place for one of our locations: its name, and an address of locality, province and country only. */
+function isOwnPlace(value: unknown): boolean {
+  const place = value as JsonLdObject | undefined;
+  const address = place?.address as JsonLdObject | undefined;
+  const own = locations.find((l) => l.name === place?.name);
+  return (
+    place?.["@type"] === "Place" &&
+    own !== undefined &&
+    address?.["@type"] === "PostalAddress" &&
+    Object.keys(address).every((k) => ADDRESS_KEYS.includes(k)) &&
+    address.addressLocality === own.locality &&
+    address.addressRegion === own.region &&
+    address.addressCountry === own.country
+  );
+}
 
 function allKeys(value: unknown, out: string[] = []): string[] {
   if (Array.isArray(value)) value.forEach((v) => allKeys(v, out));
@@ -52,7 +93,15 @@ function urlsIn(value: unknown, out: string[] = []): string[] {
 function noInventedData(label: string, data: JsonLdObject) {
   const keys = allKeys(data);
   const hit = BANNED_KEYS.filter((k) => keys.includes(k));
-  check(`${label}: no ratings, reviews or address`, hit.length === 0, hit.join(", "));
+  check(`${label}: no ratings, reviews, street address, hours or map`, hit.length === 0, hit.join(", "));
+  const addresses = valuesOf("address", data) as JsonLdObject[];
+  check(
+    `${label}: every address is locality, province and country only`,
+    addresses.every((a) => a?.["@type"] === "PostalAddress" && Object.keys(a).every((k) => ADDRESS_KEYS.includes(k))),
+    JSON.stringify(addresses)
+  );
+  const places = valuesOf("location", data);
+  check(`${label}: every location is one of our clubs, as a Place`, places.every(isOwnPlace), JSON.stringify(places));
   const foreign = urlsIn(data).filter((u) => u !== "https://schema.org" && !u.startsWith(SITE_URL));
   check(`${label}: every absolute URL starts with SITE_URL`, foreign.length === 0, foreign.join(", "));
   const roundTrip = JSON.parse(serializeJsonLd(data));
@@ -68,7 +117,17 @@ check("@id is SITE_URL/#organization", org["@id"] === `${SITE_URL}/#organization
 check("name is the site name", org.name === site.name && org.name === "Tennis Bootcamp");
 check("url is SITE_URL", org.url === SITE_URL);
 check("email is info@tennisbootcamp.ca", org.email === "info@tennisbootcamp.ca");
-check("areaServed is Toronto", (org.areaServed as JsonLdObject)?.name === "Toronto");
+const served = org.areaServed as JsonLdObject[];
+check("areaServed leads with Toronto (City)", Array.isArray(served) && served[0]?.["@type"] === "City" && served[0]?.name === "Toronto");
+check(
+  "areaServed names every location as a Place (owner, 2026-10-12)",
+  locations.every((l) => served.some((s) => s?.name === l.name && isOwnPlace(s)))
+);
+check("Newtonbrook Tennis Club, North York, ON, CA, and no street address", JSON.stringify(placeJsonLd(locations[0])) === JSON.stringify({
+  "@type": "Place",
+  name: "Newtonbrook Tennis Club",
+  address: { "@type": "PostalAddress", addressLocality: "North York", addressRegion: "ON", addressCountry: "CA" },
+}));
 const founder = org.founder as JsonLdObject | undefined;
 check("founder is Sina Kassaian (Person)", founder?.["@type"] === "Person" && founder?.name === "Sina Kassaian");
 check("founder carries the coach title (owner, 2026-10-12)", founder?.jobTitle === "Program Coordinator / High Performance Coach");
@@ -120,7 +179,8 @@ for (const program of listedPrograms) {
   const instructor = instance?.instructor as JsonLdObject | undefined;
   check("instructor is the lead coach (Person) with the coach title",
     instructor?.["@type"] === "Person" && instructor?.name === leadCoach.name && instructor?.jobTitle === leadCoach.role);
-  check("no location on the CourseInstance", instance?.location === undefined);
+  const programPlaces = locationsForProgram(program.slug);
+  check("the CourseInstance trains at the program's location (a Place)", programPlaces.length === 1 && isOwnPlace(instance?.location) && (instance?.location as JsonLdObject)?.name === programPlaces[0].name);
 
   const offer = course.offers as JsonLdObject | undefined;
   check("Offer is present", offer?.["@type"] === "Offer");

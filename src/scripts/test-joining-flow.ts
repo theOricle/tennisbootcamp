@@ -129,7 +129,9 @@ check("two links, neither a lime primary button", count(steps, "<a ") === 2 && !
 // ── The pages ───────────────────────────────────────────────────────────────
 console.log("Pages: /programs and the program pages");
 const programsPage = read("src/app/programs/page.tsx");
-check("/programs: How joining works leads the content, above the filters, with High Performance", programsPage.includes('<HowJoiningWorks source="programs-joining" showApproval />') && at(programsPage, "<HowJoiningWorks") < at(programsPage, "<ProgramCatalog programs="));
+// The location now opens the page (owner, 2026-10-12, audit item N; pinned in
+// test-locations.ts); How joining works follows it, still above the filters.
+check("/programs: How joining works sits above the filters, after the location, with High Performance", programsPage.includes('<HowJoiningWorks source="programs-joining" showApproval />') && at(programsPage, "<LocationChoice") < at(programsPage, "<HowJoiningWorks") && at(programsPage, "<HowJoiningWorks") < at(programsPage, "<ProgramCatalog programs="));
 check("/programs: the primary stays the quiz", programsPage.includes("{QUIZ_CTA_LABEL}") && programsPage.includes('variant="primary"'));
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("detail: How joining works before the groups, only for a program with fixed classes", /scheduledGroups\.length > 0 && \(\s*<>\s*<HowJoiningWorks/.test(detail) && at(detail, "<HowJoiningWorks") < at(detail, 'aria-labelledby="groups"'));
@@ -178,7 +180,8 @@ check("rule 6 still leads with quiz first, and names the week-one check", /6\. \
 check("rule 7 names Open to join, By approval and provisional", /7\. \*\*Consistent product vocabulary\.\*\*[^\n]*"Open to join"[^\n]*"By approval"[^\n]*"provisional"/.test(voice));
 
 const pkg = JSON.parse(read("package.json")) as { scripts: { test: string } };
-check("npm test runs this file, last", pkg.scripts.test.trim().endsWith("npx tsx src/scripts/test-joining-flow.ts"));
+// Later items append their scripts after this one (audit N), so it is pinned as run, not as last.
+check("npm test runs this file", pkg.scripts.test.includes("npx tsx src/scripts/test-joining-flow.ts"));
 
 if (failed > 0) {
   console.log(`\n${failed} check(s) failed.`);

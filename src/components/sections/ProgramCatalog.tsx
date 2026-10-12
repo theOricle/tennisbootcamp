@@ -9,12 +9,13 @@ import type { Program, ProgramGroup } from "@/types/program";
 import { TIERS } from "@/lib/tiers";
 import {
   AGE_BAND_QUERIES,
-  EMPTY_QUERY,
   EXACT_AGES,
   ageQueryFor,
   catalogQueryString,
+  clearFilters,
   exactAgeQuery,
   filterGroups,
+  initialCatalogQuery,
   isEmptyQuery,
   parseCatalogQuery,
   resultsLine,
@@ -32,6 +33,9 @@ import { ProgramGroupCard } from "./ProgramGroupCard";
 // The /programs catalog (owner, 2026-10-12): every group as its own card,
 // under its program, with an age filter and a level filter carried in the
 // URL so a filtered list can be shared and the quiz result can link to one.
+// The location is chosen first, above How joining works (LocationChoice,
+// owner 2026-10-12); both read the same URL, so the catalog shows the groups
+// at the chosen location, and clearing the filters keeps it.
 // The page is static (ISR); the filter is read and written in the browser
 // with the native history API, so no request is made when a select changes.
 // The server prerenders the unfiltered list as the Suspense fallback, so a
@@ -127,7 +131,7 @@ function Filters({
       </div>
       <button
         type="button"
-        onClick={() => onChange(EMPTY_QUERY)}
+        onClick={() => onChange(clearFilters(query))}
         disabled={!active}
         className={buttonClass("secondary", "compact")}
       >
@@ -238,7 +242,7 @@ export function ProgramCatalogView({
             </Link>
             <button
               type="button"
-              onClick={() => onChange(EMPTY_QUERY)}
+              onClick={() => onChange(clearFilters(query))}
               className={buttonClass("secondary", "compact")}
             >
               Clear filters
@@ -276,7 +280,7 @@ function ProgramCatalogLive(props: ProgramCatalogProps) {
 
 export function ProgramCatalog(props: ProgramCatalogProps) {
   return (
-    <Suspense fallback={<ProgramCatalogView {...props} query={EMPTY_QUERY} onChange={() => {}} />}>
+    <Suspense fallback={<ProgramCatalogView {...props} query={initialCatalogQuery()} onChange={() => {}} />}>
       <ProgramCatalogLive {...props} />
     </Suspense>
   );

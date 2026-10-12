@@ -11,6 +11,9 @@ import type { Cohort } from "@/types/cohort";
 import { getPublicCohorts } from "@/lib/cohortsDb";
 import { nextCohortForGroup } from "@/lib/programCatalog";
 import { ProgramCatalog, type CatalogProgram } from "@/components/sections/ProgramCatalog";
+import { LocationChoice, type LocationOption } from "@/components/locations/LocationChoice";
+import { locations } from "@/content/locations";
+import { locationProgramsLine } from "@/lib/locationCatalog";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { HowJoiningWorks } from "@/components/sections/HowJoiningWorks";
 import { QuizBand } from "@/components/sections/QuizBand";
@@ -52,6 +55,10 @@ export default async function ProgramsPage() {
     ageBands: p.ageBands,
     timetable: p.timetable,
     schedule: p.schedule,
+  }));
+  const locationOptions: LocationOption[] = locations.map((location) => ({
+    location,
+    summary: locationProgramsLine(location),
   }));
 
   return (
@@ -102,12 +109,14 @@ export default async function ProgramsPage() {
         </Container>
       </div>
 
-      {/* How joining works leads the content, directly under the header
-          and above the filters (joining flow, owner 2026-10-12). The catalog
-          sits inside the page Container (audit H2): every group under its
-          program, with the filters; then the quiz band, and the newsletter
-          last (M12, M13). */}
+      {/* The page opens on the location (owner, 2026-10-12: "People need to
+          choose location first"): one club today, preselected. How joining
+          works follows, above the age and level filters (joining flow, owner
+          2026-10-12). The catalog sits inside the page Container (audit H2):
+          every group at the chosen location under its program, with the
+          filters; then the quiz band, and the newsletter last (M12, M13). */}
       <PageStack>
+        <LocationChoice options={locationOptions} />
         <HowJoiningWorks source="programs-joining" showApproval />
         <ProgramCatalog programs={catalogPrograms} groups={programGroups} nextCohorts={nextCohorts} />
         <QuizBand source="programs-closing" />

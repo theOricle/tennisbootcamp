@@ -35,6 +35,12 @@ export type ProgramGroup = {
   id: string;
   /** The program the group belongs to (Program.slug). */
   programSlug: string;
+  /**
+   * Where the group trains (TrainingLocation.id in src/content/locations.ts;
+   * owner, 2026-10-12). Every group has one; a program's locations are its
+   * groups' locations.
+   */
+  locationId: string;
   /** The card title: "Ages 7–10", "High Performance", "Newer players". */
   name: string;
   /** Youngest age the group takes, or null for any age. */
@@ -141,7 +147,6 @@ export type Program = {
   priceCents?: number;
   currency?: "CAD" | "USD";
   ageGroup?: string;
-  locationId?: string;
   includes?: string[];
 
   /** Weekend classes, one per group, derived from the groups (backlog #20). */
