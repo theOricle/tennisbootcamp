@@ -108,7 +108,7 @@ export type BadgeProps = {
   /** Rendered width/height in px. Default 64. */
   size?: number;
   className?: string;
-  /** Override the aria-label (defaults to e.g. "Love, tier 1 of 7"). */
+  /** Override the aria-label (defaults to e.g. "Beginner, tier 1 of 7"). */
   label?: string;
   /** Hide from assistive tech when a text label already names the tier. */
   decorative?: boolean;
@@ -120,21 +120,21 @@ function badgeFor(tier: TierId) {
   return Badge;
 }
 
-export const LoveBadge = badgeFor(1);
-export const RallyBadge = badgeFor(2);
-export const DeuceBadge = badgeFor(3);
-export const BreakBadge = badgeFor(4);
-export const AceBadge = badgeFor(5);
-export const MatchPointBadge = badgeFor(6);
-export const GrandSlamBadge = badgeFor(7);
+export const BeginnerBadge = badgeFor(1);
+export const NoviceBadge = badgeFor(2);
+export const IntermediateBadge = badgeFor(3);
+export const AdvancedBadge = badgeFor(4);
+export const EliteBadge = badgeFor(5);
+export const ProBadge = badgeFor(6);
+export const WorldClassBadge = badgeFor(7);
 
 /** All seven badge components, indexed by tier id (1–7). */
 export const BADGE_BY_TIER: Record<TierId, (props: BadgeProps) => React.JSX.Element> = {
-  1: LoveBadge,
-  2: RallyBadge,
-  3: DeuceBadge,
-  4: BreakBadge,
-  5: AceBadge,
-  6: MatchPointBadge,
-  7: GrandSlamBadge,
+  1: BeginnerBadge,
+  2: NoviceBadge,
+  3: IntermediateBadge,
+  4: AdvancedBadge,
+  5: EliteBadge,
+  6: ProBadge,
+  7: WorldClassBadge,
 };

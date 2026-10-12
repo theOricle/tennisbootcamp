@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
+import { coaches } from "@/content/coaches";
+import { TIER_LADDER_SPAN } from "@/lib/tiers";
 import {
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
@@ -13,11 +15,14 @@ import {
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Sina places every player by level and schedule; High Performance is the competitive track.",
+    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Our coaches place every player by level and schedule; High Performance is the competitive track.",
   alternates: { canonical: "/about" },
 };
 
 export default function AboutPage() {
+  // The founder section is the coach card: the one place the name and title
+  // show (owner, 2026-10-12). Both come from src/content/coaches.ts.
+  const lead = coaches[0];
   return (
     <main>
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
@@ -76,7 +81,7 @@ export default function AboutPage() {
               {
                 label: "Six players per court, eight at most",
                 detail:
-                  "Courts are capped so Sina can coach every player on every ball, not just supervise.",
+                  "Courts are capped so your coach can work with every player on every ball, not just supervise.",
               },
             ].map(({ label, detail }) => (
               <li key={label} className="flex gap-4">
@@ -103,7 +108,7 @@ export default function AboutPage() {
               {
                 heading: "Not a drop-in clinic",
                 body:
-                  "Clinics fill seats. Cohorts build players. When the group stays consistent week over week, every drill builds on the one before it — and Sina tracks each player&apos;s trajectory, not just the session.",
+                  "Clinics fill seats. Cohorts build players. When the group stays consistent week over week, every drill builds on the one before it — and your coach tracks each player&apos;s trajectory, not just the session.",
               },
               {
                 heading: "Not an ongoing membership class",
@@ -113,7 +118,7 @@ export default function AboutPage() {
               {
                 heading: "Serious at every level",
                 body:
-                  "The training methods come from competitive player development, applied at every rung of the ladder — Love through Grand Slam. Sina places every player by level and schedule, and every group trains with structure and intent. High Performance is the explicitly competitive track; the rest of the ladder builds your game seriously from wherever you start.",
+                  `The training methods come from competitive player development, applied at every rung of the ladder — ${TIER_LADDER_SPAN}. Our coaches place every player by level and schedule, and every group trains with structure and intent. High Performance is the explicitly competitive track; the rest of the ladder builds your game seriously from wherever you start.`,
               },
             ].map(({ heading, body }) => (
               <div
@@ -133,7 +138,7 @@ export default function AboutPage() {
               M36): vertical on phones, the seven emblems in a row from md. */}
           <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-              <p className="text-sm font-semibold text-white">The seven tiers, Love to Grand Slam</p>
+              <p className="text-sm font-semibold text-white">The seven tiers, {TIER_LADDER_SPAN}</p>
               <Link href="/assessment#ladder" className={TEXT_LINK_LIME}>
                 How tiers work →
               </Link>
@@ -152,8 +157,8 @@ export default function AboutPage() {
       <section className="border-t border-white/10">
         <div className="mx-auto max-w-6xl px-6 py-16">
           <div className="border-l-2 border-[#B4E655] pl-6">
-            <h2 className="text-2xl font-bold text-white">Sina Kassaian</h2>
-            <p className="mt-1 text-sm text-[#B4E655]">Head Coach</p>
+            <h2 className="text-2xl font-bold text-white">{lead.name}</h2>
+            <p className="mt-1 text-sm text-[#B4E655]">{lead.role}</p>
           </div>
 
           <div className="mt-8 max-w-3xl space-y-5 text-white/70">
@@ -181,8 +186,8 @@ export default function AboutPage() {
             <div className="max-w-xl">
               <h2 className="text-2xl font-bold text-white">Not sure where you fit?</h2>
               <p className="mt-2 text-pretty text-white/70">
-                Tell us each player&apos;s age, level and free time. Sina places
-                them in the class that fits.
+                Tell us each player&apos;s age, level and free time. Our coaches
+                place them in the class that fits.
               </p>
             </div>
             <div className="mt-6 flex flex-wrap gap-3 md:mt-0 md:shrink-0">

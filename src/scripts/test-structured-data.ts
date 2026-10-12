@@ -71,11 +71,14 @@ check("email is info@tennisbootcamp.ca", org.email === "info@tennisbootcamp.ca")
 check("areaServed is Toronto", (org.areaServed as JsonLdObject)?.name === "Toronto");
 const founder = org.founder as JsonLdObject | undefined;
 check("founder is Sina Kassaian (Person)", founder?.["@type"] === "Person" && founder?.name === "Sina Kassaian");
+check("founder carries the coach title (owner, 2026-10-12)", founder?.jobTitle === "Program Coordinator / High Performance Coach");
 check("logo is the brand logo on SITE_URL", org.logo === `${SITE_URL}/images/brand/logo.svg`);
 noInventedData("Organization", org);
 
 // ── Course, one per listed program ──────────────────────────────────────────
-const headCoachName = (coaches.find((c) => c.role === "Head Coach") ?? coaches[0]).name;
+// The lead coach is the first in src/content/coaches.ts; "Head Coach" is retired.
+const leadCoach = coaches[0];
+check("no coach is titled Head Coach", coaches.every((c) => c.role !== "Head Coach"));
 const ISO_DURATION = /^P(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?)?$/;
 
 console.log("ISO 8601 durations");
@@ -115,8 +118,8 @@ for (const program of listedPrograms) {
   check("SESSION_MINUTES matches the schedule copy",
     (program.schedule ?? "").includes(`${SESSION_MINUTES} minutes`), program.schedule);
   const instructor = instance?.instructor as JsonLdObject | undefined;
-  check("instructor is the head coach (Person)",
-    instructor?.["@type"] === "Person" && instructor?.name === headCoachName);
+  check("instructor is the lead coach (Person) with the coach title",
+    instructor?.["@type"] === "Person" && instructor?.name === leadCoach.name && instructor?.jobTitle === leadCoach.role);
   check("no location on the CourseInstance", instance?.location === undefined);
 
   const offer = course.offers as JsonLdObject | undefined;

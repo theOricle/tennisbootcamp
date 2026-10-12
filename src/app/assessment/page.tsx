@@ -1,8 +1,8 @@
 import { membershipNote } from "@/lib/membership";
 import { ASSESSMENT_CREDIT_MONTHS } from "@/content/policies";
 import { TierLine } from "@/components/tiers";
-import { TIER_RERATE_LINE } from "@/lib/tiers";
-import { TrackedLink } from "@/components/ui/TrackedButton";
+import { TIER_LADDER_SPAN, TIER_RERATE_LINE } from "@/lib/tiers";
+import { TrackedButton, TrackedLink } from "@/components/ui/TrackedButton";
 
 const LEAVE_WITH = [
   "Your level, assigned by the coach",
@@ -59,7 +59,7 @@ export default function AssessmentLandingPage() {
             Want your level confirmed on court first?
           </h1>
           <p className="mt-6 text-base leading-relaxed text-white/70 sm:text-lg">
-            Sina places every player from the 2-minute quiz. The assessment is
+            Our coaches place every player from the 2-minute quiz. The assessment is
             optional: 20&nbsp;minutes hitting with the coach — a short rally,
             groundstrokes under a little pressure, a few serves. You leave with
             your level, a written note on your game, and a group recommendation
@@ -75,7 +75,7 @@ export default function AssessmentLandingPage() {
             >
               Take the 2-minute quiz
             </TrackedLink>{" "}
-            and Sina places you from your answers.
+            and our coaches place you from your answers.
           </p>
         </section>
 
@@ -89,14 +89,17 @@ export default function AssessmentLandingPage() {
             {ASSESSMENT_CREDIT_MONTHS} months after it, that $20 comes off the
             price.
           </p>
-          <TrackedLink
+          {/* The optional assessment is the outline secondary, never the lime
+              quiz style (QA 2026-10-10; design-system.md, brand.md). */}
+          <TrackedButton
+            variant="secondary"
+            href="/assessment/book"
             track="assessment"
             source="assessment-price"
-            href="/assessment/book"
-            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-center text-base font-semibold text-[#061427] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+            className="mt-6"
           >
             Book Your Assessment
-          </TrackedLink>
+          </TrackedButton>
         </section>
 
         {/* What you leave with */}
@@ -122,7 +125,7 @@ export default function AssessmentLandingPage() {
             The ladder you&apos;re climbing
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-white/65 sm:text-base">
-            Your level places you on a seven-rung ladder, Love to Grand Slam.
+            Your level places you on a seven-rung ladder, {TIER_LADDER_SPAN}.
             Every player starts on one rung and climbs from there — the
             assessment confirms which rung you&apos;re on.
           </p>
@@ -157,14 +160,15 @@ export default function AssessmentLandingPage() {
           <p className="text-lg font-medium text-white">
             Twenty minutes decides the next season of your game.
           </p>
-          <TrackedLink
+          <TrackedButton
+            variant="secondary"
+            href="/assessment/book"
             track="assessment"
             source="assessment-closing"
-            href="/assessment/book"
-            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-8 py-3 text-center text-base font-semibold text-[#061427] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+            className="mt-6"
           >
             Book Your Assessment
-          </TrackedLink>
+          </TrackedButton>
         </section>
       </div>
     </main>

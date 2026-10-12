@@ -139,7 +139,7 @@ export function ArtGallery() {
       <Section
         id="profile"
         title="Youth Programs: level profile"
-        body="A cohort's level band profiles the signature flight: the higher the tier, the flatter the ball and the deeper it lands. Base plate first, then Love, Break and Grand Slam cohorts."
+        body="A cohort's level band profiles the signature flight: the higher the tier, the flatter the ball and the deeper it lands. Base plate first, then Beginner, Advanced and World Class cohorts."
       >
         <div className="grid gap-4 md:grid-cols-4">
           <div>

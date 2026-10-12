@@ -6,12 +6,12 @@
 // The next-step card is the one primary on the page and picks the most
 // urgent thing on the account, in this order:
 //   1. an open invite: a spot held for a player, with its hold deadline
-//   2. an e-transfer waiting on Sina: amount, recipient and memo
+//   2. an e-transfer waiting on the coach: amount, recipient and memo
 //   3. a booked assessment: date, time and what to bring
 //   4. the next session of a paid enrollment (pending and cancelled ones
 //      never drive it)
 //   5. a paid cohort whose dates aren't generated yet
-//   6. otherwise: Sina is placing the players, nothing else to do.
+//   6. otherwise: our coaches are placing the players, nothing else to do.
 
 import type { Cohort } from "@/types/cohort";
 import { formatDollars, numberInWords } from "@/content/programs";
@@ -200,9 +200,9 @@ export function enrollmentNote(state: EnrollmentState): string | null {
     case "cancelled":
       // Owner decision D22 (what a cancellation tells players) is open, so
       // the card promises nothing beyond the fact and who follows up.
-      return "This cohort was cancelled. Sina will contact you directly.";
+      return "This cohort was cancelled. Our coaches will contact you directly.";
     case "etransfer-pending":
-      return "The spot is held while Sina confirms the e-transfer arrived.";
+      return "The spot is held while our coaches confirm the e-transfer arrived.";
     case "payment-pending":
       return "The card payment didn't complete. Email info@tennisbootcamp.ca if that looks wrong.";
     case "test":
@@ -281,7 +281,7 @@ function programTitle(programs: readonly ProgramRef[], cohort: Cohort | undefine
   return programs.find((p) => p.id === cohort?.programId)?.title ?? fallback;
 }
 
-/** "Deuce group" for a banded cohort, else the cohort's own label. */
+/** "Intermediate group" for a banded cohort, else the cohort's own label. */
 function groupName(cohort: Cohort): string {
   const span = formatTierSpan(cohort.levelMin, cohort.levelMax);
   return span ? `${span} group` : cohort.label;
@@ -446,17 +446,17 @@ export function nextStepFor(input: NextStepInput): NextStep {
       eyebrow: "Payment pending",
       headline:
         !several && one.who.isSelf
-          ? "Sina is confirming your e-transfer."
+          ? "Our coaches are confirming your e-transfer."
           : counted
-            ? `Sina is confirming the e-transfer for ${people.length} spots.`
-            : `Sina is confirming the e-transfer for ${names}.`,
+            ? `Our coaches are confirming the e-transfer for ${people.length} spots.`
+            : `Our coaches are confirming the e-transfer for ${names}.`,
       detail:
         `${money(amount)} to ${input.recipientEmail}, memo “${memo}”. ` +
         (counted
-          ? `The ${people.length} spots in ${program} are held while Sina confirms it arrived.`
+          ? `The ${people.length} spots in ${program} are held while our coaches confirm it arrived.`
           : several
-            ? `The spots for ${names} in ${program} are held while Sina confirms it arrived.`
-            : `${one.who.Owner} spot in ${program} is held while Sina confirms it arrived.`),
+            ? `The spots for ${names} in ${program} are held while our coaches confirm it arrived.`
+            : `${one.who.Owner} spot in ${program} is held while our coaches confirm it arrived.`),
       secondary: { href: "#my-programs", label: "See my programs" },
     };
   }
@@ -469,7 +469,7 @@ export function nextStepFor(input: NextStepInput): NextStep {
       kind: "assessment",
       eyebrow: who.isSelf ? "Your assessment" : `${who.Owner} assessment`,
       headline: `${fmtDayDate(booking.date)} · ${fmt12h(booking.start)}`,
-      detail: `20 minutes on court with Sina${booking.locationLabel ? `, ${booking.locationLabel}` : ""}. ${BRING_LINE}`,
+      detail: `20 minutes on court with one of our coaches${booking.locationLabel ? `, ${booking.locationLabel}` : ""}. ${BRING_LINE}`,
       secondary: { href: "#availability", label: "Update my availability" },
     };
   }
@@ -518,19 +518,19 @@ export function nextStepFor(input: NextStepInput): NextStep {
       kind: "dates-coming",
       eyebrow: "Next step",
       headline: "Session dates are coming.",
-      detail: `${programTitle(programs, placed, placed.programId)} trains ${weeklySlots(placed)}. Sina confirms the dates once the group is set.`,
+      detail: `${programTitle(programs, placed, placed.programId)} trains ${weeklySlots(placed)}. Our coaches confirm the dates once the group is set.`,
       secondary: { href: "#my-programs", label: "See my programs" },
     };
   }
 
-  // 6. Nothing booked: Sina places the players from the quiz.
+  // 6. Nothing booked: the coaches place the players from the quiz.
   const unplaced = roster.filter((p) => !hasLevel(p.level));
   if (input.voice === "you" || roster.length === 0) {
     return unplaced.length > 0 || roster.length === 0
       ? {
           kind: "placing",
           eyebrow: "Next step",
-          headline: "Sina is placing you in a group and time.",
+          headline: "Our coaches are placing you in a group and time.",
           detail: `There is nothing else you need to do. ${ASSESSMENT_LINE}`,
           primary: { href: "#availability", label: "Update my availability" },
           secondary: { href: "/assessment/book", label: "Book Your Assessment" },
@@ -538,8 +538,8 @@ export function nextStepFor(input: NextStepInput): NextStep {
       : {
           kind: "placed",
           eyebrow: "Next step",
-          headline: "Your level is set. Sina is placing you in a group.",
-          detail: "There is nothing else you need to do. Your group, dates and price land here once Sina sets them.",
+          headline: "Your level is set. Our coaches are placing you in a group.",
+          detail: "There is nothing else you need to do. Your group, dates and price land here once they are set.",
           primary: { href: "#availability", label: "Update my availability" },
           secondary: { href: "/programs", label: "Browse Programs" },
         };
@@ -549,11 +549,11 @@ export function nextStepFor(input: NextStepInput): NextStep {
   return {
     kind: unplaced.length > 0 ? "placing" : "placed",
     eyebrow: "Next step",
-    headline: `Sina is placing ${namesList(everyone)} in ${many ? "groups and times" : "a group and time"}.`,
+    headline: `Our coaches are placing ${namesList(everyone)} in ${many ? "groups and times" : "a group and time"}.`,
     detail:
       unplaced.length > 0
         ? `There is nothing else you need to do. ${ASSESSMENT_LINE}`
-        : "There is nothing else you need to do. Groups, dates and prices land here once Sina sets them.",
+        : "There is nothing else you need to do. Groups, dates and prices land here once they are set.",
     primary: { href: "#availability", label: many ? "Update availability" : `Update ${possessive(everyone[0] ?? "their")} availability` },
     secondary:
       unplaced.length > 0

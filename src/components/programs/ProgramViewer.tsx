@@ -64,7 +64,7 @@ function firstName(full: string | null): string {
 
 /**
  * The timetable card's call to action for a signed-in holder: each ranked
- * player's tier against the program's span ("Maya: Deuce · 3.0, inside this
+ * player's tier against the program's span ("Maya: Intermediate · 3.0, inside this
  * program's levels"), the span rail with the first ranked player's marker,
  * and "Update my availability". Guests get `children` — the quiz and the
  * optional assessment, unchanged.
@@ -90,11 +90,11 @@ export function ProgramViewerPanel({
     <div className="mt-4 border-t border-[#B4E655]/20 pt-4">
       <p className="text-sm font-semibold text-white">
         {several
-          ? "Your players are on Sina's list — keep their availability current."
-          : "You're on Sina's list — keep your availability current."}
+          ? "Your players are on our list — keep their availability current."
+          : "You're on our list — keep your availability current."}
       </p>
       <p className="mt-1 text-sm text-white/70">
-        Sina places every player by level and schedule. There is nothing else you need to do.
+        Our coaches place every player by level and schedule. There is nothing else you need to do.
       </p>
       {span && ranked.length > 0 && (
         <>

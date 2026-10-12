@@ -113,7 +113,7 @@ function relationshipLine(player: PlayerRecord): string {
   return [rel, age].filter(Boolean).join(" · ");
 }
 
-/** The player's tier in words for dense rows: "Deuce · 3.0", "Placed · Deuce group", "Unranked". */
+/** The player's tier in words for dense rows: "Intermediate · 3.0", "Placed · Intermediate group", "Unranked". */
 function tierWords(player: PlayerRecord, placed: PlacedSpan | null | undefined): string {
   if (hasLevel(player.level)) return formatTierLevel(player.level);
   if (placed) return `Placed · ${formatTierSpan(placed.min, placed.max)} group`;
@@ -285,7 +285,7 @@ function TierSection({
   const columns = roster.length >= 3 ? "md:grid-cols-2 xl:grid-cols-3" : "md:grid-cols-2";
   return (
     <section aria-labelledby="tiers">
-      <SectionHeading id="tiers" title="Your players' tiers" sub="Each player's level, set by Sina." />
+      <SectionHeading id="tiers" title="Your players' tiers" sub="Each player's level, set by our coaches." />
       <div className={`grid gap-4 ${columns}`}>
         {roster.map((player) => (
           <RankCard
@@ -495,17 +495,17 @@ export function DashboardView(props: DashboardViewProps) {
             {enrollments.length === 0 ? (
               // The truth, and no second primary (audit M32): the next step
               // above already says what happens. A held spot or a pending
-              // e-transfer means Sina has placed someone, so the card says
+              // e-transfer means the coach has placed someone, so the card says
               // nothing is enrolled yet and points up instead of "placing".
               <div className={`${SURFACE} p-6`}>
                 <p className="text-sm leading-relaxed text-white/75">
                   {step.kind === "invite"
                     ? "Nothing is enrolled yet. Claim the spot held above and the program shows here."
                     : step.kind === "etransfer"
-                    ? "Nothing is enrolled yet. The program shows here once Sina confirms the e-transfer above."
+                    ? "Nothing is enrolled yet. The program shows here once our coaches confirm the e-transfer above."
                     : voice === "you"
-                    ? "Sina is placing you — your group, dates and price land here."
-                    : `Sina is placing ${namesList(names)} — ${several ? "groups, dates and prices" : "the group, dates and price"} land here.`}
+                    ? "Our coaches are placing you — your group, dates and price land here."
+                    : `Our coaches are placing ${namesList(names)} — ${several ? "groups, dates and prices" : "the group, dates and price"} land here.`}
                 </p>
               </div>
             ) : (
@@ -608,7 +608,7 @@ export function DashboardView(props: DashboardViewProps) {
               <h2 id="your-players" className="text-base font-semibold text-white">
                 {several ? "Your players" : "Your player"}
               </h2>
-              {/* One line per player: "Maya · Deuce 3.0 — 1 cohort open" (audit M26). */}
+              {/* One line per player: "Maya · Intermediate 3.0 — 1 cohort open" (audit M26). */}
               <ul className="mt-4 divide-y divide-white/10">
                 {roster.map((player) => {
                   const open = openCount(player.id);
@@ -660,7 +660,7 @@ export function DashboardView(props: DashboardViewProps) {
                 ? "Your players' availability"
                 : `${possessive(names[0] ?? "Your player")} availability`
           }
-          sub="Sina builds every group around the times its players can train. Keep this current."
+          sub="Our coaches build every group around the times its players can train. Keep this current."
         />
         <div className={`grid gap-4 ${several ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
           {roster.map((player) => (

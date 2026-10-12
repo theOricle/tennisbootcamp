@@ -36,7 +36,7 @@ const CHIP_NEUTRAL = "border border-white/15 bg-white/5 text-white/85";
 const CHIP_DASHED = "border border-dashed border-white/30 bg-white/5 text-white/85";
 
 /**
- * Labeled tier badge — emblem + tier name + numeric level ("Rally · 2.5").
+ * Labeled tier badge — emblem + tier name + numeric level ("Novice · 2.5").
  * Renders nothing when the level is unranked (callers show `UnrankedChip`).
  * The emblem is decorative because the text beside it already names the tier.
  */
@@ -89,7 +89,7 @@ export function UnrankedTag({ className = "" }: { className?: string }) {
 
 /**
  * Tier chip for dense rows (admin, dashboard lists): a 20px mark and the
- * name. `showLevel` adds "· 3.0"; `provisional` reads "Likely Rally" with a
+ * name. `showLevel` adds "· 3.0"; `provisional` reads "Likely Novice" with a
  * dashed border. A null level renders the UnrankedTag.
  */
 export function TierChip({
@@ -129,7 +129,7 @@ export function TierChip({
 
 /**
  * A cohort's or program's tier band as a chip — the min mark, the span in
- * words ("Deuce", "Love – Rally", "Break and up", "All levels") and the max
+ * words ("Intermediate", "Beginner – Novice", "Advanced and up", "All levels") and the max
  * mark when it differs. Renders nothing when the span is empty.
  */
 export function TierRangeBadges({

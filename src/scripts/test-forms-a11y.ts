@@ -60,7 +60,7 @@ check("empty email asks for it", emailError("") === FIELD_MESSAGES.emailMissing)
 check("bad email shows the shape", emailError("maya@") === FIELD_MESSAGES.emailInvalid && FIELD_MESSAGES.emailInvalid.includes("name@example.com"));
 check("good email has no error", emailError(" maya@example.com ") === null);
 check(`phone needs ${MIN_PHONE_DIGITS} digits`, phoneError("555-12") === FIELD_MESSAGES.phoneInvalid && phoneError("(647) 555-1234") === null);
-check("a required phone asks why (Sina texts)", phoneError("") === FIELD_MESSAGES.phoneMissing && /text/i.test(FIELD_MESSAGES.phoneMissing));
+check("a required phone asks why (the coach texts)", phoneError("") === FIELD_MESSAGES.phoneMissing && /text/i.test(FIELD_MESSAGES.phoneMissing));
 check("an optional phone may be empty", phoneError("", { required: false }) === null);
 check("an optional phone is still checked when filled", phoneError("12", { required: false }) === FIELD_MESSAGES.phoneInvalid);
 check("a name is required", requiredError("  ") === FIELD_MESSAGES.nameMissing && requiredError("Maya") === null);
@@ -139,7 +139,7 @@ check("the quiz's Next is never disabled for gaps", !intake.includes("disabled={
 check("the quiz lists what is missing under Next", intake.includes("To continue:") && intake.includes('aria-describedby={showGapList ? "intake-missing" : undefined}'));
 check("the progress bar is a progressbar", intake.includes('role="progressbar"'));
 check("the quiz announces sending and failures", intake.includes("<LiveStatus") && intake.includes("<FormAlert"));
-check("the phone label says why", intake.includes("Phone — so Sina can text you about times"));
+check("the phone label says why", intake.includes("Phone — so your coach can text you about times"));
 check("the child path names the parent or guardian", intake.includes("Your full name (parent or guardian)"));
 check("the name is prefilled from the Myself block", intake.includes("selfName()"));
 check("the child path asks when they can train", intake.includes('"When can they train?"'));

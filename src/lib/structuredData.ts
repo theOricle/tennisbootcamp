@@ -17,7 +17,14 @@ export const ORGANIZATION_ID = `${SITE_URL}/#organization`;
 const LOGO_PATH = "/images/brand/logo.svg";
 const AREA_SERVED = "Toronto";
 
-const headCoach = coaches.find((c) => c.role === "Head Coach") ?? coaches[0];
+// The lead coach (the first in src/content/coaches.ts): the founder, and the
+// instructor on every Course. His title rides along as jobTitle, the same
+// words as the coach card (owner, 2026-10-12).
+const leadCoach = coaches[0];
+
+function coachPerson(): JsonLdObject {
+  return { "@type": "Person", name: leadCoach.name, jobTitle: leadCoach.role };
+}
 
 export function organizationJsonLd(): JsonLdObject {
   return {
@@ -29,7 +36,7 @@ export function organizationJsonLd(): JsonLdObject {
     email: site.email,
     logo: `${SITE_URL}${LOGO_PATH}`,
     areaServed: { "@type": "City", name: AREA_SERVED },
-    ...(headCoach ? { founder: { "@type": "Person", name: headCoach.name } } : {}),
+    ...(leadCoach ? { founder: coachPerson() } : {}),
   };
 }
 
@@ -62,7 +69,7 @@ export function courseJsonLd(program: Program): JsonLdObject | null {
       repeatFrequency: "Weekly",
       repeatCount: COHORT_WEEKS,
     },
-    ...(headCoach ? { instructor: { "@type": "Person", name: headCoach.name } } : {}),
+    ...(leadCoach ? { instructor: coachPerson() } : {}),
   };
 
   return {

@@ -13,6 +13,7 @@ import {
   type ProgramStatus,
 } from "@/lib/programCatalog";
 import {
+  TIER_LADDER_SPAN,
   formatLevelBand,
   formatTierLevel,
   formatTierSpan,
@@ -159,7 +160,7 @@ function CohortSchedule({ cohort }: { cohort: Cohort }) {
 
 // ─── Slot qualifier (design specs §5.3.1) ─────────────────────────────────────
 // The first matching rule wins: the slot's level band as TierRangeBadges (so
-// Adult Bootcamps shows Love – Rally / Deuce / Break – Ace, the visible
+// Adult Bootcamps shows Beginner – Novice / Intermediate / Advanced – Elite, the visible
 // climb); else its age band as a neutral chip; else, when the timetable has
 // more than one class, the class label; otherwise nothing.
 
@@ -423,7 +424,7 @@ export function ProgramCard({
                   {formatLevelBand(range.min, range.max)}
                 </span>
                 <span className="sr-only">
-                  , levels {range.min.toFixed(1)} to {range.max.toFixed(1)} on the seven-tier ladder from Love to Grand Slam
+                  , levels {range.min.toFixed(1)} to {range.max.toFixed(1)} on the seven-tier ladder from {TIER_LADDER_SPAN}
                 </span>
               </span>
             </p>

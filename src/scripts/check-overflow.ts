@@ -1,5 +1,7 @@
 // Horizontal-overflow check (audit H2, H8): no public page may scroll
-// sideways at 320, 360, 390, 768, 1024 or 1440px (WCAG 1.4.10 reflow).
+// sideways at 320, 360, 390, 768, 1024 or 1440px (WCAG 1.4.10 reflow). It
+// also opens the mobile menu at 390px after a scroll and checks the header
+// stays at the top of the viewport (QA 2026-10-10).
 //
 //   BASE_URL=http://localhost:3000 npm run check:overflow
 //   BASE_URL=https://<vercel-preview> npm run check:overflow
@@ -76,6 +78,27 @@ async function main() {
         console.log(`  ${ok ? "✓" : "✗"} ${width}px ${path}${ok ? "" : ` — scrollWidth ${result.scrollWidth} > ${result.clientWidth}: ${result.offenders.join("; ")}`}`);
         if (!ok) failures.push(`${width}px ${path}`);
       }
+      await context.close();
+    }
+
+    // The mobile menu after a scroll (QA 2026-10-10, high): opened halfway
+    // down the page, the header must sit at the top of the viewport with the
+    // drawer on screen. A <body> scroll lock used to send both off-screen.
+    {
+      const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+      const page = await context.newPage();
+      await page.goto(`${BASE_URL}/`, { waitUntil: "load" });
+      await page.evaluate(() => window.scrollTo(0, 1400));
+      await page.click('button[aria-controls="mobile-menu"]');
+      await page.waitForTimeout(400);
+      const menu = await page.evaluate(() => {
+        const header = document.querySelector("header")?.getBoundingClientRect();
+        const drawer = document.getElementById("mobile-menu")?.getBoundingClientRect();
+        return { headerTop: header?.top ?? NaN, drawerBottom: drawer?.bottom ?? NaN, scrollY: window.scrollY };
+      });
+      const ok = menu.scrollY > 0 && Math.abs(menu.headerTop) < 1 && menu.drawerBottom > 0;
+      console.log(`  ${ok ? "✓" : "✗"} 390px / menu opened at scrollY ${Math.round(menu.scrollY)}: header top ${Math.round(menu.headerTop)}, drawer bottom ${Math.round(menu.drawerBottom)}`);
+      if (!ok) failures.push("390px / mobile menu after a scroll");
       await context.close();
     }
   } finally {

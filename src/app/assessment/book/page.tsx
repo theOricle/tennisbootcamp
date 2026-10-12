@@ -45,6 +45,7 @@ import {
 import { FOCUS_RING } from "@/components/ui/focus";
 import { TEXT_LINK_LIME, TextLink } from "@/components/ui/TextLink";
 import { TierLine } from "@/components/tiers";
+import { TIER_LADDER_SPAN } from "@/lib/tiers";
 
 type PublicSlot = { slotStart: string; timeLabel: string; taken: boolean };
 type PublicBlock = {
@@ -102,7 +103,7 @@ function LeaveWith({ className = "" }: { className?: string }) {
         What you leave with
       </p>
       <p className="mt-1 text-sm text-white/90">
-        You leave with your tier: one of seven, Love to Grand Slam.
+        You leave with your tier: one of seven, {TIER_LADDER_SPAN}.
       </p>
       <TierLine variant="rail" size="sm" labels="ends" className="mt-3" />
     </div>

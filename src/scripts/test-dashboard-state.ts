@@ -107,7 +107,7 @@ console.log("holderIsPlayer / trainingRoster (audit M26)");
 {
   ok("a solo holder is always the player", holderIsPlayer(parent, [parent]));
   check("a parent who only registered a child is the account, not a player", holderIsPlayer(parent, [parent, maya]), false);
-  ok("…unless Sina set their level", holderIsPlayer({ ...parent, level: 2.5 }, [parent, maya]));
+  ok("…unless the coach set their level", holderIsPlayer({ ...parent, level: 2.5 }, [parent, maya]));
   ok("…or a quiz named them (age band, 0009)", holderIsPlayer({ ...parent, age_band: "adult" }, [parent, maya]));
   ok("…or a self-estimate is on file, even Prefer not to say", holderIsPlayer({ ...parent, self_level: "" }, [parent, maya]));
   ok("…or they have availability on file", holderIsPlayer({ ...parent, availability: { days: { sun: ["eve"] }, v: 1 } }, [parent, maya]));
@@ -148,7 +148,7 @@ console.log("enrollmentState + chips (audit M25, M30)");
   check("pending on an e-transfer cohort → E-transfer pending", ENROLLMENT_CHIP[enrollmentState(e("pending"), etr)].label, "E-transfer pending");
   check("pending on a card cohort → Payment pending", ENROLLMENT_CHIP[enrollmentState(e("pending"), card)].label, "Payment pending");
   check("a cancelled cohort wins over paid", enrollmentState(e("paid"), cohort({ dbStatus: "cancelled" })), "cancelled");
-  check("cancelled note promises nothing beyond the fact (D22 open)", enrollmentNote("cancelled"), "This cohort was cancelled. Sina will contact you directly.");
+  check("cancelled note promises nothing beyond the fact (D22 open)", enrollmentNote("cancelled"), "This cohort was cancelled. Our coaches will contact you directly.");
   check("only paid and test rows are active", ["enrolled", "test", "etransfer-pending", "payment-pending", "cancelled", "on-file"].map((s) => enrollmentIsActive(s as never)), [true, true, false, false, false, false]);
   ok("no chip label is a raw status", Object.values(ENROLLMENT_CHIP).every((c) => /^[A-Z]/.test(c.label) && !c.label.includes("_")));
 }
@@ -198,7 +198,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   const step = nextStepFor(base({ invites: [invite()], bookings: [booking] }));
   check("an open invite outranks everything", step.kind, "invite");
   check("it names the player and the hold deadline in Toronto time", step.headline, "Maya's spot is held until Mon, Oct 12, 6:00pm.");
-  ok("it says the group, the slot and the price from the cohort", step.detail.includes("Deuce group") && step.detail.includes("Saturdays 12pm–1pm") && step.detail.includes(`${formatDollars(COHORT_TOTAL)} for the ${COHORT_LENGTH}`));
+  ok("it says the group, the slot and the price from the cohort", step.detail.includes("Intermediate group") && step.detail.includes("Saturdays 12pm–1pm") && step.detail.includes(`${formatDollars(COHORT_TOTAL)} for the ${COHORT_LENGTH}`));
   check("Claim links the invite token", step.primary, { href: "/enroll/coh_deuce?invite=tok123", label: "Claim Maya's spot" });
 
   const credited = nextStepFor(base({ invites: [invite({ amountDueCents: PRICE - 2000 })] }));
@@ -228,8 +228,8 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   );
   check("a household transfer adds up every player in the cohort", household.detail.startsWith(`${formatDollars(COHORT_TOTAL * 2 - 20)} to info@tennisbootcamp.ca`), true);
   ok("…with the wizard's memo, both names joined with +", household.detail.includes("“Maya Chen + Leo Chen – Fall Saturday”"));
-  check("…and names everyone", household.headline, "Sina is confirming the e-transfer for Maya and Leo.");
-  ok("…and both spots", household.detail.includes("The spots for Maya and Leo in Youth Programs are held while Sina confirms it arrived."));
+  check("…and names everyone", household.headline, "Our coaches are confirming the e-transfer for Maya and Leo.");
+  ok("…and both spots", household.detail.includes("The spots for Maya and Leo in Youth Programs are held while our coaches confirm it arrived."));
   const withParent = nextStepFor(
     base({
       roster: [parent, maya],
@@ -239,7 +239,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
       ],
     })
   );
-  check("the holder and a child on one transfer", [withParent.headline, withParent.detail.includes("“Dana Chen + Maya Chen – Fall Saturday”")], ["Sina is confirming the e-transfer for you and Maya.", true]);
+  check("the holder and a child on one transfer", [withParent.headline, withParent.detail.includes("“Dana Chen + Maya Chen – Fall Saturday”")], ["Our coaches are confirming the e-transfer for you and Maya.", true]);
   const otherCohort = nextStepFor(
     base({
       roster: [maya, leo],
@@ -250,7 +250,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
       ],
     })
   );
-  check("a transfer for another cohort is not folded in", [otherCohort.headline, otherCohort.detail.startsWith(`${formatDollars(COHORT_TOTAL)} to`)], ["Sina is confirming the e-transfer for Maya.", true]);
+  check("a transfer for another cohort is not folded in", [otherCohort.headline, otherCohort.detail.startsWith(`${formatDollars(COHORT_TOTAL)} to`)], ["Our coaches are confirming the e-transfer for Maya.", true]);
   const guestRows = nextStepFor(
     base({
       roster: [parent],
@@ -264,8 +264,8 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   ok("rows with no participant still name the players from the intent's note", guestRows.detail.includes("“Maya Chen + Leo Chen – Fall Saturday”"));
   // Fix round 2 on PR #88: a row with no participant is "you" only when it
   // names nobody or names the holder, never "for you and you".
-  check("…and the headline names them, not 'you and you'", guestRows.headline, "Sina is confirming the e-transfer for Maya and Leo.");
-  ok("…and so do the spots", guestRows.detail.includes("The spots for Maya and Leo in Youth Programs are held while Sina confirms it arrived."));
+  check("…and the headline names them, not 'you and you'", guestRows.headline, "Our coaches are confirming the e-transfer for Maya and Leo.");
+  ok("…and so do the spots", guestRows.detail.includes("The spots for Maya and Leo in Youth Programs are held while our coaches confirm it arrived."));
   const holderAndGuest = nextStepFor(
     base({
       roster: [parent],
@@ -279,16 +279,16 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   check(
     "the holder's own row beside a guest row reads 'you and Leo'",
     [holderAndGuest.headline, holderAndGuest.detail.includes("“Dana Chen + Leo Chen – Fall Saturday”")],
-    ["Sina is confirming the e-transfer for you and Leo.", true]
+    ["Our coaches are confirming the e-transfer for you and Leo.", true]
   );
   const nameless = nextStepFor(
     base({ roster: [parent], voice: "you", invites: [invite({ participant_id: null, payment_method: "etransfer" })] })
   );
-  check("a row that names nobody is still the solo holder's", nameless.headline, "Sina is confirming your e-transfer.");
+  check("a row that names nobody is still the solo holder's", nameless.headline, "Our coaches are confirming your e-transfer.");
   const holderNote = nextStepFor(
     base({ roster: [parent], voice: "you", invites: [invite({ participant_id: null, payment_note: "dana", payment_method: "etransfer" })] })
   );
-  check("…and so is one whose note is the holder's name", holderNote.headline, "Sina is confirming your e-transfer.");
+  check("…and so is one whose note is the holder's name", holderNote.headline, "Our coaches are confirming your e-transfer.");
   // Fix round 3 on PR #88: one email invited twice for two kids before the
   // account existed leaves two rows naming nobody. They are two spots and
   // two amounts, never folded into "your" one.
@@ -305,9 +305,9 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   check(
     "two rows that name nobody add up to two spots",
     [namelessPair.headline, namelessPair.detail.startsWith(`${formatDollars(COHORT_TOTAL * 2)} to`), namelessPair.detail.includes("“Fall Saturday”")],
-    ["Sina is confirming the e-transfer for 2 spots.", true, true]
+    ["Our coaches are confirming the e-transfer for 2 spots.", true, true]
   );
-  ok("…and are counted, not 'you and you'", namelessPair.detail.includes("The 2 spots in Youth Programs are held while Sina confirms it arrived."));
+  ok("…and are counted, not 'you and you'", namelessPair.detail.includes("The 2 spots in Youth Programs are held while our coaches confirm it arrived."));
   const namelessNamed = nextStepFor(
     base({
       invites: [
@@ -316,7 +316,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
       ],
     })
   );
-  check("…and in a household, not 'your player and your player'", namelessNamed.headline, "Sina is confirming the e-transfer for 2 spots.");
+  check("…and in a household, not 'your player and your player'", namelessNamed.headline, "Our coaches are confirming the e-transfer for 2 spots.");
 
   // Fix round 2 on PR #88: one row per player. A lapsed hold beside a newer
   // row for the same player is one spot and one amount, the live one.
@@ -331,9 +331,9 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   check(
     "a lapsed hold beside a newer row for the same player counts once",
     [resent.headline, resent.detail.startsWith(`${formatDollars(COHORT_TOTAL - 20)} to`), resent.detail.includes("“Maya Chen – Fall Saturday”")],
-    ["Sina is confirming the e-transfer for Maya.", true, true]
+    ["Our coaches are confirming the e-transfer for Maya.", true, true]
   );
-  ok("…and reads as one spot", resent.detail.includes("Maya's spot in Youth Programs is held while Sina confirms it arrived."));
+  ok("…and reads as one spot", resent.detail.includes("Maya's spot in Youth Programs is held while our coaches confirm it arrived."));
   const resentFirst = nextStepFor(
     base({
       invites: [
@@ -356,7 +356,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   check(
     "two guest rows named for one player count once",
     [guestResent.headline, guestResent.detail.startsWith(`${formatDollars(COHORT_TOTAL)} to`), guestResent.detail.includes("“Maya Chen – Fall Saturday”")],
-    ["Sina is confirming the e-transfer for Maya.", true, true]
+    ["Our coaches are confirming the e-transfer for Maya.", true, true]
   );
   const holderTwice = nextStepFor(
     base({
@@ -371,7 +371,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   check(
     "the holder's lapsed row and a newer row in their name count once",
     [holderTwice.headline, holderTwice.detail.startsWith(`${formatDollars(COHORT_TOTAL)} to`), holderTwice.detail.includes("“Dana Chen – Fall Saturday”")],
-    ["Sina is confirming your e-transfer.", true, true]
+    ["Our coaches are confirming your e-transfer.", true, true]
   );
   check("etransferTotalCents: a missing amount counts the cohort price", etransferTotalCents([{ amountDueCents: null }, { amountDueCents: PRICE - 2000 }], PRICE), PRICE * 2 - 2000);
   check(
@@ -427,11 +427,11 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   check("paid with no dated sessions → dates coming", nextStepFor(base({ enrollments: [paid] })).kind, "dates-coming");
 
   const placing = nextStepFor(base({ roster: [parent], voice: "you" }));
-  check("nothing on the account → Sina is placing you", placing.headline, "Sina is placing you in a group and time.");
+  check("nothing on the account → our coaches are placing you", placing.headline, "Our coaches are placing you in a group and time.");
   check("one primary, the optional assessment as the secondary", [placing.primary?.label, placing.secondary?.label], ["Update my availability", "Book Your Assessment"]);
   ok("the $20 mechanic is spelled out (voice rule 2)", placing.detail.includes("It costs $20, and if you enroll in a program afterward that $20 comes off the price."));
-  check("a child-only account speaks about the child", nextStepFor(base({ roster: [leo] })).headline, "Sina is placing Leo in a group and time.");
-  check("a household names everyone", nextStepFor(base({ roster: [maya, leo] })).headline, "Sina is placing Maya and Leo in groups and times.");
+  check("a child-only account speaks about the child", nextStepFor(base({ roster: [leo] })).headline, "Our coaches are placing Leo in a group and time.");
+  check("a household names everyone", nextStepFor(base({ roster: [maya, leo] })).headline, "Our coaches are placing Maya and Leo in groups and times.");
   check("a levelled solo player reads as placed", nextStepFor(base({ roster: [{ ...parent, level: 3 }], voice: "you" })).kind, "placed");
 }
 
@@ -473,8 +473,8 @@ console.log("admin labels (audit L20, L23)");
   check("invite statuses", ["invited", "paid"].map((s) => statusLabel(INVITE_STATUS_LABELS, s)), ["Invited", "Paid"]);
   check("no_show reads No-show", statusLabel(BOOKING_STATUS_LABELS, "no_show"), "No-show");
   check("an unknown status is tidied, not raw", statusLabel({}, "pending_etransfer"), "Pending etransfer");
-  check("quiz self-estimate with its provisional tier", selfEstimateLine("rally"), "Quiz: I can rally (≈ Rally)");
-  check("third person for a child", selfEstimateLine("rally", { self: false }), "Quiz: They can rally (≈ Rally)");
+  check("quiz self-estimate with its provisional tier", selfEstimateLine("rally"), "Quiz: I can rally (≈ Novice)");
+  check("third person for a child", selfEstimateLine("rally", { self: false }), "Quiz: They can rally (≈ Novice)");
   check("Not sure carries no tier", selfEstimateLine("unsure"), "Quiz: Not sure");
   check("nothing on file → nothing", selfEstimateLine(null), "");
 }
@@ -506,14 +506,18 @@ console.log("sources");
   const view = read("src", "app", "dashboard", "DashboardView.tsx");
   const primaries = (view.match(/className=\{primaryButton\}/g) ?? []).length + (view.match(/\$\{primaryButton\}/g) ?? []).length;
   check("the dashboard has one primary: the next-step card's", primaries, 1);
-  ok("the empty state is the truth, with no button", view.includes("Sina is placing you — your group, dates and price land here."));
+  ok("the empty state is the truth, with no button", view.includes("Our coaches are placing you — your group, dates and price land here."));
   ok(
     "a held spot or a pending e-transfer never reads as 'placing' under My programs",
     view.includes('step.kind === "invite"') &&
       view.includes('step.kind === "etransfer"') &&
       view.includes("Nothing is enrolled yet. Claim the spot held above")
   );
-  ok("'your coach' is gone from the dashboard", !/your coach/i.test(view) && !/your coach/i.test(read("src", "lib", "dashboardState.ts")));
+  // One voice on the dashboard (audit, then owner 2026-10-12): every coach
+  // action is "our coaches" — never a coach's name, never "your coach".
+  const stateCopy = read("src", "lib", "dashboardState.ts").replace(/^\s*\/\/.*$/gm, "");
+  const editor = read("src", "app", "dashboard", "AvailabilityEditor.tsx");
+  ok("one voice on the dashboard: our coaches, never a name or 'your coach'", [view, stateCopy, editor].every((src) => !/your coach|\bSina\b/i.test(src)) && view.includes("set by our coaches") && editor.includes("Anything our coaches should know?"));
 
   const actions = read("src", "lib", "cohortActions.ts");
   ok("invites pair email and player by position", actions.includes("participantIds?.[i]") && !actions.includes("participantByEmail"));
@@ -528,7 +532,7 @@ console.log("sources");
 
   const create = read("src", "app", "admin", "cohorts", "AdminCohortsClient.tsx");
   ok("new cohorts default to e-transfer", create.includes('useState<"card" | "etransfer">("etransfer")'));
-  ok("the label placeholder speaks tiers", create.includes('placeholder="Saturday 12pm — Deuce"'));
+  ok("the label placeholder speaks tiers", create.includes('placeholder="Saturday 12pm — Intermediate"'));
 
   const webhook = read("src", "app", "api", "webhooks", "stripe", "route.ts");
   ok("a household card payment marks every Supabase row paid", webhook.includes('.in("id", paidEnrollmentIds)'));

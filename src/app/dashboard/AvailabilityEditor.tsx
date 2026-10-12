@@ -93,7 +93,7 @@ export function AvailabilityEditor({
   const statusLine = (() => {
     if (confirmedAt && !dirty) return `Confirmed for the season on ${fmtDate(confirmedAt)}.`;
     if (updatedAt && source) {
-      return `On file ${AVAILABILITY_SOURCE_LABELS[source]} · ${fmtDate(updatedAt)}. Confirm it so Sina can build around it.`;
+      return `On file ${AVAILABILITY_SOURCE_LABELS[source]} · ${fmtDate(updatedAt)}. Confirm it so our coaches can build around it.`;
     }
     if (!hasAnyAvailability(initialAvailability)) {
       return showName && participantName
@@ -112,7 +112,7 @@ export function AvailabilityEditor({
 
       <div className="grid gap-1.5">
         <label htmlFor={noteId} className="text-sm text-white/70">
-          Anything Sina should know? <span className="text-white/60">(optional)</span>
+          Anything our coaches should know? <span className="text-white/60">(optional)</span>
         </label>
         <input
           id={noteId}

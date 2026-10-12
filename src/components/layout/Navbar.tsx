@@ -83,17 +83,19 @@ export function Navbar() {
       if (e.matches) closeMenu(false);
     }
 
+    // Lock the root only (QA 2026-10-10, high). Hiding overflow on <body> as
+    // well made body the scroll container for the sticky header, which then
+    // fell back to its place at the top of the document: after a scroll the
+    // open menu sat off-screen and the page could not move.
     const html = document.documentElement;
-    const previousOverflow = [html.style.overflow, document.body.style.overflow];
+    const previousOverflow = html.style.overflow;
     html.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
 
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("pointerdown", onPointerDown);
     desktop.addEventListener("change", onDesktop);
     return () => {
-      html.style.overflow = previousOverflow[0];
-      document.body.style.overflow = previousOverflow[1];
+      html.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onPointerDown);
       desktop.removeEventListener("change", onDesktop);

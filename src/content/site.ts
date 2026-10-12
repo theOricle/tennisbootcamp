@@ -6,7 +6,7 @@ import type { SiteConfig } from "@/types/site";
  * (audit M1, M10).
  */
 export const SITE_DESCRIPTION =
-  "Weekend tennis classes in Toronto for juniors, teens and adults. Take the 2-minute quiz and Sina places you. The 20-minute assessment is optional.";
+  "Weekend tennis classes in Toronto for juniors, teens and adults. Take the 2-minute quiz and our coaches place you. The 20-minute assessment is optional.";
 
 export const site: SiteConfig = {
   name: "Tennis Bootcamp",

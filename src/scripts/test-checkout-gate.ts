@@ -551,7 +551,7 @@ console.log("levelGatePlan + decideEnrollGate — per-player levels (audit M27)"
   check("route: no players signed in → no levels → 403", gate(levelGatePlan(gated, [], ["x"]).levels), { allowed: false, status: 403, expired: false });
 
   // One rule (cohortAdmitsLevel): a 3.5 player is not in a 3.0–3.0 cohort,
-  // even though both are "Deuce". The dashboard list and the gate agree.
+  // even though both are "Intermediate". The dashboard list and the gate agree.
   check(
     "half-step band: 3.5 refused by a 3.0–3.0 cohort",
     gate([3.5], deuceOnly),

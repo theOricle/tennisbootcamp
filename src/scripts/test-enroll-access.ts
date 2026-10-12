@@ -254,7 +254,7 @@ console.log("buildEnrolledEmail — the fact and the dashboard, HTML and text al
     check(`${name}: Forgot password hint in HTML`, email.html.includes("Forgot password?"), true);
     check(`${name}: Forgot password hint in text`, email.text.includes("Forgot password?"), true);
     check(`${name}: no exclamation mark`, (email.subject + email.text).includes("!"), false);
-    check(`${name}: signed by Sina`, email.text.includes("Sina Kassaian"), true);
+    check(`${name}: signed by the coaching team`, email.text.includes("See you on the court,\nThe Tennis Bootcamp coaching team"), true);
   }
 }
 

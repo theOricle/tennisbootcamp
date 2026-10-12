@@ -200,7 +200,7 @@ async function DashboardContent({
 
   // Who trains (audit M26): a holder who only registered a child is the
   // account, not a player — no unranked card, no availability card, no
-  // "Sina will place you".
+  // "our coaches are placing you".
   const evidence = {
     participantIds: [
       ...invites.map((i) => i.participant_id ?? null),

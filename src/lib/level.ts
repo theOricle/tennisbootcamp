@@ -3,7 +3,7 @@
 //
 // The quiz asks each player where their game is right now; that self-report
 // is deliberately coarse. The placement-grade level is set by the coach, on
-// court or when he places the player. What the site shows before then is a
+// court or when the player is placed. What the site shows before then is a
 // *provisional tier* (owner decision D4, 2026-10-09) — always named as
 // provisional, never a level number, and nothing at all for "Not sure" or
 // "Prefer not to say". Deterministic (no runtime inference), so the copy
@@ -27,7 +27,10 @@ export type SelfLevelOption = {
 /**
  * The one self-estimate list (audit M21), shared by the quiz, the booking
  * form and the admin. "elite" is the high-performance track; every list that
- * offers it passes it through unchanged. The coach's on-court level is the
+ * offers it passes it through unchanged. Its label is "Tournament player"
+ * (owner, 2026-10-12), so no quiz answer reuses a tier name for a different
+ * tier: the stored value stays "elite" (the intake contract) while the tier
+ * called Elite is tier 5. The coach's on-court level is the
  * source of truth; this is only a starting point.
  */
 export const SELF_LEVELS: readonly SelfLevelOption[] = [
@@ -35,7 +38,7 @@ export const SELF_LEVELS: readonly SelfLevelOption[] = [
   { value: "new", label: "Just starting out", labelOther: "Just starting out" },
   { value: "rally", label: "I can rally", labelOther: "They can rally" },
   { value: "competitive", label: "I play competitively", labelOther: "They play competitively" },
-  { value: "elite", label: "Elite — high-performance track", labelOther: "Elite — high-performance track" },
+  { value: "elite", label: "Tournament player", labelOther: "Tournament player" },
   { value: "unsure", label: "Not sure", labelOther: "Not sure" },
 ];
 
@@ -70,11 +73,11 @@ export function tentativeLevelLabel(level?: string | null): string | null {
 }
 
 /**
- * Self-estimate → provisional tier (owner decision D4, 2026-10-09):
- * new → Love, rally → Rally, competitive → Deuce, elite → Break. "competitive"
- * lands on Deuce because recommend.ts sends competitive players to High
- * Performance, whose span starts at Deuce (3.0); test-tiers.ts pins the two
- * together. An entry missing here means that answer shows no tier.
+ * Self-estimate → provisional tier (owner decision D4, 2026-10-09; names
+ * 2026-10-12): new → Beginner, rally → Novice, competitive → Intermediate,
+ * elite → Advanced. "competitive" lands on Intermediate because recommend.ts
+ * sends competitive players to High Performance, whose span starts at
+ * Intermediate (3.0); test-tiers.ts pins the two together. An entry missing here means that answer shows no tier.
  */
 export const PROVISIONAL_TIER: Partial<Record<SelfLevel, TierId>> = {
   new: 1,

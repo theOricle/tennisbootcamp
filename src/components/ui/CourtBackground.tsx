@@ -75,13 +75,26 @@ export function CourtBackground() {
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute("scale",    new THREE.BufferAttribute(scales,    1));
 
+    // No antialiasing and a 1.5 pixel-ratio cap: round point sprites gain
+    // nothing from MSAA, and DPR 2 doubled the fill cost (audit M15).
+    const pixelRatio = Math.min(window.devicePixelRatio, 1.5);
+    // gl_PointSize is in drawing-buffer pixels, so the 1.5 cap drew every dot
+    // 2 / 1.5 = 1.33x larger in CSS px on DPR 2+ screens (QA 2026-10-10).
+    // pointScale undoes that: each dot keeps the CSS size it had when the
+    // buffer ran at the device ratio (capped at 2), on every screen.
+    const pointScale = pixelRatio / Math.min(window.devicePixelRatio, 2);
+
     const material = new THREE.ShaderMaterial({
-      uniforms: { color: { value: new THREE.Color(0xe1e1e1) } },
+      uniforms: {
+        color: { value: new THREE.Color(0xe1e1e1) },
+        pointScale: { value: pointScale },
+      },
       vertexShader: [
         "attribute float scale;",
+        "uniform float pointScale;",
         "void main() {",
         "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
-        "  gl_PointSize    = scale * (300.0 / -mvPosition.z);",
+        "  gl_PointSize    = scale * pointScale * (300.0 / -mvPosition.z);",
         "  gl_Position     = projectionMatrix * mvPosition;",
         "}"
       ].join("\n"),
@@ -99,10 +112,8 @@ export function CourtBackground() {
     const points = new THREE.Points(geometry, material);
     scene.add(points);
 
-    // No antialiasing and a 1.5 pixel-ratio cap: round point sprites gain
-    // nothing from MSAA, and DPR 2 doubled the fill cost (audit M15).
     const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(pixelRatio);
     renderer.setSize(W, H);
     renderer.setClearColor(0x000000, 0);
     renderer.domElement.style.display = "block";

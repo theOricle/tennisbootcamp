@@ -19,7 +19,7 @@ import { getPublicCohorts } from "@/lib/cohortsDb";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { VENUE_LINE } from "@/lib/membership";
 import { programLevelRange } from "@/lib/programCatalog";
-import { formatLevelBand, formatTierSpan } from "@/lib/tiers";
+import { TIER_LADDER_SPAN, formatLevelBand, formatTierSpan } from "@/lib/tiers";
 import { artFocusForCohort } from "@/lib/plates/variant";
 import { TierLine, TierRangeBadges } from "@/components/tiers";
 import { AgeBandChips } from "@/components/programs/AgeBandChips";
@@ -202,7 +202,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="text-white/60">{slot.group}</span>
                             {/* The class's tier band (owner D3): the Adult climb reads
-                                Love – Rally, Deuce, Break – Ace. Unbanded slots show nothing. */}
+                                Beginner – Novice, Intermediate, Advanced – Elite. Unbanded slots show nothing. */}
                             <TierRangeBadges levelMin={slot.levelMin} levelMax={slot.levelMax} />
                           </span>
                         </li>
@@ -223,7 +223,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 )}
                 {/* Primary, then the optional assessment as an outline pill
                     at 44px, not 12px grey text (audit M12). A signed-in
-                    holder is already on Sina's list: they see their
+                    holder is already on our list: they see their
                     players' tiers against this span instead of a second
                     quiz (audit M32). */}
                 <ProgramViewerPanel span={range}>
@@ -291,7 +291,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
 
         {/* Levels in this program (audit M36, design specs §5.7): the span in
             words, the program's own plain line, and the ladder lit inside the
-            span, Grand Slam on top. Only when the span is set (owner D2). */}
+            span, World Class on top. Only when the span is set (owner D2). */}
         {range && (
           <>
             <div className="mt-12 border-t border-white/10" />
@@ -304,7 +304,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                     {formatLevelBand(range.min, range.max)}
                   </span>
                   <span className="sr-only">
-                    , levels {range.min.toFixed(1)} to {range.max.toFixed(1)} on the seven-tier ladder from Love to Grand Slam
+                    , levels {range.min.toFixed(1)} to {range.max.toFixed(1)} on the seven-tier ladder from {TIER_LADDER_SPAN}
                   </span>
                 </p>
                 {program.levelNote && (
@@ -313,7 +313,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 {/* A coming-soon program has no decided intake path yet (owner D10): only confirmed facts. */}
                 {!program.comingSoon && (
                   <p className="mt-2 text-sm leading-relaxed text-white/70">
-                    Sina places every player on the ladder, from the quiz or on court.
+                    Our coaches place every player on the ladder, from the quiz or on court.
                   </p>
                 )}
                 <Link href="/assessment#ladder" className={`mt-2 ${TEXT_LINK_LIME}`}>
@@ -406,7 +406,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 })}
               </div>
               <p className="mt-6 text-sm text-white/60">
-                Sina places each player by level and schedule.{" "}
+                Our coaches place each player by level and schedule.{" "}
                 <ViewerSwap
                   guest={
                     <>
@@ -416,7 +416,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                       to start.
                     </>
                   }
-                  member={<>You&apos;re on his list already.</>}
+                  member={<>You&apos;re on our list already.</>}
                 />
               </p>
             </div>
@@ -427,7 +427,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 Upcoming cohorts
               </h2>
               {/* The timetable above is real; the dated cohorts are not public
-                  yet (fall 2026 runs with Sina's private students). Status
+                  yet (fall 2026 runs with the coach's private students). Status
                   wording follows owner default D11, "Groups forming". */}
               <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
                 Groups are forming. Cohort dates aren&apos;t public yet.{" "}
@@ -437,14 +437,14 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                       <Link href={quizHref} className="text-[#B4E655] hover:underline">
                         Take the 2-minute quiz
                       </Link>{" "}
-                      and Sina places you in a class by level and schedule, or leave
+                      and our coaches place you in a class by level and schedule, or leave
                       your email and we&apos;ll tell you when a cohort opens.
                     </>
                   }
                   member={
                     <>
-                      You&apos;re on Sina&apos;s list: he places you in a class by level and
-                      schedule, and your group, dates and price land on your dashboard.
+                      You&apos;re on our list: our coaches place you in a class by level
+                      and schedule, and your group, dates and price land on your dashboard.
                     </>
                   }
                 />

@@ -29,7 +29,7 @@ export function QuizBand({
           Not sure which program fits?
         </Heading>
         <p className="mt-2 max-w-2xl text-pretty text-sm text-white/75 md:text-base">
-          Tell us each player&apos;s age, level and free time. Sina places them in the class that fits.
+          Tell us each player&apos;s age, level and free time. Our coaches place them in the class that fits.
         </p>
       </div>
       <Button

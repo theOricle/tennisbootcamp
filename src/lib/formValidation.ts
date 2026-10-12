@@ -33,7 +33,7 @@ export const FIELD_MESSAGES = {
   nameMissing: "Add your full name.",
   emailMissing: "Add your email address.",
   emailInvalid: "Check your email address. It should look like name@example.com.",
-  phoneMissing: "Add a phone number Sina can text, like (647) 555-1234.",
+  phoneMissing: "Add a phone number your coach can text, like (647) 555-1234.",
   phoneInvalid: `Check the phone number. It needs at least ${MIN_PHONE_DIGITS} digits, like (647) 555-1234.`,
   passwordMissing: "Add your password.",
   passwordShort: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,

@@ -66,9 +66,11 @@ export function Hero() {
 
       {/* z-20 — soft vignette, then the text scrim: top-down on phones so the
           dots never run through the buttons and note (audit M15), left-right
-          from md. */}
+          from md. It holds at 90% navy or more through the copy column, down
+          to the $20 note on phones and across the copy's width from md, then
+          lets the wave through behind the player (QA 2026-10-10). */}
       <div className="pointer-events-none absolute inset-0 z-20 tb-gradient opacity-60" />
-      <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-b from-[#061427]/95 via-[#061427]/80 to-[#061427]/35 md:bg-gradient-to-r md:from-[#061427]/95 md:via-[#061427]/60 md:to-transparent" />
+      <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-b from-[#061427]/95 from-0% via-[#061427]/90 via-[72%] to-[#061427]/35 to-100% md:bg-gradient-to-r md:from-[#061427]/95 md:from-0% md:via-[#061427]/90 md:via-[50%] md:to-transparent md:to-100%" />
 
       {/* z-30 — translucent wordmark watermark; decorative, desktop only */}
       <div

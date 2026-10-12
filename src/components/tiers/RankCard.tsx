@@ -14,6 +14,7 @@ import {
   tierOrdinal,
   tierProgress,
   tierRangeForLevels,
+  withArticle,
 } from "@/lib/tiers";
 import { TIER_RULE } from "@/lib/tierStyle";
 import { Button } from "@/components/ui/Button";
@@ -86,7 +87,7 @@ export function RankCard({
   // ── Ranked ──────────────────────────────────────────────────────────────
   if (tier && progress) {
     const setBy = player.level_assessed_at
-      ? `Set by Sina · ${formatShortDate(player.level_assessed_at)}`
+      ? `Set by our coaches · ${formatShortDate(player.level_assessed_at)}`
       : "";
     const footer = (
       <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
@@ -100,7 +101,7 @@ export function RankCard({
         {showNote && player.level_notes && (
           <details className="mt-3 border-t border-white/10 pt-1">
             <summary className="flex min-h-[44px] cursor-pointer list-none items-center text-sm font-semibold text-white/80 hover:text-white [&::-webkit-details-marker]:hidden">
-              Sina&apos;s note
+              Coach&apos;s note
             </summary>
             <p className="pb-2 text-sm text-white/70">{player.level_notes}</p>
           </details>
@@ -123,8 +124,9 @@ export function RankCard({
               </div>
             </div>
             <div className="mt-5 min-w-0 flex-1 md:mt-0">
-              <TierLine variant="ladder" orientation="horizontal" density="compact" level={player.level} className="hidden md:grid" />
-              <TierLine variant="rail" size="md" level={player.level} labels="ends" className="md:hidden" />
+              {/* The ladder from lg: at md the column is ~360px, too narrow for seven plain names. */}
+              <TierLine variant="ladder" orientation="horizontal" density="compact" level={player.level} className="hidden lg:grid" />
+              <TierLine variant="rail" size="md" level={player.level} labels="ends" className="lg:hidden" />
             </div>
           </div>
           {footer}
@@ -156,8 +158,8 @@ export function RankCard({
   if (placed) {
     const group = `${formatTierSpan(placedSpan?.min, placedSpan?.max)} group`;
     const body = isSelf
-      ? `You train in a ${group}. Sina sets your exact level once he has seen you play.`
-      : `${name || "This player"} trains in a ${group}. Sina sets their exact level once he has seen them play.`;
+      ? `You train in ${withArticle(group)}. Our coaches set your exact level after seeing you play.`
+      : `${name || "This player"} trains in ${withArticle(group)}. Our coaches set the exact level after seeing ${name || "them"} play.`;
     return (
       <section className={`${SHELL} ${TIER_RULE[placed.min.id]} ${className}`.trim()}>
         <div className="flex items-start gap-4">
@@ -176,8 +178,8 @@ export function RankCard({
 
   // ── Unranked ────────────────────────────────────────────────────────────
   const unrankedBody = isSelf
-    ? "Your tier shows here once Sina sets your level."
-    : `${name || "This player"}'s tier shows here once Sina sets their level.`;
+    ? "Your tier shows here once our coaches set your level."
+    : `${name || "This player"}'s tier shows here once our coaches set a level.`;
   return (
     <section className={`${SHELL} border-t-2 border-t-white/15 ${className}`.trim()}>
       <div className="flex items-start gap-4">

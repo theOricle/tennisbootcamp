@@ -11,7 +11,7 @@ import { LEAD_SOURCE_FIELD } from "@/lib/leadSource";
 import { storedFirstTouch } from "@/lib/firstTouchBrowser";
 import { provisionalTierFor, selfEstimateToLevel, type SelfLevel } from "@/lib/level";
 import { AGE_BAND_LABELS, ageBandToWho, type AgeBand } from "@/lib/ageBand";
-import { levelWithinRange, type Tier } from "@/lib/tiers";
+import { TIER_LADDER_SPAN, levelWithinRange, type Tier } from "@/lib/tiers";
 import { TierChip, TierEmblem, TierLine } from "@/components/tiers";
 import type { Program, TimetableSlot } from "@/types/program";
 import {
@@ -332,9 +332,9 @@ function LikelyTierBlock({ tier, firstName }: { tier: Tier | null; firstName?: s
           Thanks for telling us about {firstName ? `${firstName}'s` : "your"} game.
         </p>
         <p className="mt-1 text-sm leading-relaxed text-white/70">
-          Sina places every player on one of seven tiers, Love to Grand Slam.
+          {`Our coaches place every player on one of seven tiers, ${TIER_LADDER_SPAN}.`}
         </p>
-        <TierLine variant="ladder" orientation="horizontal" density="compact" className="mt-5" />
+        <TierLine variant="ladder" orientation="responsive" density="compact" className="mt-5" />
       </div>
     );
   }
@@ -355,14 +355,14 @@ function LikelyTierBlock({ tier, firstName }: { tier: Tier | null; firstName?: s
       </div>
       <TierLine
         variant="ladder"
-        orientation="horizontal"
+        orientation="responsive"
         density="compact"
         level={tier.id}
         provisional
         className="mt-5"
       />
       <p className="mt-4 text-sm leading-relaxed text-white/70">
-        From your answers. Sina confirms {firstName ? `${firstName}'s` : "your"} tier when he places {whom}.
+        From your answers. Our coaches confirm {firstName ? `${firstName}'s` : "your"} tier when they place {whom}.
       </p>
     </div>
   );
@@ -379,7 +379,7 @@ const RESULT_CARD =
  * opens by saying so: nothing else is required (backlog #19). Its h1 takes
  * focus when the screen appears (audit M19), so a screen-reader user hears
  * the result instead of silence on a vanished Submit button. The next step
- * is stated as it works today: Sina emails an invitation when a group that
+ * is stated as it works today: we email an invitation when a group that
  * fits is forming (audit M17). No window is promised until the owner sets
  * one (D21).
  */
@@ -418,17 +418,17 @@ function IntakeComplete({
       </h1>
       <p className="mt-3 text-sm leading-relaxed text-white/70">
         {household
-          ? "Your answers are in and there's nothing else you need to do. Sina reviews each player's level and your schedule, then places each of them in a group and a time that fit."
+          ? "Your answers are in and there's nothing else you need to do. Our coaches review each player's level and your schedule, then place each of them in a group and a time that fit."
           : child
-            ? `Your answers are in and there's nothing else you need to do. Sina reviews ${child}'s level and your schedule, then places ${child} in a group and a time that fit.`
-            : "Your answers are in and there's nothing else you need to do. Sina reviews your level and schedule, then places you in a group and a time that fit."}
+            ? `Your answers are in and there's nothing else you need to do. Our coaches review ${child}'s level and your schedule, then place ${child} in a group and a time that fit.`
+            : "Your answers are in and there's nothing else you need to do. Our coaches review your level and schedule, then place you in a group and a time that fit."}
       </p>
       <p className="mt-3 text-sm leading-relaxed text-white/70">
         {household
-          ? "When a group that fits a player's level and your schedule is forming, Sina emails you an invitation with the day, time and price."
+          ? "When a group that fits a player's level and your schedule is forming, we email you an invitation with the day, time and price."
           : child
-            ? `When a group that fits ${child}'s level and your schedule is forming, Sina emails you an invitation with the day, time and price.`
-            : "When a group that fits your level and schedule is forming, Sina emails you an invitation with the day, time and price."}
+            ? `When a group that fits ${child}'s level and your schedule is forming, we email you an invitation with the day, time and price.`
+            : "When a group that fits your level and schedule is forming, we email you an invitation with the day, time and price."}
       </p>
       {/* Only a brand-new email gets the set-password link; a signed-in holder has one. */}
       {!signedIn && (
@@ -584,7 +584,7 @@ function HouseholdMatchScreen({
                       {tier ? (
                         <TierChip level={tier.id} provisional />
                       ) : (
-                        <span className={PROVISIONAL_CHIP}>Sina sets {first}&apos;s tier</span>
+                        <span className={PROVISIONAL_CHIP}>Our coaches set {first}&apos;s tier</span>
                       )}
                     </div>
                     <TierLine
@@ -599,11 +599,11 @@ function HouseholdMatchScreen({
                 );
               })}
             </ul>
-            <TierLine variant="ladder" orientation="horizontal" density="compact" className="mt-6" />
+            <TierLine variant="ladder" orientation="responsive" density="compact" className="mt-6" />
             <p className="mt-4 text-sm leading-relaxed text-white/70">
               {anyTier
-                ? "From your answers. Sina confirms each player's tier when he places them."
-                : "Sina places every player on one of seven tiers, Love to Grand Slam."}
+                ? "From your answers. Our coaches confirm each player's tier when they place them."
+                : `Our coaches place every player on one of seven tiers, ${TIER_LADDER_SPAN}.`}
             </p>
           </div>
 
@@ -622,7 +622,7 @@ function HouseholdMatchScreen({
                       <ProgramMatchCard rec={top} ageBand={r.ageBand} tier={provisionalTierFor(r.level)} />
                     ) : (
                       <p className="mt-3 text-sm text-white/70">
-                        Nothing lines up on paper — Sina places them from their answers.
+                        Nothing lines up on paper — our coaches place them from their answers.
                       </p>
                     )}
                   </div>
@@ -1138,7 +1138,7 @@ function IntakePageInner() {
                 </div>
                 <div className="grid gap-1.5">
                   <label htmlFor={CONTACT_IDS.phone} className={LABEL_CLASS}>
-                    Phone — so Sina can text you about times
+                    Phone — so your coach can text you about times
                   </label>
                   <input
                     id={CONTACT_IDS.phone}
