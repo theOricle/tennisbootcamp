@@ -7,11 +7,21 @@ export type ProgramType = "Weekend group class" | "One-to-one coaching" | "Group
 export type ClassDay = "Saturday" | "Sunday";
 
 /**
- * A group's state this season. "forming" and "invite-only" are the owner's
- * status chips (D11); "full" is a group with no room; "arranged" is a
- * program with no fixed class, booked with the player (private lessons).
+ * A group's state this season. "forming" is a group taking players (its chip
+ * reads "Open to join" since the joining flow, owner 2026-10-12; D11 named it
+ * "Groups forming"); "invite-only" is the owner's invite chip (D11); "full"
+ * is a group with no room; "arranged" is a program with no fixed class,
+ * booked with the player (private lessons).
  */
 export type GroupStatus = "forming" | "invite-only" | "full" | "arranged";
+
+/**
+ * How a player joins a group (joining flow, owner 2026-10-12). "open": anyone
+ * whose age and level fit can reserve a spot, and the coach confirms the
+ * level on court in week one. "approval": the 2-minute quiz, then our
+ * coaches approve the place (High Performance); no assessment is required.
+ */
+export type GroupJoining = "open" | "approval";
 
 /**
  * One group a player can be placed in (owner, 2026-10-12): an age range, a
@@ -42,6 +52,8 @@ export type ProgramGroup = {
   /** The price in one line, from the constants in programs.ts only. */
   price: string;
   status: GroupStatus;
+  /** Open to join, or by approval (High Performance). */
+  joining: GroupJoining;
   /** One plain line on who the group is for, when the name alone is not enough. */
   note?: string;
 };

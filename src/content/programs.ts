@@ -79,9 +79,40 @@ const YOUTH_BANDS: AgeBand[] = ["junior", "teen"];
 const ANY_AGE_BANDS: AgeBand[] = ["junior", "teen", "adult"];
 const ADULT_BANDS: AgeBand[] = ["adult"];
 
-// The assessment is optional: our coaches place each player (backlog #20 review).
+// ─── How joining works (joining flow, owner 2026-10-12) ──────────────────────
+// Groups are open to join for anyone whose age and level fit; the coach
+// confirms the level on court in week one. A player in the wrong group is
+// moved (every scheduled group costs the same), and when no group fits, the
+// player is refunded in full. High Performance is by approval: the quiz,
+// then our coaches' approval, never a required assessment. The $20
+// assessment is optional, for certainty before paying.
+//
+// The Program Policies (/legal/refund-policy, src/content/policies.ts) are
+// unchanged and these lines add no legal terms: no day counts, no fees. Week
+// one sits inside the policies' full-refund window, which runs from the later
+// of the written agreement and the first session. The policy sentence for
+// move-or-refund goes to counsel before public launch.
+
+/** Step 3's promise in full, on the How joining works section. */
+export const RIGHT_GROUP_PROMISE =
+  "If another group fits you better, we move you to it at the same price. If none does, we refund you in full.";
+
+/** The same promise on a group card's "Week 1" row. */
+export const RIGHT_GROUP_PROMISE_SHORT =
+  "Your coach confirms your level. If another group fits better, we move you; if none does, full refund.";
+
+/** How a by-approval group (High Performance) is joined, on its card and the How joining works section. */
+export const APPROVAL_LINE =
+  "Take the 2-minute quiz and our coaches approve each place. No assessment needed.";
+
+/** The optional assessment, for certainty before paying, with its mechanic spelled out (voice.md rule 2). */
+export const ASSESSMENT_CERTAINTY_LINE =
+  "The assessment is optional: 20 minutes on court for $20, and if you enroll in a program afterward that $20 comes off the price.";
+
+// The last line of a scheduled program's description: pick, then the
+// week-one check. The assessment is offered on the page, never required.
 export const PLACEMENT_LINE =
-  "Our coaches place each player by level and schedule, and a 20-minute assessment is available if you want your level confirmed on court first. It is $20, and if you enroll in a program afterward that $20 comes off the price.";
+  "Pick the group that fits your age and level, and your coach confirms your level on court in week one.";
 
 // ─── Groups (owner lineup, 2026-10-12) ───────────────────────────────────────
 // Youth Bootcamps, Saturdays: 12:00 ages 7–10 Beginner – Novice; 1:00 ages
@@ -104,6 +135,7 @@ export const programGroups: ProgramGroup[] = [
     end: "13:00",
     price: PRICE_SUMMARY,
     status: "forming",
+    joining: "open",
   },
   {
     id: "youth-11-15",
@@ -118,6 +150,7 @@ export const programGroups: ProgramGroup[] = [
     end: "14:00",
     price: PRICE_SUMMARY,
     status: "forming",
+    joining: "open",
   },
   {
     // The competitive track (voice.md: tournament dialect allowed here only).
@@ -133,6 +166,8 @@ export const programGroups: ProgramGroup[] = [
     end: "15:00",
     price: PRICE_SUMMARY,
     status: "forming",
+    // By approval (owner, 2026-10-12): the quiz, then our coaches' yes.
+    joining: "approval",
     note: "The competitive track: players who compete, or are training to. Pattern play, serve plus the next shot, and match play with the score on.",
   },
   {
@@ -148,6 +183,7 @@ export const programGroups: ProgramGroup[] = [
     end: "17:00",
     price: PRICE_SUMMARY,
     status: "forming",
+    joining: "open",
   },
   {
     id: "adult-intermediate",
@@ -162,6 +198,7 @@ export const programGroups: ProgramGroup[] = [
     end: "18:00",
     price: PRICE_SUMMARY,
     status: "forming",
+    joining: "open",
   },
   {
     id: "adult-advanced",
@@ -176,6 +213,7 @@ export const programGroups: ProgramGroup[] = [
     end: "19:00",
     price: PRICE_SUMMARY,
     status: "forming",
+    joining: "open",
   },
   {
     id: "private-lessons",
@@ -190,6 +228,7 @@ export const programGroups: ProgramGroup[] = [
     end: null,
     price: PRIVATE_LESSONS_PRICE,
     status: "arranged",
+    joining: "open",
   },
 ];
 

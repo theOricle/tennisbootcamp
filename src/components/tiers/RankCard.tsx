@@ -67,6 +67,9 @@ function eyebrowFor(player: RankCardPlayer, isSelf: boolean): string {
 
 const SHELL = "rounded-2xl border border-white/10 bg-white/5 p-5 md:p-6";
 const EYEBROW = "text-xs font-semibold uppercase tracking-[0.12em] text-[#B4E655]";
+/** The dashed "Provisional" chip, as on the quiz result (design specs §3.4). */
+const PROVISIONAL_CHIP =
+  "inline-flex min-h-6 items-center rounded-full border border-dashed border-white/30 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/85";
 
 export function RankCard({
   player,
@@ -154,12 +157,14 @@ export function RankCard({
   }
 
   // ── Placed (owner D6-B): a quiz-placed player in a banded cohort ─────────
+  // Provisional until the coach sees the player in week one (joining flow,
+  // owner 2026-10-12): the dashed chip the quiz result uses, and the sentence.
   const placed = placedSpan ? tierRangeForLevels(placedSpan.min, placedSpan.max) : null;
   if (placed) {
     const group = `${formatTierSpan(placedSpan?.min, placedSpan?.max)} group`;
     const body = isSelf
-      ? `You train in ${withArticle(group)}. Our coaches set your exact level after seeing you play.`
-      : `${name || "This player"} trains in ${withArticle(group)}. Our coaches set the exact level after seeing ${name || "them"} play.`;
+      ? `You train in ${withArticle(group)}. Your level stays provisional until our coaches confirm it on court in week one.`
+      : `${name || "This player"} trains in ${withArticle(group)}. ${name ? `${name}'s level` : "The level"} stays provisional until our coaches confirm it on court in week one.`;
     return (
       <section className={`${SHELL} ${TIER_RULE[placed.min.id]} ${className}`.trim()}>
         <div className="flex items-start gap-4">
@@ -167,7 +172,10 @@ export function RankCard({
           <div className="min-w-0">
             <p className={EYEBROW}>{eyebrow}</p>
             <p className="mt-1 text-xs text-white/60">Placed</p>
-            <Heading className="text-2xl font-semibold tracking-tight text-white">{group}</Heading>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Heading className="text-2xl font-semibold tracking-tight text-white">{group}</Heading>
+              <span className={PROVISIONAL_CHIP}>Provisional</span>
+            </div>
           </div>
         </div>
         <TierLine variant="rail" size="md" span={{ min: placedSpan?.min, max: placedSpan?.max }} labels="ends" className="mt-5" />
@@ -178,8 +186,8 @@ export function RankCard({
 
   // ── Unranked ────────────────────────────────────────────────────────────
   const unrankedBody = isSelf
-    ? "Your tier shows here once our coaches set your level."
-    : `${name || "This player"}'s tier shows here once our coaches set a level.`;
+    ? "Your tier shows here once our coaches set your level. Every level is confirmed on court in week one."
+    : `${name || "This player"}'s tier shows here once our coaches set a level. Every level is confirmed on court in week one.`;
   return (
     <section className={`${SHELL} border-t-2 border-t-white/15 ${className}`.trim()}>
       <div className="flex items-start gap-4">

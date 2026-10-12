@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CONTACT_EMAIL, SESSION_PRICE_LABEL, groupsForProgram, programs } from "@/content/programs";
 import type { Program } from "@/types/program";
 import { EmailCapture } from "@/components/sections/EmailCapture";
+import { HowJoiningWorks } from "@/components/sections/HowJoiningWorks";
 import { QuizBand } from "@/components/sections/QuizBand";
 import { ProgramGroupCard } from "@/components/sections/ProgramGroupCard";
 import { CHIP_NEUTRAL } from "@/components/sections/ProgramCard";
@@ -222,15 +223,22 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   Take the 2-minute quiz
                 </TrackedButton>
                 {!arranged && (
-                  <TrackedButton
-                    variant="secondary"
-                    href="/assessment/book"
-                    track="assessment"
-                    source="program-detail"
-                    className="mt-3 w-full"
-                  >
-                    Book Your Assessment
-                  </TrackedButton>
+                  <>
+                    <TrackedButton
+                      variant="secondary"
+                      href="/assessment/book"
+                      track="assessment"
+                      source="program-detail"
+                      className="mt-3 w-full"
+                    >
+                      Book Your Assessment
+                    </TrackedButton>
+                    {/* Optional, never a step (joining flow, owner 2026-10-12);
+                        the $20 mechanic is the price line above. */}
+                    <p className="mt-2 text-center text-xs text-white/60">
+                      Optional, if you want your level confirmed before you enroll.
+                    </p>
+                  </>
                 )}
               </ProgramViewerPanel>
               {/* A program booked by arrangement offers the inbox to
@@ -246,18 +254,26 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* The groups (owner, 2026-10-12): each its own card with the age
-            range, the level band on the rail, the time, the price, the
-            status and the quiz. The High Performance card is the anchor
-            /programs/high-performance redirects to. */}
+        {/* How joining works, then the groups (owner, 2026-10-12): each
+            its own card with the age range, the level band on the rail, the
+            time, the price, how to join with the week-one promise, and the
+            quiz. The High Performance card is the anchor
+            /programs/high-performance redirects to. A program with no fixed
+            class (private lessons) has no group to pick or move between, so
+            neither section. */}
         {scheduledGroups.length > 0 && (
           <>
-            <div className="mt-12 border-t border-white/10" />
-            <section aria-labelledby="groups" className="mt-10">
+            <HowJoiningWorks
+              className="mt-12"
+              quizHref={quizHref}
+              source="program-joining"
+              showApproval={scheduledGroups.some((g) => g.joining === "approval")}
+            />
+            <section aria-labelledby="groups" className="mt-12">
               <h2 id="groups" className="text-xl font-semibold text-white">{groupsHeading}</h2>
               <p className="mt-2 max-w-2xl text-sm text-white/70">
-                Our coaches place each player in the group that fits their age and level. Take
-                the 2-minute quiz and we place you; the group&apos;s level band is where you train.
+                Each group is built for an age range and a level band, and the band is where you
+                train. Pick the one that fits, or take the 2-minute quiz and our coaches place you.
               </p>
               <ul role="list" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {scheduledGroups.map((g) => (
@@ -324,7 +340,9 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 )}
                 {!program.comingSoon && (
                   <p className="mt-2 text-sm leading-relaxed text-white/70">
-                    Our coaches place every player on the ladder, from the quiz or on court.
+                    {arranged
+                      ? "Our coaches place every player on the ladder, from the quiz or on court."
+                      : "Our coaches place every player on the ladder from the quiz, and confirm the level on court in week one."}
                   </p>
                 )}
                 <Link href="/assessment#ladder" className={`mt-2 ${TEXT_LINK_LIME}`}>

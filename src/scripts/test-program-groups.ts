@@ -135,7 +135,7 @@ const hpCard = render(createElement(ProgramGroupCard, { group: g("high-performan
 check("one link per card, the quiz, named for the group", count(hpCard, "<a ") === 1 && /<a [^>]*href="\/intake\?program=youth-programs"[^>]*>Take the 2-minute quiz<span class="sr-only">, for the High Performance group<\/span><\/a>/.test(hpCard), hpCard.match(/<a [^>]*>[\s\S]*?<\/a>/)?.[0]);
 check("the link is stretched and the article carries the id anchor and focus ring", hpCard.includes("after:absolute after:inset-0") && hpCard.includes('id="high-performance"') && hpCard.includes("scroll-mt-24") && hpCard.includes("has-[a:focus-visible]:ring-2"));
 check("the eyebrow is the day; the title is the group's name", hpCard.includes(">Saturdays</p>") && hpCard.includes(">High Performance</h3>"));
-check("the status chip reads Groups forming", hpCard.includes("Groups forming"));
+check("the status chip reads By approval, with the hollow ring (joining flow)", hpCard.includes("By approval</span>") && hpCard.includes("rounded-full border border-white/70") && !hpCard.includes("Groups forming"));
 check("Ages, Time and Price rows", /<dt[^>]*>Ages<\/dt><dd[^>]*>12–17<\/dd>/.test(hpCard) && /<dt[^>]*>Time<\/dt><dd[^>]*>Saturdays 2:00–3:00 pm<\/dd>/.test(hpCard) && /<dt[^>]*>Price<\/dt>/.test(hpCard) && hpCard.includes(PRICE_SUMMARY.split(" · ")[0]));
 check("the Level block with the band on the rail", hpCard.includes(">Intermediate – Elite<") && hpCard.includes("3.0–5.5") && hpCard.includes('aria-label="Built for Intermediate to Elite, levels 3.0 to 5.5"'));
 check("the competitive note is shown", hpCard.includes("The competitive track"));
@@ -157,7 +157,10 @@ const cohort: Cohort = {
   sessions: [{ day: "Sat", start: "14:00", end: "15:00" }], capacityMin: 4, capacityMax: 8, priceCents: 0, currency: "CAD", status: "open", levelMin: 3, levelMax: 5.5,
 };
 const withCohort = render(createElement(ProgramGroupCard, { group: g("high-performance"), program: youth, nextCohort: cohort }));
-check("a public cohort → the lime chip and the Next row", withCohort.includes("Next cohort Oct 18") && /<dt[^>]*>Next<\/dt>/.test(withCohort) && !withCohort.includes("Groups forming"));
+check("High Performance with a public cohort keeps By approval; the Next row carries the dates", withCohort.includes("By approval</span>") && !withCohort.includes("Next cohort Oct 18") && /<dt[^>]*>Next<\/dt>/.test(withCohort));
+const openCohort: Cohort = { ...cohort, id: "y710-fall", label: "Fall 7–10", sessions: [{ day: "Sat", start: "12:00", end: "13:00" }], levelMin: 1, levelMax: 2.5 };
+const openWithCohort = render(createElement(ProgramGroupCard, { group: g("youth-7-10"), program: youth, nextCohort: openCohort }));
+check("an open group with a public cohort → the lime chip and the Next row", openWithCohort.includes("Next cohort Oct 18") && /<dt[^>]*>Next<\/dt>/.test(openWithCohort) && !openWithCohort.includes("Open to join"));
 
 console.log("ProgramCatalogView markup");
 const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({ slug: p.slug, title: p.title, type: p.type, description: p.description, photo: p.photo, ageBands: p.ageBands, timetable: p.timetable, schedule: p.schedule }));

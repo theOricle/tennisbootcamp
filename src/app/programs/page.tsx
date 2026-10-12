@@ -12,6 +12,7 @@ import { getPublicCohorts } from "@/lib/cohortsDb";
 import { nextCohortForGroup } from "@/lib/programCatalog";
 import { ProgramCatalog, type CatalogProgram } from "@/components/sections/ProgramCatalog";
 import { EmailCapture } from "@/components/sections/EmailCapture";
+import { HowJoiningWorks } from "@/components/sections/HowJoiningWorks";
 import { QuizBand } from "@/components/sections/QuizBand";
 import { Container } from "@/components/layout/Container";
 import { PageStack } from "@/components/layout/PageStack";
@@ -62,13 +63,15 @@ export default async function ProgramsPage() {
           <div className="lg:grid lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-12">
             <div>
               <Heading as="h1">Our Programs</Heading>
-              {/* No self-enrollment: our coaches place every player (audit M3). */}
+              {/* Open to join (joining flow, owner 2026-10-12), with no
+                  self-serve enroll yet (audit M3, backlog #16): a visitor picks
+                  a group, the quiz asks for the spot, our coaches invite. */}
               <p className="mt-3 max-w-2xl text-pretty text-base text-white/75">
                 Three programs: Youth Bootcamps on Saturdays, Adult Bootcamps on Sundays, and
                 private lessons by arrangement. Each cohort is a fixed group that trains together
                 for {COHORT_LENGTH}, one {SESSION_MINUTES}-minute class a week, and every group is
-                built for an age range and a level band. Take the 2-minute quiz and our coaches
-                place you by level and schedule.
+                built for an age range and a level band. Pick the group that fits, or take the
+                2-minute quiz and our coaches place you.
               </p>
               <TrackedButton
                 variant="primary"
@@ -99,10 +102,13 @@ export default async function ProgramsPage() {
         </Container>
       </div>
 
-      {/* The catalog sits inside the page Container (audit H2): every group
-          under its program, with the filters; then the quiz band, and the
-          newsletter last (M12, M13). */}
+      {/* How joining works leads the content, directly under the header
+          and above the filters (joining flow, owner 2026-10-12). The catalog
+          sits inside the page Container (audit H2): every group under its
+          program, with the filters; then the quiz band, and the newsletter
+          last (M12, M13). */}
       <PageStack>
+        <HowJoiningWorks source="programs-joining" showApproval />
         <ProgramCatalog programs={catalogPrograms} groups={programGroups} nextCohorts={nextCohorts} />
         <QuizBand source="programs-closing" />
         <EmailCapture source="programs_email_capture" />

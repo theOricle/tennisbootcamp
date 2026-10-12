@@ -113,10 +113,14 @@ function relationshipLine(player: PlayerRecord): string {
   return [rel, age].filter(Boolean).join(" · ");
 }
 
-/** The player's tier in words for dense rows: "Intermediate · 3.0", "Placed · Intermediate group", "Unranked". */
+/**
+ * The player's tier in words for dense rows: "Intermediate · 3.0", "Provisional ·
+ * Intermediate group" (placed, until the coach confirms the level in week one;
+ * joining flow, owner 2026-10-12), "Unranked".
+ */
 function tierWords(player: PlayerRecord, placed: PlacedSpan | null | undefined): string {
   if (hasLevel(player.level)) return formatTierLevel(player.level);
-  if (placed) return `Placed · ${formatTierSpan(placed.min, placed.max)} group`;
+  if (placed) return `Provisional · ${formatTierSpan(placed.min, placed.max)} group`;
   return "Unranked";
 }
 
@@ -285,7 +289,7 @@ function TierSection({
   const columns = roster.length >= 3 ? "md:grid-cols-2 xl:grid-cols-3" : "md:grid-cols-2";
   return (
     <section aria-labelledby="tiers">
-      <SectionHeading id="tiers" title="Your players' tiers" sub="Each player's level, set by our coaches." />
+      <SectionHeading id="tiers" title="Your players' tiers" sub="Each player's level, set by our coaches and confirmed on court in week one." />
       <div className={`grid gap-4 ${columns}`}>
         {roster.map((player) => (
           <RankCard
