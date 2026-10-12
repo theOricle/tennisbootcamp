@@ -1,17 +1,18 @@
-import type { Program, TimetableSlot } from "@/types/program";
+import type { Program, ProgramGroup, TimetableSlot } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
 import { audienceLabel, isAgeBand } from "@/lib/ageBand";
 import { formatStartDate } from "@/lib/cohorts";
 import { levelNumber, levelWithinRange } from "@/lib/tiers";
 
-// The program catalog's decision data (audit H7, M31; design specs §5.2):
-// what a card says about a program's status, who it is for and when it runs,
-// and whether a player on an account fits it. Pure and server-safe — no React,
-// no database — so the dashboard, the cards and the tests read one rule.
+// The program catalog's decision data (audit H7, M31; design specs §5.2;
+// groups per owner 2026-10-12): what a card says about a program or a group's
+// status, who it is for and when it runs, and whether a player on an account
+// fits it. Pure and server-safe — no React, no database — so the dashboard,
+// the cards, the quiz and the tests read one rule.
 
 export type LevelRange = { min: number; max: number };
 
-export type ProgramStatusKind = "coming-soon" | "next-cohort" | "invite-only" | "forming";
+export type ProgramStatusKind = "coming-soon" | "next-cohort" | "invite-only" | "full" | "forming" | "arranged";
 
 export type ProgramStatus = { kind: ProgramStatusKind; label: string };
 
@@ -25,24 +26,61 @@ export function programStatus(p: Program, nextCohort?: Cohort | null): ProgramSt
     return { kind: "next-cohort", label: `Next cohort ${formatStartDate(nextCohort.startDate)}` };
   }
   if (p.enrollmentStatus === "invite-only") return { kind: "invite-only", label: "Invite only" };
+  if (!p.timetable?.length) return { kind: "arranged", label: "By arrangement" };
   return { kind: "forming", label: "Groups forming" };
 }
 
+/**
+ * A group's status chip: the next public cohort's start first, then the
+ * group's own status ("Full", "Invite only", "Groups forming"). An arranged
+ * group (private lessons) shows no chip: the card's Time row already says so.
+ */
+export function groupStatus(g: ProgramGroup, nextCohort?: Cohort | null): ProgramStatus | null {
+  if (nextCohort) {
+    return { kind: "next-cohort", label: `Next cohort ${formatStartDate(nextCohort.startDate)}` };
+  }
+  if (g.status === "full") return { kind: "full", label: "Full" };
+  if (g.status === "invite-only") return { kind: "invite-only", label: "Invite only" };
+  if (g.status === "arranged") return null;
+  return { kind: "forming", label: "Groups forming" };
+}
+
+/** What the eyebrow reads: the bands, the timetable's days, else the schedule line or the type. */
+export type EyebrowSource = Pick<Program, "ageBands" | "timetable" | "schedule" | "type">;
+
 /** The class days a timetable runs on, in timetable order: ["Saturday"] or ["Sunday"]. */
-function timetableDays(p: Program): string[] {
+function timetableDays(p: EyebrowSource): string[] {
   return [...new Set((p.timetable ?? []).map((slot) => slot.day))];
 }
 
 /**
  * The line above a card's title, so it never repeats the title: "Juniors and
- * teens · Saturdays", "Adults · Sundays", "Any age · Saturdays", "Juniors ·
- * Summer Camp". A program with no timetable shows its type instead of days.
+ * teens · Saturdays", "Adults · Sundays", "Any age · By arrangement". A program
+ * with no timetable shows its schedule line (or its type) instead of days.
  */
-export function programEyebrow(p: Program): string {
+export function programEyebrow(p: EyebrowSource): string {
   const audience = audienceLabel(p.ageBands);
   const days = timetableDays(p);
-  const when = days.length > 0 ? days.map((day) => `${day}s`).join(" and ") : p.type;
+  const when = days.length > 0 ? days.map((day) => `${day}s`).join(" and ") : p.schedule ?? p.type;
   return [audience, when].filter(Boolean).join(" · ");
+}
+
+/** "12:00" from "12:00", "4:00" from "16:00": the start as the timetable states it. */
+export function twelveHourStart(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return time;
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * "12:00–1:00 pm" from ("12:00", "13:00"), "9:00–10:00 am" from ("09:00",
+ * "10:00"): the class time as every surface prints it, the suffix once, from
+ * the end of the class.
+ */
+export function formatClassTime(start: string, end: string): string {
+  const endHour = Number(end.split(":")[0]);
+  const suffix = Number.isFinite(endHour) && endHour >= 12 ? "pm" : "am";
+  return `${twelveHourStart(start)}–${twelveHourStart(end)} ${suffix}`;
 }
 
 /** "Sat 12:00–1:00 pm": the day abbreviated, the time as the timetable states it. */
@@ -50,16 +88,85 @@ export function formatSlotWhen(slot: TimetableSlot): string {
   return `${slot.day.slice(0, 3)} ${slot.time}`;
 }
 
-/** A class's level band, or null when the slot is not banded (owner D3). */
+/** "Saturdays 12:00–1:00 pm", or "By arrangement" for a group with no fixed class. */
+export function formatGroupWhen(g: ProgramGroup): string {
+  if (!g.day || !g.start || !g.end) return "By arrangement";
+  return `${g.day}s ${formatClassTime(g.start, g.end)}`;
+}
+
+/** "Sat 12:00": the group's day and start, for a one-line timetable. */
+export function formatGroupStart(g: ProgramGroup): string {
+  if (!g.day || !g.start) return "By arrangement";
+  return `${g.day.slice(0, 3)} ${twelveHourStart(g.start)}`;
+}
+
+/** "7–10" · "16 and up" · "Any age": the group's ages, for an "Ages" row. */
+export function groupAgeLabel(g: Pick<ProgramGroup, "ageMin" | "ageMax">): string {
+  if (g.ageMin === null && g.ageMax === null) return "Any age";
+  if (g.ageMax === null) return `${g.ageMin} and up`;
+  if (g.ageMin === null) return `up to ${g.ageMax}`;
+  return `${g.ageMin}–${g.ageMax}`;
+}
+
+/**
+ * The ages a program takes, from its groups: "7–17" (the youngest and the
+ * oldest across every group), "16 and up", "Any age". A program with no
+ * groups reads "Any age".
+ */
+export function programAgeLabel(groups: readonly Pick<ProgramGroup, "ageMin" | "ageMax">[]): string {
+  if (groups.length === 0) return "Any age";
+  const mins = groups.map((g) => g.ageMin);
+  const maxes = groups.map((g) => g.ageMax);
+  const ageMin = mins.some((m) => m === null) ? null : Math.min(...(mins as number[]));
+  const ageMax = maxes.some((m) => m === null) ? null : Math.max(...(maxes as number[]));
+  return groupAgeLabel({ ageMin, ageMax });
+}
+
+/** "Ages 7–17" · "Ages 16 and up" · "Any age": the chip under a program's title. */
+export function agesChipLabel(groups: readonly Pick<ProgramGroup, "ageMin" | "ageMax">[]): string {
+  const label = programAgeLabel(groups);
+  return label === "Any age" ? label : `Ages ${label}`;
+}
+
+/** The group's level band. */
+export function groupLevelRange(g: Pick<ProgramGroup, "levelMin" | "levelMax">): LevelRange {
+  return { min: g.levelMin, max: g.levelMax };
+}
+
+/** A class's level band, or null when the slot is not banded. */
 export function slotLevelRange(slot: TimetableSlot): LevelRange | null {
   if (slot.levelMin === undefined || slot.levelMax === undefined) return null;
   return { min: slot.levelMin, max: slot.levelMax };
 }
 
-/** The program's tier span, or null when unset (owner D2): unset renders nothing. */
+/** The program's tier span, or null when unset: unset renders nothing. */
 export function programLevelRange(p: Program): LevelRange | null {
   if (p.levelMin === undefined || p.levelMax === undefined) return null;
   return { min: p.levelMin, max: p.levelMax };
+}
+
+/** The groups of one program, in lineup order. */
+export function groupsOf(groups: readonly ProgramGroup[], program: Pick<Program, "slug">): ProgramGroup[] {
+  return groups.filter((g) => g.programSlug === program.slug);
+}
+
+/**
+ * Does a public cohort train in this group? The cohort's program and its
+ * first session's day and start must match the group's class. A cohort of
+ * a program with no fixed class (private lessons) never matches.
+ */
+export function cohortMatchesGroup(cohort: Pick<Cohort, "programId" | "sessions">, g: ProgramGroup): boolean {
+  if (cohort.programId !== g.programSlug || !g.day || !g.start) return false;
+  const session = cohort.sessions[0];
+  if (!session) return false;
+  return session.day === g.day.slice(0, 3) && twelveHourStart(session.start) === twelveHourStart(g.start);
+}
+
+/** The earliest public cohort that trains in this group, if any. */
+export function nextCohortForGroup(publicCohorts: readonly Cohort[], g: ProgramGroup): Cohort | undefined {
+  return publicCohorts
+    .filter((c) => cohortMatchesGroup(c, g))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
 }
 
 /** What a card needs to know about one player on an account. */
@@ -67,8 +174,8 @@ export type FitPlayer = {
   is_minor: boolean;
   /**
    * The age band the player last answered (migration 0009, audit M31). When
-   * known it decides the age fit exactly (a teen is not a Kids' Camp
-   * junior); null or absent falls back to `is_minor`.
+   * known it decides the age fit exactly; null or absent falls back to
+   * `is_minor`.
    */
   age_band?: string | null;
   /** Coach-assigned level, or null while unranked. A Postgres numeric string is fine. */

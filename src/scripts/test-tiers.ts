@@ -47,7 +47,7 @@ import {
   provisionalTierFor,
   tentativeLevelLabel,
 } from "../lib/level";
-import { programs } from "../content/programs";
+import { groupById, programs } from "../content/programs";
 import type { Recommendation } from "../lib/recommend";
 import {
   DASHBOARD_URL,
@@ -321,14 +321,15 @@ check("provisionalTierFor names the tier", provisionalTierFor("new")?.name === "
 check("provisionalTierFor is null for \"\", \"unsure\", undefined, null and an unknown value", provisionalTierFor("") === null && provisionalTierFor("unsure") === null && provisionalTierFor(undefined) === null && provisionalTierFor(null) === null && provisionalTierFor("bogus") === null);
 check("SELF_LEVELS includes elite, unsure and prefer-not-to-say", SELF_LEVELS.some((o) => o.value === "elite") && SELF_LEVELS.some((o) => o.value === "unsure") && SELF_LEVELS.some((o) => o.value === ""));
 {
-  // recommend.ts sends competitive and elite players to High Performance, so
-  // their provisional tiers must sit inside its span (owner D2 and D4 agree).
-  const hp = programs.find((p) => p.id === "high-performance");
+  // recommend.ts sends a competitive or tournament junior or teen to the High
+  // Performance group, so their provisional tiers must sit inside its band
+  // (owner lineup 2026-10-12 and D4 agree).
+  const hp = groupById("high-performance");
   const inHp = (v: string) => {
     const t = provisionalTierFor(v);
     return !!hp && !!t && levelWithinRange(t.id, hp.levelMin, hp.levelMax);
   };
-  check("competitive and elite provisional tiers sit inside the High Performance span", inHp("competitive") && inHp("elite"));
+  check("competitive and elite provisional tiers sit inside the High Performance group's band", inHp("competitive") && inHp("elite"));
   const youth = programs.find((p) => p.id === "youth-programs");
   const adult = programs.find((p) => p.id === "bootcamps");
   const inBoth = (v: string) => {
@@ -437,7 +438,7 @@ check("a lone player who is not the holder is named on the result, by the email'
 check("one child is named in the confirmation too, never \"you\" above \"Leo's\" (fix round 2)", (intake.match(/playerFirst=\{playerFirst\}/g) ?? []).length === 4 && (intake.match(/firstName=\{playerFirst\}/g) ?? []).length === 2 && intake.includes("Our coaches review ${child}'s level and your schedule, then place ${child} in a group and a time that fit.") && intake.includes("When a group that fits ${child}'s level and your schedule is forming, we email you an invitation"));
 check("one child is named on the match label and the assessment card, the $20 facts intact (fix round 3)", (intake.match(/<AssessmentSuggestion\s+household=\{(false|household)\}\s+playerFirst=\{playerFirst\}/g) ?? []).length === 2 && intake.includes("{playerFirst ? `${playerFirst}'s tentative match` : \"Your tentative match\"}") && intake.includes("If you'd like ${child}'s level confirmed on court before ${child} is placed, you can book a 20-minute assessment with the coach. The assessment is $20, and if ${child} enrolls in a program afterward that $20 comes off the price.") && intake.includes("The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."));
 check("a household gets a provisional chip and rail per player, the ladder once", intake.includes("<TierChip level={tier.id} provisional />") && intake.includes("Likely starting tiers for your"));
-check("the match card links to the program with its class line and price", intake.includes("href={`/programs/${program.slug}`}") && intake.includes("classLineFor(program, ageBand, tier)") && intake.includes("program.priceSummary"));
+check("the match card links to the program (or its one fitting group) with the group lines and price", intake.includes("const href = groups.length === 1 ? `/programs/${program.slug}#${groups[0].id}` : `/programs/${program.slug}`;") && intake.includes("groupSummaryLine(g)") && intake.includes("program.priceSummary"));
 check("the next step is stated without a promised window (D21 open)", intake.includes("we email you an invitation with the day, time and price.") && !/within (a|\d+) (day|hour)/i.test(intake));
 check("no result control is under 44px", !/py-2\b/.test(intake.split("// ─── Main wizard")[0]));
 const who = read("src/components/participants/WhoIsThisFor.tsx");
@@ -451,7 +452,7 @@ console.log("Emails (M35, L22, D9)");
 for (const [name, hex] of [["INK_BODY", INK_BODY], ["INK_MUTED", INK_MUTED], ["INK_STRONG", INK_STRONG]] as const) {
   check(`${name} ${hex} ≥ 4.5:1 on navy and on a card`, contrast(hex, NAVY) >= 4.5 && contrast(hex, CARD) >= 4.5, `${contrast(hex, NAVY).toFixed(2)} / ${contrast(hex, CARD).toFixed(2)}`);
 }
-const rec: Recommendation = { program: programs[0], score: 10, reason: "Saturday class" };
+const rec: Recommendation = { program: programs[0], groups: [], score: 10, reason: "Saturday class" };
 const quizTier = buildRecommendationEmail("Maya Chen", [rec], "Novice");
 const quizNull = buildRecommendationEmail("Maya Chen", [rec], null);
 const quizChild = buildRecommendationEmail("Maya Chen", [rec], "Novice", "Leo Chen");

@@ -12,8 +12,10 @@ import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  CAMP_PRICE_SUMMARY,
   PRICE_SUMMARY,
+  PRIVATE_LESSONS_PRICE,
+  groupById,
+  groupsForProgram,
   listedPrograms,
   programs,
 } from "../content/programs";
@@ -82,53 +84,53 @@ for (const p of programs) {
   const banded = slots.filter((s) => s.levelMin !== undefined || s.levelMax !== undefined);
   check(`${p.id}: slots are all banded or none`, banded.length === 0 || banded.length === slots.length);
   if (banded.length > 0 && banded.length === slots.length) {
-    let ok = true;
+    // Groups split by level alone (Adult Bootcamps: one age range) climb in
+    // contiguous, non-overlapping bands; groups split by age first (Youth
+    // Bootcamps) may overlap in level, so there only the order and the union
+    // are pinned (owner lineup, 2026-10-12).
+    const groups = groupsForProgram(p.slug);
+    const oneAgeRange = new Set(groups.map((g) => `${g.ageMin}-${g.ageMax}`)).size === 1;
+    let valid = true;
+    let ascending = true;
+    let contiguous = true;
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];
-      if (s.levelMin === undefined || s.levelMax === undefined || !onGrid(s.levelMin) || !onGrid(s.levelMax) || s.levelMin > s.levelMax) ok = false;
-      if (i > 0 && s.levelMin !== slots[i - 1].levelMax! + 0.5) ok = false;
+      if (s.levelMin === undefined || s.levelMax === undefined || !onGrid(s.levelMin) || !onGrid(s.levelMax) || s.levelMin > s.levelMax) valid = false;
+      if (i > 0 && s.levelMin! < slots[i - 1].levelMin!) ascending = false;
+      if (i > 0 && s.levelMin !== slots[i - 1].levelMax! + 0.5) contiguous = false;
     }
-    check(`${p.id}: slot bands are contiguous, ascending and non-overlapping`, ok);
-    check(`${p.id}: slot bands together cover the program span`, slots[0].levelMin === p.levelMin && slots[slots.length - 1].levelMax === p.levelMax);
+    check(`${p.id}: slot bands are valid and ascending`, valid && ascending);
+    if (oneAgeRange) check(`${p.id}: slot bands are contiguous and non-overlapping (one age range)`, contiguous);
+    check(`${p.id}: slot bands together cover the program span`, Math.min(...slots.map((s) => s.levelMin!)) === p.levelMin && Math.max(...slots.map((s) => s.levelMax!)) === p.levelMax);
     check(`${p.id}: slot bands are whole tiers (x.0–y.5)`, slots.every((s) => Number.isInteger(s.levelMin!) && s.levelMax! % 1 === 0.5));
-  }
-  for (const s of slots) {
-    if (s.ageBand) check(`${p.id}: slot ${s.time} ageBand within the program's bands`, p.ageBands.includes(s.ageBand));
   }
 }
 for (const p of listedPrograms) {
   check(`${p.id}: levelNote set`, !!p.levelNote);
-  check(`${p.id}: priceSummary from the constants`, p.priceSummary === (p.comingSoon ? CAMP_PRICE_SUMMARY : PRICE_SUMMARY), p.priceSummary);
-  if (!p.comingSoon) check(`${p.id}: enrollmentStatus set (owner D11)`, p.enrollmentStatus === "forming");
+  check(`${p.id}: priceSummary from the constants`, p.priceSummary === (p.timetable?.length ? PRICE_SUMMARY : PRIVATE_LESSONS_PRICE), p.priceSummary);
+  if (p.timetable?.length) check(`${p.id}: enrollmentStatus set (owner D11)`, p.enrollmentStatus === "forming");
 }
 const listedPlates = listedPrograms.map((p) => p.plate).filter((id) => id !== "court");
 check("listed programs never share a plate", new Set(listedPlates).size === listedPlates.length);
 check("PRICE_SUMMARY is one line from the constants", /^\$\d+ a session · \$\d+ for \w+ weeks?$/.test(PRICE_SUMMARY), PRICE_SUMMARY);
 
-// Owner decision 2026-10-09 (D2/D3), shipped visible: pinned so a drift shows.
-console.log("Level spans (owner D2/D3, 2026-10-09)");
+// Owner lineup 2026-10-12 (supersedes D2/D3): the spans are the union of the
+// groups' bands, pinned here so a drift shows.
+console.log("Level spans (owner lineup, 2026-10-12)");
 const byId = Object.fromEntries(programs.map((p) => [p.id, p]));
-check("Youth Programs 1.0–4.5 (Beginner – Advanced)", byId["youth-programs"].levelMin === 1.0 && byId["youth-programs"].levelMax === 4.5);
-check("High Performance 3.0–7.0 (Intermediate and up)", byId["high-performance"].levelMin === 3.0 && byId["high-performance"].levelMax === 7.0);
-check("High Performance floor is Intermediate, matching the quiz map competitive → Intermediate (D4)", tierForLevel(byId["high-performance"].levelMin)?.name === "Intermediate");
+check("Youth Bootcamps 1.0–5.5 (Beginner – Elite, the HP group on top)", byId["youth-programs"].levelMin === 1.0 && byId["youth-programs"].levelMax === 5.5);
+check("High Performance group 3.0–5.5 (Intermediate – Elite)", groupById("high-performance")?.levelMin === 3.0 && groupById("high-performance")?.levelMax === 5.5);
+check("High Performance floor is Intermediate, matching the quiz map competitive → Intermediate (D4)", tierForLevel(groupById("high-performance")?.levelMin)?.name === "Intermediate");
 check("Adult Bootcamps 1.0–5.5 (Beginner – Elite)", byId["bootcamps"].levelMin === 1.0 && byId["bootcamps"].levelMax === 5.5);
 check("Adult 4:00 Beginner – Novice", byId["bootcamps"].timetable?.[0].levelMin === 1.0 && byId["bootcamps"].timetable?.[0].levelMax === 2.5);
 check("Adult 5:00 Intermediate", byId["bootcamps"].timetable?.[1].levelMin === 3.0 && byId["bootcamps"].timetable?.[1].levelMax === 3.5);
 check("Adult 6:00 Advanced – Elite", byId["bootcamps"].timetable?.[2].levelMin === 4.0 && byId["bootcamps"].timetable?.[2].levelMax === 5.5);
-check("Kids' Summer Camp all levels 1.0–7.0", byId["kids-summer-camp"].levelMin === 1.0 && byId["kids-summer-camp"].levelMax === 7.0);
-check("Youth slots carry their age band", byId["youth-programs"].timetable?.[0].ageBand === "junior" && byId["youth-programs"].timetable?.[1].ageBand === "teen");
-check("High Performance is any age", ageBandsLabel(byId["high-performance"].ageBands) === "Any age");
-check("camp CTA goes to the notify form", byId["kids-summer-camp"].ctaHref === "/programs/kids-summer-camp#notify");
+check("Youth 12:00 Beginner – Novice, 1:00 Beginner – Intermediate, 2:00 Intermediate – Elite", byId["youth-programs"].timetable?.map((s) => `${s.levelMin}-${s.levelMax}`).join("|") === "1-2.5|1-3.5|3-5.5");
+check("Private Lessons all levels 1.0–7.0", byId["private-lessons"].levelMin === 1.0 && byId["private-lessons"].levelMax === 7.0);
+check("Private Lessons is any age", ageBandsLabel(byId["private-lessons"].ageBands) === "Any age");
 // The recommender and the structured data match these strings; keep them.
-check("slot group strings unchanged", byId["bootcamps"].timetable?.map((s) => s.group).join("|") === "Newer players|Intermediate|Advanced" && byId["youth-programs"].timetable?.map((s) => s.group).join("|") === `${AGE_BAND_LABELS.junior}|${AGE_BAND_LABELS.teen}`);
-
-// Owner D10 (only confirmed facts; PR #83 fix round 1): the camp page says
-// what each day covers will be posted later, so no camp field may describe
-// how the camp runs. The figcaption renders only when plateCaption is set.
-console.log("Kids' Summer Camp states only confirmed facts (owner D10)");
-check("camp has no plateCaption", byId["kids-summer-camp"].plateCaption === undefined, String(byId["kids-summer-camp"].plateCaption));
-check("camp levelNote is the level range alone", byId["kids-summer-camp"].levelNote === "First time on court to a few years in", byId["kids-summer-camp"].levelNote);
-check("camp plateAlt describes the drawing, not the camp", byId["kids-summer-camp"].plateAlt.startsWith("Court diagram:"));
+check("slot group strings are the group names", byId["bootcamps"].timetable?.map((s) => s.group).join("|") === "Newer players|Intermediate|Advanced" && byId["youth-programs"].timetable?.map((s) => s.group).join("|") === "Ages 7–10|Ages 11–15|High Performance");
+check("the retired High Performance entry is unlisted and keeps its plate", byId["high-performance"].unlisted === true && byId["high-performance"].plate === "high-performance");
 
 // ── Age band helpers ────────────────────────────────────────────────────────
 console.log("Age band helpers");
@@ -294,16 +296,18 @@ check("artFocusForCohort: no sessions → null", artFocusForCohort(adult, { sess
 
 // ── Surfaces and the retired files ──────────────────────────────────────────
 console.log("Surfaces");
+// Owner, 2026-10-12: photographs of people replaced the plates on the cards
+// and the page hero; the plates stay on the dashboard strip, the admin marks
+// and the OG card.
 const detail = read("src/app/programs/[slug]/page.tsx");
-check("detail page draws the plate hero with its alt and the one-shot animation", /<ProgramPlate[\s\S]*?frame="master"[\s\S]*?density="hero"[\s\S]*?label=\{program\.plateAlt\}[\s\S]*?animate/.test(detail));
-check("detail page hero is 16:10 in a figure with the caption", detail.includes("aspect-[16/10]") && detail.includes("<figcaption") && detail.includes("program.plateCaption"));
-check("detail page no longer imports next/image", !detail.includes('from "next/image"'));
+check("detail page hero is the program's photo, 16:10, in a figure, no plate", detail.includes('from "next/image"') && detail.includes("aspect-[16/10]") && detail.includes("<figure") && !detail.includes("<ProgramPlate"));
 const card = read("src/components/sections/ProgramCard.tsx");
-check("program card draws the band plate, decorative, 2:1", card.includes('frame="band"') && card.includes("aspect-[2/1]") && !card.includes("next/image"));
-check("program card draws nothing over the plate", !card.includes("bg-gradient-to-t"));
+check("program card draws the photo through next/image, 16:10, no plate", card.includes('from "next/image"') && card.includes("aspect-[16/10]") && !card.includes("<ProgramPlate"));
+check("program card draws nothing over the photo but the chip", !card.includes("bg-gradient-to-t"));
 const og = read("src/app/programs/[slug]/opengraph-image.tsx");
 check("OG card embeds the strip plate at fixed density with a fallback", og.includes('"strip"') && og.includes('density: "fixed"') && og.includes("catch"));
-check("card, detail hero and OG card all pass the program's comingSoon flag", card.includes("comingSoon={p.comingSoon}") && detail.includes("comingSoon={program.comingSoon}") && og.includes("!!program.comingSoon"));
+check("the OG card passes the program's comingSoon flag", og.includes("!!program.comingSoon"));
+check("the dashboard strip, the enroll summary and the admin preview keep the plate", ["src/app/dashboard/DashboardView.tsx", "src/app/enroll/[cohortId]/EnrollWizard.tsx", "src/components/admin/PlayerPreview.tsx"].every((f) => read(f).includes("<ProgramPlate")));
 const galleryFile = read("src/app/admin/art/ArtGallery.tsx");
 check("the admin gallery draws each plate in the program's own state", galleryFile.includes("comingSoon={programOf(id)?.comingSoon}"));
 // PR #83 fix round 2: the retired Group Lessons entry is unlisted and still
@@ -312,7 +316,11 @@ check("the admin gallery draws each plate in the program's own state", galleryFi
 check("the admin gallery looks a plate's program up among listed programs only", galleryFile.includes("p.plate === id && !p.unlisted"));
 const gallery = renderToStaticMarkup(createElement(ArtGallery));
 const platesSection = gallery.slice(gallery.indexOf('aria-labelledby="plates"'), gallery.indexOf('aria-labelledby="hero"'));
-check("the gallery's court row is titled as the fallback", platesSection.includes("Fallback (any new program)"));
+// Private Lessons has no plate of its own and sits on "court" (2026-10-12), so
+// the court row carries that listed title; it would read as the fallback only
+// if no listed program used it.
+check("the gallery's court row is titled by the listed program on it, else as the fallback", platesSection.includes("Private Lessons") || platesSection.includes("Fallback (any new program)"));
+check("the retired High Performance plate is titled by its own name", platesSection.includes("Retired plate:"));
 check("no retired program is named anywhere in the gallery", !gallery.includes("Group Lessons"));
 const dashedPlates = platesSection.split("<svg").slice(1).filter((s) => s.includes(COMING_SOON_ATTR)).length;
 const expectedDashed = listedPrograms.filter((p) => p.comingSoon).length * FRAMES.length;

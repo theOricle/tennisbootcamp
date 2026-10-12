@@ -229,7 +229,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   check("a household transfer adds up every player in the cohort", household.detail.startsWith(`${formatDollars(COHORT_TOTAL * 2 - 20)} to info@tennisbootcamp.ca`), true);
   ok("…with the wizard's memo, both names joined with +", household.detail.includes("“Maya Chen + Leo Chen – Fall Saturday”"));
   check("…and names everyone", household.headline, "Our coaches are confirming the e-transfer for Maya and Leo.");
-  ok("…and both spots", household.detail.includes("The spots for Maya and Leo in Youth Programs are held while our coaches confirm it arrived."));
+  ok("…and both spots", household.detail.includes("The spots for Maya and Leo in Youth Bootcamps are held while our coaches confirm it arrived."));
   const withParent = nextStepFor(
     base({
       roster: [parent, maya],
@@ -265,7 +265,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   // Fix round 2 on PR #88: a row with no participant is "you" only when it
   // names nobody or names the holder, never "for you and you".
   check("…and the headline names them, not 'you and you'", guestRows.headline, "Our coaches are confirming the e-transfer for Maya and Leo.");
-  ok("…and so do the spots", guestRows.detail.includes("The spots for Maya and Leo in Youth Programs are held while our coaches confirm it arrived."));
+  ok("…and so do the spots", guestRows.detail.includes("The spots for Maya and Leo in Youth Bootcamps are held while our coaches confirm it arrived."));
   const holderAndGuest = nextStepFor(
     base({
       roster: [parent],
@@ -307,7 +307,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
     [namelessPair.headline, namelessPair.detail.startsWith(`${formatDollars(COHORT_TOTAL * 2)} to`), namelessPair.detail.includes("“Fall Saturday”")],
     ["Our coaches are confirming the e-transfer for 2 spots.", true, true]
   );
-  ok("…and are counted, not 'you and you'", namelessPair.detail.includes("The 2 spots in Youth Programs are held while our coaches confirm it arrived."));
+  ok("…and are counted, not 'you and you'", namelessPair.detail.includes("The 2 spots in Youth Bootcamps are held while our coaches confirm it arrived."));
   const namelessNamed = nextStepFor(
     base({
       invites: [
@@ -333,7 +333,7 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
     [resent.headline, resent.detail.startsWith(`${formatDollars(COHORT_TOTAL - 20)} to`), resent.detail.includes("“Maya Chen – Fall Saturday”")],
     ["Our coaches are confirming the e-transfer for Maya.", true, true]
   );
-  ok("…and reads as one spot", resent.detail.includes("Maya's spot in Youth Programs is held while our coaches confirm it arrived."));
+  ok("…and reads as one spot", resent.detail.includes("Maya's spot in Youth Bootcamps is held while our coaches confirm it arrived."));
   const resentFirst = nextStepFor(
     base({
       invites: [
@@ -451,13 +451,12 @@ console.log("creditLine + welcomeHeading (audit M25, M32)");
 
 console.log("programFitsPlayer / suggestProgramsFor with age bands (audit M31)");
 {
-  const camp = programs.find((p) => p.id === "kids-summer-camp");
   const youth = programs.find((p) => p.id === "youth-programs");
   const adult = programs.find((p) => p.id === "bootcamps");
-  if (!camp || !youth || !adult) throw new Error("catalog ids moved");
-  check("a teen is not a Kids' Camp junior", programFitsPlayer(camp, { is_minor: true, level: null, age_band: "teen" }), false);
-  check("before 0009 (no band) a minor still fits by is_minor", programFitsPlayer(camp, { is_minor: true, level: null }), true);
-  check("a teen fits Youth Programs", programFitsPlayer(youth, { is_minor: true, level: null, age_band: "teen" }), true);
+  if (!youth || !adult) throw new Error("catalog ids moved");
+  check("a teen band never fits Adult Bootcamps (16 and up is decided by the group, never the band)", programFitsPlayer(adult, { is_minor: true, level: null, age_band: "teen" }), false);
+  check("before 0009 (no band) a minor still fits Youth by is_minor", programFitsPlayer(youth, { is_minor: true, level: null }), true);
+  check("a teen fits Youth Bootcamps", programFitsPlayer(youth, { is_minor: true, level: null, age_band: "teen" }), true);
   check("an adult band never fits Youth", programFitsPlayer(youth, { is_minor: false, level: null, age_band: "adult" }), false);
   const kidsOnly = suggestProgramsFor([{ ...leo, is_minor: true, age_band: "junior" }], listedPrograms, []);
   ok("a child-only roster is never pitched Adult Bootcamps", !kidsOnly.some((s) => s.program.id === "bootcamps"));
@@ -467,7 +466,7 @@ console.log("programFitsPlayer / suggestProgramsFor with age bands (audit M31)")
 
 console.log("admin labels (audit L20, L23)");
 {
-  check("program title, not the slug", programTitleFor("youth-programs"), "Youth Programs");
+  check("program title, not the slug", programTitleFor("youth-programs"), "Youth Bootcamps");
   check("unknown id stays", programTitleFor("mystery"), "mystery");
   check("cohort statuses in sentence case", ["draft", "inviting", "cancelled"].map((s) => statusLabel(COHORT_STATUS_LABELS, s)), ["Draft", "Inviting", "Cancelled"]);
   check("invite statuses", ["invited", "paid"].map((s) => statusLabel(INVITE_STATUS_LABELS, s)), ["Invited", "Paid"]);

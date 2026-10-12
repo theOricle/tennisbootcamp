@@ -718,7 +718,6 @@ export function DashboardView(props: DashboardViewProps) {
             programs={suggestions.map((s) => s.program)}
             publicCohorts={publicCohorts}
             fits={Object.fromEntries(suggestions.map((s) => [s.program.id, s.fit])) as Record<string, ProgramFit>}
-            layout="grid"
           />
         </section>
       )}

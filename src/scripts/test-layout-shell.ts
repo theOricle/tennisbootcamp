@@ -92,11 +92,13 @@ for (const file of SECTIONS) {
 }
 
 const programsPage = read("src/app/programs/page.tsx");
-check("/programs grid sits in the page Container", /<PageStack>[\s\S]*<ProgramsGrid/.test(programsPage));
-check("/programs has no second 'Programs' heading", programsPage.includes("title={null}"));
-check("/programs does not link to itself", programsPage.includes("browseLink={false}"));
-check("/programs puts the newsletter after the catalog", at(programsPage, "<ProgramsGrid") < at(programsPage, "<EmailCapture"));
+check("/programs catalog sits in the page Container", /<PageStack>[\s\S]*<ProgramCatalog/.test(programsPage));
+check("/programs has no second 'Programs' heading and no grid of its own", !programsPage.includes("<ProgramsGrid") && !programsPage.includes('title="Our Programs"'));
+check("/programs does not link to itself", !programsPage.includes('href="/programs"'));
+check("/programs puts the newsletter after the catalog", at(programsPage, "<ProgramCatalog") < at(programsPage, "<EmailCapture"));
 check("/programs header band uses the Container", /tb-gradient[\s\S]*<Container/.test(programsPage));
+const catalog = read("src/components/sections/ProgramCatalog.tsx");
+check("the catalog sets no gutter or page width of its own", !/(^|[\s"'`])(mx-auto|max-w-6xl|px-6|-mx-)/.test(catalog));
 
 const home = read("src/app/page.tsx");
 check("home: programs come before the newsletter (M12)", at(home, "<ProgramsGrid") < at(home, "<EmailCapture"));
@@ -115,10 +117,9 @@ check("detail: breadcrumb is a labelled nav", /<Container\s+as="nav"\s+aria-labe
 check("detail: breadcrumb marks the current page", detail.includes('aria-current="page"'));
 check("detail: breadcrumb separator is hidden", /<li aria-hidden="true"[^>]*>›<\/li>/.test(detail));
 
-// ── H8: Kids' Camp notify form ──────────────────────────────────────────────
-console.log("Kids' Camp notify form (H8)");
-check("detail: one notify form", (detail.match(/<ProgramInterestForm/g) ?? []).length === 1);
-check("detail: the notify form is anchored at #notify", detail.includes('id="notify"'));
+// ── H8: the notify form (no coming-soon program lists it since 2026-10-12) ──
+console.log("Notify form (H8)");
+check("detail: no notify form while no listed program is coming soon", !detail.includes("<ProgramInterestForm"));
 check("detail: the warning triangle is gone", !detail.includes("M12 9v4m0 4h.01"));
 const pif = read("src/components/sections/ProgramInterestForm.tsx");
 check("field can shrink (min-w-0)", pif.includes("min-w-0"));

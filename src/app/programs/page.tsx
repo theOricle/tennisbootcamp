@@ -5,9 +5,12 @@ import {
   SESSION_MINUTES,
   SESSION_PRICE_LABEL,
   listedPrograms,
+  programGroups,
 } from "@/content/programs";
-import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
-import { ProgramComingSoonBand } from "@/components/sections/ProgramComingSoonBand";
+import type { Cohort } from "@/types/cohort";
+import { getPublicCohorts } from "@/lib/cohortsDb";
+import { nextCohortForGroup } from "@/lib/programCatalog";
+import { ProgramCatalog, type CatalogProgram } from "@/components/sections/ProgramCatalog";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { QuizBand } from "@/components/sections/QuizBand";
 import { Container } from "@/components/layout/Container";
@@ -18,22 +21,37 @@ import { TierLine } from "@/components/tiers";
 import { TIER_LADDER_SPAN } from "@/lib/tiers";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 
-// Incremental static regeneration (audit M39): the program grid's "next
-// cohort" line is rebuilt at most once a minute, and at once when an admin
-// changes a cohort (src/lib/cohortRevalidate.ts), instead of being frozen at
-// build time.
+// Incremental static regeneration (audit M39): each group's "next cohort"
+// chip is rebuilt at most once a minute, and at once when an admin changes a
+// cohort (src/lib/cohortRevalidate.ts), instead of being frozen at build
+// time. The age and level filters live in the URL and are applied in the
+// browser, so a filtered link never bypasses the cache.
 export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Programs",
   description:
-    `Weekend tennis classes in Toronto: Youth Programs, High Performance and Adult Bootcamps. Once a week, 60 minutes, ${COHORT_LENGTH_ADJ} cohorts, ${SESSION_PRICE_LABEL} a session.`,
+    `Tennis in Toronto for every age and level: Youth Bootcamps on Saturdays, Adult Bootcamps on Sundays, private lessons by arrangement. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
   alternates: { canonical: "/programs" },
 };
 
-export default function ProgramsPage() {
-  const weekendClasses = listedPrograms.filter((p) => !p.comingSoon);
-  const comingSoon = listedPrograms.filter((p) => p.comingSoon);
+export default async function ProgramsPage() {
+  const publicCohorts = await getPublicCohorts();
+  const nextCohorts: Record<string, Cohort> = {};
+  for (const g of programGroups) {
+    const next = nextCohortForGroup(publicCohorts, g);
+    if (next) nextCohorts[g.id] = next;
+  }
+  const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    type: p.type,
+    description: p.description,
+    photo: p.photo,
+    ageBands: p.ageBands,
+    timetable: p.timetable,
+    schedule: p.schedule,
+  }));
 
   return (
     <main>
@@ -46,10 +64,11 @@ export default function ProgramsPage() {
               <Heading as="h1">Our Programs</Heading>
               {/* No self-enrollment: our coaches place every player (audit M3). */}
               <p className="mt-3 max-w-2xl text-pretty text-base text-white/75">
-                Weekend classes for juniors, teens and adults. Each cohort is a fixed
-                group that trains together for {COHORT_LENGTH}, one {SESSION_MINUTES}-minute
-                class a week. Take the 2-minute quiz and our coaches place you by level
-                and schedule.
+                Three programs: Youth Bootcamps on Saturdays, Adult Bootcamps on Sundays, and
+                private lessons by arrangement. Each cohort is a fixed group that trains together
+                for {COHORT_LENGTH}, one {SESSION_MINUTES}-minute class a week, and every group is
+                built for an age range and a level band. Take the 2-minute quiz and our coaches
+                place you by level and schedule.
               </p>
               <TrackedButton
                 variant="primary"
@@ -71,7 +90,7 @@ export default function ProgramsPage() {
                 Levels
               </h2>
               <p className="mt-2 text-sm text-white/75">
-                Seven tiers, {TIER_LADDER_SPAN}. Each program shows the tiers it is
+                Seven tiers, {TIER_LADDER_SPAN}. Each group shows the tiers it is
                 built for, and our coaches place every player on the ladder.
               </p>
               <TierLine variant="ladder" orientation="responsive" density="compact" className="mt-5" />
@@ -80,31 +99,11 @@ export default function ProgramsPage() {
         </Container>
       </div>
 
-      {/* The catalog sits inside the page Container (audit H2): no second
-          "Programs" heading under the H1, no link to the page it is on, and
-          the newsletter last, after the quiz band (M12, M13). */}
+      {/* The catalog sits inside the page Container (audit H2): every group
+          under its program, with the filters; then the quiz band, and the
+          newsletter last (M12, M13). */}
       <PageStack>
-        <section aria-labelledby="weekend-classes">
-          <Heading id="weekend-classes">Weekend classes</Heading>
-          <p className="mt-2 text-sm text-white/60">
-            Saturdays and Sundays · {SESSION_MINUTES} minutes · {COHORT_LENGTH_ADJ} cohorts
-          </p>
-          <div className="mt-6">
-            <ProgramsGrid programs={weekendClasses} title={null} browseLink={false} layout="rows" />
-          </div>
-        </section>
-
-        {comingSoon.length > 0 && (
-          <section aria-labelledby="coming-soon">
-            <Heading id="coming-soon">Coming soon</Heading>
-            <div className="mt-6 space-y-4">
-              {comingSoon.map((p) => (
-                <ProgramComingSoonBand key={p.id} program={p} />
-              ))}
-            </div>
-          </section>
-        )}
-
+        <ProgramCatalog programs={catalogPrograms} groups={programGroups} nextCohorts={nextCohorts} />
         <QuizBand source="programs-closing" />
         <EmailCapture source="programs_email_capture" />
       </PageStack>

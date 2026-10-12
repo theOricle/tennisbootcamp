@@ -11,13 +11,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import {
-  CAMP_WEEK_PRICE,
-  CAMP_WEEK_PRICE_LABEL,
-  formatDollars,
-  listedPrograms,
-  programs,
-} from "../content/programs";
+import { listedPrograms, programs } from "../content/programs";
 import { SITE_DESCRIPTION } from "../content/site";
 import sitemap from "../app/sitemap";
 
@@ -62,20 +56,16 @@ check("site description calls the assessment optional", /assessment is optional/
 check("root layout uses it", read("src/app/layout.tsx").includes("description: SITE_DESCRIPTION"));
 check("home page uses it", read("src/app/page.tsx").includes("description: SITE_DESCRIPTION"));
 
-// ── M4: Kids' Summer Camp, decided facts only ───────────────────────────────
-console.log("Kids' Summer Camp (M4)");
-const camp = programs.find((p) => p.id === "kids-summer-camp");
-check("camp exists", !!camp);
-if (camp) {
-  const text = [camp.description, camp.longDescription, camp.metaDescription ?? "", camp.schedule ?? ""].join(" ");
-  check("price label follows the constant", CAMP_WEEK_PRICE_LABEL === formatDollars(CAMP_WEEK_PRICE));
-  check("card line states the weekly price", camp.description.includes(`${CAMP_WEEK_PRICE_LABEL} a week`), camp.description);
-  check("detail page shows the card line under its title", detailPage.includes("{program.description}"));
-  for (const claim of ["lunch", "snack", "full-day", "full day", "july", "august", "skill tracking", "experience", "actually"]) {
-    check(`no unconfirmed or banned "${claim}"`, !text.toLowerCase().includes(claim));
+// ── Owner 2026-10-12: the camp left the catalog, High Performance is a group ─
+console.log("Catalog truth (owner, 2026-10-12)");
+check("no Kids' Summer Camp entry at all", !programs.some((p) => p.id === "kids-summer-camp"));
+check("High Performance is unlisted, kept only so old rows resolve", programs.find((p) => p.id === "high-performance")?.unlisted === true);
+check("detail page shows the card line under its title", detailPage.includes("{program.description}"));
+for (const p of listedPrograms) {
+  const text = [p.description, p.longDescription, p.metaDescription ?? "", p.schedule ?? "", p.levelNote ?? ""].join(" ").toLowerCase();
+  for (const claim of ["experience", "actually", "journey", "unlock", "limited spots"]) {
+    check(`${p.id}: no banned "${claim}"`, !text.includes(claim));
   }
-  check("no 'What's included' list until Sina confirms it", !camp.includes || camp.includes.length === 0);
-  check("points to Youth Programs", camp.related?.href === "/programs/youth-programs");
 }
 
 // ── M6: Events and Video Lessons out of the nav and the sitemap ─────────────

@@ -1,43 +1,56 @@
 // Run from project root: npx tsx src/scripts/test-program-catalog.ts
 //
-// Pins audit PR G (2026-10-09, "Program catalog cards and the /programs
-// page"): the catalog helpers (status precedence, eyebrow, slot text, spans,
-// the fit rules and the dashboard suggestions), the card itself rendered to
-// markup (one link per card, a real spec list, the Level block only with a
-// span, the dashboard fit marker) and the surfaces that use it, as source
-// checks since the repo has no DOM test runner. Exits non-zero on any
-// failure. The cohort length and totals come from the constants; this file
-// never spells them.
+// Pins audit PR G (2026-10-09, "Program catalog cards") as rebuilt by audit
+// PR K (owner decisions 2026-10-12): three programs with photographs, their
+// timetables and level spans derived from the groups, the catalog helpers
+// (status precedence, eyebrow, slot and group text, the fit rules and the
+// dashboard suggestions), the program card rendered to markup (one link per
+// card, a real spec list, the photo with its alt, the Level block, the
+// dashboard fit marker) and the surfaces that use it, as source checks since
+// the repo has no DOM test runner. Exits non-zero on any failure. The cohort
+// length and totals come from the constants; this file never spells them.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  CAMP_PRICE_SUMMARY,
-  CAMP_WEEK_PRICE_LABEL,
   PRICE_SUMMARY,
+  PRIVATE_LESSONS_PRICE,
+  groupsForProgram,
   listedPrograms,
+  programGroups,
   programs,
 } from "../content/programs";
 import { AGE_BANDS, ageBandIsMinor } from "../lib/ageBand";
 import { formatCohortSchedule, formatStartDate } from "../lib/cohorts";
+import { PROVISIONAL_TIER } from "../lib/level";
 import { recommendPrograms } from "../lib/recommend";
-import { formatTierSpan, tierForLevel } from "../lib/tiers";
+import { formatTierSpan, levelWithinRange, tierById } from "../lib/tiers";
 import {
+  agesChipLabel,
+  cohortMatchesGroup,
+  formatClassTime,
+  formatGroupStart,
+  formatGroupWhen,
   formatSlotWhen,
+  groupAgeLabel,
+  groupStatus,
+  nextCohortForGroup,
+  programAgeLabel,
   programEyebrow,
   programFitsAge,
   programFitsPlayer,
   programLevelRange,
   programStatus,
+  programTakesPlayerAge,
   slotLevelRange,
   suggestProgramsFor,
   suggestionsSubCopy,
+  twelveHourStart,
   type SuggestPlayer,
 } from "../lib/programCatalog";
 import { ProgramCard, ProgramCardList, nextCohortFor } from "../components/sections/ProgramCard";
-import { ProgramComingSoonBand } from "../components/sections/ProgramComingSoonBand";
 import type { Cohort } from "../types/cohort";
 import type { Program } from "../types/program";
 
@@ -53,18 +66,14 @@ function check(name: string, ok: boolean, detail = "") {
 
 const ROOT = process.cwd();
 const read = (path: string) => readFileSync(join(ROOT, path), "utf8");
-const at = (hay: string, needle: string) => {
-  const i = hay.indexOf(needle);
-  return i === -1 ? Infinity : i;
-};
+const at = (hay: string, needle: string) => hay.indexOf(needle);
 const count = (hay: string, needle: string) => hay.split(needle).length - 1;
 const onGrid = (n: number) => Number.isFinite(n) && n >= 1 && n <= 7 && Math.round(n * 2) === n * 2;
 
 const byId = Object.fromEntries(programs.map((p) => [p.id, p])) as Record<string, Program>;
 const youth = byId["youth-programs"];
-const hp = byId["high-performance"];
 const adult = byId["bootcamps"];
-const camp = byId["kids-summer-camp"];
+const privateLessons = byId["private-lessons"];
 
 const cohort: Cohort = {
   id: "youth-fall-1",
@@ -85,104 +94,110 @@ const cohort: Cohort = {
 };
 
 // ── Catalog data ────────────────────────────────────────────────────────────
-console.log("Catalog data");
+console.log("Catalog data (owner, 2026-10-12)");
+check("three listed programs: Youth Bootcamps, Adult Bootcamps, Private Lessons", listedPrograms.map((p) => p.title).join("|") === "Youth Bootcamps|Adult Bootcamps|Private Lessons");
+check("the slugs youth-programs and bootcamps stay; private-lessons is new", listedPrograms.map((p) => p.slug).join("|") === "youth-programs|bootcamps|private-lessons");
+check("no listed program is coming soon", listedPrograms.every((p) => !p.comingSoon));
 for (const p of listedPrograms) {
   check(`${p.id}: ageBands set`, p.ageBands.length > 0);
   check(`${p.id}: priceSummary set`, !!p.priceSummary);
   check(`${p.id}: levelNote set`, !!p.levelNote);
-  if (!p.comingSoon) check(`${p.id}: live program has a timetable`, (p.timetable?.length ?? 0) > 0);
+  check(`${p.id}: carries a photo with alt text`, !!p.photo && p.photo.alt.length > 20 && p.photo.width === 1600 && p.photo.height === 1000);
+  const groups = groupsForProgram(p.slug);
+  check(`${p.id}: has at least one group`, groups.length > 0);
+  const scheduled = groups.filter((g) => g.day !== null);
   check(
     `${p.id}: price from the constants`,
-    p.priceSummary === (p.comingSoon ? CAMP_PRICE_SUMMARY : PRICE_SUMMARY),
+    p.priceSummary === (scheduled.length > 0 ? PRICE_SUMMARY : PRIVATE_LESSONS_PRICE),
     p.priceSummary
   );
   const range = programLevelRange(p);
-  if (range) {
-    check(`${p.id}: span on the half-step grid, 1.0 ≤ min ≤ max ≤ 7.0`, onGrid(range.min) && onGrid(range.max) && range.min <= range.max);
-    const slots = p.timetable ?? [];
-    const banded = slots.map(slotLevelRange);
-    const some = banded.some(Boolean);
-    check(`${p.id}: slots all banded or none`, !some || banded.every(Boolean));
-    if (some && banded.every(Boolean)) {
-      const ranges = banded as { min: number; max: number }[];
-      const contiguous = ranges.every((r, i) => i === 0 || r.min === ranges[i - 1].max + 0.5);
-      check(`${p.id}: slot bands contiguous, ascending, non-overlapping`, contiguous);
-      check(`${p.id}: slot bands union equals the program span`, ranges[0].min === range.min && ranges[ranges.length - 1].max === range.max);
-    }
-  }
-  for (const slot of p.timetable ?? []) {
-    if (slot.ageBand) check(`${p.id}: slot ${slot.time} ageBand within the program's bands`, p.ageBands.includes(slot.ageBand));
+  check(`${p.id}: span set, on the half-step grid, 1.0 ≤ min ≤ max ≤ 7.0`, !!range && onGrid(range.min) && onGrid(range.max) && range.min <= range.max);
+  check(
+    `${p.id}: span is the union of its groups' bands`,
+    !!range && range.min === Math.min(...groups.map((g) => g.levelMin)) && range.max === Math.max(...groups.map((g) => g.levelMax))
+  );
+  const slots = p.timetable ?? [];
+  check(`${p.id}: one timetable slot per scheduled group, in lineup order`, slots.length === scheduled.length && slots.every((s, i) => s.group === scheduled[i].name && s.day === scheduled[i].day));
+  check(`${p.id}: slot times come from the groups' 24-hour clock`, slots.every((s, i) => s.time === formatClassTime(scheduled[i].start!, scheduled[i].end!)));
+  check(`${p.id}: every slot carries its group's band`, slots.every((s, i) => slotLevelRange(s)?.min === scheduled[i].levelMin && slotLevelRange(s)?.max === scheduled[i].levelMax));
+  if (scheduled.length > 0) {
+    check(`${p.id}: enrollmentStatus set (owner D11)`, p.enrollmentStatus === "forming");
+    check(`${p.id}: schedule names the day and every start`, !!p.schedule && p.schedule.includes(`${scheduled[0].day}s`) && scheduled.every((g) => p.schedule!.includes(twelveHourStart(g.start!))));
   }
 }
-check("camp price names the weekly constant", CAMP_PRICE_SUMMARY.startsWith(CAMP_WEEK_PRICE_LABEL));
+check("Private Lessons: no timetable, by arrangement, rates on request", !privateLessons.timetable && privateLessons.schedule === "By arrangement" && privateLessons.priceSummary === PRIVATE_LESSONS_PRICE && !!privateLessons.priceLine?.startsWith(PRIVATE_LESSONS_PRICE));
+check("Private Lessons: any age, all levels", programAgeLabel(groupsForProgram("private-lessons")) === "Any age" && formatTierSpan(privateLessons.levelMin, privateLessons.levelMax) === "All levels");
+check("High Performance and Kids' Summer Camp are off the listing", !listedPrograms.some((p) => p.id === "high-performance" || p.id === "kids-summer-camp"));
+check("High Performance stays resolvable by id for old rows", byId["high-performance"]?.unlisted === true && byId["high-performance"].title === "High Performance");
+check("PRICE_SUMMARY is one line from the constants", /^\$\d+ a session · \$\d+ for \w+ weeks?$/.test(PRICE_SUMMARY), PRICE_SUMMARY);
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 console.log("Helpers");
-check("eyebrow: Youth Programs", programEyebrow(youth) === "Juniors and teens · Saturdays", programEyebrow(youth));
-check("eyebrow: High Performance", programEyebrow(hp) === "Any age · Saturdays", programEyebrow(hp));
-check("eyebrow: Adult Bootcamps", programEyebrow(adult) === "Adults · Sundays", programEyebrow(adult));
-check("eyebrow: Kids' Summer Camp", programEyebrow(camp) === "Juniors · Summer Camp", programEyebrow(camp));
-check("formatSlotWhen: Sat 12:00–1:00 pm", formatSlotWhen(youth.timetable![0]) === "Sat 12:00–1:00 pm", formatSlotWhen(youth.timetable![0]));
-check("formatSlotWhen: Sun 4:00–5:00 pm", formatSlotWhen(adult.timetable![0]) === "Sun 4:00–5:00 pm", formatSlotWhen(adult.timetable![0]));
-check("slotLevelRange: Adult 4:00 is Beginner – Novice", JSON.stringify(slotLevelRange(adult.timetable![0])) === JSON.stringify({ min: 1.0, max: 2.5 }));
-check("slotLevelRange: Youth 12:00 is unbanded", slotLevelRange(youth.timetable![0]) === null);
-check("programLevelRange: Youth 1.0–4.5", JSON.stringify(programLevelRange(youth)) === JSON.stringify({ min: 1.0, max: 4.5 }));
-const unspanned: Program = { ...youth, levelMin: undefined, levelMax: undefined };
-check("programLevelRange: unset → null", programLevelRange(unspanned) === null);
-check("formatStartDate: Oct 18", formatStartDate("2026-10-18") === "Oct 18");
-check("formatStartDate: no zero padding", formatStartDate("2027-01-05") === "Jan 5");
+check("eyebrow: juniors and teens on Saturdays", programEyebrow(youth) === "Juniors and teens · Saturdays", programEyebrow(youth));
+check("eyebrow: adults on Sundays", programEyebrow(adult) === "Adults · Sundays", programEyebrow(adult));
+check("eyebrow: private lessons read the schedule line, never the title", programEyebrow(privateLessons) === "Any age · By arrangement", programEyebrow(privateLessons));
+check("formatClassTime: noon start, pm once", formatClassTime("12:00", "13:00") === "12:00–1:00 pm");
+check("formatClassTime: afternoon", formatClassTime("16:00", "17:00") === "4:00–5:00 pm");
+check("formatClassTime: morning", formatClassTime("09:00", "10:00") === "9:00–10:00 am");
+check("twelveHourStart", twelveHourStart("12:00") === "12:00" && twelveHourStart("13:00") === "1:00" && twelveHourStart("18:30") === "6:30");
+check("formatSlotWhen", formatSlotWhen(youth.timetable![0]) === "Sat 12:00–1:00 pm");
+const hp = programGroups.find((g) => g.id === "high-performance")!;
+const newer = programGroups.find((g) => g.id === "adult-newer")!;
+const solo = programGroups.find((g) => g.id === "private-lessons")!;
+check("formatGroupWhen", formatGroupWhen(hp) === "Saturdays 2:00–3:00 pm" && formatGroupWhen(solo) === "By arrangement");
+check("formatGroupStart", formatGroupStart(newer) === "Sun 4:00" && formatGroupStart(solo) === "By arrangement");
+check("groupAgeLabel: a range, an open top, any age", groupAgeLabel(hp) === "12–17" && groupAgeLabel(newer) === "16 and up" && groupAgeLabel(solo) === "Any age");
+check("programAgeLabel: youth 7–17, adult 16 and up, private any age", programAgeLabel(groupsForProgram("youth-programs")) === "7–17" && programAgeLabel(groupsForProgram("bootcamps")) === "16 and up" && programAgeLabel([]) === "Any age");
+check("agesChipLabel: Ages 7–17, Ages 16 and up, Any age (never Ages Any age)", agesChipLabel(groupsForProgram("youth-programs")) === "Ages 7–17" && agesChipLabel(groupsForProgram("bootcamps")) === "Ages 16 and up" && agesChipLabel(groupsForProgram("private-lessons")) === "Any age");
 
 console.log("programStatus precedence");
-check("coming soon beats a cohort", programStatus({ ...youth, comingSoon: true }, cohort).label === "Coming Soon");
-check("a public cohort → Next cohort Oct 18", programStatus(youth, cohort).label === "Next cohort Oct 18", programStatus(youth, cohort).label);
+check("coming soon wins", programStatus({ ...youth, comingSoon: true }, cohort).kind === "coming-soon");
+check("next cohort beats invite only", programStatus({ ...youth, enrollmentStatus: "invite-only" }, cohort).label === `Next cohort ${formatStartDate(cohort.startDate)}`);
 check("invite only", programStatus({ ...youth, enrollmentStatus: "invite-only" }).label === "Invite only");
-check("default is Groups forming (owner D11)", programStatus(youth).label === "Groups forming");
-check("a cohort beats invite only", programStatus({ ...youth, enrollmentStatus: "invite-only" }, cohort).kind === "next-cohort");
-check("nextCohortFor picks the earliest", nextCohortFor([{ ...cohort, id: "b", startDate: "2026-11-01" }, cohort], "youth-programs")?.id === "youth-fall-1");
-check("nextCohortFor ignores other programs", nextCohortFor([cohort], "bootcamps") === undefined);
+check("by arrangement for a program with no timetable", programStatus(privateLessons).label === "By arrangement");
+check("groups forming by default", programStatus(youth).label === "Groups forming");
+
+console.log("groupStatus precedence");
+check("next cohort first", groupStatus({ ...hp, status: "full" }, cohort)?.kind === "next-cohort");
+check("full, then invite only, then forming", groupStatus({ ...hp, status: "full" })?.label === "Full" && groupStatus({ ...hp, status: "invite-only" })?.label === "Invite only" && groupStatus(hp)?.label === "Groups forming");
+check("an arranged group shows no chip", groupStatus(solo) === null);
+
+console.log("cohorts and groups");
+const first = programGroups.find((g) => g.id === "youth-7-10")!;
+check("a Saturday 12:00 youth cohort trains in the 7–10 group", cohortMatchesGroup(cohort, first) && !cohortMatchesGroup(cohort, hp));
+check("a cohort of another program never matches", !cohortMatchesGroup({ ...cohort, programId: "bootcamps" }, first));
+check("an arranged group never matches a cohort", !cohortMatchesGroup({ ...cohort, programId: "private-lessons" }, solo));
+check("nextCohortForGroup picks the earliest", nextCohortForGroup([{ ...cohort, id: "b", startDate: "2026-11-01" }, cohort], first)?.id === "youth-fall-1" && nextCohortForGroup([cohort], hp) === undefined);
+check("nextCohortFor picks the earliest per program", nextCohortFor([{ ...cohort, id: "b", startDate: "2026-11-01" }, cohort], "youth-programs")?.id === "youth-fall-1");
 
 // ── Fit rules ───────────────────────────────────────────────────────────────
 console.log("programFitsPlayer");
-check("adult 2.0 fits Adult Bootcamps", programFitsPlayer(adult, { is_minor: false, level: 2.0 }));
-check("adult 2.0 is outside High Performance (floor 3.0)", !programFitsPlayer(hp, { is_minor: false, level: 2.0 }));
-check("adult never fits Youth Programs", !programFitsPlayer(youth, { is_minor: false, level: 2.0 }));
-check("adult never fits the camp", !programFitsPlayer(camp, { is_minor: false, level: null }));
-check("minor 5.0 is above Youth Programs (4.5)", !programFitsPlayer(youth, { is_minor: true, level: 5.0 }));
-check("minor 5.0 fits High Performance", programFitsPlayer(hp, { is_minor: true, level: 5.0 }));
-check("unranked minor fits Youth Programs by age", programFitsPlayer(youth, { is_minor: true, level: null }));
-check("unranked minor fits High Performance by age", programFitsPlayer(hp, { is_minor: true, level: null }));
-check("unranked minor never fits Adult Bootcamps", !programFitsPlayer(adult, { is_minor: true, level: null }));
-check("a Postgres numeric string is a level", programFitsPlayer(adult, { is_minor: false, level: "2.5" }));
-check("a program with no span is judged by age alone", programFitsPlayer(unspanned, { is_minor: true, level: 7.0 }));
-check("programFitsAge: Any age takes minors and adults", programFitsAge(hp, true) && programFitsAge(hp, false));
+check("an unranked minor fits Youth Bootcamps by age", programFitsPlayer(youth, { is_minor: true, level: null }));
+check("a minor never fits Adult Bootcamps on the band", !programFitsPlayer(adult, { is_minor: true, level: null }));
+check("an adult never fits Youth Bootcamps", !programFitsPlayer(youth, { is_minor: false, level: 3 }));
+check("a ranked adult inside the span fits", programFitsPlayer(adult, { is_minor: false, level: "3.5" }));
+check("a ranked adult above the span does not", !programFitsPlayer(adult, { is_minor: false, level: 6 }));
+check("Private Lessons fit everyone", programFitsPlayer(privateLessons, { is_minor: true, level: null }) && programFitsPlayer(privateLessons, { is_minor: false, level: 7 }));
+check("the stored band decides when known", programTakesPlayerAge(adult, { is_minor: true, age_band: "adult" }) && !programTakesPlayerAge(adult, { is_minor: false, age_band: "teen" }));
 
-// The card and the recommender agree: for every age band and self-estimate,
-// the recommender's first program fits a player of that band at the
-// provisional tier (owner D4: new → Beginner, rally → Novice, competitive →
-// Intermediate, elite → Advanced).
-console.log("Card and recommender agree (D2, D4)");
-const PROVISIONAL_LEVEL = { new: 1.0, rally: 2.0, competitive: 3.0, elite: 4.0 } as const;
+// Card and recommender agree: for every band × self-estimate, the top
+// recommendation takes the player's band, and the provisional tier (when
+// there is one) sits inside the program span and inside the first group.
+console.log("Card and recommender agree");
+const base = { goals: [] as string[], programs: [] as string[], preferredLocationIds: [] as string[], availability: [] as string[] };
 for (const band of AGE_BANDS) {
-  for (const level of ["new", "rally", "competitive", "elite"] as const) {
-    const top = recommendPrograms({
-      who: band === "adult" ? "adult" : "youth",
-      ageBand: band,
-      level,
-      goals: [],
-      programs: [],
-      preferredLocationIds: [],
-      availability: [],
-    })[0]?.program;
-    check(
-      `${band} (${level}) → ${top?.id ?? "nothing"} fits at level ${PROVISIONAL_LEVEL[level].toFixed(1)}`,
-      !!top && programFitsPlayer(top, { is_minor: ageBandIsMinor(band), level: PROVISIONAL_LEVEL[level] })
-    );
+  for (const level of ["new", "rally", "competitive", "elite", undefined] as const) {
+    const [top] = recommendPrograms({ ...base, who: band === "adult" ? "adult" : "youth", ageBand: band, level });
+    const minor = ageBandIsMinor(band);
+    const tierId = level ? PROVISIONAL_TIER[level] : undefined;
+    const fits = !!top && programFitsPlayer(top.program, { is_minor: minor, age_band: band, level: tierId ?? null });
+    const inGroup = !top || tierId === undefined || levelWithinRange(tierId, top.groups[0].levelMin, top.groups[0].levelMax);
+    check(`${band} (${level ?? "no level"}) → ${top?.program.id} fits the card's rule and its first group`, fits && inGroup);
   }
 }
-check(
-  "competitive provisional tier is at or above the High Performance floor",
-  (tierForLevel(PROVISIONAL_LEVEL.competitive)?.id ?? 0) >= (tierForLevel(hp.levelMin)?.id ?? 99)
-);
+const competitiveTier = tierById(PROVISIONAL_TIER.competitive!);
+check("competitive provisional tier is at or above the High Performance floor", competitiveTier.id >= Math.floor(hp.levelMin));
 
 // ── Suggestions ─────────────────────────────────────────────────────────────
 console.log("suggestProgramsFor");
@@ -191,45 +206,28 @@ const maya: SuggestPlayer = { full_name: "Maya Chen", relationship: "child", is_
 const ids = (list: { program: Program }[]) => list.map((s) => s.program.id).join(",");
 
 const single = suggestProgramsFor([self(2.5)], listedPrograms, []);
-check("single ranked adult 2.5 → Adult Bootcamps only", ids(single) === "bootcamps", ids(single));
+check("single ranked adult 2.5 → Adult Bootcamps, then Private Lessons", ids(single) === "bootcamps,private-lessons", ids(single));
 check("the holder's fit has no name (reads as 'you')", single[0].fit?.name === null && single[0].fit?.level === 2.5);
 
 const household = suggestProgramsFor([self(null), maya], listedPrograms, []);
-check("household: Youth Programs (Maya) first, then the holder's age matches", ids(household) === "youth-programs,high-performance,bootcamps", ids(household));
+check("household: Youth Bootcamps (Maya) and Private Lessons (Maya) first, then the holder's age match", ids(household) === "youth-programs,private-lessons,bootcamps", ids(household));
 check("Maya's fit carries her first name and level", household[0].fit?.name === "Maya" && household[0].fit?.level === 2.5);
-check("an unranked holder gives no fit marker", household[1].fit === null && household[2].fit === null);
-check("Maya at 2.5 is outside High Performance", !household.some((s) => s.program.id === "high-performance" && s.fit));
+check("an unranked holder gives no fit marker", household[2].fit === null);
 
 const enrolled = suggestProgramsFor([self(null), maya], listedPrograms, ["youth-programs"]);
 check("an enrolled program is never suggested", !ids(enrolled).includes("youth-programs"));
 
-const selfInHousehold = suggestProgramsFor([self(2.5), maya], listedPrograms, ["youth-programs"]);
-check("the holder in a household still reads as 'you'", selfInHousehold.find((s) => s.program.id === "bootcamps")?.fit?.name === null);
-
-// Fix round 1: a ranked household player with no name must never become the
-// holder's "Fits you" / "Your level" — the card would pin the child's level
-// on the account holder. Nameless, the player still counts for the age fit;
-// a named ranked sibling is preferred; alone on the account, "you" is right.
 const nameless: SuggestPlayer = { full_name: null, relationship: "child", is_minor: true, level: 2.5 };
-const blankName: SuggestPlayer = { full_name: "   ", relationship: "child", is_minor: true, level: 2.5 };
 const namelessHousehold = suggestProgramsFor([self(null), nameless], listedPrograms, []);
-check("household: a nameless ranked child is still suggested for", ids(namelessHousehold).includes("youth-programs"), ids(namelessHousehold));
-check("household: a nameless ranked child gives no fit marker (never 'Fits you')", namelessHousehold.every((s) => s.fit === null));
-const blankHousehold = suggestProgramsFor([self(null), blankName], listedPrograms, []);
-check("household: a whitespace name counts as nameless", blankHousehold.every((s) => s.fit === null));
-const namedSibling = suggestProgramsFor([self(null), nameless, maya], listedPrograms, []);
-check("household: the named ranked sibling is the fit, not the nameless one", namedSibling[0].program.id === "youth-programs" && namedSibling[0].fit?.name === "Maya");
+check("household: a nameless ranked child is still suggested for, with no fit marker", ids(namelessHousehold).includes("youth-programs") && namelessHousehold.every((s) => s.fit === null));
 const rankedHolderNamelessChild = suggestProgramsFor([self(2.5), nameless], listedPrograms, []);
 check("household: the ranked holder still reads as 'you' beside a nameless child", rankedHolderNamelessChild.find((s) => s.program.id === "bootcamps")?.fit?.name === null && rankedHolderNamelessChild.find((s) => s.program.id === "youth-programs")?.fit === null);
-const aloneNameless = suggestProgramsFor([{ full_name: null, relationship: "self", is_minor: false, level: 2.5 }], listedPrograms, []);
-check("alone on the account, a nameless holder reads as 'you'", aloneNameless[0]?.fit?.name === null && aloneNameless[0]?.fit?.level === 2.5);
 
-const nothingFits = suggestProgramsFor([self(2.0)], listedPrograms, ["bootcamps"]);
-check("nothing fits → today's list, no fit", ids(nothingFits) === "youth-programs,high-performance" && nothingFits.every((s) => s.fit === null), ids(nothingFits));
+const nothingFits = suggestProgramsFor([self(2.0)], listedPrograms, ["bootcamps", "private-lessons"]);
+check("nothing fits → today's list, no fit", ids(nothingFits) === "youth-programs" && nothingFits.every((s) => s.fit === null), ids(nothingFits));
 const noPlayers = suggestProgramsFor([], listedPrograms, []);
-check("no players → every eligible program, no fit", ids(noPlayers) === "youth-programs,high-performance,bootcamps" && noPlayers.every((s) => s.fit === null));
-check("the coming-soon camp is never suggested", ![single, household, nothingFits, noPlayers].some((l) => ids(l).includes("kids-summer-camp")));
-check("a retired program is never suggested", !ids(suggestProgramsFor([], programs, [])).includes("group-lessons"));
+check("no players → every eligible program, no fit", ids(noPlayers) === "youth-programs,bootcamps,private-lessons" && noPlayers.every((s) => s.fit === null));
+check("a retired program is never suggested", !ids(suggestProgramsFor([], programs, [])).includes("group-lessons") && !ids(suggestProgramsFor([], programs, [])).includes("high-performance"));
 
 console.log("suggestionsSubCopy");
 check("household with a fit", suggestionsSubCopy([self(null), maya], household) === "Programs that fit the players on your account.");
@@ -237,163 +235,103 @@ check("single ranked player", suggestionsSubCopy([self(2.5)], single) === "Progr
 const ageOnly = suggestProgramsFor([self(null)], listedPrograms, []);
 check("unranked holder → age group", suggestionsSubCopy([self(null)], ageOnly) === "Programs for your age group.", suggestionsSubCopy([self(null)], ageOnly));
 check("fallback → not enrolled yet", suggestionsSubCopy([self(2.0)], nothingFits) === "Programs you're not enrolled in yet.");
+check("programFitsAge: a minor fits youth, an adult fits adult", programFitsAge(youth, true) && !programFitsAge(youth, false) && programFitsAge(adult, false));
 
 // ── The card, rendered ──────────────────────────────────────────────────────
 console.log("ProgramCard markup");
 const render = (el: React.ReactElement) => renderToStaticMarkup(el);
-const card = render(createElement(ProgramCard, { program: youth, variant: "compact" }));
+const card = render(createElement(ProgramCard, { program: youth }));
 check("one link per card", count(card, "<a ") === 1, `${count(card, "<a ")} links`);
-const titleLink = card.match(/<h3[^>]*><a ([^>]*)>Youth Programs<\/a><\/h3>/)?.[1] ?? "";
+const titleLink = card.match(/<h3[^>]*><a ([^>]*)>Youth Bootcamps<\/a><\/h3>/)?.[1] ?? "";
 check("the link is the title, stretched", titleLink.includes('href="/programs/youth-programs"') && titleLink.includes("after:absolute after:inset-0"), titleLink);
+check("the photo is drawn with its real alt text, inside a 16:10 box", card.includes("<img") && card.includes(`alt="${youth.photo!.alt}"`) && card.includes("aspect-[16/10]"));
+check("no court plate on the card", !card.includes("<svg") || !card.includes('viewBox="0 100 1600 800"'));
 check("the eyebrow is the audience and the day", card.includes("Juniors and teens · Saturdays"));
-check("the status chip reads Groups forming", card.includes("Groups forming"));
-// Fix round 1: the chip sits over the art (top-right, on an opaque disc of
-// the plate's ground), before the eyebrow in source order, so the eyebrow has
-// its line to itself and three titles in a grid line up.
-check("the status chip sits over the art, before the eyebrow", at(card, "Groups forming") < at(card, "Juniors and teens · Saturdays") && card.includes('class="absolute right-3 top-3 flex rounded-full bg-[#061427]"'));
+check("the status chip sits over the photo, before the eyebrow", at(card, "Groups forming") < at(card, "Juniors and teens · Saturdays") && card.includes('class="absolute right-3 top-3 flex rounded-full bg-[#061427]"'));
 check("the eyebrow has its line to itself (the title follows it directly)", /<p class="[^"]*">Juniors and teens · Saturdays<\/p><h3/.test(card));
 const beforeLink = card.slice(0, card.indexOf("<a "));
-check("only the article and the art column are positioned before the link", count(beforeLink, "relative") === 2 && /<div class="flex min-w-0 flex-1 flex-col[^"]*">/.test(card) && !/<div class="flex min-w-0 flex-1 flex-col[^"]*relative/.test(card));
+check("only the article and the photo column are positioned before the link", count(beforeLink, "relative") === 2 && !/<div class="flex min-w-0 flex-1 flex-col[^"]*relative/.test(card));
 check("a real spec list with Ages, When and Price", card.includes("<dl") && /<dt[^>]*>Ages<\/dt>/.test(card) && /<dt[^>]*>When<\/dt>/.test(card) && /<dt[^>]*>Price<\/dt>/.test(card));
+check("Ages reads the groups' range", /<dt[^>]*>Ages<\/dt><dd[^>]*>7–17<\/dd>/.test(card));
+check("When lists one line per group with its start and name", groupsForProgram("youth-programs").every((g) => card.includes(formatGroupStart(g)) && card.includes(`>${g.name}<`)));
 check("no Next row without a cohort", !/<dt[^>]*>Next<\/dt>/.test(card));
 const [priceLead, ...priceRest] = PRICE_SUMMARY.split(" · ");
-check("the price is the constant, the session figure leading", card.includes(`>${priceLead}<`) && priceRest.every((part) => card.includes(part)));
-// Fix round 1: the two parts are stacked with no separator, so a narrow Price
-// column never wraps to a stray "· $…" line (audit L8 on every card).
 const priceDd = card.match(/<dt[^>]*>Price<\/dt><dd[^>]*>([\s\S]*?)<\/dd>/)?.[1] ?? "";
-check("the price is stacked: lead in white, total in white/60, no middot", priceDd.includes(`font-semibold text-white">${priceLead}<`) && priceRest.every((part) => priceDd.includes(`text-white/60">${part}<`)) && !priceDd.includes("·") && count(priceDd, 'class="block ') === 1 + priceRest.length, priceDd);
-check("each class on its own line with its age chip", card.includes("Sat 12:00–1:00 pm") && card.includes("Sat 1:00–2:00 pm") && count(card, "Junior (7–13)") === 2);
-check("the Level block names the span", card.includes(`>${formatTierSpan(youth.levelMin, youth.levelMax)}<`) && card.includes("1.0–4.5"));
-check("the rail is in span mode", card.includes('aria-label="Built for Beginner to Advanced, levels 1.0 to 4.5"'));
+check("the price is stacked: lead in white, total in white/60, no middot", priceDd.includes(`font-semibold text-white">${priceLead}<`) && priceRest.every((part) => priceDd.includes(`text-white/60">${part}<`)) && !priceDd.includes("·"), priceDd);
+check("the Level block names the span", card.includes(`>${formatTierSpan(youth.levelMin, youth.levelMax)}<`) && card.includes("1.0–5.5"));
+check("the rail is in span mode", card.includes('aria-label="Built for Beginner to Elite, levels 1.0 to 5.5"'));
 check("the level note is under the rail", card.includes(youth.levelNote!));
 check("the CTA line is decoration", /<span aria-hidden="true"[^>]*>View Program/.test(card));
-check("no Learn more, no second button", !card.includes("Learn more") && !card.includes("<button"));
-check("the plate is drawn, decorative, in the band frame", card.includes('viewBox="0 100 1600 800"') && card.includes('aria-hidden="true" focusable="false"'));
-check("no image, no text over the art", !card.includes("<img") && !card.includes("bg-gradient-to-t"));
+check("no Learn more, no second button, no gradient scrim", !card.includes("Learn more") && !card.includes("<button") && !card.includes("bg-gradient-to-t"));
 
-const noSpan = render(createElement(ProgramCard, { program: unspanned, variant: "compact" }));
-check("no span → no rail, no band, no TBA", !noSpan.includes("Built for") && !noSpan.includes("1.0–4.5") && !noSpan.includes("TBA"));
-check("no span → the level note as a plain row", /<dt[^>]*>Level<\/dt><dd[^>]*>First season to club player/.test(noSpan));
-
-const withCohort = render(createElement(ProgramCard, { program: youth, nextCohort: cohort, variant: "compact" }));
+const withCohort = render(createElement(ProgramCard, { program: youth, nextCohort: cohort }));
 check("a public cohort → the lime chip and the Next row", withCohort.includes("Next cohort Oct 18") && /<dt[^>]*>Next<\/dt>/.test(withCohort));
-check("the Next row is always visible (no hover strip)", !withCohort.includes("group-hover:max-h") && !withCohort.includes("group-hover:opacity"));
-// Fix round 2: the Next row's parts wrap whole. Each part of
-// formatCohortSchedule is its own whitespace-nowrap span in a flex-wrap line,
-// the middot rides with the part before it (decoration), and the last part
-// carries none, so a narrow column never splits a date range and a second
-// line never opens with "·" (audit L8, as the Price row).
 const nextParts = formatCohortSchedule(cohort).split(" · ");
 const nextDd = withCohort.match(/<dt[^>]*>Next<\/dt><dd[^>]*>([\s\S]*?)<\/dd><\/div>/)?.[1] ?? "";
-check("Next: four parts in a flex-wrap line", nextParts.length === 4 && nextDd.startsWith('<span class="flex flex-wrap gap-x-1">') && count(nextDd, 'class="whitespace-nowrap"') === nextParts.length, nextDd);
 check("Next: every part is its own nowrap span, the middot attached to the part before it", nextParts.slice(0, -1).every((part) => nextDd.includes(`<span class="whitespace-nowrap">${part}<span aria-hidden="true"> ·</span></span>`)) && nextDd.includes(`<span class="whitespace-nowrap">${nextParts[nextParts.length - 1]}</span>`), nextDd);
-check("Next: no part opens with a middot, and the joined string is gone", !/class="whitespace-nowrap">\s*·/.test(nextDd) && !nextDd.includes(formatCohortSchedule(cohort)) && count(nextDd, "·") === nextParts.length - 1);
-const rowWithCohort = render(createElement(ProgramCard, { program: youth, nextCohort: cohort, variant: "row" }));
-const rowNextDd = rowWithCohort.match(/<dt[^>]*>Next<\/dt><dd[^>]*>([\s\S]*?)<\/dd><\/div>/)?.[1] ?? "";
-check("Next: the row variant renders the same wrapped parts", rowNextDd.length > 0 && rowNextDd === nextDd, rowNextDd);
 
-const fitMaya = render(createElement(ProgramCard, { program: youth, fit: { name: "Maya", level: 2.5 }, variant: "compact" }));
+const fitMaya = render(createElement(ProgramCard, { program: youth, fit: { name: "Maya", level: 2.5 } }));
 check("fit → Fits Maya eyebrow", fitMaya.includes("Fits Maya") && !fitMaya.includes("Juniors and teens · Saturdays"));
 check("fit → the caption names her tier and level", fitMaya.includes("Maya: Novice · 2.5"));
 check("fit → the rail carries her marker", fitMaya.includes("Maya&#x27;s tier, Novice, is in this range.") || fitMaya.includes("Maya's tier, Novice, is in this range."));
-const fitYou = render(createElement(ProgramCard, { program: adult, fit: { name: null, level: 2.5 }, variant: "compact" }));
+const fitYou = render(createElement(ProgramCard, { program: adult, fit: { name: null, level: 2.5 } }));
 check("fit with no name → Fits you, Your level", fitYou.includes("Fits you") && fitYou.includes("Your level: Novice · 2.5"));
-const outOfRange = render(createElement(ProgramCard, { program: hp, fit: { name: "Maya", level: 2.5 }, variant: "compact" }));
-check("a fit outside the span keeps the plain eyebrow", outOfRange.includes("Any age · Saturdays") && !outOfRange.includes("Fits Maya"));
+const outOfRange = render(createElement(ProgramCard, { program: adult, fit: { name: "Maya", level: 6.5 } }));
+check("a fit outside the span keeps the plain eyebrow", outOfRange.includes("Adults · Sundays") && !outOfRange.includes("Fits Maya"));
 
-const adultCard = render(createElement(ProgramCard, { program: adult, variant: "compact" }));
-check("Adult Bootcamps shows the climb per class", ["Beginner – Novice", "Intermediate", "Advanced – Elite"].every((s) => adultCard.includes(`>${s}<`)));
+const adultCard = render(createElement(ProgramCard, { program: adult }));
+check("Adult Bootcamps: 16 and up, the three classes by name", adultCard.includes(">16 and up<") && ["Newer players", "Intermediate", "Advanced"].every((s) => adultCard.includes(`>${s}<`)));
 check("Adult Bootcamps span reads Beginner – Elite", adultCard.includes(">Beginner – Elite<"));
-const hpCard = render(createElement(ProgramCard, { program: hp, variant: "compact" }));
-check("High Performance: Any age chip, no slot qualifier", hpCard.includes(">Any age<") && !hpCard.includes("Competitive and elite players"));
-check("High Performance span reads Intermediate and up", hpCard.includes(">Intermediate and up<"));
 
-const comingSoon = render(createElement(ProgramCard, { program: camp, variant: "compact" }));
-check("coming soon → one dashed chip over the art, no status chip", count(comingSoon, "Coming Soon") === 1 && !comingSoon.includes("Groups forming"));
-check("coming soon → the chip is the same over-art chip, before the eyebrow", count(comingSoon, 'class="absolute right-3 top-3 flex rounded-full bg-[#061427]"') === 1 && at(comingSoon, "Coming Soon") < at(comingSoon, "Juniors · Summer Camp"));
-check("coming soon → the CTA is the notify label", comingSoon.includes("Notify Me When Open") && comingSoon.includes('href="/programs/kids-summer-camp#notify"'));
+const privateCard = render(createElement(ProgramCard, { program: privateLessons }));
+check("Private Lessons: any age, by arrangement, rates on request, all levels", privateCard.includes(">Any age<") && privateCard.includes(">By arrangement<") && privateCard.includes(`>${PRIVATE_LESSONS_PRICE}<`) && privateCard.includes(">All levels<"));
+check("Private Lessons: the chip reads By arrangement, never Groups forming", count(privateCard, "By arrangement") === 3 && !privateCard.includes("Groups forming"));
 
 const h2 = render(createElement(ProgramCard, { program: youth, headingLevel: 2 }));
 check("headingLevel 2 renders an h2", h2.includes("<h2") && !h2.includes("<h3"));
+check("from md the card lies on its side, at lg it stacks again", card.includes("md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:flex") && card.includes("md:aspect-auto md:h-full") && card.includes("lg:aspect-[16/10]"));
 
-const rowCard = render(createElement(ProgramCard, { program: adult, variant: "row" }));
-check("row variant draws the master frame", rowCard.includes('viewBox="0 0 1600 1000"'));
-// Fix round 1: side by side, the art column fills the row and centres a box
-// that keeps the frame's own ratio; the box is never stretched to the row.
-check("row variant: the art column centres the box at md", rowCard.includes('class="relative md:flex md:h-full md:items-center md:border-r md:border-white/10 md:bg-[#061427]"'));
-check("row variant: the art box is 16:10 at md, never stretched", rowCard.includes("md:aspect-[16/10]") && !rowCard.includes("md:h-full md:min-h") && !rowCard.includes("md:aspect-auto"));
-check("auto variant: the band frame keeps 2:1 in every state, the column resets at lg", h2.includes('viewBox="0 100 1600 800"') && h2.includes("lg:block lg:h-auto lg:border-r-0") && !h2.includes("md:aspect-") && !h2.includes("min-h-["));
-check("row variant reads Timetable at md and When below", rowCard.includes(">Timetable</span>") && rowCard.includes(">When</span>"));
-check("row variant carries both rails, one hidden per breakpoint", count(rowCard, 'aria-label="Built for Beginner to Elite') === 2 && rowCard.includes("hidden md:block"));
-// Fix round 3: in the row variant's Timetable column the class label follows
-// the time, and the middot between them rides with the time (aria-hidden,
-// shown and hidden with the label), so a wrapped line in the narrow md column
-// never opens with "·" (audit L8, as the Next and Price rows). The label span
-// is middot-free; the compact card, which shows no label, carries no middot.
-const slotList = (markup: string) => markup.match(/<ul role="list" class="space-y-1">([\s\S]*?)<\/ul>/)?.[1] ?? "";
-const rowSlots = slotList(rowCard);
-const GROUP_MIDDOT = '<span aria-hidden="true" class="text-white/65 hidden md:inline"> ·</span>';
-check("Timetable: the middot rides with the time, hidden below md like the label", adult.timetable!.every((slot) => rowSlots.includes(`<span class="whitespace-nowrap">${formatSlotWhen(slot)}${GROUP_MIDDOT}</span>`)), rowSlots);
-check("Timetable: the class label follows the time and is middot-free", adult.timetable!.every((slot) => rowSlots.includes(`${GROUP_MIDDOT}</span><span class="min-w-0 text-white/65 hidden md:inline">${slot.group}</span>`)) && !/min-w-0 text-white\/65 hidden md:inline">\s*·/.test(rowSlots), rowSlots);
-check("Timetable: one middot per class, none in the compact card", count(rowSlots, "·") === adult.timetable!.length && !slotList(card).includes("·") && slotList(card).includes(`<span class="whitespace-nowrap">${formatSlotWhen(youth.timetable![0])}</span>`), slotList(card));
-const hpRowSlots = slotList(render(createElement(ProgramCard, { program: hp, variant: "row" })));
-check("Timetable: a single unbanded class shows its label the same way", hpRowSlots.includes(`${formatSlotWhen(hp.timetable![0])}${GROUP_MIDDOT}</span><span class="min-w-0 text-white/65 hidden md:inline">${hp.timetable![0].group}</span>`), hpRowSlots);
-
-console.log("ProgramCardList and ProgramComingSoonBand");
-const live = listedPrograms.filter((p) => !p.comingSoon);
-const grid = render(createElement(ProgramCardList, { programs: live, publicCohorts: [cohort], layout: "grid" }));
-check("a real list of cards", grid.startsWith('<ul role="list"') && count(grid, "<article") === live.length);
-check("one link per card across the list", count(grid, "<a ") === live.length);
+console.log("ProgramCardList");
+const grid = render(createElement(ProgramCardList, { programs: listedPrograms, publicCohorts: [cohort] }));
+check("a real list of cards, three across from lg", grid.startsWith('<ul role="list"') && grid.includes("lg:grid-cols-3") && count(grid, "<article") === listedPrograms.length);
+check("one link per card across the list", count(grid, "<a ") === listedPrograms.length);
 check("the list passes the next cohort to its program", grid.includes("Next cohort Oct 18"));
-check("grid cards are auto, three across from lg", grid.includes("lg:grid-cols-3") && grid.includes("lg:line-clamp-2"));
-const rows = render(createElement(ProgramCardList, { programs: live, publicCohorts: [], layout: "rows" }));
-check("rows layout stacks row cards", rows.includes("space-y-4") && count(rows, 'viewBox="0 0 1600 1000"') === live.length);
-
-const band = render(createElement(ProgramComingSoonBand, { program: camp }));
-check("coming-soon band: one link, the title", count(band, "<a ") === 1 && band.includes("Kids&#x27; Summer Camp"));
-check("coming-soon band: dashed, with the chip", band.includes("border-dashed") && band.includes("Coming Soon"));
-check("coming-soon band: one meta line", band.includes(`Junior (7–13) · ${camp.schedule} · ${CAMP_PRICE_SUMMARY}`));
-check("coming-soon band: the span and its rail", band.includes(">All levels<") && band.includes('aria-label="Built for Beginner to World Class'));
-check("coming-soon band: the plate is dashed", band.includes('stroke-dasharray="10 7"'));
+check("every listed photo is drawn once", listedPrograms.every((p) => count(grid, `alt="${p.photo!.alt}"`) === 1));
 
 // ── Surfaces ────────────────────────────────────────────────────────────────
 console.log("Surfaces");
 const cardSrc = read("src/components/sections/ProgramCard.tsx");
 check("card: no Learn more, no hover-only strip, no second button", !cardSrc.includes("Learn more") && !cardSrc.includes("group-hover:max-h") && count(cardSrc, "<Link") === 1);
 check("card: stretched link and has-focus ring", cardSrc.includes("after:absolute after:inset-0 after:z-10") && cardSrc.includes("has-[a:focus-visible]:ring-2"));
-check("card: no scale on hover", !cardSrc.includes("hover:scale"));
-check("card: the art box is never stretched to the row (fix round 1)", !cardSrc.includes("md:aspect-auto") && !cardSrc.includes("min-h-[320px]"));
-check("card: one StatusChip, rendered inside the art column", count(cardSrc, "<StatusChip status={status} />") === 1 && !cardSrc.includes("justify-between gap-x-3 gap-y-1.5"));
+check("card: no scale on hover, no plate import", !cardSrc.includes("hover:scale") && !cardSrc.includes("ProgramPlate"));
+check("card: the photo through next/image with sizes", cardSrc.includes('from "next/image"') && cardSrc.includes("sizes={PHOTO_SIZES}"));
+check("card: one StatusChip, rendered inside the photo column", count(cardSrc, "<StatusChip status={status} />") === 1);
 const gridSrc = read("src/components/sections/ProgramsGrid.tsx");
 check("grid renders ProgramCardList and reads cohorts once", gridSrc.includes("<ProgramCardList") && count(gridSrc, "getPublicCohorts()") === 1);
 check("grid: the quiz line with the locked label", gridSrc.includes("Not sure which fits?") && gridSrc.includes("{QUIZ_CTA_LABEL}") && gridSrc.includes("our coaches place you by level and schedule"));
 const home = read("src/app/page.tsx");
-check("home: live programs with the quiz line", home.includes("quizLine") && home.includes("!p.comingSoon"));
+check("home: the three listed programs with the quiz line", home.includes("programs={listedPrograms}") && home.includes("quizLine"));
 const programsPage = read("src/app/programs/page.tsx");
 check("/programs: tier legend in the header", /aria-labelledby="levels"[\s\S]*<TierLine variant="ladder"/.test(programsPage));
 check("/programs: the legend line", programsPage.includes("Seven tiers, {TIER_LADDER_SPAN}."));
-check("/programs: Weekend classes as rows", programsPage.includes("Weekend classes") && programsPage.includes('layout="rows"'));
-check("/programs: coming-soon band, not a card", programsPage.includes("<ProgramComingSoonBand"));
-check("/programs: quiz band before the newsletter, newsletter last", at(programsPage, "<ProgramsGrid") < at(programsPage, "<QuizBand") && at(programsPage, "<QuizBand") < at(programsPage, "<EmailCapture"));
+check("/programs: the catalog of groups, then the quiz band, then the newsletter", programsPage.includes("<ProgramCatalog") && at(programsPage, "<ProgramCatalog") < at(programsPage, "<QuizBand") && at(programsPage, "<QuizBand") < at(programsPage, "<EmailCapture"));
 check("/programs: the header carries the primary quiz CTA", /source="programs-header"[\s\S]*data-quiz-cta/.test(programsPage));
+check("/programs: the next cohort per group is read once on the server", programsPage.includes("nextCohortForGroup(publicCohorts, g)") && count(programsPage, "getPublicCohorts()") === 1);
 const detail = read("src/app/programs/[slug]/page.tsx");
-check("detail: age and tier chip row replaces the grey age line (L8)", detail.includes("<AgeBandChips") && !detail.includes("· {program.ageGroup}"));
+check("detail: the photo hero with its alt, 16:10, priority", /<Image[\s\S]*?src=\{program\.photo\.src\}[\s\S]*?alt=\{program\.photo\.alt\}[\s\S]*?priority/.test(detail) && detail.includes("aspect-[16/10]") && !detail.includes("ProgramPlate"));
+check("detail: the ages chip and the span chip under the description (L8)", detail.includes("{agesChipLabel(groups)}") && detail.includes("<TierRangeBadges levelMin={range.min} levelMax={range.max} />"));
+check("detail: the groups as cards, the quiz as their action", detail.includes("<ProgramGroupCard") && detail.includes('source="program-group"') && detail.includes("nextCohortForGroup(publicCohorts, g)"));
 check("detail: Levels in this program ladder in span mode", detail.includes("Levels in this program") && /<TierLine variant="ladder" orientation="vertical"[^>]*span=\{range\}/.test(detail));
 check("detail: How tiers work link", detail.includes('href="/assessment#ladder"'));
-// Fix round 1: the camp has no decided intake path (owner D10), so the
-// placement line renders only for a live program; the span and ladder stay.
-check("detail: the placement line is gated off a coming-soon program (D10)", /\{!program\.comingSoon && \(\s*<p[^>]*>\s*Our coaches place every player on the ladder, from the quiz or on court\.\s*<\/p>\s*\)\}/.test(detail));
-check("detail: a TierRangeBadges per timetable slot", detail.includes("<TierRangeBadges levelMin={slot.levelMin} levelMax={slot.levelMax} />"));
 check("detail: cohort cards carry the mark and the rail", detail.includes("<PlateMark plate={program.plate}") && detail.includes("artFocusForCohort(program, cohort)") && /tierGated &&[\s\S]*<TierLine[\s\S]*variant="rail"/.test(detail));
 check("detail: the start date helper is shared", detail.includes("formatStartDate(") && !detail.includes("fmtStartDate"));
+check("detail: a program booked by arrangement offers the inbox, not the assessment", detail.includes("arranged ? (") && detail.includes("href={`mailto:${CONTACT_EMAIL}`}"));
 const dashboardPage = read("src/app/dashboard/page.tsx");
-// Audit I (M26): suggestions are for the players who train, not an account-only holder.
 check("dashboard: suggestions through suggestProgramsFor", dashboardPage.includes("suggestProgramsFor(roster, listedPrograms, enrolledProgramIds)"));
 const dashboardView = read("src/app/dashboard/DashboardView.tsx");
 check("dashboard: renders ProgramCardList with fits and the sub-copy", dashboardView.includes("<ProgramCardList") && dashboardView.includes("suggestionsSubCopy(roster, suggestions)") && dashboardView.includes("fits="));
 check("dashboard: the aside is the locked secondary label", dashboardView.includes("Browse Programs →") && !dashboardView.includes("View all"));
 const pkg = JSON.parse(read("package.json")) as { scripts: { test: string } };
-// Later items append their own tests after this one (audit I: test-dashboard-state.ts).
 check("npm test runs this file", pkg.scripts.test.includes("npx tsx src/scripts/test-program-catalog.ts"));
 check("design-system.md documents the program cards", read("ops/briefs/design-system.md").includes("## Program cards"));
 
@@ -401,4 +339,4 @@ if (failed > 0) {
   console.log(`\n${failed} check(s) failed.`);
   process.exit(1);
 }
-console.log("\nAll program-catalog checks passed.");
+console.log("\nAll program catalog checks passed.");
