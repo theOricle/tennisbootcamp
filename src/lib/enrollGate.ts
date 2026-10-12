@@ -362,6 +362,16 @@ export const APPROVAL_ONLY_ERROR =
  * (`cohortMatchesGroup`) and the request's invitation the way the page does
  * (`claimedInvite`), so an invitee holding the link on a public cohort still
  * pays. Null when nothing stands in the way, or the cohort trains in no group.
+ *
+ * One difference from the page (fix round 3): a token whose 48h hold ran out
+ * between loading the wizard and paying (`lookup.state === "expired"`, which
+ * getInviteByToken only reports for a row in this cohort) is this cohort's
+ * invitation too. The routes already admit it through decideEnrollGate's
+ * `payable` grace (backlog #30/#34) and the payment settles onto that row,
+ * so this wall stands aside for it as well — else a coach-approved invitee
+ * is told to open the link they just came from, or refused after the
+ * e-transfer has already been sent. The page keeps sending an expired token
+ * to ApprovalGate (`claimedInvite` is null there), as before.
  */
 export function approvalRefusal(
   cohort: Pick<Cohort, "programId" | "sessions"> | null | undefined,
@@ -371,6 +381,7 @@ export function approvalRefusal(
   if (!cohort) return null;
   const group = groups.find((g) => cohortMatchesGroup(cohort, g));
   if (!group) return null;
+  if (gate.lookup?.state === "expired") return null;
   return approvalGateApplies({ group, decision: gate.decision, claimed: claimedInvite(gate.lookup) })
     ? { error: APPROVAL_ONLY_ERROR, status: 403 }
     : null;

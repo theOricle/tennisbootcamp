@@ -214,6 +214,10 @@ console.log("The invitation a link carries, on a public cohort too");
   check("a public High Performance cohort with no invitation is by approval", approvalGateApplies({ group: hp, decision: pub, claimed: null }));
   check("…but the player holding the invitation link walks through (the gate still says public)", !approvalGateApplies({ group: hp, decision: pub, claimed: claimedInvite(live) }));
   check("a private cohort's own gate decided already; an open group never gates", !approvalGateApplies({ group: hp, decision: byInvite, claimed: null }) && !approvalGateApplies({ group: hp, decision: byLevel, claimed: null }) && !approvalGateApplies({ group: hp, decision: refused, claimed: null }) && !approvalGateApplies({ group: g710, decision: pub, claimed: null }) && !approvalGateApplies({ group: null, decision: pub, claimed: null }));
+  // The page has no payable grace: an expired link on a public High
+  // Performance cohort meets ApprovalGate there, while the payment routes'
+  // approvalRefusal lets the same token pay (test-checkout-gate.ts, fix round 3).
+  check("the page still sends an expired invitation link on a public High Performance cohort to ApprovalGate", approvalGateApplies({ group: hp, decision: pub, claimed: claimedInvite({ state: "expired" }) }));
 }
 
 console.log("Send account email (admin): only where someone enrolled");

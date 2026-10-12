@@ -226,9 +226,22 @@ console.log("approvalRefusal — the page's by-approval gate, run again by both 
     { error: APPROVAL_ONLY_ERROR, status: 403 }
   );
   check(
-    "…an expired or foreign token is no invitation either",
-    [approvalRefusal(inGroup(hp), { decision: pub, lookup: { state: "expired" } }), approvalRefusal(inGroup(hp), { decision: pub, lookup: { state: "invalid" } })],
-    [{ error: APPROVAL_ONLY_ERROR, status: 403 }, { error: APPROVAL_ONLY_ERROR, status: 403 }]
+    "…a foreign token is no invitation either",
+    approvalRefusal(inGroup(hp), { decision: pub, lookup: { state: "invalid" } }),
+    { error: APPROVAL_ONLY_ERROR, status: 403 }
+  );
+  check(
+    "a hold that ran out between page load and paying still pays (fix round 3): getInviteByToken only reports expired for this cohort's row, and the routes' payable grace (#30/#34) settles onto it",
+    approvalRefusal(inGroup(hp), { decision: pub, lookup: { state: "expired" } }),
+    null
+  );
+  check(
+    "…the same expired token on a private High Performance cohort pays through the invite path, as before",
+    [
+      decideEnrollGate({ cohort: inGroup(hp, { visibility: "private" }), tokenSent: true, lookup: { state: "expired" }, payable: true, today: TODAY }),
+      approvalRefusal(inGroup(hp, { visibility: "private" }), { decision: { allowed: true, via: "invite" }, lookup: { state: "expired" } }),
+    ],
+    [{ allowed: true, via: "invite" }, null]
   );
   check(
     "the invitee holding the link on that public cohort pays (the gate still says public)",
