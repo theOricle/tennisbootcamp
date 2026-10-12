@@ -13,6 +13,7 @@ import {
   tierOrdinal,
   tierProgress,
   type Tier,
+  withArticle,
 } from "@/lib/tiers";
 import { SITE_URL } from "@/lib/siteUrl";
 import { senderLine, unsubscribeLine, commercialFooterText, type FooterKind } from "@/lib/casl";
@@ -541,7 +542,7 @@ export function buildCohortInviteEmail(params: CohortInviteParams): EmailBody {
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${groupName} is forming.</p>
     ${tierLine}
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">
-      We've built a ${programTitle} group around your level and the availability you gave us. Here's the schedule.
+      We've built ${withArticle(programTitle)} group around your level and the availability you gave us. Here's the schedule.
     </p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
       ${detailRow("Group", `${cohortLabel}`)}
@@ -561,7 +562,7 @@ export function buildCohortInviteEmail(params: CohortInviteParams): EmailBody {
 
   const text = `${groupName} is forming.
 
-We've built a ${programTitle} group around your level and the availability you gave us.
+We've built ${withArticle(programTitle)} group around your level and the availability you gave us.
 
   Group:    ${cohortLabel}
   Schedule: ${dayTimeLabel} · ${weeks} week${weeks === 1 ? "" : "s"}

@@ -229,6 +229,12 @@ for (const [name, build] of EMAILS) {
 {
   const complete = buildAssessmentCompleteEmail({ name: "Maya Chen", levelLabel: "4.0", coachNote: "Good feet." });
   check("assessment complete: the tier sentence takes no article", complete.text.includes("You're in the Advanced tier.") && !/You're an? (Advanced|Intermediate|Elite)\b/.test(complete.html));
+  const [, buildInvite] = EMAILS.find(([n]) => n === "cohort invitation")!;
+  const invite = buildInvite();
+  check(
+    'cohort invitation: "an Adult Bootcamps group", HTML and text alike',
+    invite.html.includes("We've built an Adult Bootcamps group") && invite.text.includes("We've built an Adult Bootcamps group") && !/built a Adult/.test(invite.html + invite.text),
+  );
 }
 
 // ── 3. The coach title ──────────────────────────────────────────────────────
