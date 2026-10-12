@@ -183,6 +183,7 @@ check("LocationLine: name · area · map link", line.includes(`>${NAME}</span>`)
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("program pages show the location with its map link", detail.includes("<LocationLine key={l.id} location={l} mapLink") && detail.includes("locationsForProgram(program.slug)"));
 check("program pages: the cohort list names the club, not a stand-in", detail.includes("At {programLocations.map(locationLine).join(\" and \")}.") && !detail.includes("VENUE_LINE"));
+check("program pages: the cohort list keeps the neutral club-membership line (D19)", detail.includes("<p>{membershipNote()}</p>"));
 
 console.log("Home: Our location");
 const home = read("src/app/page.tsx");
@@ -212,6 +213,10 @@ const summary = wizard.slice(at(wizard, "function OrderSummary("), at(wizard, "f
 check("the summary resolves the cohort's location", summary.includes("const location = locationForCohort(cohort);"));
 check("the Location box is the first fact, before the plate and the program", at(summary, ">Location</p>") > 0 && at(summary, ">Location</p>") < at(summary, "<ProgramPlate") && at(summary, ">Location</p>") < at(summary, "{program?.title ?? cohort.programId}"));
 check("with the club's name, area and map link", summary.includes("{location.name}") && summary.includes("{location.area}") && summary.includes("<MapLink location={location}"));
+check(
+  "the neutral club-membership line sits under the Location box, before the plate (D19)",
+  at(summary, "{membershipNote()}") > at(summary, "<MapLink location={location}") && at(summary, "{membershipNote()}") < at(summary, "<ProgramPlate")
+);
 const confirmed = read("src/app/enroll/[cohortId]/confirmed/page.tsx");
 check("the confirmation lists the Location first", at(confirmed, ">Location</span>") > 0 && at(confirmed, ">Location</span>") < at(confirmed, ">Program</span>") && confirmed.includes("{location.name}"));
 const block = render(createElement(LocationBlock, { location: club! }));

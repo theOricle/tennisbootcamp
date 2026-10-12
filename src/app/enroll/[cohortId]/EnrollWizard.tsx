@@ -6,6 +6,7 @@ import type { Cohort } from "@/types/cohort";
 import type { Program } from "@/types/program";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
 import { locationForCohort } from "@/content/locations";
+import { membershipNote } from "@/lib/membership";
 import { COOLING_OFF_DAYS } from "@/content/policies";
 import { trackEvent, trackEnrollStart } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
@@ -239,19 +240,24 @@ function OrderSummary({
   return (
     <div className="space-y-5">
       {/* Where, first (owner, 2026-10-12: enrollment shows the location
-          first). One location today, so it is a fact, not a choice. */}
-      {location && (
-        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Location</p>
-          <div className="flex flex-wrap items-center justify-between gap-x-4">
-            <div className="min-w-0 py-1">
-              <p className="text-base font-semibold text-white">{location.name}</p>
-              <p className="text-xs text-white/60">{location.area}</p>
+          first). One location today, so it is a fact, not a choice. The
+          neutral club-membership line sits under it, so a player sees the
+          hint about club requirements before paying (D19, locked). */}
+      <div>
+        {location && (
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Location</p>
+            <div className="flex flex-wrap items-center justify-between gap-x-4">
+              <div className="min-w-0 py-1">
+                <p className="text-base font-semibold text-white">{location.name}</p>
+                <p className="text-xs text-white/60">{location.area}</p>
+              </div>
+              <MapLink location={location} className={TEXT_LINK_LIME} />
             </div>
-            <MapLink location={location} className={TEXT_LINK_LIME} />
           </div>
-        </div>
-      )}
+        )}
+        <p className="mt-2 text-xs text-white/60">{membershipNote()}</p>
+      </div>
 
       {/* The program's Court Plate (design specs §4.8): the strip frame,
           profiled by the cohort's band and side-picked by its id. Visual

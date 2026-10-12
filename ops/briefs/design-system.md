@@ -248,8 +248,8 @@ The club is data (`src/content/locations.ts`: id, name, area, and a Google Maps 
 
 - `LocationLine`: the pin (lime, 16px), the name in white semibold, " · " and the area in white/70, and on pages the inline "Open in Google Maps ↗" link (program page hero). `LocationBlock`: the same stacked for a narrow column, the map link a standalone 44px link (dashboard "Where we train"). `MapLink`: the link itself, `target="_blank" rel="noopener noreferrer"`, its accessible name naming the club and the new tab.
 - `LocationChoice`: the `/programs` chooser (above). `LocationSection`: the home page's "Our location", a standard card with the pin in a 44px lime-tint disc, the name (`h3`), the area, the one honest line, and the map link on the right from md.
-- `/locations` ("Our Locations"): a header band, then one card per club in a `5fr/7fr` grid (the club, the map link, the honest line and a secondary "Browse Programs"; then "What runs here", each program a link with its groups and times on hairlines), the neutral club-membership line, and the quiz band.
-- The enroll summary opens with a **Location** box (label, name, area, map link) above the plate; the confirmation's detail list starts with Location.
+- `/locations` ("Our Locations"): a header band, then one card per club in a `5fr/7fr` grid (the club, the map link and a secondary "Browse Programs"; then "What runs here", each program a link with its groups and times on hairlines), the neutral club-membership line, and the quiz band.
+- The enroll summary opens with a **Location** box (label, name, area, map link) above the plate, the neutral club-membership line (`membershipNote()`) under it; the confirmation's detail list starts with Location.
 - Structured data: a `Place` (name, and a `PostalAddress` of locality, province and country only) in the Organization's `areaServed` and on each `CourseInstance` (`placeJsonLd()`, `src/lib/structuredData.ts`).
 
 ## Anti-patterns — do NOT use

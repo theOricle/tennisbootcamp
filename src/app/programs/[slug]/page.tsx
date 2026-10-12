@@ -22,6 +22,7 @@ import {
 import { getPublicCohorts } from "@/lib/cohortsDb";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { locationLine } from "@/content/locations";
+import { membershipNote } from "@/lib/membership";
 import { locationsForProgram } from "@/lib/locationCatalog";
 import { LocationLine } from "@/components/locations/LocationLine";
 import { agesChipLabel, nextCohortForGroup, programLevelRange } from "@/lib/programCatalog";
@@ -374,11 +375,16 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 /* Available: cohort cards from Supabase */
                 <div>
                   <h2 id="cohorts" className="mb-2 text-xl font-semibold text-white">Upcoming cohorts</h2>
-                  {programLocations.length > 0 && (
-                    <p className="mb-6 text-sm text-white/60">
-                      At {programLocations.map(locationLine).join(" and ")}.
-                    </p>
-                  )}
+                  {/* Where the cohorts train, then the neutral club-membership
+                      line (D19, locked) that stood here before the club was named. */}
+                  <div className="mb-6 space-y-1 text-sm text-white/60">
+                    {programLocations.length > 0 && (
+                      <p>
+                        At {programLocations.map(locationLine).join(" and ")}.
+                      </p>
+                    )}
+                    <p>{membershipNote()}</p>
+                  </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     {openCohorts.map((cohort) => {
