@@ -97,7 +97,7 @@ check(
 );
 // A visitor who came from the Private Lessons card or page (?program=private-lessons)
 // sees Private Lessons: the result screen, the household screen, the email
-// and Sheet column 20 all read the first match alone.
+// and Sheet column 17 (recommended_program) all read the first match alone.
 check(
   "?program=private puts Private Lessons first, the group program second",
   JSON.stringify(ids({ ...base, who: "adult", ageBand: "adult", level: "rally", programs: ["private"] })) === JSON.stringify(["private-lessons", "bootcamps"])

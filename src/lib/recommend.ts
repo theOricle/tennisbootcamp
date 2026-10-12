@@ -49,8 +49,9 @@ export type Recommendation = {
 //   adult            → Adult Bootcamps (id "bootcamps"), the group by level
 //   "private" chosen → Private Lessons first, then the group program: every
 //                      surface (the result screen, the household screen, the
-//                      email, Sheet column 20) reads recommendations[0] alone,
-//                      so a visitor who asked about private lessons sees them
+//                      email, Sheet column 17 (recommended_program)) reads
+//                      recommendations[0] alone, so a visitor who asked about
+//                      private lessons sees them
 // Retired programs are never recommended.
 
 function isYouth(form: IntakeFormSnapshot): boolean {
@@ -183,4 +184,14 @@ export function recommendationHref(rec: Pick<Recommendation, "program" | "groups
 export function groupSummaryLine(g: ProgramGroup): string {
   const ages = g.ageMin === null && g.ageMax === null ? "Any age" : g.ageMax === null ? `Ages ${g.ageMin} and up` : `Ages ${g.ageMin}–${g.ageMax}`;
   return `${formatGroupWhen(g)} · ${ages}`;
+}
+
+/**
+ * The match card's label for its group rows: "Group" for one scheduled
+ * group, "Lesson" for the one arranged with the player (private lessons are
+ * one-to-one, never a group), "Groups" for several.
+ */
+export function matchGroupsLabel(groups: Pick<ProgramGroup, "day">[]): string {
+  if (groups.length !== 1) return "Groups";
+  return groups[0].day ? "Group" : "Lesson";
 }

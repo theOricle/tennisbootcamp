@@ -37,7 +37,7 @@ import {
   resultsLine,
   tierQueryFor,
 } from "../lib/programFilters";
-import { groupSummaryLine, groupsFor, recommendPrograms, recommendationHref } from "../lib/recommend";
+import { groupSummaryLine, groupsFor, matchGroupsLabel, recommendPrograms, recommendationHref } from "../lib/recommend";
 import { TIERS, tierById } from "../lib/tiers";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { ProgramCatalogView, type CatalogProgram } from "../components/sections/ProgramCatalog";
@@ -202,9 +202,10 @@ check("the High Performance reason names its day and start", hpReason.includes("
 check("a one-group youth reason leads with the group, the day and the start", rec("teen", "new")[0].reason.startsWith("Ages 11–15 group, Saturday at 1:00"), rec("teen", "new")[0].reason);
 check("groupsFor never returns an empty list", listedPrograms.every((p) => groupsFor(p, { ...base, ageBand: "junior", level: "elite" }).length > 0));
 check("groupSummaryLine", groupSummaryLine(g("high-performance")) === "Saturdays 2:00–3:00 pm · Ages 12–17" && groupSummaryLine(g("adult-newer")) === "Sundays 4:00–5:00 pm · Ages 16 and up" && groupSummaryLine(g("private-lessons")) === "By arrangement · Any age");
+check("matchGroupsLabel: one scheduled group → Group, private lessons → Lesson (never a group), several → Groups", matchGroupsLabel([g("high-performance")]) === "Group" && matchGroupsLabel([g("private-lessons")]) === "Lesson" && matchGroupsLabel(rec("adult")[0].groups) === "Groups", matchGroupsLabel([g("private-lessons")]));
 check("recommendationHref: one scheduled group → its card; several → the program; private lessons → the page, no anchor", recommendationHref(rec("teen", "elite")[0]) === "/programs/youth-programs#high-performance" && recommendationHref(rec("junior", "new")[0]) === "/programs/youth-programs" && recommendationHref(rec("adult", "rally", ["private"])[0]) === "/programs/private-lessons", recommendationHref(rec("adult", "rally", ["private"])[0]));
 const intake = read("src/app/intake/page.tsx");
-check("the quiz's match card lists the groups and links through recommendationHref", intake.includes("const href = recommendationHref(rec);") && intake.includes("groupSummaryLine(g)"));
+check("the quiz's match card lists the groups, labels them through matchGroupsLabel and links through recommendationHref", intake.includes("const href = recommendationHref(rec);") && intake.includes("groupSummaryLine(g)") && intake.includes("{matchGroupsLabel(groups)}") && !intake.includes('? "Group" : "Groups"'));
 check("Browse Programs on a one-player result opens the filtered catalog", intake.includes("<ResultLinks catalogHref={quizCatalogHref(result.ageBand, tier)} />"));
 check("?program=private-lessons seeds the private option", intake.includes('"private-lessons": "private"') && !intake.includes('"kids-summer-camp"'));
 

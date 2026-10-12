@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { groupSummaryLine, recommendPrograms, recommendationHref, type Recommendation } from "@/lib/recommend";
+import { groupSummaryLine, matchGroupsLabel, recommendPrograms, recommendationHref, type Recommendation } from "@/lib/recommend";
 import { quizCatalogHref } from "@/lib/programFilters";
 import { trackEvent, trackAssessmentCtaClick } from "@/lib/analytics";
 import { useBotCheck } from "@/lib/useBotCheck";
@@ -245,7 +245,7 @@ function ProgramMatchCard({ rec }: { rec: Recommendation }) {
         {groups.length > 0 && (
           <>
             <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60 pt-0.5">
-              {groups.length === 1 ? "Group" : "Groups"}
+              {matchGroupsLabel(groups)}
             </dt>
             <dd className="text-white/90">
               <ul role="list" className="space-y-1">
