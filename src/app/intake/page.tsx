@@ -45,10 +45,14 @@ import {
 } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { TextLink } from "@/components/ui/TextLink";
+import { TrackedButton } from "@/components/ui/TrackedButton";
+import { rememberQuizTaken, useQuizStatus } from "@/lib/useQuizStatus";
+import { ADD_PLAYER_LABEL, RETAKE_QUIZ_LABEL } from "@/lib/quizStatus";
 import {
   WhoIsThisFor,
   useHousehold,
   EMPTY_HOUSEHOLD,
+  emptyGuest,
   householdIssues,
   householdPeople,
   type HouseholdValue,
@@ -356,6 +360,73 @@ function LikelyTierBlock({ tier, firstName }: { tier: Tier | null; firstName?: s
 }
 
 const OUTLINE_BUTTON = `inline-flex min-h-[48px] items-center justify-center rounded-full border border-[#B4E655]/60 px-6 py-3 text-sm font-semibold text-[#B4E655] transition hover:border-[#B4E655] hover:bg-[#B4E655]/10 ${FOCUS_RING}`;
+
+/** The outline secondary (design-system.md), as a native button. */
+const SECONDARY_BUTTON = `inline-flex min-h-[44px] items-center justify-center rounded-full border border-white/25 px-6 py-3 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white ${FOCUS_RING}`;
+
+/**
+ * The quiz-taker's panel (owner, 2026-10-12): someone this device, or this
+ * account, already took the quiz for is told so instead of being asked
+ * again — with their next step, "Add another player" (the wizard opens on a
+ * child's block) and "Retake the quiz" (the wizard as it is; a retake still
+ * writes an ordinary Sheet row, the /api/intake contract unchanged). The
+ * links `?add=1` and `?retake=1` skip this panel.
+ */
+function AlreadyTakenPanel({
+  playerCount,
+  onAdd,
+  onRetake,
+}: {
+  playerCount: number;
+  onAdd: () => void;
+  onRetake: () => void;
+}) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useFocusOnMount(headingRef);
+  // A household reads by its count; the device flag knows no names.
+  const whom = playerCount > 1 ? `your ${playerCount} players` : "you";
+  return (
+    <main className="min-h-screen bg-[#061427] text-white">
+      <div className="mx-auto max-w-2xl px-6 pt-6 md:py-14">
+        <div className="mb-4 flex items-center justify-between md:mb-8">
+          <TextLink href="/">← Home</TextLink>
+        </div>
+        <div className={RESULT_CARD}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
+            The 2-minute quiz
+          </p>
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="mt-2 text-2xl font-semibold focus:outline-none md:text-3xl"
+          >
+            You&apos;ve already taken the quiz.
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-white/70">
+            Your answers are in, and our coaches place {whom} by level and schedule from them.
+            There is nothing else you need to do unless something changed.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            {/* Reads "See your groups", or "Open your dashboard" when signed in. */}
+            <TrackedButton variant="primary" href="/intake" track="quiz" source="intake-taken">
+              Take the 2-minute quiz
+            </TrackedButton>
+            <button type="button" onClick={onAdd} className={SECONDARY_BUTTON}>
+              {ADD_PLAYER_LABEL}
+            </button>
+            <button type="button" onClick={onRetake} className={SECONDARY_BUTTON}>
+              {RETAKE_QUIZ_LABEL}
+            </button>
+          </div>
+          <p className="mt-4 text-xs text-white/60">
+            Adding a player or retaking the quiz sends us a fresh set of answers; the ones on file
+            stay as they are until our coaches read the new ones.
+          </p>
+        </div>
+      </div>
+    </main>
+  );
+}
 
 /** The result screen's chrome: the wizard card, flat on phones (audit L10). */
 const RESULT_CARD =
@@ -702,11 +773,24 @@ function IntakePageInner() {
   };
   const preselectedProgram =
     programParam && slugToOptionId[programParam] ? [slugToOptionId[programParam]] : [];
+  // "Add another player" (the dashboard, the panel below): the wizard opens
+  // on a child's block. "Retake" (`?retake=1`) opens the wizard as it is.
+  const addMode = searchParams.has("add");
+  const skipTakenPanel = addMode || searchParams.has("retake");
+
+  // A quiz-taker on this device or account (owner, 2026-10-12) sees the
+  // panel instead of the first step, unless they chose to add or retake.
+  const quiz = useQuizStatus();
+  const [panelDismissed, setPanelDismissed] = useState(false);
 
   // A saved draft is restored after the first render (the server never sees
   // sessionStorage), and nothing is written back until it has been read.
   const [draftChecked, setDraftChecked] = useState(false);
   const restoredDraft = useRef(false);
+  // A restored draft with real progress — past the first step, a player
+  // named, a time picked — is a half-finished quiz the panel below must
+  // never hide. An untouched draft (every visit to /intake writes one) is not.
+  const draftInProgress = useRef(false);
 
   const [stepIndex, setStepIndex] = useState(0);
   // Bot protection (backlog #25): honeypot + time since the quiz rendered.
@@ -724,7 +808,7 @@ function IntakePageInner() {
 
   const household = useHousehold();
   const [form, setForm] = useState<FormState>({
-    household: EMPTY_HOUSEHOLD,
+    household: addMode ? { ...EMPTY_HOUSEHOLD, guests: [emptyGuest("child")] } : EMPTY_HOUSEHOLD,
     goals: [],
     programs: preselectedProgram,
     // No venue step (backlog #1): court details are confirmed in the booking
@@ -783,6 +867,10 @@ function IntakePageInner() {
       const draft = readDraft();
       if (draft) {
         restoredDraft.current = true;
+        draftInProgress.current =
+          draft.stepIndex > 0 ||
+          draft.form.household.guests.some((g) => g.name.trim().length > 0) ||
+          Object.values(draft.form.availability.days).some((b) => b && b.length > 0);
         setForm(draft.form);
         setStepIndex(draft.stepIndex);
       }
@@ -943,6 +1031,9 @@ function IntakePageInner() {
       }
       trackEvent("intake_complete", { participants: personResults.length });
       writeDraft(null);
+      // The route set the device flag on a submission it wrote (never on a
+      // bot drop); mirror it and wake the chrome (owner, 2026-10-12).
+      rememberQuizTaken();
       setResults(personResults);
       setSubmitted(true);
     } catch (err) {
@@ -1022,6 +1113,32 @@ function IntakePageInner() {
     }
     return (
       <HouseholdMatchScreen results={results} form={form} signedIn={household.signedIn} />
+    );
+  }
+
+  // ── Already taken ─────────────────────────────────────────────────────────
+  // Only once the draft has been checked (a half-finished quiz is never
+  // hidden behind the panel) and on the first step, untouched.
+  if (
+    quiz.state === "taken" &&
+    !skipTakenPanel &&
+    !panelDismissed &&
+    draftChecked &&
+    !draftInProgress.current &&
+    stepIndex === 0
+  ) {
+    return (
+      <AlreadyTakenPanel
+        playerCount={quiz.playerCount}
+        onAdd={() => {
+          setForm((s) => ({
+            ...s,
+            household: { ...s.household, guests: [emptyGuest("child")] },
+          }));
+          setPanelDismissed(true);
+        }}
+        onRetake={() => setPanelDismissed(true)}
+      />
     );
   }
 

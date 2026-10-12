@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { TrackedButton } from "@/components/ui/TrackedButton";
 import { TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import { coaches } from "@/content/coaches";
@@ -191,9 +192,10 @@ export default function AboutPage() {
               </p>
             </div>
             <div className="mt-6 flex flex-wrap gap-3 md:mt-0 md:shrink-0">
-              <Button variant="primary" href="/intake">
+              {/* A quiz-taker's button reads their next step (owner, 2026-10-12). */}
+              <TrackedButton variant="primary" href="/intake" track="quiz" source="about-closing">
                 Take the 2-minute quiz
-              </Button>
+              </TrackedButton>
               <Button variant="secondary" href="/programs">
                 Browse Programs
               </Button>

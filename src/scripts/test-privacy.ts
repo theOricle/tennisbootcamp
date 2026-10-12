@@ -22,6 +22,7 @@ import {
   buildEtransferInstructionsEmail,
   buildPaymentReceivedEmail,
   buildEnrolledEmail,
+  buildAccountSetupEmail,
   buildEtransferPendingAdminEmail,
   buildPaymentUnmatchedAdminEmail,
 } from "../lib/emailBodies";
@@ -360,6 +361,17 @@ const NO_FOOTER_EMAILS: [string, () => EmailBody][] = [
   [
     "password/activation link",
     () => buildLinkEmail("Set your password", "https://tennisbootcamp.ca/auth/x", "set your password"),
+  ],
+  [
+    "set up your account (guest enrollment activation link)",
+    () =>
+      buildAccountSetupEmail({
+        playerNames: ["Maya Chen"],
+        programTitle: "Adult Bootcamps",
+        cohortLabel: "Fall A",
+        paid: true,
+        link: "https://tennisbootcamp.ca/auth/x",
+      }),
   ],
   [
     "assessment request → Sina",

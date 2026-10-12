@@ -55,7 +55,9 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
 
   // Audit H5: an email that already had an account gets no activation link
   // any more — the enrollment is linked to that account and the email says
-  // so — so the steps only promise what each visitor will actually get.
+  // so — so the steps only promise what each visitor will actually get. A
+  // guest (owner, 2026-10-12) is told to check their email for the link
+  // that sets up the account, and what the dashboard will show them.
   const nextSteps = [
     ...(viaEtransfer
       ? ["Send the e-transfer if you haven't yet — the amount, address, and message are in your email."]
@@ -65,8 +67,8 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
           "This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date.",
         ]
       : [
-          "Check your email. First time with us? You'll get a link to set your password. Already have an account? You'll get a note that this enrollment is on it.",
-          "Sign in to your dashboard to see your sessions and enrollment history.",
+          "Check your email for the link to set up your account: it names the players you enrolled and sets your password. Already signed in to an account with this email before? You'll get a note that this enrollment is on it instead.",
+          "Your dashboard then shows this enrollment, each player's level once our coaches set it, the weekly slot and, once the group is set, every session date.",
         ]),
     viaEtransfer
       ? "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email."

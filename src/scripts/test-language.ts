@@ -38,6 +38,7 @@ import {
   buildEtransferInstructionsEmail,
   buildPaymentReceivedEmail,
   buildEnrolledEmail,
+  buildAccountSetupEmail,
 } from "../lib/emailBodies";
 import { senderLine } from "../lib/casl";
 
@@ -215,6 +216,7 @@ const EMAILS: [string, () => EmailBody][] = [
   ],
   ["payment received", () => buildPaymentReceivedEmail({ programTitle: "Adult Bootcamps", cohortLabel: "Fall A", amountCents: 21000 })],
   ["you're enrolled", () => buildEnrolledEmail({ name: "Maya Chen", programTitle: "Adult Bootcamps", cohortLabel: "Fall A", paid: false })],
+  ["set up your account", () => buildAccountSetupEmail({ playerNames: ["Maya Chen", "Leo Chen"], programTitle: "Youth Bootcamps", cohortLabel: "Fall A", paid: false, link: "https://tennisbootcamp.ca/auth/x" })],
 ];
 check('the sign-off is "The Tennis Bootcamp coaching team"', SIGN_OFF_NAME === "The Tennis Bootcamp coaching team");
 const SENDER = senderLine();

@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
-import type { Program } from "@/types/program";
+import type { Program, ProgramGroup } from "@/types/program";
+import type { AgeBand } from "@/lib/ageBand";
 import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
 import { locationForCohort } from "@/content/locations";
 import { membershipNote } from "@/lib/membership";
 import { COOLING_OFF_DAYS } from "@/content/policies";
+import { RIGHT_GROUP_PROMISE_SHORT } from "@/content/programs";
 import { trackEvent, trackEnrollStart } from "@/lib/analytics";
 import { TierRangeBadges } from "@/components/tiers";
 import { ProgramPlate } from "@/components/plates/ProgramPlate";
@@ -17,9 +19,23 @@ import {
   WhoIsThisFor,
   useHousehold,
   EMPTY_HOUSEHOLD,
+  emptyGuest,
   householdIssues,
+  isRelationshipValue,
   type HouseholdValue,
+  type ParticipantOption,
 } from "@/components/participants/WhoIsThisFor";
+import {
+  ageBandBlock,
+  dobAgeError,
+  groupAgesLabel,
+  invitedLockReasons,
+  levelNote,
+  pickedButBlockedIssue,
+  rightGroupHref,
+  seatCapIssue,
+  type BlockedPlayer,
+} from "@/lib/enrollPlayers";
 import {
   FIELD_MESSAGES,
   emailError,
@@ -61,6 +77,21 @@ const ETRANSFER_STEPS = 5;
 export type EtransferInfo = {
   recipientEmail: string;
   creditCents: number; // unused assessment credit that comes off the price
+};
+
+/**
+ * The player an invitation names (migration 0007). On the signed-in
+ * account that owns them the chooser locks to them; signed out, the typed
+ * block starts on them and the sign-in line brings their account back.
+ */
+export type InvitedPlayer = {
+  id: string;
+  name: string | null;
+  relationship: string;
+  isMinor: boolean;
+  ageBand: AgeBand | null;
+  /** True when the signed-in account owns this player. */
+  onAccount: boolean;
 };
 
 function moneyCAD(cents: number): string {
@@ -177,8 +208,10 @@ function TextInput({
 
 /** Field ids, so a press of Continue can focus the first problem. */
 const FIELD_IDS = {
+  who: "enroll-who",
   player: (key: string) => `enroll-player-${key}`,
   dob: (key: string) => `enroll-dob-${key}`,
+  guestAge: (key: string) => `guest-${key}-age`,
   email: "enroll-email",
   phone: "enroll-phone",
   guardianName: "enroll-guardian-name",
@@ -364,6 +397,7 @@ function RegistrantStep({
   cohortId,
   onEnterSubmit,
   errors,
+  group,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
@@ -375,6 +409,7 @@ function RegistrantStep({
   cohortId: string;
   onEnterSubmit: () => void;
   errors: Record<string, string>;
+  group: ProgramGroup | null;
 }) {
   return (
     // An explicit action keeps the invite token out of GA's form_destination
@@ -423,6 +458,7 @@ function RegistrantStep({
               id={FIELD_IDS.dob(player.key)}
               label="Date of birth"
               error={errors[FIELD_IDS.dob(player.key)]}
+              hint={group && groupAgesLabel(group) ? `This group takes ages ${groupAgesLabel(group)}.` : undefined}
             >
               <TextInput
                 id={FIELD_IDS.dob(player.key)}
@@ -437,8 +473,18 @@ function RegistrantStep({
                 }
                 required
                 error={errors[FIELD_IDS.dob(player.key)]}
+                hint={Boolean(group && groupAgesLabel(group))}
               />
             </FieldGroup>
+            {/* The right groups are a link away only when the problem IS the
+                age: a missing or malformed date gets no detour. */}
+            {errors[FIELD_IDS.dob(player.key)] &&
+              group &&
+              dobAgeError(group, computeAge(player.dob)) && (
+                <Link href={rightGroupHref(null, group.locationId)} className={TEXT_LINK_LIME}>
+                  See the groups for their age →
+                </Link>
+              )}
           </fieldset>
         ))}
       </div>
@@ -533,6 +579,9 @@ function RegistrantStep({
           </div>
         </fieldset>
       )}
+
+      {/* No password is asked for here (fix round 2): a guest enrolls, and the
+          set-up email after the enrollment opens their account. */}
       {/* Enables Enter-to-advance from any field; the visible CTA lives in the footer */}
       <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
         Continue
@@ -765,17 +814,41 @@ const STEP_SUBTITLES = [
   "Your spot is held while the coach confirms the transfer arrived.",
 ];
 
+/** The guest block an invitation for a named player starts on (signed out). */
+function guestFromInvited(invited: InvitedPlayer | null): HouseholdValue {
+  if (!invited || invited.onAccount) return EMPTY_HOUSEHOLD;
+  const relationship = isRelationshipValue(invited.relationship) ? invited.relationship : "self";
+  const guest = emptyGuest(relationship);
+  return {
+    ...EMPTY_HOUSEHOLD,
+    guests: [
+      {
+        ...guest,
+        name: invited.name?.trim() ?? "",
+        ageBand: invited.ageBand ?? guest.ageBand,
+        isMinor: invited.ageBand ? invited.ageBand !== "adult" : invited.isMinor,
+      },
+    ],
+  };
+}
+
 export function EnrollWizard({
   cohort,
   program,
+  group = null,
   seatsRemaining,
   inviteToken = null,
   initialEmail = null,
   etransfer = null,
   eligibleParticipantIds = null,
+  blocked = [],
+  invited = null,
+  signInHref,
 }: {
   cohort: Cohort;
   program: Program | undefined;
+  /** The group this cohort trains in (its ages), or null when none matches. */
+  group?: ProgramGroup | null;
   seatsRemaining: number | null;
   inviteToken?: string | null;
   initialEmail?: string | null;
@@ -786,6 +859,12 @@ export function EnrollWizard({
    * be picked; null means everyone on the account may be.
    */
   eligibleParticipantIds?: string[] | null;
+  /** Players on the account already in this cohort, with the reason (owner, 2026-10-12). */
+  blocked?: BlockedPlayer[];
+  /** The player the invitation names, when it names one. */
+  invited?: InvitedPlayer | null;
+  /** Where "Sign in to choose your player" goes: back here, token kept. */
+  signInHref: string;
 }) {
   const totalSteps = etransfer ? ETRANSFER_STEPS : CARD_STEPS;
   const [step, setStep] = useState(0);
@@ -796,7 +875,7 @@ export function EnrollWizard({
 
   // Who is this for? (backlog #11) One seat per player, one payment.
   const household = useHousehold();
-  const [who, setWho] = useState<HouseholdValue>(EMPTY_HOUSEHOLD);
+  const [who, setWho] = useState<HouseholdValue>(() => guestFromInvited(invited));
   const [dobs, setDobs] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -860,10 +939,76 @@ export function EnrollWizard({
   const isMinor = players.some(
     (p) => p.isMinor || ((a) => a !== null && a < 18)(computeAge(p.dob))
   );
+
+  // Who on the account cannot take a seat here, and why (owner, 2026-10-12):
+  // already in this cohort, outside the group's ages, or not the player the
+  // invitation names. The level band is the chooser's own rule (eligibleIds).
+  const lockedIds = invited?.onAccount ? [invited.id] : undefined;
+  const disabledReasons: Record<string, string> = {
+    ...invitedLockReasons(household.participants, invited?.onAccount ? invited.id : null),
+  };
+  for (const b of blocked) disabledReasons[b.id] = b.reason;
+  if (group) {
+    for (const p of household.participants) {
+      const band: AgeBand | null = p.ageBand ?? null;
+      const reason = ageBandBlock(group, band);
+      if (reason && !disabledReasons[p.id]) disabledReasons[p.id] = reason;
+    }
+  }
+  // The bands the chooser's disabled rows point at, for "See the groups for their age".
+  const blockedBands = group
+    ? household.participants
+        .filter((p) => p.ageBand && ageBandBlock(group, p.ageBand))
+        .map((p) => p.ageBand as AgeBand)
+    : [];
+
+  /** Where each chosen player stands against the cohort's band, when there is something to say. */
+  const levelNotes = household.signedIn
+    ? who.selectedIds
+        .map((id) => household.participants.find((p) => p.id === id))
+        .filter((p): p is ParticipantOption => Boolean(p))
+        .map((p) =>
+          levelNote(
+            { name: p.name?.trim() || "This player", level: p.level, selfLevel: p.selfLevel ?? null },
+            { min: cohort.levelMin, max: cohort.levelMax }
+          )
+        )
+        .filter((n): n is string => Boolean(n))
+    : [];
+
   /** What stops the current step, one issue per field, in screen order. */
   function stepIssues(): FieldIssue[] {
     if (step === 1) {
-      return householdIssues(who, household.signedIn, household.participants);
+      const out = householdIssues(who, household.signedIn, household.participants);
+      // A typed player outside the group's ages is stopped on their band,
+      // with the right groups a link away (owner, 2026-10-12).
+      if (!household.signedIn && group) {
+        for (const g of who.guests) {
+          if (!g.name.trim()) continue;
+          const reason = ageBandBlock(group, g.ageBand);
+          if (reason) {
+            out.push({
+              id: FIELD_IDS.guestAge(g.key),
+              message: `${g.name.trim()} is outside this group's ages (${groupAgesLabel(group)}). Pick the group for their age below, or change the age group.`,
+            });
+          }
+        }
+      }
+      // A chosen player who carries a reason not to take a seat — a player
+      // added a moment ago whose age band is outside the group, once the
+      // account reloaded — stops the step here, with the reason. The
+      // chooser never picks a disabled row itself; this closes the gap.
+      if (household.signedIn) {
+        for (const id of who.selectedIds) {
+          const reason = disabledReasons[id];
+          if (!reason) continue;
+          const p = household.participants.find((x) => x.id === id);
+          out.push({ id: FIELD_IDS.who, message: pickedButBlockedIssue(p?.name, reason) });
+        }
+      }
+      const seats = seatCapIssue(seatsRemaining, players.length);
+      if (seats) out.push({ id: FIELD_IDS.who, message: seats });
+      return out;
     }
     if (step === 2) {
       const out: FieldIssue[] = [];
@@ -874,8 +1019,14 @@ export function EnrollWizard({
           out.push({ id: FIELD_IDS.player(p.key), message: FIELD_MESSAGES.playerNameMissing });
         }
         const id = FIELD_IDS.dob(p.key);
+        const age = computeAge(p.dob);
         if (!p.dob) out.push({ id, message: FIELD_MESSAGES.dobMissing });
-        else if (computeAge(p.dob) === null) out.push({ id, message: FIELD_MESSAGES.dobInvalid });
+        else if (age === null) out.push({ id, message: FIELD_MESSAGES.dobInvalid });
+        else {
+          // The exact age against the group's range (owner, 2026-10-12).
+          const outside = dobAgeError(group, age);
+          if (outside) out.push({ id, message: outside });
+        }
       }
       if (!household.signedIn) {
         const e = emailError(form.contactEmail);
@@ -912,6 +1063,9 @@ export function EnrollWizard({
   const contactEmail = household.signedIn
     ? household.accountEmail || form.contactEmail
     : form.contactEmail;
+
+  /** The holder's own name: the guardian, else the first player (themselves). */
+  const holderName = isMinor ? form.guardianName : players[0]?.name ?? "";
 
   function enrollmentMeta(consentAgreedAt: string) {
     const first = players[0];
@@ -962,7 +1116,7 @@ export function EnrollWizard({
         participantName: players[0]?.name ?? form.participantName,
         participantDob: players[0]?.dob ?? form.participantDob,
         isMinor,
-        accountName: isMinor ? form.guardianName : players[0]?.name ?? "",
+        accountName: holderName,
         contactEmail,
         contactPhone: form.contactPhone,
         guardianName: isMinor ? form.guardianName : "",
@@ -1111,7 +1265,7 @@ export function EnrollWizard({
 
   // Continue is always enabled (audit M19): pressing it with gaps shows each
   // problem by its field, lists them under the button and focuses the first.
-  function next() {
+  async function next() {
     if (submitting) return;
     const found = stepIssues();
     if (found.length > 0) {
@@ -1164,6 +1318,14 @@ export function EnrollWizard({
     ctaLabel = "Continue →";
   }
 
+  const whoIntro = invited?.onAccount
+    ? `This invitation is for ${invited.name?.trim() || "one player"}. Their seat is picked for you.`
+    : invited && !household.signedIn
+      ? `This invitation is for ${invited.name?.trim() || "one player"}. Have an account? Sign in below to choose from your players.`
+      : eligibleParticipantIds
+        ? "This group is for players inside its level band. Every player takes their own seat."
+        : "Every player takes their own seat. Add everyone now and pay once.";
+
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-6 py-10 md:py-14">
@@ -1210,19 +1372,53 @@ export function EnrollWizard({
             />
           )}
           {step === 1 && (
-            <WhoIsThisFor
-              household={household}
-              value={who}
-              onChange={setWho}
-              multiple
-              intro={
-                eligibleParticipantIds
-                  ? "This group is for players inside its level band. Every player takes their own seat."
-                  : "Every player takes their own seat. Add everyone now and pay once."
-              }
-              eligibleIds={eligibleParticipantIds}
-              errors={errors}
-            />
+            // The block takes focus when the seat rule stops the step.
+            <div
+              id={FIELD_IDS.who}
+              tabIndex={-1}
+              aria-describedby={errors[FIELD_IDS.who] ? errorIdFor(FIELD_IDS.who) : undefined}
+              className={`space-y-4 rounded-2xl ${FOCUS_RING}`}
+            >
+              <WhoIsThisFor
+                household={household}
+                value={who}
+                onChange={setWho}
+                multiple={!invited?.onAccount}
+                intro={whoIntro}
+                eligibleIds={eligibleParticipantIds}
+                disabledReasons={disabledReasons}
+                lockedIds={lockedIds}
+                signInHref={signInHref}
+                errors={errors}
+              />
+              <FieldError fieldId={FIELD_IDS.who} message={errors[FIELD_IDS.who]} />
+              {/* Where a chosen player stands against the group's band; the
+                  coach confirms every level on court in week one (joining
+                  flow, owner 2026-10-12). Never a block. */}
+              {levelNotes.length > 0 && (
+                <ul role="list" className="space-y-1 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs leading-relaxed text-white/70">
+                  {levelNotes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              )}
+              {group && groupAgesLabel(group) && (
+                <p className="text-xs text-white/60">
+                  This group takes ages {groupAgesLabel(group)}. {RIGHT_GROUP_PROMISE_SHORT}
+                  {(blockedBands.length > 0 || Object.values(errors).some((m) => m.includes("outside this group's ages"))) && (
+                    <>
+                      {" "}
+                      <Link
+                        href={rightGroupHref(blockedBands[0] ?? null, cohort.locationId)}
+                        className="rounded font-semibold text-[#B4E655] underline-offset-2 hover:underline"
+                      >
+                        See the groups for their age →
+                      </Link>
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
           )}
           {step === 2 && (
             <RegistrantStep
@@ -1234,8 +1430,9 @@ export function EnrollWizard({
               signedIn={household.signedIn}
               accountEmail={household.accountEmail}
               cohortId={cohort.id}
-              onEnterSubmit={next}
+              onEnterSubmit={() => void next()}
               errors={errors}
+              group={group}
             />
           )}
           {step === 3 && (
@@ -1277,7 +1474,7 @@ export function EnrollWizard({
               )}
               <button
                 type="button"
-                onClick={next}
+                onClick={() => void next()}
                 aria-disabled={submitting || undefined}
                 aria-describedby={
                   pressedWithGaps && visibleIssues.length > 1 ? "enroll-missing" : undefined

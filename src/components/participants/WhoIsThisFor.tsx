@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   AGE_BANDS,
@@ -11,6 +12,13 @@ import { SELF_LEVELS, provisionalTierFor } from "@/lib/level";
 import { formatTierLevel } from "@/lib/tiers";
 import { TierLine } from "@/components/tiers";
 import { withHumanFallback, type FieldIssue } from "@/lib/formValidation";
+import { PARTICIPANT_CAP_ERROR } from "@/lib/participantInput";
+import {
+  accountAtCap,
+  matchingPlayer,
+  reusedPlayerNote,
+  twinBlockedNote,
+} from "@/lib/enrollPlayers";
 import {
   FieldError,
   HINT_CLASS,
@@ -39,6 +47,10 @@ import { FOCUS_RING } from "@/components/ui/focus";
 export const RELATIONSHIPS = ["self", "child", "spouse", "other"] as const;
 export type Relationship = (typeof RELATIONSHIPS)[number];
 
+export function isRelationshipValue(x: unknown): x is Relationship {
+  return typeof x === "string" && (RELATIONSHIPS as readonly string[]).includes(x);
+}
+
 export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
   self: "Myself",
   child: "My child",
@@ -65,6 +77,12 @@ export type ParticipantOption = {
    * null/absent when never asked — the chooser then assumes from `isMinor`.
    */
   ageBand?: AgeBand | null;
+  /**
+   * Their own self-estimate from the quiz or a booking (migration 0009), so
+   * a player the coach has not levelled yet shows a provisional tier
+   * (owner, 2026-10-12). Null/absent when never asked.
+   */
+  selfLevel?: string | null;
 };
 
 /** Age + self-estimate for one player, asked wherever a form places them. */
@@ -366,17 +384,23 @@ export function useHousehold(): Household {
 /** The field look is the shared primitive (audit L1, M23). */
 const inputClass = INPUT_CLASS;
 
-/** Age band select — the one place a player's age is asked. */
+/**
+ * Age band select — the one place a player's age is asked. `error` is the
+ * enroll wizard's: a band outside the group's ages stops the step here, with
+ * the right group a link away (owner, 2026-10-12).
+ */
 function AgeBandField({
   id,
   value,
   onChange,
   label = "How old are they?",
+  error,
 }: {
   id: string;
   value: AgeBand;
   onChange: (next: AgeBand) => void;
   label?: string;
+  error?: string | null;
 }) {
   return (
     <div className="grid gap-1.5">
@@ -388,6 +412,7 @@ function AgeBandField({
         value={value}
         onChange={(e) => onChange(e.target.value as AgeBand)}
         className={inputClass}
+        {...fieldA11y(id, { error })}
       >
         {AGE_BANDS.map((b) => (
           <option key={b} value={b} className="bg-[#061427]">
@@ -395,6 +420,7 @@ function AgeBandField({
           </option>
         ))}
       </select>
+      <FieldError fieldId={id} message={error} />
     </div>
   );
 }
@@ -497,25 +523,40 @@ function labelName(p: ParticipantOption): string {
   return p.name?.trim() || "Unnamed player";
 }
 
+/**
+ * The line under a player's name: who they are to the holder, their age
+ * group, and their level — "Novice · 2.5" from the coach, "Provisional:
+ * Novice" from the quiz until the coach confirms it on court in week one
+ * (owner, 2026-10-12), or the one no-level word.
+ */
 function relationshipNote(p: ParticipantOption): string {
   const rel = (RELATIONSHIPS as readonly string[]).includes(p.relationship)
     ? RELATIONSHIP_LABELS[p.relationship as Relationship]
     : "";
-  // "Novice · 2.5", the tier with its level, or the one no-level word.
-  const level = p.level != null ? formatTierLevel(p.level) : "Unranked";
-  return [rel, level].filter(Boolean).join(" · ");
+  const age = p.ageBand ? AGE_BAND_LABELS[p.ageBand] : p.isMinor ? "Under 18" : "";
+  const provisional = p.level == null ? provisionalTierFor(p.selfLevel) : null;
+  const level =
+    p.level != null
+      ? formatTierLevel(p.level)
+      : provisional
+        ? `Provisional: ${provisional.name}`
+        : "Unranked";
+  return [rel, age, level].filter(Boolean).join(" · ");
 }
 
-// ─── Add-a-person (signed in) ─────────────────────────────────────────────────
+// ─── New player (signed in) ───────────────────────────────────────────────────
 
 function AddPersonForm({
   onAdded,
   onCancel,
   requireLevel,
+  participants,
 }: {
-  onAdded: (p: ParticipantOption, profile: ParticipantProfile) => void;
+  onAdded: (p: ParticipantOption, profile: ParticipantProfile, note?: string) => void;
   onCancel: () => void;
   requireLevel: boolean;
+  /** Everyone already on the account, so a typed twin is picked, not added. */
+  participants: readonly ParticipantOption[];
 }) {
   const [fullName, setFullName] = useState("");
   const [relationship, setRelationship] = useState<Relationship>("child");
@@ -538,6 +579,13 @@ function AddPersonForm({
       document.getElementById(nextErrors.name ? "add-person-name" : "add-person-level")?.focus();
       return;
     }
+    // A name already on the account is that player (owner, 2026-10-12: reuse,
+    // and say so) — no request, no twin.
+    const twin = matchingPlayer(participants, fullName);
+    if (twin) {
+      onAdded(twin, { ageBand: twin.ageBand ?? ageBand, selfLevel }, reusedPlayerNote(twin.name ?? fullName));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -551,7 +599,12 @@ function AddPersonForm({
         setError(withHumanFallback(data.error ?? "We couldn't add that person. Try again."));
         return;
       }
-      onAdded(data.participant as ParticipantOption, { ageBand, selfLevel });
+      const added = data.participant as ParticipantOption;
+      onAdded(
+        added,
+        { ageBand, selfLevel },
+        data.reused ? reusedPlayerNote(added.name ?? fullName) : undefined
+      );
     } catch {
       setError(withHumanFallback("We couldn't reach the server. Try again."));
     } finally {
@@ -561,9 +614,9 @@ function AddPersonForm({
 
   return (
     <fieldset className="space-y-3 rounded-2xl border border-[#B4E655]/25 bg-[#B4E655]/5 p-4">
-      <legend className="sr-only">Add a person</legend>
+      <legend className="sr-only">New player</legend>
       <p aria-hidden="true" className="text-sm font-semibold text-white">
-        Add a person
+        New player
       </p>
       <div className="grid gap-1.5">
         <label htmlFor="add-person-name" className={LABEL_CLASS}>
@@ -751,6 +804,7 @@ function GuestBlock({
             ? "How old are you?"
             : "How old are they?"
         }
+        error={errors?.[`${id}-age`]}
       />
       <SelfLevelField
         id={levelId}
@@ -778,6 +832,9 @@ export function WhoIsThisFor({
   intro,
   errors,
   eligibleIds = null,
+  disabledReasons,
+  lockedIds,
+  signInHref = null,
 }: {
   household: Household;
   value: HouseholdValue;
@@ -788,6 +845,24 @@ export function WhoIsThisFor({
    * others show, greyed, with the reason. Null offers everyone.
    */
   eligibleIds?: readonly string[] | null;
+  /**
+   * Players who cannot be picked here, each with the reason shown on their
+   * row (owner, 2026-10-12): already enrolled or invited in this cohort,
+   * outside the group's ages, or not the player an invitation names.
+   */
+  disabledReasons?: Record<string, string>;
+  /**
+   * Players an invitation names: picked from the start and never unticked.
+   * Nobody else can be added alongside them.
+   */
+  lockedIds?: readonly string[];
+  /**
+   * Signed out: the quiet "Have an account? Sign in to choose your player"
+   * line under the typed blocks (owner, 2026-10-12). The guest path stays
+   * the one in front — no sign-in wall; the link brings a returning holder
+   * back to this page.
+   */
+  signInHref?: string | null;
   /** Enroll and the quiz take several people at once; a booking is one slot. */
   multiple?: boolean;
   /**
@@ -812,6 +887,8 @@ export function WhoIsThisFor({
 }) {
   const { loading, signedIn, participants, reload } = household;
   const [adding, setAdding] = useState(false);
+  // "Maya is already on your account, so we picked them." after a typed twin.
+  const [reusedNote, setReusedNote] = useState<string | null>(null);
   // After "+ Add someone", focus lands on the new block's name field so a
   // keyboard or screen-reader user is not left on a button that just moved.
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -821,15 +898,25 @@ export function WhoIsThisFor({
     setFocusKey(null);
   }, [focusKey]);
 
-  const canPick = (id: string) => !eligibleIds || eligibleIds.includes(id);
+  const reasonFor = (id: string): string | null => {
+    if (disabledReasons?.[id]) return disabledReasons[id];
+    if (eligibleIds && !eligibleIds.includes(id)) return "Outside this group's level band";
+    return null;
+  };
+  const canPick = (id: string) => reasonFor(id) === null;
+  const locked = (id: string) => Boolean(lockedIds?.includes(id));
 
-  // Default the selection to the holder themselves once we know who they are
-  // (or, on a level-gated group, the first player inside its band).
+  // Default the selection to the player an invitation names, else the holder
+  // themselves once we know who they are (or, on a level-gated group, the
+  // first player inside its band).
   useEffect(() => {
     if (!signedIn || participants.length === 0) return;
     if (value.selectedIds.length > 0) return;
     const pickable = participants.filter((p) => canPick(p.id));
-    const first = pickable.find((p) => p.relationship === "self") ?? pickable[0];
+    const first =
+      pickable.find((p) => locked(p.id)) ??
+      pickable.find((p) => p.relationship === "self") ??
+      pickable[0];
     if (!first) return;
     onChange({ ...value, selectedIds: [first.id] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -849,18 +936,32 @@ export function WhoIsThisFor({
     }
 
     function toggle(id: string) {
-      if (!canPick(id)) return;
+      // A row that can't take a seat is never picked — but a picked row that
+      // gained its reason afterwards (a player added through "+ New player"
+      // with an age band outside the group, once the account reloaded) can
+      // still be unticked, or the step would never pass (fix round 2).
+      if (!canPick(id) && !value.selectedIds.includes(id)) return;
+      // The invited player stays picked.
+      if (locked(id) && value.selectedIds.includes(id)) return;
       if (multiple) {
         const next = value.selectedIds.includes(id)
           ? value.selectedIds.filter((x) => x !== id)
           : [...value.selectedIds, id];
         onChange({ ...value, selectedIds: next });
+      } else if (!canPick(id)) {
+        // One seat: unticking the blocked player leaves nobody chosen until
+        // the holder picks someone who fits.
+        onChange({ ...value, selectedIds: [] });
       } else {
         onChange({ ...value, selectedIds: [id] });
       }
     }
 
     const chooseError = errors?.[householdFieldIds.choose];
+    // Nobody can be added beside an invited player, inside a level band, or
+    // past the account's cap (backlog #24) — the cap says so.
+    const atCap = accountAtCap(participants.length);
+    const canAdd = !eligibleIds && !(lockedIds && lockedIds.length > 0);
     return (
       <div className="space-y-3">
         {intro && <p className="text-sm text-white/70">{intro}</p>}
@@ -868,6 +969,7 @@ export function WhoIsThisFor({
           {participants.map((p, i) => {
             const selected = value.selectedIds.includes(p.id);
             const pickable = canPick(p.id);
+            const reason = reasonFor(p.id);
             const profile = value.profiles?.[p.id] ?? {
               ageBand: participantAgeBand(p),
               selfLevel: "",
@@ -880,7 +982,9 @@ export function WhoIsThisFor({
                   id={i === 0 ? householdFieldIds.choose : undefined}
                   onClick={() => toggle(p.id)}
                   aria-pressed={selected}
-                  disabled={!pickable}
+                  // A ticked row stays live even once it carries a reason, so
+                  // it can be unticked ("Untick them to continue.").
+                  disabled={!pickable && !selected}
                   {...(i === 0 ? fieldA11y(householdFieldIds.choose, { error: chooseError }) : {})}
                   className={[
                     "flex min-h-[44px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition",
@@ -899,12 +1003,13 @@ export function WhoIsThisFor({
                     <span className="block text-xs text-white/60">
                       {relationshipNote(p)}
                     </span>
-                    {!pickable && (
+                    {!pickable && reason && (
                       // Brighter than the note above so the reason still
                       // reads at 4.5:1 through the row's opacity-60.
-                      <span className="block text-xs text-white/80">
-                        Outside this group&apos;s level band
-                      </span>
+                      <span className="block text-xs text-white/80">{reason}</span>
+                    )}
+                    {pickable && locked(p.id) && (
+                      <span className="block text-xs text-white/80">This invitation is for them</span>
                     )}
                   </span>
                   {/* The state shows as a tick as well as colour (WCAG 1.4.1).
@@ -960,6 +1065,7 @@ export function WhoIsThisFor({
           })}
         </div>
         <FieldError fieldId={householdFieldIds.choose} message={chooseError} />
+        <LiveStatus message={reusedNote ?? ""} visible={Boolean(reusedNote)} className="text-sm text-white/75" />
 
         {addInline ? (
           <>
@@ -1006,15 +1112,31 @@ export function WhoIsThisFor({
               </p>
             )}
           </>
-        ) : eligibleIds ? null : adding ? (
+        ) : !canAdd ? null : atCap ? (
+          // The cap (backlog #24), said before a form is typed into.
+          <p className="text-sm text-white/70">{PARTICIPANT_CAP_ERROR}</p>
+        ) : adding ? (
           <AddPersonForm
             requireLevel={collectProfile}
-            onAdded={(p, profile) => {
+            participants={participants}
+            onAdded={(p, profile, note) => {
               setAdding(false);
               reload();
+              // A typed twin (matched here by name, or the route's reused
+              // row) is still the row it matches: one the chooser has
+              // disabled cannot be picked by typing its name. Say the row's
+              // reason instead (fix round 1).
+              const reason = reasonFor(p.id);
+              if (reason) {
+                setReusedNote(twinBlockedNote(p.name, reason));
+                return;
+              }
+              setReusedNote(note ?? null);
               onChange({
                 ...value,
-                selectedIds: multiple ? [...value.selectedIds, p.id] : [p.id],
+                selectedIds: multiple
+                  ? Array.from(new Set([...value.selectedIds, p.id]))
+                  : [p.id],
                 profiles: { ...(value.profiles ?? {}), [p.id]: profile },
               });
             }}
@@ -1023,10 +1145,13 @@ export function WhoIsThisFor({
         ) : (
           <button
             type="button"
-            onClick={() => setAdding(true)}
+            onClick={() => {
+              setReusedNote(null);
+              setAdding(true);
+            }}
             className={`min-h-[44px] w-full rounded-2xl border border-dashed border-white/35 px-4 py-3 text-sm font-semibold text-white/75 transition hover:border-[#B4E655]/50 hover:text-white ${FOCUS_RING}`}
           >
-            + Add a person
+            + New player
           </button>
         )}
       </div>
@@ -1034,7 +1159,9 @@ export function WhoIsThisFor({
   }
 
   // Signed out: the account holder's own details live on the contact step of
-  // each form; here we collect the people those details are for.
+  // each form; here we collect the people those details are for. A new
+  // player is the path in front (owner, 2026-10-12: no sign-in wall); the
+  // sign-in line is for a returning holder.
   return (
     <div className="space-y-3">
       {intro && <p className="text-sm text-white/70">{intro}</p>}
@@ -1073,6 +1200,17 @@ export function WhoIsThisFor({
         >
           + Add another person
         </button>
+      )}
+      {signInHref && (
+        <p className="text-sm text-white/70">
+          Have an account?{" "}
+          <Link
+            href={signInHref}
+            className={`rounded font-semibold text-[#B4E655] underline-offset-2 hover:underline ${FOCUS_RING}`}
+          >
+            Sign in to choose your player →
+          </Link>
+        </p>
       )}
     </div>
   );

@@ -5,9 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { TrackedButton } from "@/components/ui/TrackedButton";
 import { Container } from "@/components/layout/Container";
 import { FOCUS_RING as FOCUS } from "@/components/ui/focus";
-import { trackQuizCtaClick } from "@/lib/analytics";
 import { NAV_LINKS, type NavLink } from "@/content/site";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 import { signOut, useAuthState } from "@/lib/useAuthState";
@@ -173,21 +173,25 @@ export function Navbar() {
             )}
           </nav>
 
-          {/* The one action slot: tablet and desktop. Phones get the drawer and the sticky quiz bar. */}
+          {/* The one action slot: tablet and desktop. Phones get the drawer
+              and the sticky quiz bar. A quiz-taker's slot reads "See your
+              groups" instead (owner, 2026-10-12; TrackedButton swaps it once
+              the browser knows). */}
           {signedIn ? (
             <Button variant="secondary" size="compact" href="/dashboard" className="hidden md:inline-flex">
               Dashboard
             </Button>
           ) : inQuiz ? null : (
-            <Button
+            <TrackedButton
               variant="primary"
               size="compact"
               href="/intake"
-              onClick={() => trackQuizCtaClick("navbar")}
+              track="quiz"
+              source="navbar"
               className="hidden whitespace-nowrap md:inline-flex"
             >
               {QUIZ_CTA_LABEL}
-            </Button>
+            </TrackedButton>
           )}
 
           <button
@@ -277,17 +281,16 @@ export function Navbar() {
                     Sign in
                   </Link>
                   {!inQuiz && (
-                    <Button
+                    <TrackedButton
                       variant="primary"
                       href="/intake"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        trackQuizCtaClick("navbar");
-                      }}
+                      track="quiz"
+                      source="navbar"
+                      onClick={() => setMenuOpen(false)}
                       className="w-full"
                     >
                       {QUIZ_CTA_LABEL}
-                    </Button>
+                    </TrackedButton>
                   )}
                 </div>
               )}

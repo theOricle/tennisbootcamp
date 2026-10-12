@@ -464,6 +464,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                           to start.
                         </>
                       }
+                      taken={<>You&apos;ve taken the quiz, so you&apos;re on our list already.</>}
                       member={<>You&apos;re on our list already.</>}
                     />
                   </p>
@@ -487,6 +488,13 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                           </Link>{" "}
                           and our coaches place you in a group by level and schedule, or leave
                           your email and we&apos;ll tell you when a cohort opens.
+                        </>
+                      }
+                      taken={
+                        <>
+                          You&apos;ve taken the quiz: our coaches place you in a group by level
+                          and schedule, and we email you an invitation when one that fits is
+                          forming. Leave your email and we&apos;ll tell you when a cohort opens.
                         </>
                       }
                       member={

@@ -4,6 +4,7 @@ import { getCohortById } from "@/lib/cohortsDb";
 import {
   COHORT_FULL_ERROR,
   RECORDS_UNAVAILABLE_ERROR,
+  approvalRefusal,
   contactEmailRefusal,
   gateRefusal,
   requestedParticipantIds,
@@ -85,6 +86,13 @@ export async function POST(req: NextRequest) {
     const refused = gateRefusal(gate);
     if (refused) {
       return NextResponse.json({ error: refused.error }, { status: refused.status });
+    }
+    // A public by-approval cohort (High Performance) takes no walk-in here
+    // either: the same wall as the page and /api/checkout, before any invite
+    // row or Sheet write. An invitee holding the link walks through.
+    const byApproval = approvalRefusal(cohort, gate);
+    if (byApproval) {
+      return NextResponse.json({ error: byApproval.error }, { status: byApproval.status });
     }
 
     // One player per invite: a parent sending one transfer for two children
@@ -194,13 +202,17 @@ export async function POST(req: NextRequest) {
           userId: ownerId,
         });
         if (i === 0) {
-          // A new email gets the set-password link; an existing account gets
-          // "Your spot is on your account" with the dashboard link (H5). The
-          // e-transfer instructions themselves went out in recordEtransferIntent.
+          // A new email gets the set-up email naming every player on the
+          // transfer (owner, 2026-10-12); an existing, activated account
+          // gets "Your spot is on your account" with the dashboard link (H5).
+          // The e-transfer instructions themselves went out in
+          // recordEtransferIntent. One account email per cohort, whatever
+          // is retried.
           await notifyEnrollmentAccount({
             email: enrollmentMeta.contactEmail,
             enrollmentId,
             userId: ownerId,
+            cohortId,
             enrolled: {
               programTitle:
                 programs.find((p) => p.id === cohort?.programId)?.title ??
@@ -208,6 +220,9 @@ export async function POST(req: NextRequest) {
                 "your program",
               cohortLabel: cohort?.label ?? cohortId,
               participantName: player.name ?? enrollmentMeta.participantName ?? null,
+              playerNames: players
+                .map((p) => (p.name ?? "").trim())
+                .filter(Boolean),
               paid: false,
             },
           }).catch((err) =>

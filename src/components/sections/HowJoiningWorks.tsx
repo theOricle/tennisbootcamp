@@ -6,6 +6,7 @@ import {
 } from "@/content/programs";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 import { TrackedLink } from "@/components/ui/TrackedButton";
+import { QuizSwap } from "@/components/quiz/QuizSwap";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import { FOCUS_RING } from "@/components/ui/focus";
 
@@ -44,13 +45,28 @@ export function HowJoiningWorks({
     {
       title: "Pick a group that fits your age and level",
       body: (
-        <>
-          Each group lists its ages and level band. Not sure which fits?{" "}
-          <TrackedLink href={quizHref} track="quiz" source={source} className={INLINE_LINK}>
-            {QUIZ_CTA_LABEL}
-          </TrackedLink>{" "}
-          and our coaches place you.
-        </>
+        // A quiz-taker is not asked again (owner, 2026-10-12): the step
+        // points them at their groups, or their dashboard when signed in.
+        <QuizSwap
+          guest={
+            <>
+              Each group lists its ages and level band. Not sure which fits?{" "}
+              <TrackedLink href={quizHref} track="quiz" source={source} className={INLINE_LINK}>
+                {QUIZ_CTA_LABEL}
+              </TrackedLink>{" "}
+              and our coaches place you.
+            </>
+          }
+          taken={
+            <>
+              Each group lists its ages and level band. You&apos;ve taken the quiz, so our
+              coaches place you from your answers.{" "}
+              <TrackedLink href={quizHref} track="quiz" source={source} className={INLINE_LINK}>
+                {QUIZ_CTA_LABEL}
+              </TrackedLink>
+            </>
+          }
+        />
       ),
     },
     {

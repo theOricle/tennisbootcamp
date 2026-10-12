@@ -94,6 +94,13 @@ export type DashboardViewProps = {
   placedSpans?: Record<string, PlacedSpan | null>;
   /** Today in Toronto as "YYYY-MM-DD" — splits upcoming from past sessions. */
   today: string;
+  /**
+   * Whether anyone on the account has taken the 2-minute quiz (owner,
+   * 2026-10-12; src/lib/quizStatus.ts accountQuizStatus). A quiz-taker keeps
+   * only the small "Add another player" and "Retake the quiz" links; an
+   * account that never took it (a guest enrollment) is offered the quiz.
+   */
+  quizTaken?: boolean;
 };
 
 export const SURFACE = "rounded-2xl border border-white/10 bg-white/5 shadow-md";
@@ -159,6 +166,10 @@ const primaryButton =
 
 const secondaryButton =
   "inline-flex min-h-[44px] items-center justify-center rounded-full border border-white/25 px-6 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
+
+/** The small quiz links under the availability editor (inline, lime, with the ring). */
+const quizLinkClass =
+  "rounded font-semibold text-[#B4E655]/80 underline-offset-2 hover:text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
 
 const CHIP_TONE: Record<"lime" | "neutral" | "warn" | "muted", string> = {
   lime: "bg-[#B4E655]/10 text-[#B4E655]",
@@ -410,6 +421,7 @@ export function DashboardView(props: DashboardViewProps) {
     programs,
     placedSpans = {},
     today,
+    quizTaken = true,
   } = props;
 
   const publicCohorts = cohorts.filter((c) => isCohortPublic(c, today));
@@ -698,16 +710,34 @@ export function DashboardView(props: DashboardViewProps) {
             </div>
           ))}
         </div>
-        <p className="mt-4 text-xs text-white/60">
-          Training someone else too — a child, a partner, or yourself? Add them through{" "}
-          <Link
-            href="/intake"
-            className="font-semibold text-[#B4E655]/80 underline-offset-2 hover:text-[#B4E655] hover:underline"
-          >
-            the 2-minute quiz
-          </Link>
-          .
-        </p>
+        {/* A quiz-taker keeps the small links only (owner, 2026-10-12):
+            add a player, or retake if the answers changed. An account that
+            never took the quiz (it enrolled as a guest) is offered it here,
+            as an outline link — the next-step card stays the one primary. */}
+        {quizTaken ? (
+          <p className="mt-4 text-xs text-white/60">
+            Training someone else too — a child, a partner, or yourself?{" "}
+            <Link href="/intake?add=1" className={quizLinkClass}>
+              Add another player
+            </Link>
+            . Answers changed?{" "}
+            <Link href="/intake?retake=1" className={quizLinkClass}>
+              Retake the quiz
+            </Link>
+            .
+          </p>
+        ) : (
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <p className="text-sm text-white/70">
+              {several
+                ? "Not placed yet? Take the 2-minute quiz and our coaches place each player by level and schedule."
+                : "Not placed yet? Take the 2-minute quiz and our coaches place you by level and schedule."}
+            </p>
+            <Link href="/intake" className={secondaryButton}>
+              Take the 2-minute quiz
+            </Link>
+          </div>
+        )}
       </section>
 
       {/* Suggested for you (audit M31, H7): the same spec-sheet card as the

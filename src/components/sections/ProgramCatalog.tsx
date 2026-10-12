@@ -25,6 +25,7 @@ import {
 import { programEyebrow } from "@/lib/programCatalog";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 import { buttonClass } from "@/components/ui/Button";
+import { TrackedLink } from "@/components/ui/TrackedButton";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { Heading } from "@/components/ui/Heading";
 import { EYEBROW_CLASS } from "./ProgramCard";
@@ -234,12 +235,10 @@ export function ProgramCatalogView({
             tell us about the player, or widen the filters.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Link
-              href="/intake"
-              className={buttonClass("primary")}
-            >
+            {/* A quiz-taker's button reads their next step instead (owner, 2026-10-12). */}
+            <TrackedLink href="/intake" track="quiz" source="programs-empty" className={buttonClass("primary")}>
               {QUIZ_CTA_LABEL}
-            </Link>
+            </TrackedLink>
             <button
               type="button"
               onClick={() => onChange(clearFilters(query))}

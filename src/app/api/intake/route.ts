@@ -14,6 +14,7 @@ import {
 import { provisionIntakeAccount } from "@/lib/intakeAccount";
 import { bodyTooLarge, logBotDrop, REQUEST_TOO_LARGE } from "@/lib/botCheck";
 import { decideIntake } from "@/lib/intakeGuard";
+import { quizFlagCookie, quizFlagFor } from "@/lib/quizStatus";
 import {
   currentUser,
   resolveSubmissionParticipants,
@@ -211,17 +212,27 @@ export async function POST(req: NextRequest) {
     // about — chosen and newly added — so the booking form can start with
     // them (backlog #24). A guest's response is exactly what it always was;
     // ids are never handed to a session that could not list them anyway.
-    if (signedIn) {
-      const participantIds = Array.from(
-        new Set(
-          people
-            .map((p) => p.participantId)
-            .filter((id): id is string => Boolean(id))
-        )
-      );
-      return NextResponse.json({ ok: true, participantIds });
-    }
-    return NextResponse.json({ ok: true });
+    const res = signedIn
+      ? NextResponse.json({
+          ok: true,
+          participantIds: Array.from(
+            new Set(people.map((p) => p.participantId).filter((id): id is string => Boolean(id)))
+          ),
+        })
+      : NextResponse.json({ ok: true });
+    // The device remembers the quiz was taken (owner, 2026-10-12): a
+    // first-party, functional cookie the site chrome reads to stop asking.
+    // Set only here, after the Sheet append succeeded — a bot drop above
+    // answers the same `ok` with no cookie, and a failed submit never gets
+    // this far. It holds the first player's band and likely tier for the
+    // "See your groups" link; never a name or an email (src/lib/quizStatus.ts).
+    res.cookies.set(
+      quizFlagCookie(
+        quizFlagFor({ playerCount: rows.length, ageBand: body.ageBand, selfLevel: body.level }),
+        { secure: process.env.NODE_ENV === "production" }
+      )
+    );
+    return res;
   } catch (err) {
     console.error("Intake API error:", err);
     return NextResponse.json({ error: "Failed to submit intake." }, { status: 500 });

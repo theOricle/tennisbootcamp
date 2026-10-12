@@ -16,20 +16,69 @@
 // src/scripts/test-checkout-gate.ts); `resolveEnrollGate` does the I/O.
 
 import type { Cohort } from "@/types/cohort";
+import type { ProgramGroup } from "@/types/program";
+import { programGroups } from "@/content/programs";
 import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
+import { cohortMatchesGroup } from "@/lib/programCatalog";
 import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 import { emailBelongsToAccount } from "@/lib/enrollmentLink";
 
 /** What getInviteByToken reported, as far as the gate cares. */
 export type GateInviteLookup =
-  | { state: "valid"; invite: { id: string; email?: string; cohort_id?: string } }
+  | {
+      state: "valid";
+      invite: {
+        id: string;
+        email?: string;
+        cohort_id?: string;
+        /** The player the invitation names (migration 0007), when it names one. */
+        participant_id?: string | null;
+      };
+    }
   | { state: "expired" | "invalid" };
 
 export type EnrollGateDecision =
   | { allowed: true; via: "public" | "invite" | "level" }
   | { allowed: false; status: 404 }
   | { allowed: false; status: 403; expired: boolean };
+
+/** The invite row a valid token lookup found. */
+export type ClaimedInvite = Extract<GateInviteLookup, { state: "valid" }>["invite"];
+
+/**
+ * The invitation the request actually carries: the token was sent, looked
+ * up and found live in this cohort. The decision's `via` is not that: a
+ * public cohort answers "public" even when a valid token came with the
+ * request (resolveEnrollGate looks tokens up on public cohorts too, so a
+ * payment links to its invite row), and public cohorts are the ones that
+ * render on program pages and receive the quiz's invitations. The page
+ * reads this to know who the invitation names and which invite is being
+ * claimed, whatever the cohort's visibility.
+ */
+export function claimedInvite(lookup: GateInviteLookup | null | undefined): ClaimedInvite | null {
+  return lookup?.state === "valid" ? lookup.invite : null;
+}
+
+/**
+ * Whether the by-approval gate (High Performance, joining flow 2026-10-12)
+ * stands between this visitor and the wizard: a public cohort in a
+ * by-approval group, reached with no live invitation. A player holding the
+ * invitation link walks through; a private cohort's own gate has already
+ * decided (an invite or a level admitted them).
+ */
+export function approvalGateApplies(input: {
+  group: Pick<ProgramGroup, "joining"> | null | undefined;
+  decision: EnrollGateDecision;
+  claimed: { id: string } | null | undefined;
+}): boolean {
+  return (
+    input.group?.joining === "approval" &&
+    input.decision.allowed &&
+    input.decision.via === "public" &&
+    !input.claimed
+  );
+}
 
 /**
  * The gate rule itself, shared by the page and both payment routes.
@@ -295,6 +344,48 @@ export type ResolvedEnrollGate = {
 /** Sent back with a 403 when a private cohort has no admitting invite. */
 export const INVITE_ONLY_ERROR =
   "This cohort is invite-only — email info@tennisbootcamp.ca for an invite.";
+
+/**
+ * Sent back with a 403 when a public cohort in a by-approval group (High
+ * Performance) is posted to with no live invitation: the same words as the
+ * page's ApprovalGate, one line.
+ */
+export const APPROVAL_ONLY_ERROR =
+  "This group is by approval — take the 2-minute quiz and our coaches approve each spot. Already approved? Open the link in your invitation email.";
+
+/**
+ * The by-approval gate, as the payment routes run it (fix round 2). The page
+ * sends a walk-in on a public High Performance cohort to ApprovalGate; a
+ * direct POST to /api/checkout or /api/enroll/etransfer must meet the same
+ * wall, else a Stripe session or an e-transfer row exists for a spot the
+ * coaches never approved. Reads the cohort's group the way the page does
+ * (`cohortMatchesGroup`) and the request's invitation the way the page does
+ * (`claimedInvite`), so an invitee holding the link on a public cohort still
+ * pays. Null when nothing stands in the way, or the cohort trains in no group.
+ *
+ * One difference from the page (fix round 3): a token whose 48h hold ran out
+ * between loading the wizard and paying (`lookup.state === "expired"`, which
+ * getInviteByToken only reports for a row in this cohort) is this cohort's
+ * invitation too. The routes already admit it through decideEnrollGate's
+ * `payable` grace (backlog #30/#34) and the payment settles onto that row,
+ * so this wall stands aside for it as well — else a coach-approved invitee
+ * is told to open the link they just came from, or refused after the
+ * e-transfer has already been sent. The page keeps sending an expired token
+ * to ApprovalGate (`claimedInvite` is null there), as before.
+ */
+export function approvalRefusal(
+  cohort: Pick<Cohort, "programId" | "sessions"> | null | undefined,
+  gate: Pick<ResolvedEnrollGate, "decision" | "lookup">,
+  groups: readonly ProgramGroup[] = programGroups
+): { error: string; status: 403 } | null {
+  if (!cohort) return null;
+  const group = groups.find((g) => cohortMatchesGroup(cohort, g));
+  if (!group) return null;
+  if (gate.lookup?.state === "expired") return null;
+  return approvalGateApplies({ group, decision: gate.decision, claimed: claimedInvite(gate.lookup) })
+    ? { error: APPROVAL_ONLY_ERROR, status: 403 }
+    : null;
+}
 
 /**
  * The JSON a payment route (or /api/enroll) answers a refused gate with. A

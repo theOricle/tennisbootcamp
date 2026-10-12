@@ -2,8 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/Button";
-import { trackQuizCtaClick } from "@/lib/analytics";
+import { TrackedButton } from "@/components/ui/TrackedButton";
 import { QUIZ_CTA_ATTR, QUIZ_CTA_LABEL, quizBarAllowedOn, quizBarVisible } from "@/lib/quizBar";
 import { useAuthState } from "@/lib/useAuthState";
 
@@ -12,7 +11,9 @@ import { useAuthState } from "@/lib/useAuthState";
  * slides in once the page's own quiz CTA (the hero's, on home) has scrolled
  * out, slides away while any in-page quiz CTA is on screen, and never shows
  * on the quiz, sign-in, booking or signed-in routes, or to a signed-in
- * visitor. Rules: src/lib/quizBar.ts.
+ * visitor. Rules: src/lib/quizBar.ts. For a signed-out quiz-taker the one
+ * button reads "See your groups" (owner, 2026-10-12): the swap lives in
+ * TrackedButton, so the bar and the page's own CTA always agree.
  */
 export function MobileQuizBar() {
   const pathname = usePathname() ?? "/";
@@ -65,14 +66,9 @@ export function MobileQuizBar() {
           show ? "translate-y-0" : "translate-y-full"
         }`}
       >
-        <Button
-          variant="primary"
-          href="/intake"
-          onClick={() => trackQuizCtaClick("mobile-bar")}
-          className="w-full"
-        >
+        <TrackedButton variant="primary" href="/intake" track="quiz" source="mobile-bar" className="w-full">
           {QUIZ_CTA_LABEL}
-        </Button>
+        </TrackedButton>
       </div>
     </>
   );

@@ -9,6 +9,7 @@ import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
 import { PlayerPreview } from "@/components/admin/PlayerPreview";
 import type { MatrixPlayer } from "@/lib/availabilityMatrix";
 import { dayNameForDate } from "@/lib/makeup";
+import { accountEmailOffered } from "@/lib/enrollPlayers";
 import {
   COHORT_STATUS_LABELS,
   INVITE_STATUS_LABELS,
@@ -140,6 +141,9 @@ function InviteItem({
   // What the mark-paid receipt did (backlog #15) — the payment is recorded
   // whatever happens here, so this reports rather than blocks.
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  // What "Send account email" did (owner, 2026-10-12): the guest's set-up
+  // email, or the enrolled note, sent again by hand.
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
 
   async function post(body: Record<string, unknown>) {
     setBusy(true);
@@ -157,6 +161,16 @@ function InviteItem({
         return;
       }
       setReceipt(body.action === "mark_paid" ? (data.receipt ?? null) : null);
+      if (body.action === "account_link") {
+        const outcome = data.accountEmail as { status: "sent" } | { status: "failed"; detail: string } | undefined;
+        setAccountEmail(
+          outcome?.status === "sent"
+            ? "Account email sent to the player."
+            : `Account email failed. ${outcome?.status === "failed" ? outcome.detail : ""}`.trim()
+        );
+      } else {
+        setAccountEmail(null);
+      }
       setMode("idle");
       setNote("");
       onChanged();
@@ -207,6 +221,15 @@ function InviteItem({
               {receiptLine(receipt)}
             </p>
           )}
+          {accountEmail && (
+            <p
+              className={`mt-0.5 text-xs ${
+                accountEmail.startsWith("Account email failed") ? "text-red-300" : "text-white/60"
+              }`}
+            >
+              {accountEmail}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span
@@ -232,6 +255,19 @@ function InviteItem({
               className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/60 transition hover:border-red-400/50 hover:text-red-200"
             >
               Undo
+            </button>
+          )}
+          {/* Only where someone enrolled: paid, or an e-transfer on its way.
+              A bare or expired invitation has no enrollment for the email to
+              describe, and the route refuses it too. */}
+          {accountEmailOffered(invite) && mode === "idle" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void post({ action: "account_link", inviteId: invite.id })}
+              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/60 transition hover:border-[#B4E655]/50 hover:text-white disabled:opacity-40"
+            >
+              Send account email
             </button>
           )}
         </div>

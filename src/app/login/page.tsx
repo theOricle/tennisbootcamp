@@ -9,6 +9,7 @@ import { PasswordToggleIcon } from "@/components/ui/PasswordToggleIcon";
 import { FieldError, INPUT_CLASS, LABEL_CLASS, LiveStatus, fieldA11y } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { TEXT_LINK_CLASS } from "@/components/ui/TextLink";
+import { QuizSwap } from "@/components/quiz/QuizSwap";
 import { FIELD_MESSAGES, emailError } from "@/lib/formValidation";
 import {
   AFTER_LOGIN_DEFAULT,
@@ -196,12 +197,28 @@ function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: stri
             {loading ? "Signing in…" : "Sign in"}
           </button>
 
-          <p className="text-center text-sm text-white/70">
-            New here?{" "}
-            <Link href="/intake" className={linkClass}>
-              Take the 2-minute quiz →
-            </Link>
-          </p>
+          {/* A quiz-taker already has an account for their email (the quiz
+              creates one), so they are told how to get in, not sent round
+              again (owner, 2026-10-12). */}
+          <QuizSwap
+            guest={
+              <p className="text-center text-sm text-white/70">
+                New here?{" "}
+                <Link href="/intake" className={linkClass}>
+                  Take the 2-minute quiz →
+                </Link>
+              </p>
+            }
+            taken={
+              <p className="text-center text-sm text-white/70">
+                Took the quiz already? An account was created for your email. Never set a
+                password?{" "}
+                <Link href="/auth/forgot-password" className={linkClass}>
+                  Send yourself a link →
+                </Link>
+              </p>
+            }
+          />
         </form>
       </div>
     </main>

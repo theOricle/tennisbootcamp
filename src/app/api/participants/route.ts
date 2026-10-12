@@ -10,7 +10,7 @@ import {
   updateParticipantDetails,
 } from "@/lib/players";
 import { isAgeBand, type AgeBand } from "@/lib/ageBand";
-import { PARTICIPANT_CAP_ERROR } from "@/lib/participantInput";
+import { PARTICIPANT_CAP_ERROR, findExistingParticipant } from "@/lib/participantInput";
 
 // The signed-in holder's household: the people they can book, enroll or
 // place. GET lists them ('self' first); POST adds one; PATCH renames one or
@@ -36,6 +36,7 @@ function toPublic(p: {
   is_minor: boolean;
   level: number | null;
   age_band?: AgeBand | null;
+  self_level?: string | null;
 }) {
   return {
     id: p.id,
@@ -46,6 +47,10 @@ function toPublic(p: {
     // The band they last answered (migration 0009, audit M31) seeds the
     // chooser; null before 0009 or when never asked.
     ageBand: p.age_band ?? null,
+    // Their own self-estimate (0009), so the enroll chooser can show a
+    // provisional tier for a player the coach has not levelled yet
+    // (owner, 2026-10-12). Null before 0009 or when never asked.
+    selfLevel: p.self_level ?? null,
   };
 }
 
@@ -98,6 +103,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Enter their full name." }, { status: 400 });
     }
     const relationship = isRelationship(body.relationship) ? body.relationship : "other";
+
+    // A new player whose name and relationship match one already on the
+    // account is that player (owner, 2026-10-12: "reuse via the existing
+    // dedupe, tell the user") — the quiz's rule, findExistingParticipant.
+    // The holder is never matched: "Myself" is picked, never added.
+    if (relationship !== "self") {
+      const existing = await listParticipantsForAccount(user.id).catch(() => []);
+      const twin = findExistingParticipant(existing, { fullName, relationship });
+      if (twin) {
+        return NextResponse.json({ ok: true, reused: true, participant: toPublic(twin) });
+      }
+    }
 
     // No level here on purpose: `participants.level` is the coach-assigned
     // level and drives the leveled/unleveled admin split. A self-estimate

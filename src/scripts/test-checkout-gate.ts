@@ -4,7 +4,8 @@
 // page's own gate (src/lib/enrollGate.ts) before creating anything, and a
 // payment settles onto an invite by id or named participant — the email
 // fallback is for legacy sessions on cohorts anyone may join, never a private
-// cohort.
+// cohort. Since audit M (fix round 2) the page's by-approval gate (a public
+// High Performance cohort with no live invitation) runs in both routes too.
 
 import {
   decideEnrollGate,
@@ -16,6 +17,7 @@ import {
   foreignRows,
   enrollmentRowsToFlip,
   gateRefusal,
+  approvalRefusal,
   unmatchedSignal,
   etransferRowPlan,
   claimCredit,
@@ -23,9 +25,12 @@ import {
   requestedParticipantIds,
   COHORT_FULL_ERROR,
   INVITE_ONLY_ERROR,
+  APPROVAL_ONLY_ERROR,
   type GatePlayer,
 } from "../lib/enrollGate";
 import { cohortAdmitsLevel } from "../lib/tiers";
+import { groupById } from "../content/programs";
+import type { ProgramGroup } from "../types/program";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DECLINED_INVITE_ERROR } from "../lib/checkoutInvite";
@@ -197,6 +202,87 @@ console.log("gateRefusal — what a refused route answers");
     { error: "Cohort not found.", status: 404 }
   );
   check("allowed → nothing to answer", gateRefusal({ decision: { allowed: true, via: "public" }, declined: false }), null);
+}
+
+console.log("approvalRefusal — the page's by-approval gate, run again by both payment routes");
+{
+  // A public cohort that trains in a group: the group's program and class.
+  const inGroup = (g: ProgramGroup, overrides: Partial<Cohort> = {}) =>
+    cohort({
+      id: `coh_${g.id}`,
+      programId: g.programSlug,
+      visibility: "public",
+      sessions: [{ day: g.day!.slice(0, 3) as Cohort["sessions"][number]["day"], start: g.start!, end: g.end! }],
+      ...overrides,
+    });
+  const hp = groupById("high-performance")!;
+  const open = groupById("youth-7-10")!;
+  const pub = { allowed: true as const, via: "public" as const };
+  const live = { state: "valid" as const, invite: { id: INVITE_ID, cohort_id: "coh_high-performance" } };
+  check("High Performance is the by-approval group; Ages 7–10 is open to join", [hp.joining, open.joining], ["approval", "open"]);
+  check(
+    "public High Performance cohort, no token → 403 with the by-approval line (no Stripe session, no e-transfer row)",
+    approvalRefusal(inGroup(hp), { decision: pub, lookup: null }),
+    { error: APPROVAL_ONLY_ERROR, status: 403 }
+  );
+  check(
+    "…a foreign token is no invitation either",
+    approvalRefusal(inGroup(hp), { decision: pub, lookup: { state: "invalid" } }),
+    { error: APPROVAL_ONLY_ERROR, status: 403 }
+  );
+  check(
+    "a hold that ran out between page load and paying still pays (fix round 3): getInviteByToken only reports expired for this cohort's row, and the routes' payable grace (#30/#34) settles onto it",
+    approvalRefusal(inGroup(hp), { decision: pub, lookup: { state: "expired" } }),
+    null
+  );
+  check(
+    "…the same expired token on a private High Performance cohort pays through the invite path, as before",
+    [
+      decideEnrollGate({ cohort: inGroup(hp, { visibility: "private" }), tokenSent: true, lookup: { state: "expired" }, payable: true, today: TODAY }),
+      approvalRefusal(inGroup(hp, { visibility: "private" }), { decision: { allowed: true, via: "invite" }, lookup: { state: "expired" } }),
+    ],
+    [{ allowed: true, via: "invite" }, null]
+  );
+  check(
+    "the invitee holding the link on that public cohort pays (the gate still says public)",
+    approvalRefusal(inGroup(hp), { decision: pub, lookup: live }),
+    null
+  );
+  check(
+    "a private High Performance cohort admitted by invite or by level decided already",
+    [
+      approvalRefusal(inGroup(hp, { visibility: "private" }), { decision: { allowed: true, via: "invite" }, lookup: live }),
+      approvalRefusal(inGroup(hp, { visibility: "private" }), { decision: { allowed: true, via: "level" }, lookup: null }),
+    ],
+    [null, null]
+  );
+  check("an open group's public cohort never gates", approvalRefusal(inGroup(open), { decision: pub, lookup: null }), null);
+  check(
+    "a cohort that trains in no group, or no cohort, never gates (the gate before it answered)",
+    [approvalRefusal(publicCohort, { decision: pub, lookup: null }), approvalRefusal(null, { decision: pub, lookup: null }), approvalRefusal(undefined, { decision: pub, lookup: null })],
+    [null, null, null]
+  );
+  check(
+    "a refused gate is answered by gateRefusal first; this one adds nothing",
+    approvalRefusal(inGroup(hp), { decision: { allowed: false, status: 403, expired: false }, lookup: null }),
+    null
+  );
+  check(
+    "the line says by approval, the quiz and the invitation email, with no exclamation mark",
+    APPROVAL_ONLY_ERROR.includes("by approval") && APPROVAL_ONLY_ERROR.includes("2-minute quiz") && APPROVAL_ONLY_ERROR.includes("invitation email") && !APPROVAL_ONLY_ERROR.includes("!"),
+    true
+  );
+  for (const [route, create] of [
+    ["checkout/route.ts", "createCheckoutSession("],
+    ["enroll/etransfer/route.ts", "recordEtransferIntent("],
+  ] as const) {
+    const r = readFileSync(join(process.cwd(), "src", "app", "api", ...route.split("/")), "utf8");
+    const gateAt = r.indexOf("gateRefusal(gate)");
+    const approvalAt = r.indexOf("approvalRefusal(cohort, gate)");
+    const createAt = r.indexOf(create);
+    check(`${route} runs the by-approval gate after the invite gate and before anything is created`, gateAt !== -1 && approvalAt > gateAt && createAt > approvalAt, true);
+    check(`${route} answers it with its status`, r.includes("{ error: byApproval.error }, { status: byApproval.status }"), true);
+  }
 }
 
 console.log("unmatchedSignal — when a settled-to-nothing player reaches the inbox");

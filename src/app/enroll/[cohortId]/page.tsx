@@ -2,17 +2,26 @@ import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { programs } from "@/content/programs";
+import { APPROVAL_LINE, programGroups, programs } from "@/content/programs";
+import type { ProgramGroup } from "@/types/program";
+import type { Cohort } from "@/types/cohort";
 import { getCohortById } from "@/lib/cohortsDb";
 import { isCohortRenderable } from "@/lib/cohortVisibility";
-import { resolveEnrollGate } from "@/lib/enrollGate";
+import { approvalGateApplies, claimedInvite, resolveEnrollGate } from "@/lib/enrollGate";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { createClient } from "@/lib/supabase/server";
 import { findUnusedCredit } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
 import { INVITE_RESUME_COOKIE } from "@/lib/checkoutInvite";
 import { loginHref } from "@/lib/authFlow";
-import { EnrollWizard, type EtransferInfo } from "./EnrollWizard";
+import { cohortMatchesGroup } from "@/lib/programCatalog";
+import { currentUser } from "@/lib/household";
+import { getParticipant, listParticipantsForAccount } from "@/lib/players";
+import { listInvitesForAccount } from "@/lib/cohortActions";
+import { alreadyInCohortReason, matchingPlayer, type BlockedPlayer } from "@/lib/enrollPlayers";
+import { isAgeBand } from "@/lib/ageBand";
+import { TrackedButton } from "@/components/ui/TrackedButton";
+import { EnrollWizard, type EtransferInfo, type InvitedPlayer } from "./EnrollWizard";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +46,8 @@ const primaryButton =
   "inline-flex min-h-[44px] items-center rounded-full bg-[#B4E655] px-6 text-sm font-semibold text-[#061427] transition hover:brightness-110";
 const secondaryButton =
   "inline-flex min-h-[44px] items-center rounded-full bg-white/10 px-6 text-sm font-semibold text-white transition hover:bg-white/15";
+const inlineLink =
+  "rounded font-semibold text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
 
 function GateShell({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) {
   return (
@@ -92,11 +103,12 @@ function InviteGate({ expired, signInHref }: { expired: boolean; signInHref: str
             Email us →
           </a>
         ) : (
-          // Quiz first, assessment optional (audit M1).
+          // Quiz first, assessment optional (audit M1). A quiz-taker's button
+          // reads their next step instead (owner, 2026-10-12).
           <>
-            <Link href="/intake" className={primaryButton}>
+            <TrackedButton variant="primary" href="/intake" track="quiz" source="enroll-gate">
               Take the 2-minute quiz
-            </Link>
+            </TrackedButton>
             <Link href="/assessment/book" className={secondaryButton}>
               Book Your Assessment
             </Link>
@@ -111,10 +123,7 @@ function InviteGate({ expired, signInHref }: { expired: boolean; signInHref: str
       {!expired && signInHref && (
         <p className="mt-5 text-sm text-white/65">
           Already placed at this level?{" "}
-          <Link
-            href={signInHref}
-            className="rounded font-semibold text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-          >
+          <Link href={signInHref} className={inlineLink}>
             Sign in
           </Link>{" "}
           and you&apos;re through.
@@ -154,14 +163,57 @@ function FullGate({
             Open your dashboard
           </Link>
         ) : (
-          <Link href="/intake" className={primaryButton}>
+          <TrackedButton variant="primary" href="/intake" track="quiz" source="enroll-full">
             Take the 2-minute quiz
-          </Link>
+          </TrackedButton>
         )}
         <Link href="/programs" className={secondaryButton}>
           Browse Programs
         </Link>
       </div>
+    </GateShell>
+  );
+}
+
+// High Performance is by approval (joining flow, owner 2026-10-12): a public
+// cohort in that group takes no walk-in. The quiz is how a player asks, our
+// coaches approve each spot, and the invitation email carries the link in.
+function ApprovalGate({
+  group,
+  programSlug,
+  signInHref,
+}: {
+  group: ProgramGroup;
+  programSlug: string;
+  signInHref: string;
+}) {
+  return (
+    <GateShell eyebrow={group.name}>
+      <h1 className="mt-3 text-2xl font-semibold">This group is by approval</h1>
+      <p className="mt-3 text-sm leading-relaxed text-white/65">{APPROVAL_LINE}</p>
+      <p className="mt-3 text-sm leading-relaxed text-white/65">
+        Already approved? Open the link in your invitation email.
+      </p>
+      <div className="mt-6 flex flex-wrap justify-center gap-3">
+        <TrackedButton
+          variant="primary"
+          href={`/intake?program=${programSlug}`}
+          track="quiz"
+          source="enroll-approval"
+        >
+          Take the 2-minute quiz
+        </TrackedButton>
+        <Link href={`/programs/${programSlug}`} className={secondaryButton}>
+          View Program
+        </Link>
+      </div>
+      <p className="mt-5 text-sm text-white/65">
+        Invited already?{" "}
+        <Link href={signInHref} className={inlineLink}>
+          Sign in
+        </Link>{" "}
+        and your invitation is on your dashboard.
+      </p>
     </GateShell>
   );
 }
@@ -177,6 +229,65 @@ async function signedInEmail(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Who on the signed-in account is already in this cohort (owner,
+ * 2026-10-12: shown disabled with the reason, never a duplicate seat): a
+ * paid or e-transfer-pending invite naming them, a live invite that is not
+ * the one being claimed, or a paid or pending enrollment row in their name.
+ * Any read that fails blocks nobody — the routes still refuse a double seat.
+ */
+async function blockedPlayers(input: {
+  accountId: string;
+  email: string;
+  cohortId: string;
+  cohort: Cohort;
+  participants: { id: string; name: string | null }[];
+  claimingInviteId: string | null;
+}): Promise<BlockedPlayer[]> {
+  const out = new Map<string, string>();
+  try {
+    const invites = await listInvitesForAccount({
+      accountId: input.accountId,
+      email: input.email,
+      participantIds: input.participants.map((p) => p.id),
+      cohorts: [input.cohort],
+    });
+    const now = new Date().toISOString();
+    for (const invite of invites) {
+      if (invite.cohort_id !== input.cohortId || !invite.participant_id) continue;
+      if (invite.id === input.claimingInviteId) continue;
+      if (invite.status === "paid") out.set(invite.participant_id, alreadyInCohortReason("enrolled"));
+      else if (invite.status === "invited" && invite.payment_method === "etransfer") {
+        out.set(invite.participant_id, alreadyInCohortReason("pending"));
+      } else if (invite.status === "invited" && invite.expires_at > now) {
+        out.set(invite.participant_id, alreadyInCohortReason("invited"));
+      }
+    }
+  } catch {
+    // Read failed: nobody is blocked here; the payment routes still refuse a duplicate.
+  }
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("enrollments")
+      .select("participant_name, status")
+      .eq("user_id", input.accountId)
+      .eq("cohort_id", input.cohortId);
+    for (const row of (data ?? []) as { participant_name: string | null; status: string }[]) {
+      const player = matchingPlayer(input.participants, row.participant_name ?? "");
+      if (!player || out.has(player.id)) continue;
+      if (row.status === "paid" || row.status === "test_paid") {
+        out.set(player.id, alreadyInCohortReason("enrolled"));
+      } else if (row.status === "pending_etransfer") {
+        out.set(player.id, alreadyInCohortReason("pending"));
+      }
+    }
+  } catch {
+    // Same: fail open here, closed at payment.
+  }
+  return [...out].map(([id, reason]) => ({ id, reason }));
 }
 
 export default async function EnrollPage({ params, searchParams }: PageProps) {
@@ -199,6 +310,12 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
 
   const program = programs.find((p) => p.id === cohort.programId);
   const sessionEmail = await signedInEmail();
+  // Where a sign-in lands: this page, the invitation token kept (owner,
+  // 2026-10-12: "returns to the same enroll URL with token/cookie preserved").
+  const thisPage = queryToken
+    ? `/enroll/${cohort.id}?invite=${encodeURIComponent(queryToken)}`
+    : `/enroll/${cohort.id}`;
+  const signInHref = loginHref(thisPage);
 
   // Private cohorts admit a valid unexpired invite token, or — when the cohort
   // is tier-gated — a signed-in holder with a player whose coach-assigned
@@ -219,7 +336,21 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
     );
   }
   const inviteToken = gate.decision.via === "invite" ? tokenParam : null;
-  const inviteEmail = gate.inviteEmail;
+  // The invitation the link carries, on a public cohort as much as a private
+  // one (the gate's `via` says "public" there even with a valid token): it
+  // names the player, the invite being claimed, and the holder's email.
+  const claimed = claimedInvite(gate.lookup);
+  const inviteEmail = gate.inviteEmail ?? claimed?.email ?? null;
+
+  // The group this cohort trains in (owner, 2026-10-12): its ages decide who
+  // fits, and a by-approval group (High Performance) takes no walk-in — but
+  // the player holding the invitation link is never sent back to it.
+  const group = programGroups.find((g) => cohortMatchesGroup(cohort, g)) ?? null;
+  if (group && approvalGateApplies({ group, decision: gate.decision, claimed })) {
+    return (
+      <ApprovalGate group={group} programSlug={program?.slug ?? group.programSlug} signInHref={signInHref} />
+    );
+  }
 
   const seatsRemaining = await getSeatsRemaining(cohort.id, cohort.capacityMax);
   if (seatsRemaining !== null && seatsRemaining <= 0) {
@@ -245,10 +376,56 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
     };
   }
 
+  // Who the invitation names (migration 0007), and who on the signed-in
+  // account is already in this cohort (owner, 2026-10-12).
+  const invitedParticipantId = claimed?.participant_id ?? null;
+  const claimingInviteId = claimed?.id ?? null;
+  const user = await currentUser();
+  let blocked: BlockedPlayer[] = [];
+  let invited: InvitedPlayer | null = null;
+  if (user) {
+    const participants = await listParticipantsForAccount(user.id).catch(() => []);
+    const people = participants.map((p) => ({ id: p.id, name: p.full_name }));
+    blocked = await blockedPlayers({
+      accountId: user.id,
+      email: user.email,
+      cohortId: cohort.id,
+      cohort,
+      participants: people,
+      claimingInviteId,
+    });
+    const own = invitedParticipantId ? participants.find((p) => p.id === invitedParticipantId) : null;
+    if (own) {
+      invited = {
+        id: own.id,
+        name: own.full_name,
+        relationship: own.relationship,
+        isMinor: own.is_minor,
+        ageBand: isAgeBand(own.age_band) ? own.age_band : null,
+        onAccount: true,
+      };
+    }
+  } else if (invitedParticipantId) {
+    // Signed out with an invitation for a named player: the typed block
+    // starts on them, and the sign-in line brings their account back.
+    const row = await getParticipant(invitedParticipantId).catch(() => null);
+    if (row) {
+      invited = {
+        id: row.id,
+        name: row.full_name,
+        relationship: row.relationship,
+        isMinor: row.is_minor,
+        ageBand: isAgeBand(row.age_band) ? row.age_band : null,
+        onAccount: false,
+      };
+    }
+  }
+
   return (
     <EnrollWizard
       cohort={cohort}
       program={program}
+      group={group}
       seatsRemaining={seatsRemaining}
       inviteToken={inviteToken}
       initialEmail={inviteEmail}
@@ -258,6 +435,9 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
       eligibleParticipantIds={
         gate.decision.via === "level" ? gate.eligibleParticipantIds : null
       }
+      blocked={blocked}
+      invited={invited}
+      signInHref={signInHref}
     />
   );
 }

@@ -1012,6 +1012,71 @@ ${commercialFooterText("general")}`;
   return { subject, html: emailLayout(bodyHtml), text };
 }
 
+// ─── Set up your account (guest enrollment, owner 2026-10-12) — no footer ─────
+// The one email a guest enrollment sends to an address with no usable
+// account yet: the players it enrolled, the fact of the enrollment, and the
+// set-password link that opens the dashboard. An activation link email, so
+// it carries no commercial footer, like buildLinkEmail.
+
+export function buildAccountSetupEmail(params: {
+  /** The players this enrollment is for, in the order they were enrolled. */
+  playerNames: readonly string[];
+  programTitle: string;
+  cohortLabel: string;
+  /** True once the payment is in (card); false while an e-transfer is on its way. */
+  paid: boolean;
+  /** The set-password link (an invite or magic link through /auth/callback). */
+  link: string;
+}): EmailBody {
+  const { programTitle, cohortLabel, paid, link } = params;
+  const names = params.playerNames.map((n) => n.trim()).filter(Boolean);
+  const several = names.length > 1;
+  const who = names.length === 0 ? "You are" : several ? `${listNames(names)} are` : `${names[0]} is`;
+  const group = `${programTitle} — ${cohortLabel}`;
+
+  const subject = paid
+    ? `Set up your account: ${names.length === 0 ? "you're" : `${listNames(names)} ${several ? "are" : "is"}`} enrolled in ${cohortLabel}`
+    : `Set up your account: ${names.length === 0 ? "your spot" : `the spot for ${listNames(names)}`} in ${cohortLabel} is held`;
+
+  const headline = "One step left: set your password.";
+  const statusLine = paid
+    ? `${who} enrolled in ${group}, and the payment is in.`
+    : `${who} down for ${group}. Once your e-transfer arrives and our coaches mark it received, the spot is confirmed and the confirmation email follows.`;
+  const whyLine =
+    "We created a Tennis Bootcamp account for this email address. Set a password and your dashboard opens with this enrollment, its weekly slot and, once the group is set, every session date.";
+  const expiryLine =
+    "This link expires in 24 hours. Need a new one? Use “Forgot password?” on the sign-in page and we'll send another.";
+
+  const bodyHtml = `
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${headline}</p>
+    <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">${statusLine}</p>
+    <p style="margin:0;font-size:14px;color:${INK_BODY};">${whyLine}</p>
+    ${limeButton(link, "Set your password →")}
+    ${smallText(expiryLine)}
+    ${signOff()}
+  `;
+
+  const text = `${headline}
+
+${statusLine}
+
+${whyLine}
+
+Set your password: ${link}
+
+${expiryLine}
+
+${SIGN_OFF_TEXT}`;
+
+  return { subject, html: emailLayout(bodyHtml), text };
+}
+
+/** "Maya", "Maya and Leo", "Maya, Leo and Sam". */
+function listNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 // ─── E-transfer pending → Sina (admin) — no footer ────────────────────────────
 
 export function buildEtransferPendingAdminEmail(params: {

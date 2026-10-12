@@ -4,8 +4,9 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { TrackedButton } from "@/components/ui/TrackedButton";
+import { QuizSwap, RetakeQuizLink } from "@/components/quiz/QuizSwap";
 import { Container } from "@/components/layout/Container";
-import { trackQuizCtaClick } from "@/lib/analytics";
 import { COHORT_LENGTH_ADJ } from "@/content/programs";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 // A static import (audit L24): the file gets a content-hashed URL that is
@@ -100,20 +101,33 @@ export function Hero() {
 
           <div className="mt-8 flex flex-col items-start gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                variant="primary"
-                href="/intake"
-                onClick={() => trackQuizCtaClick("hero")}
-                data-quiz-cta
-              >
+              {/* A quiz-taker's primary reads their next step (owner,
+                  2026-10-12): "See your groups", or "Open your dashboard"
+                  when signed in. TrackedButton swaps it once the browser
+                  knows; the server render is the visitor's quiz. */}
+              <TrackedButton variant="primary" href="/intake" track="quiz" source="hero" data-quiz-cta>
                 {QUIZ_CTA_LABEL}
-              </Button>
+              </TrackedButton>
               <Button variant="secondary" href="/programs" className="bg-[#061427]/80">
                 Browse Programs
               </Button>
             </div>
             <p className="max-w-md text-xs leading-relaxed text-white/65">
-              The quiz is free. Optional: a 20-minute on-court assessment for $20 — join a program after and it comes off the price.
+              <QuizSwap
+                guest={
+                  <>The quiz is free. Optional: a 20-minute on-court assessment for $20 — join a program after and it comes off the price.</>
+                }
+                taken={
+                  <>
+                    Your quiz answers are in, and our coaches place you from them.{" "}
+                    <RetakeQuizLink
+                      source="hero"
+                      className="rounded font-semibold text-[#B4E655] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
+                    />{" "}
+                    if they change.
+                  </>
+                }
+              />
             </p>
           </div>
         </div>
