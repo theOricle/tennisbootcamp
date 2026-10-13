@@ -156,28 +156,39 @@ export function filterGroups(groups: readonly ProgramGroup[], q: CatalogQuery): 
 }
 
 /**
- * "Closest fit" (owner, 2026-10-13), decided per program: for each program
- * whose tagged groups fit the chosen location and age but none of which
- * carries the chosen level, the groups whose tag is nearest it (ties kept);
- * the whole list in lineup order. Per program, because the age ranges
- * overlap across programs: a 16-and-up adult group matches a teen (14–17)
- * at Intermediate exactly, and that must not hide the youth program's
- * nearest group from a 14-year-old who cannot join the adult one. Empty when
- * there is no level filter, when every program that fits has an exact tagged
- * match, or when nothing fits the age at all. A group built for any level
- * (private lessons) is an exact match, never a "closest" one, so a parent
- * filtering age 9 at Intermediate still sees the Beginner Junior Bootcamp
- * here.
+ * "Closest fit" (owner, 2026-10-13: only when nothing matches), decided per
+ * program and capped by the whole list: for each program whose tagged groups
+ * fit the chosen location and age but none of which carries the chosen
+ * level, the groups whose tag is nearest it (ties kept), as long as that
+ * nearest is within reach; the whole list in lineup order. The reach is the
+ * shortest distance any tagged group in the list has to the level, and one
+ * tier when a group somewhere matches exactly. Per program, because the age
+ * ranges overlap across programs: a 16-and-up adult group matches a teen
+ * (14–17) at Intermediate exactly, and that must not hide the youth
+ * program's nearest group, Novice next door, from a 14-year-old who cannot
+ * join the adult one. Capped, because the only youth group a 16- or
+ * 17-year-old fits is High Performance (by approval), four tiers above a
+ * Beginner with an exact adult match right above it: a far group is never
+ * the closest fit while a near one exists. Empty when there is no level
+ * filter, when every program that fits has an exact tagged match and no
+ * other program sits one tier away, or when nothing fits the age at all. A
+ * group built for any level (private lessons) is an exact match, never a
+ * "closest" one, so a parent filtering age 9 at Intermediate still sees the
+ * Beginner Junior Bootcamp here.
  */
 export function closestGroups(groups: readonly ProgramGroup[], q: CatalogQuery): ProgramGroup[] {
   const tier = q.tier;
   if (!tier) return [];
   const tagged = groups.filter((g) => g.level !== null && groupMatches(g, { ...q, tier: null }));
+  if (tagged.length === 0) return [];
+  const best = Math.min(...tagged.map((g) => tierDistance(g, tier)));
+  const reach = Math.max(1, best);
   const keep = new Set<string>();
   for (const slug of new Set(tagged.map((g) => g.programSlug))) {
     const mine = tagged.filter((g) => g.programSlug === slug);
     if (mine.some((g) => groupTakesTier(g, tier))) continue;
     const nearest = Math.min(...mine.map((g) => tierDistance(g, tier)));
+    if (nearest > reach) continue;
     for (const g of mine) if (tierDistance(g, tier) === nearest) keep.add(g.id);
   }
   return groups.filter((g) => keep.has(g.id));

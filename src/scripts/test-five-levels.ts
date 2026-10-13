@@ -45,6 +45,7 @@ import { LevelTag, TierChip } from "../components/tiers";
 import { bootcampTitle, groupById, groupsForProgram, listedPrograms, programGroups } from "../content/programs";
 import { groupLevelRange, groupTier, programLevelTags, slotLevelRange } from "../lib/programCatalog";
 import {
+  EXACT_AGES,
   closestGroups,
   filterGroups,
   groupTakesTier,
@@ -211,8 +212,14 @@ async function main() {
   check("teen at Intermediate: the Intermediate Adult Bootcamp (16 and up) and private lessons match; Closest fit is the Novice Youth Bootcamp", filtered("age=teen&level=intermediate") === "adult-intermediate,private-lessons" && closest("age=teen&level=intermediate") === "youth-11-15");
   check("teen at Advanced: the Advanced Adult Bootcamp matches; Closest fit is High Performance", filtered("age=teen&level=advanced") === "adult-advanced,private-lessons" && closest("age=teen&level=advanced") === "high-performance");
   check("junior at Intermediate: no exact tagged match; Closest fit is the Novice Youth Bootcamp", filtered("age=junior&level=intermediate") === "private-lessons" && closest("age=junior&level=intermediate") === "youth-11-15");
-  check("age 16 at Novice: each program contributes its own nearest, in lineup order", closest("age=16&level=novice") === "high-performance,adult-newer,adult-intermediate");
-  check("a program with an exact tagged match contributes nothing, whatever its other groups' distance", closest("age=16&level=intermediate") === "high-performance");
+  check("a program with an exact tagged match contributes nothing, whatever its other groups' distance", filtered("age=16&level=intermediate") === "adult-intermediate,private-lessons" && !closest("age=16&level=intermediate").includes("adult-"));
+
+  console.log("Closest fit reaches no further than the best match in the list (fix round 2): the only youth group a 16- or 17-year-old fits is High Performance, never the closest fit for a Beginner");
+  check("age 16 at Novice: the two adult neighbours (one away); High Performance (three away) stays out", closest("age=16&level=novice") === "adult-newer,adult-intermediate" && closest("age=17&level=novice") === "adult-newer,adult-intermediate");
+  check("age 16 at Intermediate: the adult group matches exactly, so nothing follows, not High Performance two away", closest("age=16&level=intermediate") === "" && closest("age=17&level=intermediate") === "");
+  check("age 17 at Beginner: the Beginner Adult Bootcamp matches exactly; no Closest fit, and never High Performance four away", filtered("age=17&level=beginner") === "adult-newer,private-lessons" && closest("age=17&level=beginner") === "" && closest("age=16&level=beginner") === "");
+  check("age 16 at Advanced: High Performance is one away, so it still follows the exact adult match", filtered("age=16&level=advanced") === "adult-advanced,private-lessons" && closest("age=16&level=advanced") === "high-performance");
+  check("the reach rule never shows a by-approval group more than one tier from the level, at any age", EXACT_AGES.concat([18, 30]).every((age) => TIERS.every((t) => closestGroups(programGroups, parseCatalogQuery(params(`age=${age}&level=${t.slug}`))).every((x) => x.joining !== "approval" || tierDistance(x, t) <= 1))));
   const teenView = render(createElement(ProgramCatalogView, { programs: listedPrograms.map((p) => ({ slug: p.slug, title: p.title, type: p.type, description: p.description, photo: p.photo, ageBands: p.ageBands, timetable: p.timetable, schedule: p.schedule })), groups: programGroups, nextCohorts: {}, query: parseCatalogQuery(params("age=teen&level=intermediate")), onChange: () => {} }));
   check("catalog for a teen at Intermediate: the adult section, then Closest fit with the Novice Youth Bootcamp, and a line that stays true with an exact match above it", teenView.includes('id="catalog-bootcamps"') && teenView.includes('id="adult-intermediate"') && teenView.includes(">Closest fit</h3>") && teenView.includes('id="youth-11-15"') && teenView.includes("The nearest levels to Intermediate for teens (14–17).") && !teenView.includes("No group is") && !teenView.includes("tagged") && at(teenView, 'id="catalog-bootcamps"') < at(teenView, ">Closest fit</h3>"));
 
@@ -264,7 +271,7 @@ async function main() {
   check("/admin/players: the tier chips read tierForLevel, so the High Performance chip takes 6.0 and 7.0 players", admin.includes("tierForLevel(p.level)?.id === Number(band)") && !admin.includes("Math.floor(p.level)") && [5, 5.5, 6, 6.5, 7].every((l) => tierForLevel(l)?.id === Number("5")) && tierForLevel(null) === null);
   const line60 = tierLineTable(6);
   check("the email tier line groups 5.0–7.0 as one tier: four 6px gaps, eight 2px gaps, 222px wide, ten lit cells at 6.0", count(line60, 'width="6"') === 4 && count(line60, 'width="2"') === 8 && line60.includes('width="222"') && count(line60, 'bgcolor="#E3C46F"') === 3 && count(line60, 'bgcolor="#1C2A3C"') === 2);
-  check("the ladder's soft hyphen is written as an escape, never a literal invisible character", line.includes('const SOFT_HYPHEN = "\\u00AD";') && !line.includes("­"));
+  check("the ladder's soft hyphen is written as an escape, never a literal invisible character", line.includes('const SOFT_HYPHEN = "\\u00AD";') && !line.includes("\u00AD"));
   const joining = read("src/components/sections/HowJoiningWorks.tsx");
   const about = read("src/app/about/page.tsx");
   check("How joining works and /about name the group, never the tier: the High Performance Youth Bootcamp is by approval / the competitive track", joining.includes("The High Performance Youth Bootcamp is by approval.") && !joining.includes(">High Performance is by approval") && count(about, "High Performance Youth Bootcamp is the competitive track") === 2 && !about.includes("High Performance is the"));
