@@ -24,10 +24,12 @@ export const SECURITY_HEADERS: readonly { key: string; value: string }[] = [
 ];
 
 /**
- * The tier names became plain words on 2026-10-12 (Love → Beginner …
- * Grand Slam → World Class), and the emblem PNG routes moved with their
- * slugs. Emails already sent still point at the old paths, so each old slug
- * redirects permanently to its new one (src/lib/tiers.ts LEGACY_TIER_SLUGS).
+ * The tier names became plain words on 2026-10-12 (Love → Beginner …), and
+ * the ladder became five tiers on 2026-10-13 (Elite, Pro and World Class
+ * folded into High Performance); the emblem PNG routes moved with their
+ * slugs each time. Emails already sent still point at the old paths, so each
+ * old slug redirects permanently to its live one (src/lib/tiers.ts
+ * LEGACY_TIER_SLUGS).
  */
 export const TIER_EMBLEM_REDIRECTS = Object.entries(LEGACY_TIER_SLUGS).map(([from, to]) => ({
   source: `/tier-emblem/${from}`,

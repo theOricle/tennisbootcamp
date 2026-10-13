@@ -9,28 +9,23 @@ import {
   programAgeLabel,
   programEyebrow,
   programLevelRange,
+  programLevelTags,
   programStatus,
   type ProgramFit,
   type ProgramStatus,
 } from "@/lib/programCatalog";
-import {
-  TIER_LADDER_SPAN,
-  formatLevelBand,
-  formatTierLevel,
-  formatTierSpan,
-  levelWithinRange,
-  tierRangeForLevels,
-} from "@/lib/tiers";
-import { TierEmblem, TierLine } from "@/components/tiers";
+import { formatTierLevel, levelWithinRange, type TierId } from "@/lib/tiers";
+import { LevelTag } from "@/components/tiers";
 
 // The one program card (audit H7; owner 2026-10-12): a spec sheet with a
 // photograph of people playing on top — the Court Plates moved to the
 // dashboard strip, the admin and the OG card — then the status chip in the
 // photo's corner, the eyebrow on a line of its own, the title as the card's
 // one link, a two-line description, the decision rows — Ages, When (one line
-// per group), Price, Next — on hairlines, and the Level block (tier span,
-// mark, rail and the program's own plain line). Nothing appears on hover;
-// one action per card.
+// per group), Price, Next — on hairlines, and the Levels block: one level
+// tag per group (owner, 2026-10-13; a tier chip each, never a span or a
+// rail) and the program's own plain line. Nothing appears on hover; one
+// action per card.
 //
 // One link, one tab stop: the title's Link is stretched over the whole card
 // with an ::after pseudo-element, the article is the only positioned ancestor
@@ -170,47 +165,45 @@ export function CohortSchedule({ cohort }: { cohort: Cohort }) {
 }
 
 /**
- * The Level block shared by the program and group cards: the span in words,
- * the min tier's mark, the numeric band, the rail (with a named marker when a
- * player fits) and one plain line.
+ * The Levels block on the program card (owner, 2026-10-13): the level tags
+ * its groups carry, one chip per tier in ladder order ("All levels" for a
+ * program built for any level), the program's own plain line, and, on the
+ * dashboard, the ranked player the program fits with their tier and level.
+ * No span, no rail: each group has one level, and the group cards say which.
  */
-export function LevelBlock({
+export function LevelTags({
+  tags,
   range,
   note,
   fit = null,
   className = "",
 }: {
-  range: { min: number; max: number };
+  /** One tier id per distinct group level, or null for any level. */
+  tags: TierId[] | null;
+  /** The program's numeric span, for the dashboard's fit check only. */
+  range: { min: number; max: number } | null;
   note?: string;
   fit?: ProgramFit;
   className?: string;
 }) {
-  const minTier = tierRangeForLevels(range.min, range.max)?.min;
-  if (!minTier) return null;
-  const fitInRange = !!fit && levelWithinRange(fit.level, range.min, range.max);
+  if (tags !== null && tags.length === 0) return null;
+  const fitInRange = !!fit && !!range && levelWithinRange(fit.level, range.min, range.max);
   return (
     <div className={className}>
-      <p className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span className={LABEL_CLASS}>Level</span>
-        <span className="flex min-w-0 items-center gap-2">
-          <TierEmblem tier={minTier.id} size={20} decorative className="shrink-0" />
-          <span className="text-sm font-semibold text-white">{formatTierSpan(range.min, range.max)}</span>
-          <span aria-hidden="true" className="text-xs tabular-nums text-white/60">
-            {formatLevelBand(range.min, range.max)}
-          </span>
-          <span className="sr-only">
-            , levels {range.min.toFixed(1)} to {range.max.toFixed(1)} on the seven-tier ladder from {TIER_LADDER_SPAN}
-          </span>
-        </span>
-      </p>
-      <TierLine
-        variant="rail"
-        size="sm"
-        span={range}
-        marker={fit ? { level: fit.level, label: fit.name ?? "You" } : null}
-        labels="none"
-        className="mt-3"
-      />
+      <p className={LABEL_CLASS}>{tags === null || tags.length === 1 ? "Level" : "Levels"}</p>
+      <ul role="list" className="mt-2 flex flex-wrap gap-1.5">
+        {tags === null ? (
+          <li>
+            <LevelTag level={null} />
+          </li>
+        ) : (
+          tags.map((id) => (
+            <li key={id}>
+              <LevelTag level={id} />
+            </li>
+          ))
+        )}
+      </ul>
       {note && <p className="mt-2 text-xs text-white/60">{note}</p>}
       {fitInRange && fit && (
         <p className="mt-1 text-xs text-white/75">
@@ -222,17 +215,20 @@ export function LevelBlock({
   );
 }
 
-/** One "When" line per group: "Sat 12:00 · Ages 7–10". */
+/**
+ * One "When" entry per group, stacked the same way every time: the start
+ * ("Sat 12:00") in white on its own line, the level-led group name under it
+ * in white/65. Stacked on purpose, with no separator, so the three entries
+ * share one shape in the narrow column instead of wrapping where each name
+ * happens to run out of room (the Price row's pattern).
+ */
 function GroupLines({ groups }: { groups: ProgramGroup[] }) {
   return (
-    <ul role="list" className="space-y-1">
+    <ul role="list" className="space-y-1.5">
       {groups.map((g) => (
-        <li key={g.id} className="flex flex-wrap items-baseline gap-x-1">
-          <span className="whitespace-nowrap">
-            {formatGroupStart(g)}
-            <span aria-hidden="true" className="text-white/65"> ·</span>
-          </span>
-          <span className="min-w-0 text-white/65">{g.name}</span>
+        <li key={g.id}>
+          <span className="block text-white">{formatGroupStart(g)}</span>
+          <span className="block text-white/65">{g.name}</span>
         </li>
       ))}
     </ul>
@@ -247,6 +243,8 @@ export function ProgramCard({ program: p, nextCohort, fit = null, headingLevel =
   const eyebrow = fitInRange ? `Fits ${fit?.name ?? "you"}` : programEyebrow(p);
   const groups = groupsForProgram(p.slug);
   const scheduled = groups.filter((g) => g.day !== null);
+  // The level tags its groups carry; a program with no groups shows its plain line instead.
+  const tags = groups.length > 0 ? programLevelTags(groups) : [];
 
   return (
     <article className={`${CARD_SHELL} md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:flex`}>
@@ -319,7 +317,7 @@ export function ProgramCard({ program: p, nextCohort, fit = null, headingLevel =
             </div>
           )}
 
-          {!range && p.levelNote && (
+          {tags !== null && tags.length === 0 && p.levelNote && (
             <div className={ROW_CLASS}>
               <dt className={`${LABEL_CLASS} pt-0.5`}>Level</dt>
               <dd className={VALUE_CLASS}>{p.levelNote}</dd>
@@ -327,8 +325,10 @@ export function ProgramCard({ program: p, nextCohort, fit = null, headingLevel =
           )}
         </dl>
 
-        {/* The Level block only when the span is set; never "TBA". */}
-        {range && <LevelBlock range={range} note={p.levelNote} fit={fit} className="mt-4 border-t border-white/10 pt-4" />}
+        {/* The Levels block only when the groups carry tags; never "TBA". */}
+        {(tags === null || tags.length > 0) && (
+          <LevelTags tags={tags} range={range} note={p.levelNote} fit={fit} className="mt-4 border-t border-white/10 pt-4" />
+        )}
 
         <CtaLine text={p.ctaText} className="mt-auto pt-5" />
       </div>

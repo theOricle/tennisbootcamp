@@ -15,6 +15,7 @@ import {
   formatTierSpan,
   hasLevel,
   levelNumber,
+  tierOverlapsRange,
 } from "@/lib/tiers";
 import { MAX_PARTICIPANTS_PER_ACCOUNT, normalizeParticipantName } from "@/lib/participantInput";
 
@@ -111,11 +112,9 @@ export function levelNote(
   }
   const tier = provisionalTierFor(player.selfLevel);
   if (!tier) return null;
-  // A tier spans id.0–id.5 (Novice is 2.0–2.5): it is inside when either end is.
-  const inside =
-    !banded ||
-    cohortAdmitsLevel(tier.id, span.min ?? null, span.max ?? null) ||
-    cohortAdmitsLevel(tier.id + 0.5, span.min ?? null, span.max ?? null);
+  // A tier spans its levelMin–levelMax (Novice is 2.0–2.5, High Performance
+  // 5.0–7.0): it is inside when any of its half steps is.
+  const inside = !banded || tierOverlapsRange(tier, span.min ?? null, span.max ?? null);
   return inside
     ? `${player.name}: provisional ${tier.name}, from the quiz. Our coaches confirm it on court in week one.`
     : `${player.name}: provisional ${tier.name}, from the quiz, outside this group's ${band} band. Our coaches confirm every level on court in week one and move a player to the group that fits, at the same price.`;

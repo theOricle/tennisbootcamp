@@ -5,7 +5,7 @@ import { TrackedButton } from "@/components/ui/TrackedButton";
 import { TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import { coaches } from "@/content/coaches";
-import { TIER_LADDER_SPAN } from "@/lib/tiers";
+import { TIER_COUNT_WORD, TIER_LADDER_SPAN } from "@/lib/tiers";
 import {
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
@@ -16,7 +16,7 @@ import {
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Our coaches place every player by level and schedule; High Performance is the competitive track.",
+    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Our coaches place every player by level and schedule; the High Performance Youth Bootcamp is the competitive track.",
   alternates: { canonical: "/about" },
 };
 
@@ -119,7 +119,7 @@ export default function AboutPage() {
               {
                 heading: "Serious at every level",
                 body:
-                  `The training methods come from competitive player development, applied at every rung of the ladder — ${TIER_LADDER_SPAN}. Our coaches place every player by level and schedule, and every group trains with structure and intent. High Performance is the explicitly competitive track; the rest of the ladder builds your game seriously from wherever you start.`,
+                  `The training methods come from competitive player development, applied at every rung of the ladder — ${TIER_LADDER_SPAN}. Our coaches place every player by level and schedule, and every group trains with structure and intent. The High Performance Youth Bootcamp is the competitive track; every other group builds your game seriously from wherever you start.`,
               },
             ].map(({ heading, body }) => (
               <div
@@ -136,10 +136,10 @@ export default function AboutPage() {
           </div>
 
           {/* The ladder itself, right after the card that names it (audit
-              M36): vertical on phones, the seven emblems in a row from md. */}
+              M36): vertical on phones, the five emblems in a row from md. */}
           <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-              <p className="text-sm font-semibold text-white">The seven tiers, {TIER_LADDER_SPAN}</p>
+              <p className="text-sm font-semibold text-white">The {TIER_COUNT_WORD} tiers, {TIER_LADDER_SPAN}</p>
               <Link href="/assessment#ladder" className={TEXT_LINK_LIME}>
                 How tiers work →
               </Link>

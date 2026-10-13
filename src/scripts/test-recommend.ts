@@ -80,10 +80,13 @@ for (const level of ["new", "rally", "competitive", "elite", undefined] as const
     ids(form)
   );
 }
-check("adult beginner → the newer group", JSON.stringify(topGroups({ ...base, who: "adult", ageBand: "adult", level: "new" })) === JSON.stringify(["adult-newer"]));
-check("adult rally → the newer group (Novice)", JSON.stringify(topGroups({ ...base, who: "adult", ageBand: "adult", level: "rally" })) === JSON.stringify(["adult-newer"]));
-check("adult competitive → the intermediate group", JSON.stringify(topGroups({ ...base, who: "adult", ageBand: "adult", level: "competitive" })) === JSON.stringify(["adult-intermediate"]));
-check("adult tournament → the advanced group", JSON.stringify(topGroups({ ...base, who: "adult", ageBand: "adult", level: "elite" })) === JSON.stringify(["adult-advanced"]));
+// One level tag per group (owner, 2026-10-13): a group is named when its tag
+// is the provisional tier or the tier beside it, so a self-estimate one step
+// off still sees the group next door and the coach confirms in week one.
+check("adult beginner → the Beginner group only", JSON.stringify(topGroups({ ...base, who: "adult", ageBand: "adult", level: "new" })) === JSON.stringify(["adult-newer"]));
+check("adult rally (Novice) → the Beginner and Intermediate groups, one tier either side", JSON.stringify(topGroups({ ...base, who: "adult", ageBand: "adult", level: "rally" })) === JSON.stringify(["adult-newer", "adult-intermediate"]));
+check("adult competitive (Intermediate) → the Intermediate and Advanced groups", JSON.stringify(topGroups({ ...base, who: "adult", ageBand: "adult", level: "competitive" })) === JSON.stringify(["adult-intermediate", "adult-advanced"]));
+check("adult tournament (Advanced) → the Intermediate and Advanced groups", JSON.stringify(topGroups({ ...base, who: "adult", ageBand: "adult", level: "elite" })) === JSON.stringify(["adult-intermediate", "adult-advanced"]));
 
 // Legacy callers without a band (older payloads, the recommendation email)
 check("no band, who=youth → Youth Bootcamps", top({ ...base, who: "youth", level: "new" }) === "youth-programs");
@@ -172,7 +175,7 @@ check(
 const newerReason = recommendPrograms({ ...base, who: "adult", ageBand: "adult", level: "new" })[0]?.reason;
 check(
   "adult beginner reason leads with the group, the day and the start",
-  !!newerReason?.startsWith("Newer players group, Sunday at 4:00"),
+  !!newerReason?.startsWith("Beginner Adult Bootcamp group, Sunday at 4:00"),
   newerReason
 );
 

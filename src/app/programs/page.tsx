@@ -22,7 +22,7 @@ import { PageStack } from "@/components/layout/PageStack";
 import { Heading } from "@/components/ui/Heading";
 import { TrackedButton } from "@/components/ui/TrackedButton";
 import { TierLine } from "@/components/tiers";
-import { TIER_LADDER_SPAN } from "@/lib/tiers";
+import { TIER_COUNT_WORD, TIER_LADDER_SPAN } from "@/lib/tiers";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 
 // Incremental static regeneration (audit M39): each group's "next cohort"
@@ -77,7 +77,7 @@ export default async function ProgramsPage() {
                 Three programs: Youth Bootcamps on Saturdays, Adult Bootcamps on Sundays, and
                 private lessons by arrangement. Each cohort is a fixed group that trains together
                 for {COHORT_LENGTH}, one {SESSION_MINUTES}-minute class a week, and every group is
-                built for an age range and a level band. Pick the group that fits, or take the
+                built for an age range and one level. Pick the group that fits, or take the
                 2-minute quiz and our coaches place you.
               </p>
               <TrackedButton
@@ -100,8 +100,8 @@ export default async function ProgramsPage() {
                 Levels
               </h2>
               <p className="mt-2 text-sm text-white/75">
-                Seven tiers, {TIER_LADDER_SPAN}. Each group shows the tiers it is
-                built for, and our coaches place every player on the ladder.
+                {TIER_COUNT_WORD.charAt(0).toUpperCase() + TIER_COUNT_WORD.slice(1)} tiers, {TIER_LADDER_SPAN}. Each group
+                carries one level, and our coaches place every player on the ladder.
               </p>
               <TierLine variant="ladder" orientation="responsive" density="compact" className="mt-5" />
             </section>

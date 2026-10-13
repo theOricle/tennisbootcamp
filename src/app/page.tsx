@@ -46,7 +46,7 @@ export default function HomePage() {
           see the programs first, not the tier list"): the three programs as
           spec-sheet cards with their photographs and a quiz line under them
           (H7; owner 2026-10-12), then where they train (owner, 2026-10-12),
-          then the seven tiers as a compact secondary section (M36, H6). The
+          then the five tiers as a compact secondary section (M36, H6). The
           page closes on the quiz, then the newsletter, the tertiary CTA (M12,
           M13). */}
       <PageStack>

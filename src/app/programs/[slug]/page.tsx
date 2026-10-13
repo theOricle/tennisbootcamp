@@ -25,10 +25,10 @@ import { locationLine } from "@/content/locations";
 import { membershipNote } from "@/lib/membership";
 import { locationsForProgram } from "@/lib/locationCatalog";
 import { LocationLine } from "@/components/locations/LocationLine";
-import { agesChipLabel, nextCohortForGroup, programLevelRange } from "@/lib/programCatalog";
-import { TIER_LADDER_SPAN, formatLevelBand, formatTierSpan } from "@/lib/tiers";
+import { agesChipLabel, nextCohortForGroup, programLevelRange, programLevelTags } from "@/lib/programCatalog";
+import { TIER_COUNT_WORD, TIER_LADDER_SPAN, tierById } from "@/lib/tiers";
 import { artFocusForCohort } from "@/lib/plates/variant";
-import { TierLine, TierRangeBadges } from "@/components/tiers";
+import { LevelTag, TierLine, TierRangeBadges } from "@/components/tiers";
 import { PlateMark } from "@/components/plates/PlateMark";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import { JsonLd } from "@/components/JsonLd";
@@ -103,9 +103,16 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // Null for a program with no stated session price: no Course markup.
   const courseLd = courseJsonLd(program);
   const summary = summaryFacts(program);
-  // The tier span the program is built for: the union of its groups.
+  // The numeric span the program's groups together cover (the viewer panel's
+  // fit check) and the level tags they carry (owner, 2026-10-13): one per group.
   const range = programLevelRange(program);
   const groups = groupsForProgram(program.slug);
+  const tags = groups.length > 0 ? programLevelTags(groups) : [];
+  const tagNames =
+    tags === null
+      ? "every level"
+      : tags.map((id) => tierById(id).name).reduce((line, name, i, all) =>
+          i === 0 ? name : i === all.length - 1 ? `${line} and ${name}` : `${line}, ${name}`, "");
   // A program with fixed classes lists them as group cards (owner,
   // 2026-10-12); one with no fixed class (private lessons) states its terms
   // in the panel instead, so the page never shows the same card twice.
@@ -186,12 +193,15 @@ export default async function ProgramDetailPage({ params }: PageProps) {
             )}
             <p className="mt-2 text-base text-white/60">{program.description}</p>
 
-            {/* Who it is for and the tiers it is built for, as chips: the
-                ages from the groups in neutral white, the span with its tier
-                marks (audit L8, M37). */}
+            {/* Who it is for and the levels it is built for, as chips: the
+                ages from the groups in neutral white, then one level tag per
+                group level (owner, 2026-10-13; audit L8, M37). */}
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <span className={CHIP_NEUTRAL}>{agesChipLabel(groups)}</span>
-              {range && <TierRangeBadges levelMin={range.min} levelMax={range.max} />}
+              {tags === null && <LevelTag level={null} />}
+              {tags?.map((id) => (
+                <LevelTag key={id} level={id} />
+              ))}
             </div>
 
             {/* Where it trains, with the map link (owner, 2026-10-12). */}
@@ -265,9 +275,9 @@ export default async function ProgramDetailPage({ params }: PageProps) {
         </div>
 
         {/* How joining works, then the groups (owner, 2026-10-12): each
-            its own card with the age range, the level band on the rail, the
-            time, the price, how to join with the week-one promise, and the
-            quiz. The High Performance card is the anchor
+            its own card with its one level tag, the age range, the time,
+            the price, how to join with the week-one promise, and the quiz
+            (level-led titles, 2026-10-13). The High Performance card is the anchor
             /programs/high-performance redirects to. A program with no fixed
             class (private lessons) has no group to pick or move between, so
             neither section. */}
@@ -282,8 +292,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
             <section aria-labelledby="groups" className="mt-12">
               <h2 id="groups" className="text-xl font-semibold text-white">{groupsHeading}</h2>
               <p className="mt-2 max-w-2xl text-sm text-white/70">
-                Each group is built for an age range and a level band, and the band is where you
-                train. Pick the one that fits, or take the 2-minute quiz and our coaches place you.
+                Each group is built for an age range and one level. Pick the one that fits, or
+                take the 2-minute quiz and our coaches place you.
               </p>
               <ul role="list" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {scheduledGroups.map((g) => (
@@ -327,22 +337,20 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           </>
         )}
 
-        {/* Levels in this program (audit M36, design specs §5.7): the span in
-            words, the program's own plain line, and the ladder lit inside the
-            span, World Class on top. Only when the span is set. */}
-        {range && (
+        {/* Levels in this program (audit M36, design specs §5.7; one level
+            per group, owner 2026-10-13): the groups' level tags in words, the
+            program's own plain line, and the ladder lit at those tiers, High
+            Performance on top. Only when the groups carry tags. */}
+        {range && (tags === null || tags.length > 0) && (
           <>
             <div className="mt-12 border-t border-white/10" />
             <section aria-labelledby="levels" className="mt-10 md:grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-12">
               <div>
                 <h2 id="levels" className="text-xl font-semibold text-white">Levels in this program</h2>
                 <p className="mt-2 text-base font-semibold text-white">
-                  {formatTierSpan(range.min, range.max)}
-                  <span aria-hidden="true" className="ml-2 text-sm font-normal tabular-nums text-white/60">
-                    {formatLevelBand(range.min, range.max)}
-                  </span>
+                  {tags === null ? "All levels" : tagNames}
                   <span className="sr-only">
-                    , levels {range.min.toFixed(1)} to {range.max.toFixed(1)} on the seven-tier ladder from {TIER_LADDER_SPAN}
+                    , on the {TIER_COUNT_WORD}-tier ladder from {TIER_LADDER_SPAN}
                   </span>
                 </p>
                 {program.levelNote && (
@@ -360,7 +368,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 </Link>
               </div>
               <div className="mt-6 min-w-0 md:mt-0">
-                <TierLine variant="ladder" orientation="vertical" density="compact" span={range} />
+                {tags === null ? (
+                  <TierLine variant="ladder" orientation="vertical" density="compact" span={range} />
+                ) : (
+                  <TierLine variant="ladder" orientation="vertical" density="compact" tiers={tags} />
+                )}
               </div>
             </section>
           </>

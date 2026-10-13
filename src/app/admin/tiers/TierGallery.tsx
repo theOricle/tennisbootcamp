@@ -44,9 +44,10 @@ export function TierGallery() {
       <section className="space-y-6">
         <h2 className={H2}>Emblems</h2>
         <p className="text-sm text-white/70">
-          Seven tiers × four states. The frame escalates (ring, studs, inner
+          Five tiers × four states. The frame escalates (ring, studs, inner
           ring, notched corners, bevel, field); below 28px only the mark
-          renders.
+          renders. High Performance holds 5.0–7.0, so its rail group is five
+          pips wide.
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-white/70">
@@ -126,6 +127,14 @@ export function TierGallery() {
             <TierLine variant="rail" size="md" level={7} labels="ends" className="mt-4" />
           </div>
           <div className={CARD}>
+            <h3 className={H3}>Position · md · ends · 5.5 (inside High Performance)</h3>
+            <TierLine variant="rail" size="md" level={5.5} labels="ends" className="mt-4" />
+          </div>
+          <div className={CARD}>
+            <h3 className={H3}>Set · sm · ends · Beginner, Novice, High Performance</h3>
+            <TierLine variant="rail" size="sm" tiers={[1, 2, 5]} labels="ends" className="mt-4" />
+          </div>
+          <div className={CARD}>
             <h3 className={H3}>Provisional · md · ends</h3>
             <TierLine variant="rail" size="md" level={2} provisional labels="ends" className="mt-4" />
           </div>
@@ -194,6 +203,10 @@ export function TierGallery() {
           <h3 className={H3}>Span 3.0–7.0 · horizontal</h3>
           <TierLine variant="ladder" orientation="horizontal" span={{ min: 3, max: 7 }} className="mt-4" />
         </div>
+        <div className={CARD}>
+          <h3 className={H3}>Set · Beginner, Intermediate, Advanced · horizontal · compact</h3>
+          <TierLine variant="ladder" orientation="horizontal" density="compact" tiers={[1, 3, 4]} className="mt-4" />
+        </div>
         <div className="grid gap-5 md:grid-cols-2">
           <div className={CARD}>
             <h3 className={H3}>Showcase · vertical · blurbs</h3>
@@ -230,6 +243,7 @@ export function TierGallery() {
             isSelf={false}
           />
           <RankCard player={fixture({ id: "c3", level: 7, level_assessed_at: null })} layout="compact" isSelf />
+          <RankCard player={fixture({ id: "c4", level: 5.5 })} layout="compact" isSelf />
           <RankCard player={fixture({ id: "u1", level: null, level_assessed_at: null })} layout="compact" isSelf />
           <RankCard
             player={fixture({ id: "u2", full_name: "Leo Chen", relationship: "child", is_minor: true, level: null, level_assessed_at: null })}

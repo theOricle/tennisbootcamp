@@ -12,10 +12,12 @@
 
 import {
   TIER_COUNT,
+  tierById,
   tierForLevel,
   formatLevelNumber,
   formatTierSpan,
   tierRangeForLevels,
+  type TierId,
 } from "@/lib/tiers";
 import { BADGE_BY_TIER, TierEmblem, type BadgeProps } from "./badges";
 
@@ -128,9 +130,42 @@ export function TierChip({
 }
 
 /**
- * A cohort's or program's tier band as a chip — the min mark, the span in
- * words ("Intermediate", "Beginner – Novice", "Advanced and up", "All levels") and the max
- * mark when it differs. Renders nothing when the span is empty.
+ * A group's one level tag (owner, 2026-10-13: one level per group, never a
+ * range): the tier's 20px mark and its name in a chip, or "All levels" for a
+ * group built for any level (private lessons). The sr-only text places the
+ * tier on the ladder. The chip is the card's single level statement; the
+ * title already leads with the same word.
+ */
+export function LevelTag({
+  level,
+  className = "",
+}: {
+  /** The group's tier id, or null for any level. */
+  level: TierId | null;
+  className?: string;
+}) {
+  if (level === null) {
+    return (
+      <span className={`${CHIP_BASE} ${CHIP_NEUTRAL} ${className}`.trim()}>
+        <span className="font-semibold text-white">All levels</span>
+      </span>
+    );
+  }
+  const tier = tierById(level);
+  return (
+    <span className={`${CHIP_BASE} ${CHIP_NEUTRAL} ${className}`.trim()}>
+      <TierEmblem tier={tier.id} size={20} decorative className="shrink-0" />
+      <span className="font-semibold text-white">{tier.name}</span>
+      <span className="sr-only">, tier {tier.id} of {TIER_COUNT}, levels {tier.band}</span>
+    </span>
+  );
+}
+
+/**
+ * A cohort's tier band as a chip — the min mark, the span in words
+ * ("Intermediate", "Beginner – Novice", "Advanced and up", "All levels") and
+ * the max mark when it differs. Renders nothing when the span is empty.
+ * Cohorts keep a numeric band (admin); groups carry one LevelTag.
  */
 export function TierRangeBadges({
   levelMin,

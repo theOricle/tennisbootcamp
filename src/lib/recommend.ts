@@ -4,7 +4,7 @@ import {
   groupsForProgram,
   programs as allPrograms,
 } from "@/content/programs";
-import { AGE_BAND_QUERIES, groupTakesAge, groupTakesTier } from "@/lib/programFilters";
+import { AGE_BAND_QUERIES, groupTakesAge, groupTakesTierNear } from "@/lib/programFilters";
 import { formatGroupWhen, twelveHourStart } from "@/lib/programCatalog";
 import { provisionalTierFor } from "@/lib/level";
 import type { AgeBand } from "@/lib/ageBand";
@@ -63,27 +63,37 @@ function isCompetitive(form: IntakeFormSnapshot): boolean {
 }
 
 /**
+ * How far a group's level tag may sit from the provisional tier and still be
+ * named on the result: one tier either way. The quiz knows an age band and a
+ * self-estimate, not an exact age or a coach level, and a tag is one tier
+ * wide (owner, 2026-10-13), so the neighbour tiers stay on the card and our
+ * coaches confirm the level on court in week one.
+ */
+const TIER_REACH = 1;
+
+/**
  * The groups of a program that fit the player: the age band's range
  * overlaps the group's ages, and the provisional tier (when the quiz could
- * name one) sits inside the group's level band. Falls back to every group
- * when nothing fits, so the card never goes blank.
+ * name one) is the group's level tag or the tier next to it. A competitive
+ * or tournament youth is shown the High Performance group first whenever
+ * their age fits it (its tag is the top tier, by approval). Falls back to
+ * every group when nothing fits, so the card never goes blank.
  */
 export function groupsFor(program: Program, form: IntakeFormSnapshot): ProgramGroup[] {
   const groups = groupsForProgram(program.slug);
   const age = form.ageBand ? AGE_BAND_QUERIES[form.ageBand] : null;
   const tier = provisionalTierFor(form.level);
-  const fitting = groups.filter(
-    (g) => (!age || groupTakesAge(g, age)) && (!tier || groupTakesTier(g, tier))
-  );
-  const list = fitting.length > 0 ? fitting : groups;
+  const byAge = groups.filter((g) => !age || groupTakesAge(g, age));
+  const fitting = byAge.filter((g) => !tier || groupTakesTierNear(g, tier, TIER_REACH));
+  let list = fitting.length > 0 ? fitting : groups;
   if (isCompetitive(form)) {
-    const hp = list.find((g) => g.id === "high-performance");
-    if (hp) return [hp, ...list.filter((g) => g !== hp)];
+    const hp = byAge.find((g) => g.id === "high-performance");
+    if (hp) list = [hp, ...list.filter((g) => g !== hp)];
   }
   return list;
 }
 
-/** "Ages 7–10 group, Saturday at 12:00". Times and names come from src/content/programs.ts. */
+/** "Beginner Junior Bootcamp group, Saturday at 12:00". Times and names come from src/content/programs.ts. */
 function groupLine(g: ProgramGroup): string {
   return g.day && g.start ? `${g.name} group, ${g.day} at ${twelveHourStart(g.start)}` : g.name;
 }

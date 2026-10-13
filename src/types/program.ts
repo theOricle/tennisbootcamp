@@ -1,5 +1,6 @@
 import type { AgeBand } from "@/lib/ageBand";
 import type { PlateId } from "@/lib/plates/specs";
+import type { TierId } from "@/lib/tiers";
 
 // The eyebrow above a program's title, so it never repeats the title.
 export type ProgramType = "Weekend group class" | "One-to-one coaching" | "Group Lessons";
@@ -24,11 +25,12 @@ export type GroupStatus = "forming" | "invite-only" | "full" | "arranged";
 export type GroupJoining = "open" | "approval";
 
 /**
- * One group a player can be placed in (owner, 2026-10-12): an age range, a
- * level band, a class day and time, a price and a status. Groups are the
- * unit the catalog filters, the program pages list and the quiz points at;
- * a program's timetable and level span are derived from its groups, so the
- * lineup lives in one editable list in src/content/programs.ts.
+ * One group a player can be placed in (owner, 2026-10-12; one level per
+ * group and level-led titles, 2026-10-13): an age range, one level tag, a
+ * class day and time, a price and a status. Groups are the unit the catalog
+ * filters, the program pages list and the quiz points at; a program's
+ * timetable and level span are derived from its groups, so the lineup lives
+ * in one editable list in src/content/programs.ts.
  */
 export type ProgramGroup = {
   /** Stable id; also the card's anchor on the program page (#high-performance). */
@@ -41,15 +43,25 @@ export type ProgramGroup = {
    * groups' locations.
    */
   locationId: string;
-  /** The card title: "Ages 7–10", "High Performance", "Newer players". */
+  /**
+   * The card title, level first (owner, 2026-10-13): "Beginner Junior
+   * Bootcamp", "High Performance Youth Bootcamp", "Intermediate Adult
+   * Bootcamp"; "One-to-one coaching" for private lessons. Never the day or
+   * time, which is a detail row.
+   */
   name: string;
   /** Youngest age the group takes, or null for any age. */
   ageMin: number | null;
   /** Oldest age the group takes, or null for no upper bound ("16 and up"). */
   ageMax: number | null;
-  /** The level band, 1.0–7.0 in half steps, whole tiers (x.0–y.5). */
-  levelMin: number;
-  levelMax: number;
+  /**
+   * The one level the group is built for (owner, 2026-10-13: "just one tag
+   * for each program"), as a tier id; null for a group built for any level
+   * (private lessons). The numeric band behind it (3.0–3.5 for Intermediate,
+   * 5.0–7.0 for High Performance) is derived through groupLevelRange() for
+   * fit checks, never stored twice.
+   */
+  level: TierId | null;
   /** The class day, or null when the time is arranged with the player. */
   day: ClassDay | null;
   /** 24-hour start and end ("12:00", "13:00"); null when arranged. */
@@ -84,9 +96,8 @@ export type TimetableSlot = {
   time: string;
   /** The group's name as the recommender and the structured data read it. */
   group: string;
-  /** The group's level band (always set for a derived slot). */
-  levelMin?: number;
-  levelMax?: number;
+  /** The group's one level (a tier id), or null for any level. Always set for a derived slot. */
+  level?: TierId | null;
 };
 
 export type Program = {
@@ -131,8 +142,10 @@ export type Program = {
    */
   ageBands: AgeBand[];
   /**
-   * The tier span the program is built for, 1.0–7.0 in half steps: the union
-   * of its groups' bands. Unset renders nothing, never a guess.
+   * The numeric span the program's groups together cover, 1.0–7.0 in half
+   * steps: the union of the groups' tier bands, for fit checks (the dashboard
+   * suggestions, the viewer panel). Cards and pages show the groups' level
+   * tags, never this span. Unset renders nothing, never a guess.
    */
   levelMin?: number;
   levelMax?: number;

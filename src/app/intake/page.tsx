@@ -12,7 +12,7 @@ import { LEAD_SOURCE_FIELD } from "@/lib/leadSource";
 import { storedFirstTouch } from "@/lib/firstTouchBrowser";
 import { provisionalTierFor, selfEstimateToLevel, type SelfLevel } from "@/lib/level";
 import { ageBandToWho, type AgeBand } from "@/lib/ageBand";
-import { TIER_LADDER_SPAN, formatTierSpan, type Tier } from "@/lib/tiers";
+import { TIER_COUNT_WORD, TIER_LADDER_SPAN, type Tier } from "@/lib/tiers";
 import { TierChip, TierEmblem, TierLine } from "@/components/tiers";
 import {
   availabilityToLegacySlots,
@@ -229,8 +229,8 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 /**
  * The one program card, identical wherever a player's match is shown: a link
  * to the program page carrying the groups that fit this player — their age
- * band and provisional tier against each group's ages and level band (owner,
- * 2026-10-12) — and the price (audit M17). One fitting scheduled group links
+ * band and provisional tier against each group's ages and one level tag
+ * (owner, 2026-10-12 and 2026-10-13) — and the price (audit M17). One fitting scheduled group links
  * straight to that group's card; several, or an arranged group, link to the
  * program, where our coaches' placement decides (recommendationHref). The
  * whole card is the link; the arrow is decoration.
@@ -258,9 +258,8 @@ function ProgramMatchCard({ rec }: { rec: Recommendation }) {
                     <span className="font-semibold text-white">{g.name}</span>
                     {/* High Performance joins by approval (owner, 2026-10-12). */}
                     {g.joining === "approval" && <span className="text-white/70"> · By approval</span>}
-                    <span className="block text-white/70">
-                      {groupSummaryLine(g)} · {formatTierSpan(g.levelMin, g.levelMax)}
-                    </span>
+                    {/* The title leads with the level (owner, 2026-10-13), so the line below is the time and the ages. */}
+                    <span className="block text-white/70">{groupSummaryLine(g)}</span>
                   </li>
                 ))}
               </ul>
@@ -312,7 +311,7 @@ const PROVISIONAL_CHIP =
  * the player's likely tier from the self-estimate map (owner D4) as a 56px
  * provisional emblem, the name, a "Provisional" chip and the compact ladder.
  * A player who answered "Not sure" or "Prefer not to say" is thanked and
- * shown the seven tiers, with no guess.
+ * shown the five tiers, with no guess.
  */
 function LikelyTierBlock({ tier, firstName }: { tier: Tier | null; firstName?: string }) {
   if (!tier) {
@@ -322,7 +321,7 @@ function LikelyTierBlock({ tier, firstName }: { tier: Tier | null; firstName?: s
           Thanks for telling us about {firstName ? `${firstName}'s` : "your"} game.
         </p>
         <p className="mt-1 text-sm leading-relaxed text-white/70">
-          {`Our coaches place every player on one of seven tiers, ${TIER_LADDER_SPAN}.`}
+          {`Our coaches place every player on one of ${TIER_COUNT_WORD} tiers, ${TIER_LADDER_SPAN}.`}
         </p>
         <TierLine variant="ladder" orientation="responsive" density="compact" className="mt-5" />
       </div>
@@ -536,7 +535,9 @@ function AssessmentSuggestion({
 /**
  * The two demoted links, shared by every result screen: 44px targets (audit
  * L4). "Browse Programs" opens the catalog filtered to the player's age band
- * and likely tier when the screen is about one player (owner, 2026-10-12).
+ * and likely tier when the screen is about one player (owner, 2026-10-12);
+ * the band alone for a competitive or tournament youth, so the High
+ * Performance Youth Bootcamp the result put first is in the list.
  */
 function ResultLinks({ catalogHref = "/programs" }: { catalogHref?: string }) {
   return (
@@ -604,7 +605,7 @@ function TentativeMatchScreen({
             onBook={() => goToBooking(router, form, result.level)}
           />
 
-          <ResultLinks catalogHref={quizCatalogHref(result.ageBand, tier)} />
+          <ResultLinks catalogHref={quizCatalogHref(result.ageBand, result.level)} />
         </div>
       </div>
     </main>
@@ -667,7 +668,7 @@ function HouseholdMatchScreen({
             <p className="mt-4 text-sm leading-relaxed text-white/70">
               {anyTier
                 ? "From your answers, so each stays provisional until our coaches confirm the player's level on court in week one."
-                : `Our coaches place every player on one of seven tiers, ${TIER_LADDER_SPAN}.`}
+                : `Our coaches place every player on one of ${TIER_COUNT_WORD} tiers, ${TIER_LADDER_SPAN}.`}
             </p>
           </div>
 

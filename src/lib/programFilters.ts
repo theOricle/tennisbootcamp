@@ -9,7 +9,8 @@
 // the rules here.
 
 import { AGE_BAND_LABELS, type AgeBand } from "@/lib/ageBand";
-import { TIERS, tierIdsInRange, type Tier } from "@/lib/tiers";
+import { catalogTierFor } from "@/lib/level";
+import { tierBySlug, type Tier } from "@/lib/tiers";
 import { defaultLocation, locationById } from "@/content/locations";
 import type { ProgramGroup } from "@/types/program";
 import type { TrainingLocation } from "@/types/location";
@@ -55,11 +56,9 @@ export function ageQueryFor(value: string | null | undefined): AgeQuery | null {
   return null;
 }
 
-/** The tier for a URL value (its slug), or null. */
+/** The tier for a URL value (its slug), or null. A retired slug reads as "any". */
 export function tierQueryFor(value: string | null | undefined): Tier | null {
-  if (!value) return null;
-  const slug = value.trim().toLowerCase();
-  return TIERS.find((t) => t.slug === slug) ?? null;
+  return tierBySlug(value);
 }
 
 /** The location for a URL value (its id), or null. */
@@ -122,9 +121,27 @@ export function groupTakesAge(group: Pick<ProgramGroup, "ageMin" | "ageMax">, ag
   return aboveMin && belowMax;
 }
 
-/** Does the group's level band include this tier? */
-export function groupTakesTier(group: Pick<ProgramGroup, "levelMin" | "levelMax">, tier: Tier): boolean {
-  return tierIdsInRange(group.levelMin, group.levelMax).includes(tier.id);
+/**
+ * Is the group's one level tag this tier? Exact (owner, 2026-10-13: "the
+ * level filter matches the tag exactly"); a group built for any level
+ * (private lessons) takes every tier.
+ */
+export function groupTakesTier(group: Pick<ProgramGroup, "level">, tier: Tier): boolean {
+  return group.level === null || group.level === tier.id;
+}
+
+/**
+ * How far a group's level tag sits from a tier, in tiers: 0 for an exact
+ * match or a group that takes any level, 1 for the tier next door. The
+ * recommender and the catalog's "Closest fit" read this.
+ */
+export function tierDistance(group: Pick<ProgramGroup, "level">, tier: Tier): number {
+  return group.level === null ? 0 : Math.abs(group.level - tier.id);
+}
+
+/** Is the group's level tag within `steps` tiers of this one (an exact match at 0)? */
+export function groupTakesTierNear(group: Pick<ProgramGroup, "level">, tier: Tier, steps: number): boolean {
+  return tierDistance(group, tier) <= steps;
 }
 
 export function groupMatches(group: ProgramGroup, q: CatalogQuery): boolean {
@@ -136,6 +153,45 @@ export function groupMatches(group: ProgramGroup, q: CatalogQuery): boolean {
 
 export function filterGroups(groups: readonly ProgramGroup[], q: CatalogQuery): ProgramGroup[] {
   return groups.filter((g) => groupMatches(g, q));
+}
+
+/**
+ * "Closest fit" (owner, 2026-10-13: only when nothing matches), decided per
+ * program and capped by the whole list: for each program whose tagged groups
+ * fit the chosen location and age but none of which carries the chosen
+ * level, the groups whose tag is nearest it (ties kept), as long as that
+ * nearest is within reach; the whole list in lineup order. The reach is the
+ * shortest distance any tagged group in the list has to the level, and one
+ * tier when a group somewhere matches exactly. Per program, because the age
+ * ranges overlap across programs: a 16-and-up adult group matches a teen
+ * (14–17) at Intermediate exactly, and that must not hide the youth
+ * program's nearest group, Novice next door, from a 14-year-old who cannot
+ * join the adult one. Capped, because the only youth group a 16- or
+ * 17-year-old fits is High Performance (by approval), four tiers above a
+ * Beginner with an exact adult match right above it: a far group is never
+ * the closest fit while a near one exists. Empty when there is no level
+ * filter, when every program that fits has an exact tagged match and no
+ * other program sits one tier away, or when nothing fits the age at all. A
+ * group built for any level (private lessons) is an exact match, never a
+ * "closest" one, so a parent filtering age 9 at Intermediate still sees the
+ * Beginner Junior Bootcamp here.
+ */
+export function closestGroups(groups: readonly ProgramGroup[], q: CatalogQuery): ProgramGroup[] {
+  const tier = q.tier;
+  if (!tier) return [];
+  const tagged = groups.filter((g) => g.level !== null && groupMatches(g, { ...q, tier: null }));
+  if (tagged.length === 0) return [];
+  const best = Math.min(...tagged.map((g) => tierDistance(g, tier)));
+  const reach = Math.max(1, best);
+  const keep = new Set<string>();
+  for (const slug of new Set(tagged.map((g) => g.programSlug))) {
+    const mine = tagged.filter((g) => g.programSlug === slug);
+    if (mine.some((g) => groupTakesTier(g, tier))) continue;
+    const nearest = Math.min(...mine.map((g) => tierDistance(g, tier)));
+    if (nearest > reach) continue;
+    for (const g of mine) if (tierDistance(g, tier) === nearest) keep.add(g.id);
+  }
+  return groups.filter((g) => keep.has(g.id));
 }
 
 /** No age or level filter. The location is a choice, not a filter, so it never counts. */
@@ -169,8 +225,15 @@ export function resultsLine(count: number, q: CatalogQuery): string {
 
 /**
  * The quiz result's link into the catalog: the player's age band and, when
- * the quiz could name one, their provisional tier (audit M17, owner D4).
+ * the quiz could name one, their provisional tier (audit M17, owner D4),
+ * except for a competitive or tournament youth, whose link carries the band
+ * alone so the High Performance Youth Bootcamp the result put first is in
+ * the list (catalogTierFor).
  */
-export function quizCatalogHref(ageBand: AgeBand | undefined, tier: Tier | null): string {
-  return catalogHref({ location: null, age: ageBand ? AGE_BAND_QUERIES[ageBand] : null, tier });
+export function quizCatalogHref(ageBand: AgeBand | undefined, selfLevel: string | null | undefined): string {
+  return catalogHref({
+    location: null,
+    age: ageBand ? AGE_BAND_QUERIES[ageBand] : null,
+    tier: catalogTierFor(ageBand, selfLevel),
+  });
 }

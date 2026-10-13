@@ -1,15 +1,16 @@
 import type { Program, ProgramGroup, TimetableSlot } from "@/types/program";
 import { ageBandsLabel, type AgeBand } from "@/lib/ageBand";
 import { formatClassTime, twelveHourStart } from "@/lib/programCatalog";
+import { LEVEL_MAX, LEVEL_MIN, tierById, type TierId } from "@/lib/tiers";
 
 // The catalog (owner, 2026-10-12): three programs — Youth Bootcamps, Adult
 // Bootcamps and Private Lessons — and the groups inside them, each group its
-// own card with an age range, a level band, a class time, a price and a
-// status. High Performance is a youth group; Kids' Summer Camp left the
-// catalog (src/lib/programRedirects.ts keeps both old URLs landing). The
-// group lineup is the one editable list below; every program's timetable,
-// level span and schedule line is derived from it. Homepage cards are the
-// listed programs in this order.
+// own card with an age range, one level tag (owner, 2026-10-13), a class
+// time, a price and a status. High Performance is a youth group; Kids' Summer
+// Camp left the catalog (src/lib/programRedirects.ts keeps both old URLs
+// landing). The group lineup is the one editable list below; every program's
+// timetable, level span and schedule line is derived from it. Homepage cards
+// are the listed programs in this order.
 
 // Cohort length and price, one setting (backlog #27, owner 2026-10-03). Every
 // page, email, metadata line and the admin new-cohort default reads these.
@@ -114,25 +115,32 @@ export const ASSESSMENT_CERTAINTY_LINE =
 export const PLACEMENT_LINE =
   "Pick the group that fits your age and level, and your coach confirms your level on court in week one.";
 
-// ─── Groups (owner lineup, 2026-10-12) ───────────────────────────────────────
-// Youth Bootcamps, Saturdays: 12:00 ages 7–10 Beginner – Novice; 1:00 ages
-// 11–15 Beginner – Intermediate; 2:00 High Performance ages 12–17
-// Intermediate – Elite. Adult Bootcamps, Sundays, 16 and up: 4:00 Beginner –
-// Novice; 5:00 Intermediate; 6:00 Advanced – Elite. Private Lessons: any age
-// and level, by arrangement. Level bands are whole tiers (x.0–y.5). Every
-// group trains at Newtonbrook Tennis Club, our one location today (owner,
-// 2026-10-12; src/content/locations.ts).
+// ─── Groups (owner lineup, 2026-10-13) ───────────────────────────────────────
+// One level per group and a level-led title, "{Level} {Audience} Bootcamp"
+// (owner: "Just one tag for each program, e.g. Intermediate Adult bootcamp.
+// The date is embedded in the card, it is not the main focus"). Youth
+// Bootcamps, Saturdays: Beginner Junior Bootcamp 7–10 at 12:00; Novice Youth
+// Bootcamp 11–15 at 1:00; High Performance Youth Bootcamp 12–17 at 2:00 (by
+// approval). Adult Bootcamps, Sundays, 16 and up: Beginner at 4:00,
+// Intermediate at 5:00, Advanced at 6:00. Private Lessons: any age and level,
+// by arrangement. Every group trains at Newtonbrook Tennis Club, our one
+// location today (owner, 2026-10-12; src/content/locations.ts). The ids stay
+// as they were, so anchors, redirects and the quiz's links keep landing.
+
+/** "Intermediate Adult Bootcamp": the level-led title of a bootcamp group. */
+export function bootcampTitle(level: TierId, audience: "Junior" | "Youth" | "Adult"): string {
+  return `${tierById(level).name} ${audience} Bootcamp`;
+}
 
 export const programGroups: ProgramGroup[] = [
   {
     id: "youth-7-10",
     programSlug: "youth-programs",
     locationId: "newtonbrook",
-    name: "Ages 7–10",
+    name: bootcampTitle(1, "Junior"),
     ageMin: 7,
     ageMax: 10,
-    levelMin: 1.0,
-    levelMax: 2.5,
+    level: 1,
     day: "Saturday",
     start: "12:00",
     end: "13:00",
@@ -144,11 +152,10 @@ export const programGroups: ProgramGroup[] = [
     id: "youth-11-15",
     programSlug: "youth-programs",
     locationId: "newtonbrook",
-    name: "Ages 11–15",
+    name: bootcampTitle(2, "Youth"),
     ageMin: 11,
     ageMax: 15,
-    levelMin: 1.0,
-    levelMax: 3.5,
+    level: 2,
     day: "Saturday",
     start: "13:00",
     end: "14:00",
@@ -158,14 +165,15 @@ export const programGroups: ProgramGroup[] = [
   },
   {
     // The competitive track (voice.md: tournament dialect allowed here only).
+    // Its level tag is the High Performance tier (5.0–7.0); the card and the
+    // note say what the group is, so the tier and the group never blur.
     id: "high-performance",
     programSlug: "youth-programs",
     locationId: "newtonbrook",
-    name: "High Performance",
+    name: bootcampTitle(5, "Youth"),
     ageMin: 12,
     ageMax: 17,
-    levelMin: 3.0,
-    levelMax: 5.5,
+    level: 5,
     day: "Saturday",
     start: "14:00",
     end: "15:00",
@@ -179,11 +187,10 @@ export const programGroups: ProgramGroup[] = [
     id: "adult-newer",
     programSlug: "bootcamps",
     locationId: "newtonbrook",
-    name: "Newer players",
+    name: bootcampTitle(1, "Adult"),
     ageMin: 16,
     ageMax: null,
-    levelMin: 1.0,
-    levelMax: 2.5,
+    level: 1,
     day: "Sunday",
     start: "16:00",
     end: "17:00",
@@ -195,11 +202,10 @@ export const programGroups: ProgramGroup[] = [
     id: "adult-intermediate",
     programSlug: "bootcamps",
     locationId: "newtonbrook",
-    name: "Intermediate",
+    name: bootcampTitle(3, "Adult"),
     ageMin: 16,
     ageMax: null,
-    levelMin: 3.0,
-    levelMax: 3.5,
+    level: 3,
     day: "Sunday",
     start: "17:00",
     end: "18:00",
@@ -211,11 +217,10 @@ export const programGroups: ProgramGroup[] = [
     id: "adult-advanced",
     programSlug: "bootcamps",
     locationId: "newtonbrook",
-    name: "Advanced",
+    name: bootcampTitle(4, "Adult"),
     ageMin: 16,
     ageMax: null,
-    levelMin: 4.0,
-    levelMax: 5.5,
+    level: 4,
     day: "Sunday",
     start: "18:00",
     end: "19:00",
@@ -230,8 +235,7 @@ export const programGroups: ProgramGroup[] = [
     name: "One-to-one coaching",
     ageMin: null,
     ageMax: null,
-    levelMin: 1.0,
-    levelMax: 7.0,
+    level: null,
     day: null,
     start: null,
     end: null,
@@ -257,17 +261,24 @@ export function groupById(id: string): ProgramGroup | undefined {
 function timetableFor(slug: string): TimetableSlot[] {
   return groupsForProgram(slug).flatMap((g) =>
     g.day && g.start && g.end
-      ? [{ day: g.day, time: formatClassTime(g.start, g.end), group: g.name, levelMin: g.levelMin, levelMax: g.levelMax }]
+      ? [{ day: g.day, time: formatClassTime(g.start, g.end), group: g.name, level: g.level }]
       : []
   );
 }
 
-/** The union of the groups' level bands. */
+/**
+ * The numeric span the groups' tiers together cover (internal: fit checks
+ * only). A group built for any level (private lessons) spans the ladder.
+ */
 function spanFor(slug: string): { levelMin: number; levelMax: number } {
-  const groups = groupsForProgram(slug);
+  const bands = groupsForProgram(slug).map((g) =>
+    g.level === null
+      ? { min: LEVEL_MIN, max: LEVEL_MAX }
+      : { min: tierById(g.level).levelMin, max: tierById(g.level).levelMax }
+  );
   return {
-    levelMin: Math.min(...groups.map((g) => g.levelMin)),
-    levelMax: Math.max(...groups.map((g) => g.levelMax)),
+    levelMin: Math.min(...bands.map((b) => b.min)),
+    levelMax: Math.max(...bands.map((b) => b.max)),
   };
 }
 
@@ -295,7 +306,7 @@ export const programs: Program[] = [
       `Saturday tennis in Toronto for ages 7–17: three groups by age and level, High Performance included. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
     longDescription:
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one ${SESSION_MINUTES}-minute class every Saturday. ` +
-      "Three groups run back to back: ages 7–10 at 12:00, ages 11–15 at 1:00, and High Performance at 2:00 for players 12–17 who compete, or are training to. " +
+      "Three groups run back to back: the Beginner Junior Bootcamp (ages 7–10) at 12:00, the Novice Youth Bootcamp (ages 11–15) at 1:00, and the High Performance Youth Bootcamp at 2:00 for players 12–17 who compete, or are training to. " +
       "Every class works the fundamentals — forehand, backhand, serve, volley and movement — and puts them into rally and point play the same day. " +
       PLACEMENT_LINE,
     type: "Weekend group class",
@@ -325,8 +336,8 @@ export const programs: Program[] = [
     timetable: timetableFor("youth-programs"),
     includes: [
       `One ${SESSION_MINUTES}-minute class a week for ${COHORT_LENGTH}`,
-      "Three groups: ages 7–10, ages 11–15 and High Performance (12–17)",
-      "Grouped by level within each class",
+      "Three groups: Beginner (ages 7–10), Novice (ages 11–15) and High Performance (ages 12–17)",
+      "One level per group, confirmed on court in week one",
       "Forehand, backhand, serve and volley fundamentals",
       "Movement and agility work",
       "Rally and point play every class",
@@ -340,10 +351,10 @@ export const programs: Program[] = [
     title: "Adult Bootcamps",
     description: "Sunday group classes for adults and players 16 and up, in three levels back to back.",
     metaDescription:
-      `Sunday tennis for adults in Toronto, 16 and up: newer, intermediate and advanced classes back to back. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
+      `Sunday tennis for adults in Toronto, 16 and up: Beginner, Intermediate and Advanced classes back to back. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
     longDescription:
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one ${SESSION_MINUTES}-minute class every Sunday. ` +
-      "Three levels run back to back: 4:00 for newer players, 5:00 for intermediate, 6:00 for advanced. Players 16 and up are welcome. " +
+      "Three levels run back to back: Beginner at 4:00, Intermediate at 5:00, Advanced at 6:00. Players 16 and up are welcome. " +
       `Each class works one part of the game — groundstrokes, serve and return, net play, rally and point play — and the ${COHORT_LENGTH} build on each other. ` +
       PLACEMENT_LINE,
     type: "Weekend group class",
@@ -362,7 +373,7 @@ export const programs: Program[] = [
     plateCaption: "Three levels on Sunday. As the level goes up, the ball flies flatter and lands deeper.",
     ageBands: ADULT_BANDS,
     ...spanFor("bootcamps"),
-    levelNote: "Newer, intermediate and advanced classes, back to back",
+    levelNote: "Beginner, Intermediate and Advanced classes, back to back",
     priceSummary: PRICE_SUMMARY,
     enrollmentStatus: "forming",
     schedule: scheduleFor("bootcamps", "Sunday"),
@@ -373,7 +384,7 @@ export const programs: Program[] = [
     timetable: timetableFor("bootcamps"),
     includes: [
       `One ${SESSION_MINUTES}-minute class a week for ${COHORT_LENGTH}`,
-      "Three levels: newer, intermediate, advanced",
+      "Three levels: Beginner, Intermediate, Advanced",
       "Groundstrokes, serve and return, net play",
       "Rally and point play every class",
       "Corrections from the coach every session",

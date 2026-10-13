@@ -102,7 +102,7 @@ check("High Performance adds the Join row, above Week 1", row(hpCard, "Join", AP
 check("an open group has no Join row", !openCard.includes(">Join</dt>") && openCard.includes("Open to join"));
 check("private lessons: no group to move between, so neither row", !soloCard.includes(">Week 1</dt>") && !soloCard.includes(">Join</dt>"));
 check("still one link per card, the quiz", count(hpCard, "<a ") === 1 && count(openCard, "<a ") === 1);
-check("the rows sit after the Level block and before the CTA", at(hpCard, ">Week 1</dt>") > at(hpCard, 'aria-label="Built for') && at(hpCard, ">Week 1</dt>") < at(hpCard, 'href="/intake?program=youth-programs"'));
+check("the rows sit after the level tag and the price, before the CTA", at(hpCard, ">Week 1</dt>") > at(hpCard, ">Level</dt>") && at(hpCard, ">Week 1</dt>") > at(hpCard, ">Price</dt>") && at(hpCard, ">Week 1</dt>") < at(hpCard, 'href="/intake?program=youth-programs"'));
 check("no assessment pitch on a card (design-system.md)", !hpCard.includes("Book Your Assessment") && !openCard.includes("Book Your Assessment"));
 
 // ── How joining works ───────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ check("step 1 on a program page carries the program", stepsAdults.includes('href
 check("step 2: how a spot is reserved today (quiz, invitation, hold, enroll)", steps.includes("The 2-minute quiz is how you ask for a spot. We email you an invitation with the group&#x27;s dates and price, and hold your spot while you enroll."));
 check("step 3: on court in week one, then the promise", steps.includes(`On court, in week one. ${RIGHT_GROUP_PROMISE}`));
 check("the optional assessment: certainty first, the mechanic, the exact label", steps.includes("Want certainty first?</span> " + ASSESSMENT_CERTAINTY_LINE) && /<a [^>]*href="\/assessment\/book"[^>]*>Book Your Assessment<span aria-hidden="true"[^>]*>→<\/span><\/a>/.test(steps));
-check("High Performance by approval when asked", steps.includes("High Performance is by approval.</span> " + APPROVAL_LINE) && !stepsAdults.includes("High Performance"));
+check("High Performance by approval when asked, named as the group, never the tier", steps.includes("The High Performance Youth Bootcamp is by approval.</span> " + APPROVAL_LINE) && !steps.includes(">High Performance is by approval") && !stepsAdults.includes("High Performance"));
 check("two links, neither a lime primary button", count(steps, "<a ") === 2 && !/<a [^>]*bg-\[#B4E655\]/.test(steps));
 
 // ── The pages ───────────────────────────────────────────────────────────────

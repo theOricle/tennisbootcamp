@@ -1,11 +1,13 @@
 // Tier emblem geometry (audit H6, design specs §3.2) — pure data, no JSX.
 //
-// Seven emblems on a 64×64 grid. The motif inside each (ball, rally arcs,
-// balance, break, star, crown, trophy and laurel) is the one the badges always
-// carried; what escalates now is the FRAME: ring weight, vertex studs, an
-// inner ring, notched corners, a bevel ring and the field fill, with one flat
-// colour per tier from the ramp in src/lib/tiers.ts. Every adjacent pair
-// differs in at least one frame feature, so the rank reads without colour.
+// Five emblems on a 64×64 grid (five tiers since 2026-10-13). The motif
+// inside each (ball, rally arcs, balance, break, and the trophy with laurel
+// for High Performance, the top of the ladder) is the one the badges always
+// carried for that rung; what escalates is the FRAME: ring weight, vertex
+// studs, an inner ring, notched corners, a bevel ring and the field fill, with
+// one flat colour per tier from the ramp in src/lib/tiers.ts. Every adjacent
+// pair differs in at least one frame feature, so the rank reads without
+// colour.
 //
 // Shapes are data and every colour is an SVG attribute (no className fills),
 // so the same list renders as React elements in badges.tsx and serialises
@@ -42,7 +44,7 @@ const WHITE = "#FFFFFF";
 /** The plain hexagon the first four tiers wear. */
 export const HEX = "32,3 57,17.5 57,46.5 32,61 7,46.5 7,17.5";
 
-/** The notched hexagon (4.5 cut from each vertex) for Elite (tier 5) and above. */
+/** The notched hexagon (4.5 cut from each vertex) for High Performance (tier 5). */
 export const NOTCHED_HEX =
   "28.11,5.26 35.89,5.26 53.11,15.24 57,22 57,42 53.11,48.76 35.89,58.74 28.11,58.74 10.89,48.76 7,42 7,22 10.89,15.24";
 
@@ -145,34 +147,8 @@ const MOTIFS: Record<TierId, (ink: Inks) => Shape[]> = {
     { kind: "circle", cx: 29, cy: 31, r: 2.4, fill: secondary },
     { kind: "circle", cx: 35, cy: 33, r: 2.4, fill: secondary },
   ],
-  // 5 · Elite — a star
+  // 5 · High Performance — a trophy with laurel, the top of the ladder
   5: ({ primary, secondary }) => [
-    {
-      kind: "path",
-      d: "M32 17 L35.5 27.2 L46.3 27.4 L37.7 33.9 L40.8 44.1 L32 38 L23.2 44.1 L26.3 33.9 L17.7 27.4 L28.5 27.2 Z",
-      fill: primary,
-      stroke: secondary,
-      strokeWidth: 1.6,
-      strokeLinejoin: "round",
-    },
-  ],
-  // 6 · Pro — a crown
-  6: ({ primary, secondary }) => [
-    {
-      kind: "path",
-      d: "M19 42 L19 25 L26.5 32.5 L32 22 L37.5 32.5 L45 25 L45 42 Z",
-      fill: primary,
-      stroke: secondary,
-      strokeWidth: 1.6,
-      strokeLinejoin: "round",
-    },
-    { kind: "line", x1: 19, y1: 42, x2: 45, y2: 42, stroke: secondary, strokeWidth: 2.4, strokeLinecap: "round" },
-    { kind: "circle", cx: 19, cy: 25, r: 2.2, fill: secondary },
-    { kind: "circle", cx: 32, cy: 22, r: 2.2, fill: secondary },
-    { kind: "circle", cx: 45, cy: 25, r: 2.2, fill: secondary },
-  ],
-  // 7 · World Class — a trophy with laurel
-  7: ({ primary, secondary }) => [
     { kind: "path", d: "M15 43 C12 34 15 25 22 21", fill: "none", stroke: secondary, strokeWidth: 1.8, strokeLinecap: "round" },
     { kind: "path", d: "M49 43 C52 34 49 25 42 21", fill: "none", stroke: secondary, strokeWidth: 1.8, strokeLinecap: "round" },
     { kind: "path", d: "M24 22 C17 22 17 32 24 31", fill: "none", stroke: primary, strokeWidth: 2.2 },
@@ -311,7 +287,7 @@ export function GHOST_SHAPES(variant: EmblemVariant = "full"): Shape[] {
   ];
 }
 
-/** "Intermediate, tier 3 of 7" · "Likely Novice, provisional" · "Unranked". */
+/** "Intermediate, tier 3 of 5" · "Likely Novice, provisional" · "Unranked". */
 export function emblemLabel(id: TierId | null, state: EmblemState = "earned"): string {
   if (id === null || state === "ghost") return "Unranked";
   const tier = tierById(id);

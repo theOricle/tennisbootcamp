@@ -164,17 +164,21 @@ function tierChip(name: string): string {
 }
 
 /**
- * The tier line's cell width and total width. Thirteen 14px cells plus six
- * 2px and six 6px gaps come to 230px, which fits the card's content box on a
- * 375px phone (about 261px wide); 18px cells (282px) spilled past its border.
+ * The tier line's cell width and total width. Thirteen 14px cells plus eight
+ * 2px and four 6px gaps come to 222px, which fits the card's content box on a
+ * 375px phone (about 261px wide); 18px cells spilled past its border.
  */
 const TIER_LINE_CELL = 14;
 
-/** The gap after step `i`: 2px within a tier, 6px between tiers, none after the last. */
+/**
+ * The gap after step `i`: 2px within a tier, 6px between tiers, none after
+ * the last. The tier comes from tierForLevel, so 5.0 to 7.0 reads as one
+ * group (a whole-number floor would cut High Performance into three).
+ */
 function tierLineGap(i: number): number {
   const next = LEVEL_STEPS[i + 1];
   if (next === undefined) return 0;
-  return Math.floor(next) === Math.floor(LEVEL_STEPS[i]) ? 2 : 6;
+  return tierForLevel(next)?.id === tierForLevel(LEVEL_STEPS[i])?.id ? 2 : 6;
 }
 
 const TIER_LINE_WIDTH = LEVEL_STEPS.reduce(
@@ -186,7 +190,7 @@ const TIER_LINE_WIDTH = LEVEL_STEPS.reduce(
  * The tier line as a table (design specs §3.9), so it reads with images off:
  * thirteen `<td bgcolor>` cells, 2px apart within a tier and 6px between
  * tiers, lit in each tier's colour up to the player's level and unlit above
- * it, with the lowest and highest tier names ("Beginner", "World Class")
+ * it, with the lowest and highest tier names ("Beginner", "High Performance")
  * captioned under the ends.
  */
 export function tierLineTable(level: number): string {
@@ -210,11 +214,14 @@ export function tierLineTable(level: number): string {
     </table>`;
 }
 
-/** "Tier 3 of 7. Next tier: Advanced at 4.0." · "Tier 7 of 7. That's the top of the ladder." */
+/**
+ * "Tier 3 of 5. Next tier: Advanced at 4.0." · "Tier 5 of 5. High Performance
+ * runs 5.0–7.0. Next step: 6.0." · "Tier 5 of 5. That's the top of the ladder."
+ */
 export function tierStandingLine(level: number | string): string {
   const progress = tierProgress(level);
   if (!progress) return "";
-  const caption = progress.next ? progress.caption : "That's the top of the ladder.";
+  const caption = progress.atTop ? "That's the top of the ladder." : progress.caption;
   return `${tierOrdinal(progress.tier)}. ${caption}`;
 }
 
@@ -708,7 +715,7 @@ ${commercialFooterText("general")}`;
 
 /**
  * The level moment (audit M35): the tier's emblem, "You're in the
- * Intermediate tier.", where that sits on the ladder ("Tier 3 of 7. Next
+ * Intermediate tier.", where that sits on the ladder ("Tier 3 of 5. Next
  * tier: Advanced at 4.0.") and the
  * tier line as a table that reads with images off. The dashboard shows the
  * same card. HTML and text carry the same facts in the same order.

@@ -115,7 +115,7 @@ export function HowJoiningWorks({
       <div className="mt-6 space-y-3 border-t border-white/10 pt-5">
         {showApproval && (
           <p className="max-w-3xl text-sm leading-relaxed text-white/70">
-            <span className="font-semibold text-white">High Performance is by approval.</span>{" "}
+            <span className="font-semibold text-white">The High Performance Youth Bootcamp is by approval.</span>{" "}
             {APPROVAL_LINE}
           </p>
         )}
