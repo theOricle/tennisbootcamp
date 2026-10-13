@@ -270,7 +270,14 @@ for (const f of tierFiles) {
 // Home, /assessment, /about, booking (M36).
 const home = read("src/app/page.tsx");
 const band = read("src/components/sections/TierBand.tsx");
-check("home mounts the TierBand after the TrustBar", home.indexOf("<TrustBar />") < home.indexOf("<TierBand />"));
+// Owner, 2026-10-13: programs first, the tier band lower (after the programs
+// and the location, never between the hero and the programs).
+const homeAt = (needle: string) => (home.includes(needle) ? home.indexOf(needle) : Infinity);
+check(
+  "home mounts the TierBand after the programs and the location, before the coach",
+  homeAt("<ProgramsGrid") < homeAt("<TierBand />") && homeAt("<LocationSection />") < homeAt("<TierBand />") && homeAt("<TierBand />") < homeAt("<Coaches")
+);
+check("the band sits in the page's Container, with no gutter, padding or border of its own", /<PageStack>[\s\S]*<TierBand \/>[\s\S]*<\/PageStack>/.test(home) && !band.includes("<Container") && !/\b(py-|px-|border-b|mx-auto|max-w-6xl)/.test(band));
 check(
   "the band splits into two columns at lg, never md (the ladder keeps the full width to 1024)",
   band.includes("lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-12") && band.includes("mt-8 min-w-0 lg:mt-0") && !band.includes("md:grid") && !band.includes("md:mt-0")

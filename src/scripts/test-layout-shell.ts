@@ -84,6 +84,7 @@ const SECTIONS = [
   "src/components/sections/EmailCapture.tsx",
   "src/components/sections/ProgramInterestForm.tsx",
   "src/components/sections/QuizBand.tsx",
+  "src/components/sections/TierBand.tsx",
 ];
 for (const file of SECTIONS) {
   const src = read(file);
@@ -101,6 +102,13 @@ const catalog = read("src/components/sections/ProgramCatalog.tsx");
 check("the catalog sets no gutter or page width of its own", !/(^|[\s"'`])(mx-auto|max-w-6xl|px-6|-mx-)/.test(catalog));
 
 const home = read("src/app/page.tsx");
+// Owner, 2026-10-13: "people want to see the programs first, not the tier list".
+check(
+  "home: the programs come straight after the hero and the trust bar, first in the page stack",
+  // Only JSX comments may sit between them; a comment never runs past its own "*/".
+  /<Hero \/>\s*<TrustBar \/>\s*(\{\/\*(?:(?!\*\/)[\s\S])*\*\/\}\s*)*<PageStack>\s*<ProgramsGrid/.test(home)
+);
+check("home: the tier band never sits between the hero and the programs", at(home, "<ProgramsGrid") < at(home, "<TierBand />") && at(home, "<LocationSection />") < at(home, "<TierBand />"));
 check("home: programs come before the newsletter (M12)", at(home, "<ProgramsGrid") < at(home, "<EmailCapture"));
 check("home: events come before the newsletter (M12)", at(home, "<EventsList") < at(home, "<EmailCapture"));
 check("home: closes on the quiz band (M13)", at(home, "<Coaches") < at(home, "<QuizBand"));
