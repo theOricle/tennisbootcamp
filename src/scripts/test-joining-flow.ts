@@ -102,7 +102,7 @@ check("High Performance adds the Join row, above Week 1", row(hpCard, "Join", AP
 check("an open group has no Join row", !openCard.includes(">Join</dt>") && openCard.includes("Open to join"));
 check("private lessons: no group to move between, so neither row", !soloCard.includes(">Week 1</dt>") && !soloCard.includes(">Join</dt>"));
 check("still one link per card, the quiz", count(hpCard, "<a ") === 1 && count(openCard, "<a ") === 1);
-check("the rows sit after the Level block and before the CTA", at(hpCard, ">Week 1</dt>") > at(hpCard, 'aria-label="Built for') && at(hpCard, ">Week 1</dt>") < at(hpCard, 'href="/intake?program=youth-programs"'));
+check("the rows sit after the level tag and the price, before the CTA", at(hpCard, ">Week 1</dt>") > at(hpCard, ">Level</dt>") && at(hpCard, ">Week 1</dt>") > at(hpCard, ">Price</dt>") && at(hpCard, ">Week 1</dt>") < at(hpCard, 'href="/intake?program=youth-programs"'));
 check("no assessment pitch on a card (design-system.md)", !hpCard.includes("Book Your Assessment") && !openCard.includes("Book Your Assessment"));
 
 // ── How joining works ───────────────────────────────────────────────────────

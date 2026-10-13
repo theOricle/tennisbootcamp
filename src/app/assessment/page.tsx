@@ -1,7 +1,7 @@
 import { membershipNote } from "@/lib/membership";
 import { ASSESSMENT_CREDIT_MONTHS } from "@/content/policies";
 import { TierLine } from "@/components/tiers";
-import { TIER_LADDER_SPAN, TIER_RERATE_LINE } from "@/lib/tiers";
+import { TIER_COUNT_WORD, TIER_LADDER_SPAN, TIER_RERATE_LINE } from "@/lib/tiers";
 import { TrackedButton, TrackedLink } from "@/components/ui/TrackedButton";
 import { QuizSwap } from "@/components/quiz/QuizSwap";
 
@@ -139,7 +139,7 @@ export default function AssessmentLandingPage() {
           </ul>
         </section>
 
-        {/* The ladder (audit H6, M36, L28): all seven tiers with their
+        {/* The ladder (audit H6, M36, L28): all five tiers with their
             blurbs, vertical on phones so nothing hides, horizontal from md.
             The home band and the About page link here. */}
         <section id="ladder" className="mt-14 scroll-mt-24">
@@ -147,9 +147,10 @@ export default function AssessmentLandingPage() {
             The ladder you&apos;re climbing
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-white/65 sm:text-base">
-            Your level places you on a seven-rung ladder, {TIER_LADDER_SPAN}.
+            Your level places you on a {TIER_COUNT_WORD}-rung ladder, {TIER_LADDER_SPAN}.
             Every player starts on one rung and climbs from there — the
-            assessment confirms which rung you&apos;re on.
+            assessment confirms which rung you&apos;re on. The top rung, High
+            Performance, runs from 5.0 to 7.0, so the climb carries on inside it.
           </p>
           <div className="mt-6 md:mt-8">
             <TierLine variant="ladder" orientation="responsive" showBlurbs />

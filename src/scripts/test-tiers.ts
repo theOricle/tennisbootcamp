@@ -3,7 +3,8 @@
 // Pins audit PR E (2026-10-09, "Tier system"): the tier helpers
 // (tierForLevel across every step, tierProgress captions, formatTierSpan,
 // LEVEL_OPTIONS), the colour ramp (every tier colour at least 4.5:1 on the
-// navy and on a card, navy on gold, seven distinct colours), the class
+// navy and on a card, navy on gold, five distinct colours; five tiers since
+// owner 2026-10-13, audit PR P), the class
 // literals (every hex equals TIERS[id].color), the emblem frame escalation
 // (every adjacent pair differs in a frame feature; shapes serialise with no
 // className and deterministically), the two cohort gates agreeing on
@@ -20,6 +21,7 @@ import { RankCard, type RankCardPlayer } from "../components/tiers/RankCard";
 import {
   LEVEL_OPTIONS,
   LEVEL_STEPS,
+  TIER_COUNT_WORD,
   TIERS,
   TIER_COLORS,
   TIER_COUNT,
@@ -101,28 +103,28 @@ const read = (path: string) => readFileSync(join(ROOT, path), "utf8");
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 console.log("Tier helpers");
-const expectedTier = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7];
+const expectedTier = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5];
 check("thirteen half steps, 1.0 to 7.0", LEVEL_STEPS.length === 13 && LEVEL_STEPS[0] === 1 && LEVEL_STEPS[12] === 7);
 check(
   "tierForLevel across every step",
   LEVEL_STEPS.every((step, i) => tierForLevel(step)?.id === expectedTier[i])
 );
 check("0.5 clamps to Beginner", tierForLevel(0.5)?.id === 1);
-check("8 clamps to World Class", tierForLevel(8)?.id === 7);
+check("8 clamps to High Performance", tierForLevel(8)?.id === 5);
 check('"3.5" (a Postgres numeric string) is Intermediate', tierForLevel("3.5")?.id === 3);
 check("null, undefined and \"\" are unranked", tierForLevel(null) === null && tierForLevel(undefined) === null && tierForLevel("") === null);
-check("TIER_COUNT is 7", TIER_COUNT === 7 && TIERS.length === 7);
-check("tierById and nextTier", tierById(3).name === "Intermediate" && nextTier(tierById(3))?.name === "Advanced" && nextTier(tierById(7)) === null);
-check("tierOrdinal", tierOrdinal(tierById(3)) === "Tier 3 of 7");
+check("TIER_COUNT is 5", TIER_COUNT === 5 && TIERS.length === 5 && TIER_COUNT_WORD === "five");
+check("tierById and nextTier", tierById(3).name === "Intermediate" && nextTier(tierById(3))?.name === "Advanced" && nextTier(tierById(5)) === null);
+check("tierOrdinal", tierOrdinal(tierById(3)) === "Tier 3 of 5");
 check("formatTierLevel", formatTierLevel(2.5) === "Novice · 2.5" && formatTierLevel(null) === "");
-check("tier names are the locked seven", TIERS.map((t) => t.name).join("|") === "Beginner|Novice|Intermediate|Advanced|Elite|Pro|World Class");
+check("tier names are the locked five", TIERS.map((t) => t.name).join("|") === "Beginner|Novice|Intermediate|Advanced|High Performance");
 check("no blurb carries a filler intensifier (voice.md rule 1)", TIERS.every((t) => !/\b(real|really|truly|actually|very|super)\b/i.test(t.blurb)));
 
 console.log("tierProgress captions");
 check("1.0 → Next tier: Novice at 2.0.", tierProgress(1)?.caption === "Next tier: Novice at 2.0." && tierProgress(1)?.step === 1);
 check("2.5 → Halfway to Intermediate. Next tier at 3.0.", tierProgress(2.5)?.caption === "Halfway to Intermediate. Next tier at 3.0." && tierProgress(2.5)?.step === 2);
-check("6.5 → Halfway to World Class. Next tier at 7.0.", tierProgress(6.5)?.caption === "Halfway to World Class. Next tier at 7.0.");
-check("7.0 → Top of the ladder.", tierProgress(7)?.caption === "Top of the ladder." && tierProgress(7)?.next === null && tierProgress(7)?.steps === 1);
+check("6.5 → High Performance runs 5.0–7.0. Next step: 7.0.", tierProgress(6.5)?.caption === "High Performance runs 5.0–7.0. Next step: 7.0." && tierProgress(6.5)?.step === 4 && tierProgress(6.5)?.steps === 5);
+check("7.0 → Top of the ladder.", tierProgress(7)?.caption === "Top of the ladder." && tierProgress(7)?.next === null && tierProgress(7)?.steps === 5 && tierProgress(7)?.atTop === true);
 check("unranked has no progress", tierProgress(null) === null);
 
 console.log("formatTierSpan and friends");
@@ -132,18 +134,19 @@ check('reaches the top → "Advanced and up"', formatTierSpan(4, 7) === "Advance
 check('whole ladder → "All levels"', formatTierSpan(1, 7) === "All levels" && coversWholeLadder(1, 7) && !coversWholeLadder(1, 6.5));
 check("unset → \"\"", formatTierSpan(null, null) === "" && formatTierSpan(undefined, "") === "");
 check("one bound repeats the other", formatTierSpan(3, null) === "Intermediate" && formatTierSpan(null, "4.0") === "Advanced");
-check("tierIdsInRange is inclusive and ascending", tierIdsInRange(3, 4.5).join(",") === "3,4" && tierIdsInRange(null, null).length === 0 && tierIdsInRange(1, 7).length === 7);
+check("tierIdsInRange is inclusive and ascending", tierIdsInRange(3, 4.5).join(",") === "3,4" && tierIdsInRange(null, null).length === 0 && tierIdsInRange(1, 7).length === 5);
 check("formatLevelBand", formatLevelBand(1, 4.5) === "1.0–4.5" && formatLevelBand(4, 4) === "4.0" && formatLevelBand(null, null) === "" && formatLevelBand("3.0", "3.5") === "3.0–3.5");
 check("LEVEL_OPTIONS has 13 entries", LEVEL_OPTIONS.length === 13);
-check('LEVEL_OPTIONS reads "3.0 · Intermediate"', LEVEL_OPTIONS[4].value === "3.0" && LEVEL_OPTIONS[4].label === "3.0 · Intermediate" && LEVEL_OPTIONS[12].label === "7.0 · World Class");
+check('LEVEL_OPTIONS reads "3.0 · Intermediate"', LEVEL_OPTIONS[4].value === "3.0" && LEVEL_OPTIONS[4].label === "3.0 · Intermediate" && LEVEL_OPTIONS[12].label === "7.0 · High Performance" && LEVEL_OPTIONS[9].label === "5.5 · High Performance");
 check("the re-rate line is null until the owner gives it (L18)", TIER_RERATE_LINE === null);
 
 console.log("Cohort gates agree on whole-tier bands");
 let agree = true;
-for (let minId = 1; minId <= 7; minId++) {
-  for (let maxId = minId; maxId <= 7; maxId++) {
-    const min = minId;
-    const max = maxId === 7 ? 7 : maxId + 0.5;
+for (const low of TIERS) {
+  for (const high of TIERS) {
+    if (high.id < low.id) continue;
+    const min = low.levelMin;
+    const max = high.levelMax;
     for (const level of LEVEL_STEPS) {
       if (levelWithinRange(level, min, max) !== tierInCohortRange(level, min, max)) agree = false;
     }
@@ -170,9 +173,9 @@ const CARD = "#122032";
 for (const t of TIERS) {
   check(`${t.name} ${t.color} ≥ 4.5:1 on navy and on a card`, contrast(t.color, NAVY) >= 4.5 && contrast(t.color, CARD) >= 4.5, `${contrast(t.color, NAVY).toFixed(2)} / ${contrast(t.color, CARD).toFixed(2)}`);
 }
-check("navy on gold ≥ 4.5:1", contrast(NAVY, TIER_COLORS[7]) >= 4.5, contrast(NAVY, TIER_COLORS[7]).toFixed(2));
-check("seven distinct colours", new Set(TIERS.map((t) => t.color)).size === 7);
-check("gold is the approved #E3C46F, used only at World Class", TIER_COLORS[7] === "#E3C46F" && TIERS.filter((t) => t.color === "#E3C46F").length === 1);
+check("navy on gold ≥ 4.5:1", contrast(NAVY, TIER_COLORS[5]) >= 4.5, contrast(NAVY, TIER_COLORS[5]).toFixed(2));
+check("five distinct colours", new Set(TIERS.map((t) => t.color)).size === 5);
+check("gold is the approved #E3C46F, used only at High Performance", TIER_COLORS[5] === "#E3C46F" && TIERS.filter((t) => t.color === "#E3C46F").length === 1);
 check("Intermediate and Advanced are the two lime tokens", TIER_COLORS[3] === "#8CC63F" && TIER_COLORS[4] === "#B4E655");
 check("TIER_COLORS is derived from TIERS", TIERS.every((t) => TIER_COLORS[t.id] === t.color));
 
@@ -191,19 +194,19 @@ for (const id of TIER_IDS) {
 check("the unlit pip is white/10", PIP_UNLIT === "bg-white/[0.10]");
 check("tierStyle resolves a level and nulls when unranked", tierStyle(2.5)?.id === 2 && tierStyle(2.5)?.hex === TIER_COLORS[2] && tierStyle(null) === null);
 check("the future ink is the flat white/40", FUTURE_INK === "#6A727D");
-check("field tints", FIELD_TINT.empty === NAVY && FIELD_TINT.lime === "#1E312D" && FIELD_TINT.platinum === "#253243" && FIELD_TINT.gold === "#E3C46F");
+check("field tints", FIELD_TINT.empty === NAVY && FIELD_TINT.lime === "#1E312D" && FIELD_TINT.gold === "#E3C46F");
 
 // ── Emblem frames ───────────────────────────────────────────────────────────
 console.log("Emblem frames (H6)");
-for (let id = 1 as TierId; id < 7; id++) {
+for (let id = 1 as TierId; id < TIER_COUNT; id++) {
   const a = frameFeatures(id);
   const b = frameFeatures((id + 1) as TierId);
   const differs = Object.keys(a).some((k) => a[k] !== b[k]);
   check(`tier ${id} and ${id + 1} differ in a frame feature`, differs);
 }
 check("ring weight never falls up the ladder", TIER_IDS.every((id, i) => i === 0 || TIER_FRAME[id].ring >= TIER_FRAME[TIER_IDS[i - 1]].ring));
-check("only World Class has the gold field and navy ink", TIER_IDS.every((id) => (TIER_FRAME[id].field === "gold") === (id === 7) && (TIER_FRAME[id].ink === "navy") === (id === 7)));
-check("Elite and up are notched; Pro and up have the bevel", TIER_IDS.every((id) => TIER_FRAME[id].notched === id >= 5 && TIER_FRAME[id].bevel === id >= 6));
+check("only High Performance has the gold field and navy ink", TIER_IDS.every((id) => (TIER_FRAME[id].field === "gold") === (id === 5) && (TIER_FRAME[id].ink === "navy") === (id === 5)));
+check("High Performance alone is notched and bevelled", TIER_IDS.every((id) => TIER_FRAME[id].notched === (id === 5) && TIER_FRAME[id].bevel === (id === 5)));
 check("the notched hexagon is the spec'd polygon", NOTCHED_HEX.startsWith("28.11,5.26 35.89,5.26 53.11,15.24 57,22"));
 check("the bevel stays inside the 64 grid", BEVEL_HEX.split(/\s+/).every((p) => p.split(",").every((v) => Number(v) >= 1 && Number(v) <= 63)));
 check("a mark below 28px, the full emblem above", emblemVariantForSize(20) === "mark" && emblemVariantForSize(27) === "mark" && emblemVariantForSize(28) === "full");
@@ -214,9 +217,9 @@ check("future and provisional keep the outer ring only, plus the motif", TIER_ID
   return future[0].kind === "polygon" && future[0].stroke === FUTURE_INK && prov[0].kind === "polygon" && prov[0].strokeDasharray === "5 4" && prov.slice(1).every((s) => s.opacity === 0.6);
 }));
 check("the ghost is one dashed grey hexagon", GHOST_SHAPES().length === 1 && GHOST_SHAPES()[0].strokeDasharray === "5 4" && GHOST_SHAPES()[0].stroke === FUTURE_INK);
-check("labels", emblemLabel(3) === "Intermediate, tier 3 of 7" && emblemLabel(2, "provisional") === "Likely Novice, provisional" && emblemLabel(null) === "Unranked" && emblemLabel(4, "ghost") === "Unranked");
+check("labels", emblemLabel(3) === "Intermediate, tier 3 of 5" && emblemLabel(2, "provisional") === "Likely Novice, provisional" && emblemLabel(null) === "Unranked" && emblemLabel(4, "ghost") === "Unranked");
 const svg = emblemSvgString(3, { size: 128 });
-check("emblemSvgString is a standalone 128px SVG with a label", svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="128" height="128" role="img" aria-label="Intermediate, tier 3 of 7">') && svg.endsWith("</svg>"));
+check("emblemSvgString is a standalone 128px SVG with a label", svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="128" height="128" role="img" aria-label="Intermediate, tier 3 of 5">') && svg.endsWith("</svg>"));
 check("emblemSvgString carries no className and no gradient", !svg.includes("class") && !svg.includes("gradient") && !svg.includes("<text"));
 check("emblemSvgString is deterministic", svg === emblemSvgString(3, { size: 128 }) && emblemSvgString(null) === emblemSvgString(null));
 check("every tier serialises in every state", TIER_IDS.every((id) => (["earned", "future", "provisional", "ghost"] as const).every((s) => emblemSvgString(id, { state: s }).length > 100)));
@@ -229,10 +232,10 @@ const line = read("src/components/tiers/TierLine.tsx");
 const badges = read("src/components/tiers/badges.tsx");
 check("TierLadder is gone", !index.includes("export function TierLadder") && !line.includes("TierLadder"));
 check("no horizontal scroller in the tier components", !["index.tsx", "TierLine.tsx", "badges.tsx", "RankCard.tsx"].some((f) => read(`src/components/tiers/${f}`).includes("overflow-x-auto")));
-check("the rail is thirteen pips in seven rising groups", line.includes("flex flex-1 items-end gap-[2px]") && line.includes('7: "h-[18px]"') && line.includes('1: "h-[6px]"'));
+check("the rail is thirteen pips in five rising groups, sized by pip count", line.includes("items-end gap-[2px]") && line.includes('5: "h-[18px]"') && line.includes('1: "h-[6px]"') && line.includes('5: "flex-[5]"') && line.includes('1: "flex-[2]"'));
 check("the rail is a meter with the tier in its value text", line.includes('role: "meter"') && line.includes("aria-valuetext") && line.includes("aria-valuemax"));
 check("a span rail says who it is built for", line.includes("Built for ${who}, levels"));
-check("the ghost rail names all seven", line.includes("Unranked. Seven tiers, ${TIER_LADDER_SPAN}.") && renderToStaticMarkup(createElement(TierLine, { variant: "rail" })).includes('aria-label="Unranked. Seven tiers, Beginner to World Class."'));
+check("the ghost rail names all five", line.includes("Unranked. ${LADDER_SENTENCE}") && renderToStaticMarkup(createElement(TierLine, { variant: "rail" })).includes('aria-label="Unranked. Five tiers, Beginner to High Performance."'));
 check("the ladder is an ordered list, Beginner first", line.includes("<ol aria-label={LADDER_LABEL}") && line.includes("flex flex-col-reverse"));
 check("a provisional rung shows its band, never a level number", (line.match(/n\.state !== "provisional" \?/g) ?? []).length === 2);
 check("the current rung is aria-current=step with an sr-only suffix", line.includes('aria-current={n.current ? "step" : undefined}') && line.includes("(your tier)") && line.includes("(likely tier, provisional)") && line.includes("(in this program)") && line.includes("(reached)"));
@@ -241,12 +244,12 @@ check("the current rung is aria-current=step with an sr-only suffix", line.inclu
 // and the marker is in the accessible name.
 const render = (props: Parameters<typeof TierLine>[0]) => renderToStaticMarkup(createElement(TierLine, props));
 const markerRail = render({ variant: "rail", span: { min: 3, max: 5.5 }, marker: { level: 2.5, label: "You" } });
-check("a marker rail names the marker in its aria-label", markerRail.includes('aria-label="Built for Intermediate to Elite, levels 3.0 to 5.5. Your tier, Novice, is outside this range."'));
+check("a marker rail names the marker in its aria-label", markerRail.includes('aria-label="Built for Intermediate to High Performance, levels 3.0 to 5.5. Your tier, Novice, is outside this range."'));
 check("a named marker inside the span reads the same way", render({ variant: "rail", span: { min: 2, max: 3.5 }, marker: { level: 2.5, label: "Maya" } }).includes("Maya&#x27;s tier, Novice, is in this range."));
 check("a marker rail has no sr-only text (nothing inside role=img is read)", !markerRail.includes("sr-only") && !line.includes('<span className="sr-only">\n            {marker'));
-check("a span rail without a marker keeps its plain label", render({ variant: "rail", span: { min: 3, max: 5.5 } }).includes('aria-label="Built for Intermediate to Elite, levels 3.0 to 5.5"'));
+check("a span rail without a marker keeps its plain label", render({ variant: "rail", span: { min: 3, max: 5.5 } }).includes('aria-label="Built for Intermediate to High Performance, levels 3.0 to 5.5"'));
 const ghostRail = render({ variant: "rail", labels: "ends" });
-check("the ghost rail's two ends share one style", /<span class="text-white\/60">Beginner<\/span><span class="text-white\/60">World Class<\/span>/.test(ghostRail));
+check("the ghost rail's two ends share one style", /<span class="text-white\/60">Beginner<\/span><span class="text-white\/60">High Performance<\/span>/.test(ghostRail));
 check("a ranked rail still emphasises its left end", render({ variant: "rail", level: 2.5, labels: "ends" }).includes('<span class="font-semibold text-white">Novice · Level 2.5</span>'));
 const horizontal = render({ variant: "ladder", orientation: "horizontal" });
 check("horizontal connectors reach 2px past each cell to bridge the 4px gap", horizontal.includes("gap-x-1") && horizontal.includes("absolute -left-0.5 right-1/2") && horizontal.includes("absolute left-1/2 -right-0.5") && !horizontal.includes("absolute left-0 ") && !horizontal.includes(" right-0 "));
@@ -282,7 +285,7 @@ check(
   "the band splits into two columns at lg, never md (the ladder keeps the full width to 1024)",
   band.includes("lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-12") && band.includes("mt-8 min-w-0 lg:mt-0") && !band.includes("md:grid") && !band.includes("md:mt-0")
 );
-check("the band says the seven tiers and links to the ladder", band.includes('Seven tiers. <span className="whitespace-nowrap">{TIER_LADDER_SPAN}.</span>') && TIER_LADDER_SPAN === "Beginner to World Class" && band.includes('href="/assessment#ladder"') && band.includes("How tiers work"));
+check("the band says the five tiers, never breaking inside the top name, and links to the ladder", band.includes('{COUNT} tiers. {TIERS[0].name} to <span className="whitespace-nowrap">{TOP_TIER.name}.</span>') && TIER_LADDER_SPAN === "Beginner to High Performance" && band.includes('href="/assessment#ladder"') && band.includes("How tiers work"));
 check("the band carries the owner's body copy and no new button", band.includes("Every player trains at a tier.") && band.includes("Our coaches place you from your") && !band.includes("<Button"));
 const assessment = read("src/app/assessment/page.tsx");
 check("/assessment has the #ladder anchor with blurbs, responsive", assessment.includes('id="ladder"') && assessment.includes("scroll-mt-24") && assessment.includes('orientation="responsive" showBlurbs'));
@@ -290,7 +293,7 @@ check("/assessment shows the re-rate line only when set (L18)", assessment.inclu
 const about = read("src/app/about/page.tsx");
 check("/about carries a compact responsive ladder", about.includes('variant="ladder"') && about.includes('orientation="responsive"') && about.includes('density="compact"'));
 const booking = read("src/app/assessment/book/page.tsx");
-check("booking shows the ghost rail under What you leave with", booking.includes("What you leave with") && booking.includes("You leave with your tier: one of seven, {TIER_LADDER_SPAN}.") && booking.includes('<TierLine variant="rail" size="sm" labels="ends"'));
+check("booking shows the ghost rail under What you leave with", booking.includes("What you leave with") && booking.includes("You leave with your tier: one of {TIER_COUNT_WORD}, {TIER_LADDER_SPAN}.") && booking.includes('<TierLine variant="rail" size="sm" labels="ends"'));
 
 // Admin (M29).
 const players = read("src/app/admin/players/AdminPlayersClient.tsx");
@@ -329,14 +332,10 @@ check("provisionalTierFor is null for \"\", \"unsure\", undefined, null and an u
 check("SELF_LEVELS includes elite, unsure and prefer-not-to-say", SELF_LEVELS.some((o) => o.value === "elite") && SELF_LEVELS.some((o) => o.value === "unsure") && SELF_LEVELS.some((o) => o.value === ""));
 {
   // recommend.ts sends a competitive or tournament junior or teen to the High
-  // Performance group, so their provisional tiers must sit inside its band
-  // (owner lineup 2026-10-12 and D4 agree).
+  // Performance group first; its one level tag is the top tier (owner,
+  // 2026-10-13), by approval, and the quiz map is unchanged (D4).
   const hp = groupById("high-performance");
-  const inHp = (v: string) => {
-    const t = provisionalTierFor(v);
-    return !!hp && !!t && levelWithinRange(t.id, hp.levelMin, hp.levelMax);
-  };
-  check("competitive and elite provisional tiers sit inside the High Performance group's band", inHp("competitive") && inHp("elite"));
+  check("the High Performance group's tag is the High Performance tier, by approval", hp?.level === 5 && hp?.joining === "approval" && tierById(5).name === "High Performance");
   const youth = programs.find((p) => p.id === "youth-programs");
   const adult = programs.find((p) => p.id === "bootcamps");
   const inBoth = (v: string) => {
@@ -383,21 +382,23 @@ const rankFixture = (over: Partial<RankCardPlayer>): RankCardPlayer => ({
 });
 const renderCard = (props: Parameters<typeof RankCard>[0]) => renderToStaticMarkup(createElement(RankCard, props));
 const compact = renderCard({ player: rankFixture({}), layout: "compact", isSelf: true });
-check("compact: eyebrow, ordinal, name, level, caption and Set by", ["Your tier", "Tier 2 of 7", ">Novice<", "Level 2.5", "Halfway to Intermediate. Next tier at 3.0.", "Set by our coaches · Oct 4"].every((s) => compact.includes(s)));
+check("compact: eyebrow, ordinal, name, level, caption and Set by", ["Your tier", "Tier 2 of 5", ">Novice<", "Level 2.5", "Halfway to Intermediate. Next tier at 3.0.", "Set by our coaches · Oct 4"].every((s) => compact.includes(s)));
 check("compact: the rail is a meter with the position", compact.includes('role="meter"') && compact.includes("aria-valuenow=\"2\""));
 check("compact: the tier-colour top rule is the only block of colour", compact.includes("border-t-2 border-t-[#AEBBCD]") && !compact.includes("bg-[#AEBBCD]/"));
 const wide = renderCard({ player: rankFixture({}), layout: "wide", isSelf: true });
 check("wide: an 80px emblem, the blurb, a ladder at lg and the rail below lg (plain names need the room)", wide.includes('width="80"') && wide.includes("You can keep the ball alive across the net.") && wide.includes("<ol") && wide.includes("hidden lg:grid") && wide.includes("lg:hidden"));
 const child = renderCard({ player: rankFixture({ full_name: "Leo Chen", relationship: "child", is_minor: true, level: 4 }), layout: "compact", isSelf: false });
-check("a child's eyebrow reads First · Child · Under 18", child.includes("Leo · Child · Under 18") && child.includes("Next tier: Elite at 5.0."));
+check("a child's eyebrow reads First · Child · Under 18", child.includes("Leo · Child · Under 18") && child.includes("Next tier: High Performance at 5.0."));
+const inTop = renderCard({ player: rankFixture({ level: 5.5 }), layout: "compact", isSelf: true });
+check("inside High Performance the card still climbs: Tier 5 of 5, the next step and the top at 7.0", inTop.includes("Tier 5 of 5") && inTop.includes("High Performance runs 5.0–7.0. Next step: 6.0.") && inTop.includes("Top of the ladder · 7.0") && inTop.includes('aria-valuenow="5"'));
 const unranked = renderCard({ player: rankFixture({ level: null, level_assessed_at: null }), layout: "compact", isSelf: true });
-check("unranked: the ghost, the one word, the sentence, and no pitch on the dashboard", unranked.includes(">Unranked<") && unranked.includes("Your tier shows here once our coaches set your level. Every level is confirmed on court in week one.") && !unranked.includes("Book Your Assessment") && unranked.includes("Unranked. Seven tiers, Beginner to World Class."));
+check("unranked: the ghost, the one word, the sentence, and no pitch on the dashboard", unranked.includes(">Unranked<") && unranked.includes("Your tier shows here once our coaches set your level. Every level is confirmed on court in week one.") && !unranked.includes("Book Your Assessment") && unranked.includes("Unranked. Five tiers, Beginner to High Performance."));
 const profileUnranked = renderCard({ player: rankFixture({ level: null, level_assessed_at: null }), layout: "compact", isSelf: true, assessmentLink: true });
 check("profile unranked: the exact button label and the full $20 sentence", profileUnranked.includes(">Book Your Assessment<") && profileUnranked.includes("The assessment is $20 — enroll in a program afterward and that $20 comes off the price.") && profileUnranked.includes('href="/assessment/book"'));
 const placed = renderCard({ player: rankFixture({ level: null, level_assessed_at: null }), layout: "compact", isSelf: true, placedSpan: { min: 3, max: 3.5 } });
 check("placed: the group, the span rail, the sentence, and never Unranked or a pitch", placed.includes(">Intermediate group<") && placed.includes("You train in an Intermediate group. Your level stays provisional until our coaches confirm it on court in week one.") && placed.includes(">Provisional</span>") && placed.includes("Built for Intermediate, levels 3.0 to 3.5") && !placed.includes("Unranked") && !placed.includes("Book Your Assessment"));
 check("placed, third person", renderCard({ player: rankFixture({ full_name: "Leo Chen", relationship: "child", level: null }), layout: "compact", isSelf: false, placedSpan: { min: 2, max: 3.5 } }).includes("Leo trains in a Novice – Intermediate group. Leo&#x27;s level stays provisional until our coaches confirm it on court in week one."));
-check("placed, a group led by a vowel takes an", renderCard({ player: rankFixture({ level: null, level_assessed_at: null }), layout: "compact", isSelf: true, placedSpan: { min: 4, max: 5.5 } }).includes("You train in an Advanced – Elite group."));
+check("placed, a group led by a vowel takes an", renderCard({ player: rankFixture({ level: null, level_assessed_at: null }), layout: "compact", isSelf: true, placedSpan: { min: 4, max: 5.5 } }).includes("You train in an Advanced – High Performance group."));
 check("unranked, third person: the coaches set a level", renderCard({ player: rankFixture({ full_name: "Leo Chen", relationship: "child", level: null, level_assessed_at: null }), layout: "compact", isSelf: false }).includes("Leo&#x27;s tier shows here once our coaches set a level."));
 check("the re-rate line is absent while null (L18)", TIER_RERATE_LINE === null && !compact.includes("re-rated"));
 
@@ -439,7 +440,7 @@ console.log("Quiz result and self-estimate hint (M17, L30)");
 const intake = read("src/app/intake/page.tsx");
 check("\"You profile like\" is gone from the quiz", !intake.toLowerCase().includes("profile like") && !intake.includes("tentativeLevelLabel"));
 check("the result shows a 56px provisional emblem, the name, a Provisional chip and the compact ladder", intake.includes('state="provisional"') && intake.includes("size={56}") && intake.includes(">Provisional</span>") && intake.includes("Your likely starting tier") && intake.includes('density="compact"'));
-check("the null case thanks and shows the seven tiers, no guess", intake.includes("Thanks for telling us about") && intake.includes("Our coaches place every player on one of seven tiers, ${TIER_LADDER_SPAN}."));
+check("the null case thanks and shows the five tiers, no guess", intake.includes("Thanks for telling us about") && intake.includes("Our coaches place every player on one of ${TIER_COUNT_WORD} tiers, ${TIER_LADDER_SPAN}."));
 check("the result body says provisional until week one (joining flow, owner 2026-10-12)", intake.includes("From your answers, so it stays provisional until our coaches confirm") && intake.includes("level on court in week one.") && intake.includes("From your answers, so each stays provisional until our coaches confirm the player's level on court in week one."));
 check("a lone player who is not the holder is named on the result, by the email's rule", intake.includes("function otherPlayerFirst(") && intake.includes("const playerFirst = otherPlayerFirst(result.name, form.name);") && intake.includes("const playerFirst = household ? undefined : otherPlayerFirst(playerName, form.name);") && intake.includes("playerName={results[0]?.name}"));
 check("one child is named in the confirmation too, never \"you\" above \"Leo's\" (fix round 2)", (intake.match(/playerFirst=\{playerFirst\}/g) ?? []).length === 4 && (intake.match(/firstName=\{playerFirst\}/g) ?? []).length === 2 && intake.includes("Our coaches review ${child}'s level and your schedule, then place ${child} in a group and a time that fit.") && intake.includes("When a group that fits ${child}'s level and your schedule is forming, we email you an invitation"));
@@ -469,8 +470,8 @@ check("quiz email subject never claims a level", quizTier.subject === "Your Tenn
 check("quiz email names the player in a household", quizChild.html.includes("Leo's likely tier is") && quizChild.html.includes("we place Leo") && quizChild.text.includes("Leo's likely tier is Novice"));
 check("quiz email keeps the locked assessment mechanic and label", quizTier.html.includes(">Book Your Assessment<") && quizTier.text.includes("that $20 comes off the price"));
 const complete = buildAssessmentCompleteEmail({ name: "Maya Chen", levelLabel: "3.0", coachNote: "Solid forehand." });
-check("assessment complete: the emblem PNG, the tier sentence and the standing", complete.html.includes(`<img src="`) && complete.html.includes("/tier-emblem/intermediate") && complete.html.includes('width="64"') && complete.html.includes("You're in the Intermediate tier.") && complete.html.includes("Tier 3 of 7. Next tier: Advanced at 4.0."));
-check("assessment complete: a table-built tier line of thirteen bgcolor cells with Beginner and World Class captions", (complete.html.match(/<td width="14" height="8" bgcolor="#/g) ?? []).length === 13 && complete.html.includes(">Beginner</td>") && complete.html.includes(">World Class</td>"));
+check("assessment complete: the emblem PNG, the tier sentence and the standing", complete.html.includes(`<img src="`) && complete.html.includes("/tier-emblem/intermediate") && complete.html.includes('width="64"') && complete.html.includes("You're in the Intermediate tier.") && complete.html.includes("Tier 3 of 5. Next tier: Advanced at 4.0."));
+check("assessment complete: a table-built tier line of thirteen bgcolor cells with Beginner and High Performance captions", (complete.html.match(/<td width="14" height="8" bgcolor="#/g) ?? []).length === 13 && complete.html.includes(">Beginner</td>") && complete.html.includes(">High Performance</td>"));
 {
   // 13 × 14px cells + 6 × 2px + 6 × 6px gaps = 230px, inside the card's
   // ~261px content box on a 375px phone; the caption table matches it.
@@ -478,14 +479,16 @@ check("assessment complete: a table-built tier line of thirteen bgcolor cells wi
   const widths = [...line.matchAll(/<td width="(\d+)"/g)].map((m) => Number(m[1]));
   check("the tier line is 230px wide and its caption table matches", widths.reduce((a, b) => a + b, 0) === 230 && line.includes('width="230" style="border-collapse:collapse;width:230px;"'));
 }
-check("assessment complete: the text body carries the same facts", complete.text.includes("You're in the Intermediate tier.") && complete.text.includes("Tier 3 of 7. Next tier: Advanced at 4.0.") && complete.text.includes("Solid forehand.") && complete.text.includes(DASHBOARD_URL));
+check("assessment complete: the text body carries the same facts", complete.text.includes("You're in the Intermediate tier.") && complete.text.includes("Tier 3 of 5. Next tier: Advanced at 4.0.") && complete.text.includes("Solid forehand.") && complete.text.includes(DASHBOARD_URL));
 check("assessment complete: Browse Programs in the locked casing, and the dashboard button", complete.html.includes(">Browse Programs<") && !complete.html.includes("Browse programs") && complete.html.includes(">See it on your dashboard<"));
 check("assessment complete: the sooner line leaves the label to the button", complete.html.includes(">Want to move sooner?</p>") && !complete.html.includes("sooner? Browse Programs") && complete.text.includes("Want to move sooner?\n\nBrowse Programs: ") &&!complete.text.includes("sooner? Browse Programs"));
 const top = buildAssessmentCompleteEmail({ name: "Maya Chen", levelLabel: "7.0", coachNote: "—" });
-check("World Class reads as the top of the ladder", top.html.includes("Tier 7 of 7. That's the top of the ladder.") && top.text.includes("That's the top of the ladder."));
+check("7.0 reads as the top of the ladder", top.html.includes("Tier 5 of 5. That's the top of the ladder.") && top.text.includes("That's the top of the ladder."));
+const insideTop = buildAssessmentCompleteEmail({ name: "Maya Chen", levelLabel: "5.5", coachNote: "—" });
+check("5.5 reads as High Performance with the next step, not the top", insideTop.html.includes("You're in the High Performance tier.") && insideTop.html.includes("Tier 5 of 5. High Performance runs 5.0–7.0. Next step: 6.0.") && !insideTop.html.includes("top of the ladder"));
 const childComplete = buildAssessmentCompleteEmail({ name: "Maya Chen", participantName: "Leo Chen", levelLabel: "2.5", coachNote: "—" });
 check("a child's result greets the holder and names the player", childComplete.html.includes("Leo's read from the court is in, Maya.") && childComplete.html.includes("Leo is in the Novice tier.") && !childComplete.html.includes("Nice work out there from"));
-check("tierStandingLine and tierLineTable", tierStandingLine("2.5") === "Tier 2 of 7. Halfway to Intermediate. Next tier at 3.0." && tierStandingLine("") === "" && (tierLineTable(2.5).match(/bgcolor="#AEBBCD"/g) ?? []).length === 2 && (tierLineTable(7).match(/bgcolor="#1C2A3C"/g) ?? []).length === 0);
+check("tierStandingLine and tierLineTable", tierStandingLine("2.5") === "Tier 2 of 5. Halfway to Intermediate. Next tier at 3.0." && tierStandingLine("") === "" && (tierLineTable(2.5).match(/bgcolor="#AEBBCD"/g) ?? []).length === 2 && (tierLineTable(7).match(/bgcolor="#E3C46F"/g) ?? []).length === 5 && (tierLineTable(7).match(/bgcolor="#1C2A3C"/g) ?? []).length === 0);
 const inviteBase = { participantName: "Alex Kim", levelLabel: "3.0", tierNames: ["Intermediate"], programTitle: "Adult Bootcamps", cohortLabel: "Fall A", dayTimeLabel: "Saturdays 9–10am", startDateLabel: "Oct 17", weeks: 6, priceCents: 21000, creditCents: 0, holdHours: 48, enrollUrl: "https://tennisbootcamp.ca/enroll/abc?invite=tok" };
 check("invite subject leads with the tier (D9)", cohortInviteSubject(inviteBase) === "Alex's Intermediate group (3.0) is forming — Saturdays 9–10am, starts Oct 17");
 check("invite subject: a spread, and the holder's own", cohortInviteSubject({ ...inviteBase, levelLabel: "3.0–4.5", tierNames: ["Intermediate", "Advanced"] }).startsWith("Alex's Intermediate – Advanced group (3.0–4.5) is forming") && cohortInviteSubject({ ...inviteBase, participantName: null }).startsWith("Your Intermediate group (3.0) is forming"));
@@ -502,9 +505,9 @@ for (const [label, email] of [["quiz", quizTier], ["assessment complete", comple
 }
 check("no email ships an unfilled template placeholder", ![quizTier, quizNull, quizChild, complete, top, childComplete, invite, spreadInvite, confirmed, received].some((e) => e.html.includes("${") || e.text.includes("${")));
 check("every email body is at least 13px text", ![quizTier, complete, confirmed, received, invite].some((e) => /font-size:1[0-2]px/.test(e.html)));
-check("tierEmblemPath", tierEmblemPath(tierById(3)) === "/tier-emblem/intermediate" && tierEmblemPath(tierById(6)) === "/tier-emblem/pro");
+check("tierEmblemPath", tierEmblemPath(tierById(3)) === "/tier-emblem/intermediate" && tierEmblemPath(tierById(5)) === "/tier-emblem/high-performance");
 const pngRoute = read("src/app/tier-emblem/[slug]/route.tsx");
-check("the emblem PNG route is static over the seven slugs and renders emblemSvgString", pngRoute.includes('export const dynamic = "force-static"') && pngRoute.includes("export const dynamicParams = false") && pngRoute.includes("export function generateStaticParams") && pngRoute.includes("emblemSvgString(tier.id, { size: EMBLEM_PNG_SIZE })") && pngRoute.includes("TIERS.map((t) => ({ slug: t.slug }))"));
+check("the emblem PNG route is static over the five slugs and renders emblemSvgString", pngRoute.includes('export const dynamic = "force-static"') && pngRoute.includes("export const dynamicParams = false") && pngRoute.includes("export function generateStaticParams") && pngRoute.includes("emblemSvgString(tier.id, { size: EMBLEM_PNG_SIZE })") && pngRoute.includes("TIERS.map((t) => ({ slug: t.slug }))"));
 check("the enroll summary carries the strip plate", read("src/app/enroll/[cohortId]/EnrollWizard.tsx").includes('frame="strip"'));
 check("the Sheet row builder is untouched by this PR", read("src/lib/intakeRow.ts").includes("INTAKE_APPEND_RANGE_ALL") && !read("src/lib/intakeRow.ts").includes("provisional"));
 

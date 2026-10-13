@@ -1,16 +1,16 @@
 import type { Program, ProgramGroup } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
-import { formatGroupWhen, groupAgeLabel, groupLevelRange, groupStatus } from "@/lib/programCatalog";
+import { formatGroupWhen, groupAgeLabel, groupStatus } from "@/lib/programCatalog";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
 import { APPROVAL_LINE, RIGHT_GROUP_PROMISE_SHORT } from "@/content/programs";
 import { locationById } from "@/content/locations";
 import { TrackedLink } from "@/components/ui/TrackedButton";
+import { LevelTag } from "@/components/tiers";
 import {
   CARD_SHELL,
   CohortSchedule,
   EYEBROW_CLASS,
   LABEL_CLASS,
-  LevelBlock,
   PriceSummary,
   ROW_CLASS,
   STRETCHED_LINK,
@@ -18,20 +18,22 @@ import {
   VALUE_CLASS,
 } from "./ProgramCard";
 
-// One group as its own card (owner, 2026-10-12): the age range, the level
-// band on the rail, the class day and time, where it trains (the club and its
+// One group as its own card (owner, 2026-10-12; one level per group and a
+// level-led title, 2026-10-13): the title leads with the level ("Intermediate
+// Adult Bootcamp"), then the decision rows — the one level tag (a tier chip
+// with its emblem, never a span or a rail), the age range, when it trains
+// (a detail row, never the title or the eyebrow), where (the club and its
 // area; the map link lives on the pages, so the card keeps one link), the
-// price, how to join ("Open to
-// join" or "By approval") with the week-one promise, and one action — the
-// quiz, where our coaches place the player. The same
-// spec-sheet grammar as the program card, without a photo: the program's
-// photograph sits on the program card and the page hero; the group is the
-// decision data under it.
+// price, how to join ("Open to join" or "By approval") with the week-one
+// promise, and one action — the quiz, where our coaches place the player.
+// The same spec-sheet grammar as the program card, without a photo: the
+// program's photograph sits on the program card and the page hero; the group
+// is the decision data under it.
 //
 // One link, one tab stop: the CTA line is the stretched link, named for the
-// group ("Take the 2-minute quiz, for the Ages 7–10 group"), so seven cards
-// on /programs read as seven distinct actions. Nothing between the article
-// and the link is positioned; the article carries the focus ring.
+// group ("Take the 2-minute quiz, for the Beginner Junior Bootcamp"), so
+// seven cards on /programs read as seven distinct actions. Nothing between
+// the article and the link is positioned; the article carries the focus ring.
 
 /** The joining rows' value: the spec value's size, a step quieter, for running text. */
 const TERMS_CLASS = "min-w-0 text-sm leading-relaxed text-white/80";
@@ -49,6 +51,11 @@ export type ProgramGroupCardProps = {
   headingLevel?: 2 | 3 | 4;
 };
 
+/** ", for the Beginner Junior Bootcamp" · ", for the One-to-one coaching group". */
+function linkSuffix(name: string): string {
+  return `, for the ${name}${/bootcamp$/i.test(name) ? "" : " group"}`;
+}
+
 export function ProgramGroupCard({
   group: g,
   program,
@@ -60,9 +67,11 @@ export function ProgramGroupCard({
   const Title = headingLevel === 2 ? "h2" : headingLevel === 4 ? "h4" : "h3";
   const status = groupStatus(g, nextCohort);
   const scheduled = g.day !== null;
-  const when = g.day ? `${g.day}s` : "By arrangement";
-  const eyebrow = showProgram ? `${program.title} · ${when}` : when;
-  const range = groupLevelRange(g);
+  // The eyebrow never carries the day or time (owner, 2026-10-13): the
+  // program's title on a mixed list, else the kind of class it is, unless
+  // that would repeat the title (private lessons are "One-to-one coaching"
+  // twice over), when the program's title steps in.
+  const eyebrow = showProgram || program.type === g.name ? program.title : program.type;
   const location = locationById(g.locationId);
 
   return (
@@ -75,12 +84,20 @@ export function ProgramGroupCard({
       <Title className="mt-3 text-lg font-semibold tracking-tight text-white">{g.name}</Title>
 
       <dl className="mt-4 space-y-2.5 border-t border-white/10 pt-4">
+        {/* The one level tag (owner, 2026-10-13), first: it is the group's
+            one level statement, the same word the title leads with. */}
+        <div className={`${ROW_CLASS} items-center`}>
+          <dt className={LABEL_CLASS}>Level</dt>
+          <dd className="min-w-0">
+            <LevelTag level={g.level} />
+          </dd>
+        </div>
         <div className={ROW_CLASS}>
           <dt className={`${LABEL_CLASS} pt-0.5`}>Ages</dt>
           <dd className={VALUE_CLASS}>{groupAgeLabel(g)}</dd>
         </div>
         <div className={ROW_CLASS}>
-          <dt className={`${LABEL_CLASS} pt-0.5`}>Time</dt>
+          <dt className={`${LABEL_CLASS} pt-0.5`}>When</dt>
           <dd className={VALUE_CLASS}>{formatGroupWhen(g)}</dd>
         </div>
         {location && (
@@ -108,12 +125,10 @@ export function ProgramGroupCard({
         )}
       </dl>
 
-      <LevelBlock range={range} className="mt-4 border-t border-white/10 pt-4" />
-
       {/* The group's one plain line (High Performance's competitive note)
-          sits under the Level block, not under the title, so the Ages, Time
+          sits under the rows, not under the title, so the Level, Ages, When
           and Price rows line up across sibling cards in a row. */}
-      {g.note && <p className="mt-3 text-sm leading-relaxed text-white/70">{g.note}</p>}
+      {g.note && <p className="mt-4 text-sm leading-relaxed text-white/70">{g.note}</p>}
 
       {/* The card's foot, pinned to the bottom so sibling cards' Week 1 rows
           and CTAs line up whatever sits above them. How to join and the
@@ -146,7 +161,7 @@ export function ProgramGroupCard({
             className={STRETCHED_LINK}
           >
             {QUIZ_CTA_LABEL}
-            <span className="sr-only">, for the {g.name} group</span>
+            <span className="sr-only">{linkSuffix(g.name)}</span>
           </TrackedLink>{" "}
           <span
             aria-hidden="true"

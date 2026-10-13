@@ -46,7 +46,7 @@ import { FOCUS_RING } from "@/components/ui/focus";
 import { TEXT_LINK_LIME, TextLink } from "@/components/ui/TextLink";
 import { QuizSwap } from "@/components/quiz/QuizSwap";
 import { TierLine } from "@/components/tiers";
-import { TIER_LADDER_SPAN } from "@/lib/tiers";
+import { TIER_COUNT_WORD, TIER_LADDER_SPAN } from "@/lib/tiers";
 import { loginHref } from "@/lib/authFlow";
 
 type PublicSlot = { slotStart: string; timeLabel: string; taken: boolean };
@@ -94,7 +94,7 @@ const SECTION_HEADING = "text-sm font-semibold uppercase tracking-wide text-[#B4
 // ─── What you leave with (audit M36) ─────────────────────────────────────────
 
 /**
- * The one thing the assessment produces, drawn: a ghost rail of the seven
+ * The one thing the assessment produces, drawn: a ghost rail of the five
  * tiers, lit for nobody yet. In the desktop summary and, on phones, under
  * the intro.
  */
@@ -105,7 +105,7 @@ function LeaveWith({ className = "" }: { className?: string }) {
         What you leave with
       </p>
       <p className="mt-1 text-sm text-white/90">
-        You leave with your tier: one of seven, {TIER_LADDER_SPAN}.
+        You leave with your tier: one of {TIER_COUNT_WORD}, {TIER_LADDER_SPAN}.
       </p>
       <TierLine variant="rail" size="sm" labels="ends" className="mt-3" />
     </div>

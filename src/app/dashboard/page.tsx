@@ -37,8 +37,17 @@ export const metadata: Metadata = {
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
-/** The RankCard's ghost (audit M24): emblem, three lines and the seven rail groups. */
-const RAIL_GHOST_HEIGHTS = ["h-[6px]", "h-[8px]", "h-[10px]", "h-[12px]", "h-[14px]", "h-[16px]", "h-[18px]"];
+/**
+ * The RankCard's ghost (audit M24): emblem, three lines and the five rail
+ * groups, sized like the rail's (two pips each, five for High Performance).
+ */
+const RAIL_GHOST: { height: string; flex: string; pips: number }[] = [
+  { height: "h-[6px]", flex: "flex-[2]", pips: 2 },
+  { height: "h-[9px]", flex: "flex-[2]", pips: 2 },
+  { height: "h-[12px]", flex: "flex-[2]", pips: 2 },
+  { height: "h-[15px]", flex: "flex-[2]", pips: 2 },
+  { height: "h-[18px]", flex: "flex-[5]", pips: 5 },
+];
 
 function RankCardGhost() {
   return (
@@ -54,10 +63,11 @@ function RankCardGhost() {
           </div>
         </div>
         <div className="mt-6 flex flex-1 items-end gap-1.5 md:mt-8">
-          {RAIL_GHOST_HEIGHTS.map((h, i) => (
-            <div key={i} className="flex flex-1 items-end gap-[2px]">
-              <div className={`flex-1 rounded-[1px] bg-white/[0.10] ${h}`} />
-              {i < 6 && <div className={`flex-1 rounded-[1px] bg-white/[0.10] ${h}`} />}
+          {RAIL_GHOST.map((group, i) => (
+            <div key={i} className={`flex ${group.flex} items-end gap-[2px]`}>
+              {Array.from({ length: group.pips }, (_, j) => (
+                <div key={j} className={`flex-1 rounded-[1px] bg-white/[0.10] ${group.height}`} />
+              ))}
             </div>
           ))}
         </div>

@@ -10,7 +10,7 @@
 
 import type { Cohort } from "@/types/cohort";
 import type { Program } from "@/types/program";
-import { tierForLevel, type TierId } from "@/lib/tiers";
+import { LEVEL_MAX, LEVEL_MIN, levelNumber, tierForLevel, type TierId } from "@/lib/tiers";
 import type { PlateSide, TraceSpec, Vec2 } from "./geometry";
 import { type PlateId, type PlateSpec, plateSpec } from "./specs";
 
@@ -18,9 +18,15 @@ export type { PlateSide };
 
 export type PlateVariant = {
   side: PlateSide;
-  /** The tier the signature flight is profiled for; null without a band. */
+  /** The tier of the band's lower bound; null without a band. Adult Bootcamps' emphasis reads it. */
   profileTier: TierId | null;
-  /** Adult Bootcamps only: the index of the lime flight (0 newer, 1 intermediate, 2 advanced). */
+  /**
+   * The level the signature flight is profiled for (the band's lower bound,
+   * clamped 1.0–7.0); null without a band. Thirteen half steps keep thirteen
+   * profiles now that High Performance is one tier from 5.0 to 7.0.
+   */
+  profileLevel: number | null;
+  /** Adult Bootcamps only: the index of the lime flight (0 Beginner, 1 Intermediate, 2 Advanced). */
   emphasis: number | null;
 };
 
@@ -48,7 +54,9 @@ export function plateVariant(input: PlateVariantInput): PlateVariant {
   const hasBand =
     (input.levelMin !== null && input.levelMin !== undefined && input.levelMin !== "") ||
     (input.levelMax !== null && input.levelMax !== undefined && input.levelMax !== "");
-  const profileTier = hasBand ? tierForLevel(input.levelMin ?? input.levelMax)?.id ?? null : null;
+  const lower = hasBand ? levelNumber(input.levelMin ?? input.levelMax) : null;
+  const profileTier = hasBand ? tierForLevel(lower)?.id ?? null : null;
+  const profileLevel = lower === null ? null : Math.min(LEVEL_MAX, Math.max(LEVEL_MIN, lower));
   let emphasis: number | null = null;
   if (input.plate === "bootcamps") {
     if (typeof input.focusSlot === "number" && input.focusSlot >= 0 && input.focusSlot <= 2) {
@@ -57,7 +65,7 @@ export function plateVariant(input: PlateVariantInput): PlateVariant {
       emphasis = profileTier <= 2 ? 0 : profileTier === 3 ? 1 : 2;
     }
   }
-  return { side, profileTier, emphasis };
+  return { side, profileTier, profileLevel, emphasis };
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -79,7 +87,7 @@ const YOUTH_ECHO_OFFSETS: readonly { shift: Vec2; apex: number }[] = [
  */
 export function resolvePlateSpec(id: PlateId | string, variant: PlateVariant): PlateSpec {
   const base = plateSpec(id);
-  const p = variant.profileTier === null ? null : (variant.profileTier - 1) / 6;
+  const p = variant.profileLevel === null ? null : (variant.profileLevel - LEVEL_MIN) / (LEVEL_MAX - LEVEL_MIN);
 
   if ((base.id === "youth-programs" || base.id === "court") && p !== null) {
     const landing = lerp2(YOUTH_LANDING_LOW, YOUTH_LANDING_HIGH, p);
@@ -96,8 +104,8 @@ export function resolvePlateSpec(id: PlateId | string, variant: PlateVariant): P
     return { ...base, traces };
   }
 
-  if (base.id === "high-performance" && variant.profileTier !== null) {
-    const apex = lerp(2.2, 1.5, clamp01((variant.profileTier - 4) / 3));
+  if (base.id === "high-performance" && variant.profileLevel !== null) {
+    const apex = lerp(2.2, 1.5, clamp01((variant.profileLevel - 4) / 3));
     return {
       ...base,
       traces: base.traces.map((t) => (t.role === "signature" ? { ...t, apex } : t)),

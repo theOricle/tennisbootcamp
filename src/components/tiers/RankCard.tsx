@@ -1,4 +1,4 @@
-// A player's rank (design specs §3.6): the tier emblem, "Tier 2 of 7", the
+// A player's rank (design specs §3.6): the tier emblem, "Tier 2 of 5", the
 // name, the level, a rail with the player's position, and what comes next.
 // The tier-colour top rule is the only block of colour on the card. Three
 // states: ranked, unranked (the ghost, no pitch), and placed (a quiz-placed
@@ -127,7 +127,7 @@ export function RankCard({
               </div>
             </div>
             <div className="mt-5 min-w-0 flex-1 md:mt-0">
-              {/* The ladder from lg: at md the column is ~360px, too narrow for seven plain names. */}
+              {/* The ladder from lg: at md the column is ~360px, too narrow for five plain names with High Performance among them. */}
               <TierLine variant="ladder" orientation="horizontal" density="compact" level={player.level} className="hidden lg:grid" />
               <TierLine variant="rail" size="md" level={player.level} labels="ends" className="lg:hidden" />
             </div>

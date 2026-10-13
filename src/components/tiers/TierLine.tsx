@@ -1,24 +1,31 @@
-// The tier line (audit H6, M36; design specs §3.3) — the one line used
-// everywhere a rank or a span is shown.
+// The tier line (audit H6, M36; design specs §3.3; five tiers since
+// 2026-10-13) — the one line used everywhere a rank or a span is shown.
 //
-// `rail`: seven tier groups of thirteen pips that step up in height and
-// colour, Beginner to World Class — the game-rank meter. It shows a player's
-// position (lit up to the current pip, a caret above it), a provisional
-// estimate (the likely tier outlined), a span (lit inside the band), a span
-// with a named marker, or nothing (ghost). It never scrolls: every pip stays
-// at least 14px wide at 272px.
+// `rail`: five tier groups of thirteen pips that step up in height and
+// colour, Beginner to High Performance — the game-rank meter. The first four
+// groups hold two pips each; High Performance holds five (5.0–7.0), and the
+// groups are sized by their pip count, so every pip is the same width. It
+// shows a player's position (lit up to the current pip, a caret above it), a
+// provisional estimate (the likely tier outlined), a span (lit inside the
+// band), a set of tiers (one per group of a program), a span with a named
+// marker, or nothing (ghost). It never scrolls: every pip stays at least 14px
+// wide at 272px.
 //
-// `ladder`: the seven emblems on a connected line, horizontal (seven
-// columns) or vertical (World Class on top, DOM order Beginner-first), with node
-// states for a level or a span and blurbs when asked. Never a horizontal
-// scroller — any md+ surface narrower than 480px uses `vertical` or the rail.
+// `ladder`: the five emblems on a connected line, horizontal (five columns)
+// or vertical (High Performance on top, DOM order Beginner-first), with node
+// states for a level, a span or a set, and blurbs when asked. Never a
+// horizontal scroller — any md+ surface narrower than 480px uses `vertical`
+// or the rail.
 //
 // Colour never carries the rank alone: the tier name is in text beside every
 // rail, or in the line's accessible name.
 
 import {
+  LEVEL_MAX,
+  LEVEL_MIN,
   TIERS,
   TIER_COUNT,
+  TIER_COUNT_WORD,
   TIER_LADDER_SPAN,
   LEVEL_STEPS,
   formatLevelNumber,
@@ -47,6 +54,13 @@ export type TierLineProps = {
   provisional?: boolean;
   /** A cohort's or program's level band. */
   span?: TierLineSpan | null;
+  /**
+   * The tiers a program's groups are built for, one per group (owner,
+   * 2026-10-13: one level tag per group). Lit as a set, not a range: a
+   * program with Beginner, Novice and High Performance groups lights those
+   * three and leaves Intermediate and Advanced unlit.
+   */
+  tiers?: readonly TierId[] | null;
   /** A named player marker on a span rail ("You", "Maya"). */
   marker?: { level: number; label: string } | null;
   /** Rail: pip heights. */
@@ -62,18 +76,38 @@ export type TierLineProps = {
   className?: string;
 };
 
-type Mode = "position" | "span" | "ghost";
+type Mode = "position" | "span" | "set" | "ghost";
 
 function resolveMode(props: TierLineProps): Mode {
   if (levelNumber(props.level) !== null) return "position";
   if (props.span && tierRangeForLevels(props.span.min, props.span.max)) return "span";
+  if (props.tiers && props.tiers.length > 0) return "set";
   return "ghost";
 }
 
+/** The tier ids of a set, de-duplicated and ascending. */
+function setIds(tiers: readonly TierId[] | null | undefined): TierId[] {
+  return [...new Set(tiers ?? [])].filter((id) => TIERS.some((t) => t.id === id)).sort((a, b) => a - b);
+}
+
+/** "Beginner, Novice and High Performance". */
+function listNames(ids: readonly TierId[]): string {
+  const names = ids.map((id) => TIERS[id - 1].name);
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+function capitalize(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/** "Five tiers, Beginner to High Performance." */
+const LADDER_SENTENCE = `${capitalize(TIER_COUNT_WORD)} tiers, ${TIER_LADDER_SPAN}.`;
+
 /** The index of a level on the thirteen-step grid, clamped. */
 function stepIndex(level: number): number {
-  const clamped = Math.min(7, Math.max(1, level));
-  return Math.round((clamped - 1) * 2);
+  const clamped = Math.min(LEVEL_MAX, Math.max(LEVEL_MIN, level));
+  return Math.round((clamped - LEVEL_MIN) * 2);
 }
 
 const LIME = "bg-[#B4E655]";
@@ -83,9 +117,21 @@ const CONNECTOR_OFF = "bg-white/15";
 
 /** Pip height per tier group and size, as complete class literals. */
 const RAIL_HEIGHT: Record<"xs" | "sm" | "md", Record<TierId, string>> = {
-  xs: { 1: "h-[3px]", 2: "h-[3px]", 3: "h-[3px]", 4: "h-[3px]", 5: "h-[3px]", 6: "h-[3px]", 7: "h-[3px]" },
-  sm: { 1: "h-[4px]", 2: "h-[5px]", 3: "h-[6px]", 4: "h-[7px]", 5: "h-[8px]", 6: "h-[9px]", 7: "h-[10px]" },
-  md: { 1: "h-[6px]", 2: "h-[8px]", 3: "h-[10px]", 4: "h-[12px]", 5: "h-[14px]", 6: "h-[16px]", 7: "h-[18px]" },
+  xs: { 1: "h-[3px]", 2: "h-[3px]", 3: "h-[3px]", 4: "h-[3px]", 5: "h-[3px]" },
+  sm: { 1: "h-[4px]", 2: "h-[6px]", 3: "h-[8px]", 4: "h-[10px]", 5: "h-[12px]" },
+  md: { 1: "h-[6px]", 2: "h-[9px]", 3: "h-[12px]", 4: "h-[15px]", 5: "h-[18px]" },
+};
+
+/**
+ * Each group's share of the rail is its pip count (two per tier, five for
+ * High Performance), so every pip is the same width. Complete literals.
+ */
+const RAIL_GROUP_FLEX: Record<TierId, string> = {
+  1: "flex-[2]",
+  2: "flex-[2]",
+  3: "flex-[2]",
+  4: "flex-[2]",
+  5: "flex-[5]",
 };
 
 function Caret({ dashed }: { dashed: boolean }) {
@@ -117,6 +163,7 @@ function Rail(props: TierLineProps) {
   const spanMax = range ? levelNumber(props.span?.max ?? props.span?.min) : null;
   const lo = spanMin !== null && spanMax !== null ? Math.min(spanMin, spanMax) : null;
   const hi = spanMin !== null && spanMax !== null ? Math.max(spanMin, spanMax) : null;
+  const set = mode === "set" ? setIds(props.tiers) : [];
 
   const current = mode === "position" && level !== null ? stepIndex(level) : -1;
   const markerIndex = mode === "span" && marker ? stepIndex(marker.level) : -1;
@@ -137,6 +184,9 @@ function Rail(props: TierLineProps) {
     if (mode === "span" && lo !== null && hi !== null) {
       const step = LEVEL_STEPS[index];
       return step >= lo && step <= hi ? `${TIER_PIP[t.id]} forced-colors:bg-[color:Highlight]` : PIP_UNLIT;
+    }
+    if (mode === "set") {
+      return set.includes(t.id) ? `${TIER_PIP[t.id]} forced-colors:bg-[color:Highlight]` : PIP_UNLIT;
     }
     return PIP_UNLIT;
   }
@@ -174,14 +224,17 @@ function Rail(props: TierLineProps) {
         markerSentence ? `. ${markerSentence}` : ""
       }`,
     };
+  } else if (mode === "set") {
+    a11y = { role: "img", "aria-label": `Built for ${listNames(set)}` };
   } else {
-    a11y = { role: "img", "aria-label": `Unranked. Seven tiers, ${TIER_LADDER_SPAN}.` };
+    a11y = { role: "img", "aria-label": `Unranked. ${LADDER_SENTENCE}` };
   }
 
   // Which names light up under the groups.
   function nameLit(t: Tier): boolean {
     if (mode === "position" && tier) return provisional ? t.id === tier.id : t.id <= tier.id;
     if (mode === "span" && range) return t.id >= range.min.id && t.id <= range.max.id;
+    if (mode === "set") return set.includes(t.id);
     return false;
   }
 
@@ -190,9 +243,13 @@ function Rail(props: TierLineProps) {
       const left = provisional
         ? `Likely ${tier.name}`
         : `${tier.name} · Level ${formatLevelNumber(level)}`;
+      // Inside the top tier the right end names the top of the ladder and
+      // where it is, so a 5.5 still reads as a climb to 7.0.
       const right = progress.next
         ? `${progress.next.name} ${progress.nextLevel?.toFixed(1)}`
-        : "Top of the ladder";
+        : progress.atTop
+          ? "Top of the ladder"
+          : `Top of the ladder · ${LEVEL_MAX.toFixed(1)}`;
       return { left, right };
     }
     if (mode === "span" && range && lo !== null && hi !== null) {
@@ -200,6 +257,9 @@ function Rail(props: TierLineProps) {
         return { left: `${range.min.name} · ${lo.toFixed(1)}–${hi.toFixed(1)}`, right: "" };
       }
       return { left: `${range.min.name} ${lo.toFixed(1)}`, right: `${range.max.name} ${hi.toFixed(1)}` };
+    }
+    if (mode === "set") {
+      return { left: listNames(set), right: "" };
     }
     return { left: TIERS[0].name, right: TIERS[TIERS.length - 1].name };
   })();
@@ -221,10 +281,10 @@ function Rail(props: TierLineProps) {
         >
           {TIERS.map((t) => {
             const indices = LEVEL_STEPS.map((_, i) => i).filter(
-              (i) => Math.min(7, Math.floor(LEVEL_STEPS[i])) === t.id
+              (i) => tierForLevel(LEVEL_STEPS[i])?.id === t.id
             );
             return (
-              <div key={t.id} className="flex flex-1 items-end gap-[2px]">
+              <div key={t.id} className={`flex ${RAIL_GROUP_FLEX[t.id]} items-end gap-[2px]`}>
                 {indices.map((i) => (
                   <div
                     key={i}
@@ -250,11 +310,12 @@ function Rail(props: TierLineProps) {
       {labels === "all" && (
         <>
           <div className="md:hidden">{endsRow}</div>
-          <div className="mt-1.5 hidden gap-1.5 text-center text-xs md:grid md:grid-cols-7">
+          {/* The names share the groups' widths, so each sits under its pips. */}
+          <div className="mt-1.5 hidden gap-1.5 text-center text-xs md:flex">
             {TIERS.map((t) => (
               <span
                 key={t.id}
-                className={nameLit(t) ? "font-semibold text-white" : "text-white/55"}
+                className={`${RAIL_GROUP_FLEX[t.id]} ${nameLit(t) ? "font-semibold text-white" : "text-white/55"}`}
               >
                 {t.name}
               </span>
@@ -281,7 +342,12 @@ function ladderNodes(props: TierLineProps): NodeInfo[] {
   const mode = resolveMode(props);
   const level = levelNumber(props.level);
   const currentTier = mode === "position" ? tierForLevel(level) : null;
-  const inSpan = mode === "span" && props.span ? tierIdsInRange(props.span.min, props.span.max) : [];
+  const inSpan =
+    mode === "span" && props.span
+      ? tierIdsInRange(props.span.min, props.span.max)
+      : mode === "set"
+        ? setIds(props.tiers)
+        : [];
   return TIERS.map((tier) => {
     if (mode === "position" && currentTier) {
       if (tier.id < currentTier.id) return { tier, state: "earned", current: false, lit: true, suffix: " (reached)" };
@@ -292,7 +358,7 @@ function ladderNodes(props: TierLineProps): NodeInfo[] {
       }
       return { tier, state: "future", current: false, lit: false, suffix: "" };
     }
-    if (mode === "span") {
+    if (mode === "span" || mode === "set") {
       const inside = inSpan.includes(tier.id);
       return inside
         ? { tier, state: "earned", current: false, lit: true, suffix: " (in this program)" }
@@ -305,30 +371,31 @@ function ladderNodes(props: TierLineProps): NodeInfo[] {
 /** Node sizes as complete class literals: base + (id − 1) × 2, current +8. */
 const NODE_DEFAULT: Record<TierId, string> = {
   1: "h-[32px] w-[32px]", 2: "h-[34px] w-[34px]", 3: "h-[36px] w-[36px]", 4: "h-[38px] w-[38px]",
-  5: "h-[40px] w-[40px]", 6: "h-[42px] w-[42px]", 7: "h-[44px] w-[44px]",
+  5: "h-[40px] w-[40px]",
 };
 const NODE_DEFAULT_CURRENT: Record<TierId, string> = {
   1: "h-[40px] w-[40px]", 2: "h-[42px] w-[42px]", 3: "h-[44px] w-[44px]", 4: "h-[46px] w-[46px]",
-  5: "h-[48px] w-[48px]", 6: "h-[50px] w-[50px]", 7: "h-[52px] w-[52px]",
+  5: "h-[48px] w-[48px]",
 };
 const NODE_COMPACT: Record<TierId, string> = {
   1: "h-[28px] w-[28px] md:h-[40px] md:w-[40px]", 2: "h-[30px] w-[30px] md:h-[42px] md:w-[42px]",
   3: "h-[32px] w-[32px] md:h-[44px] md:w-[44px]", 4: "h-[34px] w-[34px] md:h-[46px] md:w-[46px]",
-  5: "h-[36px] w-[36px] md:h-[48px] md:w-[48px]", 6: "h-[38px] w-[38px] md:h-[50px] md:w-[50px]",
-  7: "h-[40px] w-[40px] md:h-[52px] md:w-[52px]",
+  5: "h-[36px] w-[36px] md:h-[48px] md:w-[48px]",
 };
 const NODE_COMPACT_CURRENT: Record<TierId, string> = {
   1: "h-[36px] w-[36px] md:h-[48px] md:w-[48px]", 2: "h-[38px] w-[38px] md:h-[50px] md:w-[50px]",
   3: "h-[40px] w-[40px] md:h-[52px] md:w-[52px]", 4: "h-[42px] w-[42px] md:h-[54px] md:w-[54px]",
-  5: "h-[44px] w-[44px] md:h-[56px] md:w-[56px]", 6: "h-[46px] w-[46px] md:h-[58px] md:w-[58px]",
-  7: "h-[48px] w-[48px] md:h-[60px] md:w-[60px]",
+  5: "h-[44px] w-[44px] md:h-[56px] md:w-[56px]",
 };
 
 // Where a long plain name may break in a narrow ladder column (a soft hyphen
 // shows only when the word has to break). Browsers' own hyphenation is not
 // available everywhere, so the break points are written here; a name that no
-// longer matches its entry falls back to the plain name.
-const SOFT_HYPHEN = "\u00AD";
+// longer matches its entry falls back to the plain name. "High Performance"
+// gets no soft hyphen: a browser fills the first line greedily and would
+// print "High Perfor-" over "mance", so it breaks at its space instead
+// ("High" over "Performance"), which fits every horizontal ladder column.
+const SOFT_HYPHEN = "­";
 const LADDER_BREAKS: Partial<Record<TierId, string>> = {
   1: `Begin${SOFT_HYPHEN}ner`,
   3: `Inter${SOFT_HYPHEN}mediate`,
@@ -340,7 +407,7 @@ function ladderName(tier: Tier): string {
   return broken && broken.split(SOFT_HYPHEN).join("") === tier.name ? broken : tier.name;
 }
 
-const LADDER_LABEL =`The seven tiers, ${TIERS[0].name} (lowest) to ${TIERS[TIERS.length - 1].name} (highest)`;
+const LADDER_LABEL = `The ${TIER_COUNT_WORD} tiers, ${TIERS[0].name} (lowest) to ${TIERS[TIERS.length - 1].name} (highest)`;
 
 function HorizontalLadder({
   nodes,
@@ -357,7 +424,7 @@ function HorizontalLadder({
 }) {
   const cell = compact ? "h-10 md:h-12" : "h-14";
   return (
-    <ol aria-label={LADDER_LABEL} className={`grid grid-cols-7 gap-x-1 ${className}`.trim()}>
+    <ol aria-label={LADDER_LABEL} className={`grid grid-cols-5 gap-x-1 ${className}`.trim()}>
       {nodes.map((n, i) => {
         const prev = nodes[i - 1];
         const next = nodes[i + 1];

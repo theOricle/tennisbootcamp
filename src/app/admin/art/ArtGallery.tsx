@@ -4,7 +4,7 @@ import { PLATE_FRAMES, type PlateFrame } from "@/lib/plates/tokens";
 import { ProgramPlate } from "@/components/plates/ProgramPlate";
 import { PlateMark } from "@/components/plates/PlateMark";
 import { AgeBandChips } from "@/components/programs/AgeBandChips";
-import { TIERS } from "@/lib/tiers";
+import { tierForLevel } from "@/lib/tiers";
 
 // The Court Plates gallery Sina signs off on (owner D13; design specs §4.8):
 // every plate in every frame, the coming-soon state, the Adult class focus,
@@ -123,7 +123,7 @@ export function ArtGallery() {
       <Section
         id="focus"
         title="Adult Bootcamps: class focus"
-        body="A cohort's plate lights the class it trains in. 4:00 newer, 5:00 intermediate, 6:00 advanced; the other two flights step down."
+        body="A cohort's plate lights the class it trains in. 4:00 Beginner, 5:00 Intermediate, 6:00 Advanced; the other two flights step down."
       >
         <div className="grid gap-4 md:grid-cols-3">
           {[0, 1, 2].map((slot) => (
@@ -142,7 +142,7 @@ export function ArtGallery() {
       <Section
         id="profile"
         title="Youth Bootcamps: level profile"
-        body="A cohort's level band profiles the signature flight: the higher the tier, the flatter the ball and the deeper it lands. Base plate first, then Beginner, Advanced and World Class cohorts."
+        body="A cohort's level band profiles the signature flight: the higher the level, the flatter the ball and the deeper it lands. Base plate first, then Beginner, Advanced and High Performance (7.0) cohorts."
       >
         <div className="grid gap-4 md:grid-cols-4">
           <div>
@@ -151,24 +151,24 @@ export function ArtGallery() {
             </Frame>
             <Caption>program plate (no band)</Caption>
           </div>
-          {[1, 4, 7].map((tier) => (
-            <div key={tier}>
+          {[1, 4, 7].map((level) => (
+            <div key={level}>
               <Frame frame="band">
-                <ProgramPlate plate="youth-programs" frame="band" density="compact" levelMin={tier} levelMax={tier + 0.5} />
+                <ProgramPlate plate="youth-programs" frame="band" density="compact" levelMin={level} levelMax={Math.min(7, level + 0.5)} />
               </Frame>
               <Caption>
-                {TIERS[tier - 1].name} cohort · level {tier.toFixed(1)}
+                {tierForLevel(level)?.name} cohort · level {level.toFixed(1)}
               </Caption>
             </div>
           ))}
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-4">
-          {[1, 4, 7].map((tier) => (
-            <div key={tier}>
+          {[1, 4, 7].map((level) => (
+            <div key={level}>
               <Frame frame="strip">
-                <ProgramPlate plate="high-performance" frame="strip" density="compact" levelMin={tier} levelMax={7} />
+                <ProgramPlate plate="high-performance" frame="strip" density="compact" levelMin={level} levelMax={7} />
               </Frame>
-              <Caption>High Performance · {TIERS[tier - 1].name} and up · strip</Caption>
+              <Caption>High Performance plate · from {tierForLevel(level)?.name} ({level.toFixed(1)}) · strip</Caption>
             </div>
           ))}
         </div>

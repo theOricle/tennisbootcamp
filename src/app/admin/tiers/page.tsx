@@ -25,7 +25,7 @@ export default async function AdminTiersPage() {
           </Link>
           <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Tiers</h1>
           <p className="mt-1 text-sm text-white/55">
-            A QA gallery of the tier system: the seven emblems in every state
+            A QA gallery of the tier system: the five emblems in every state
             and size, the rail and the ladder in every mode, and the rank card
             fixtures. Nothing here reads or writes data.
           </p>

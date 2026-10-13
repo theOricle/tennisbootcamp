@@ -78,7 +78,7 @@ export const PLATE_SPECS: Record<PlateId, PlateSpec> = {
   bootcamps: {
     id: "bootcamps",
     name: "Three levels, three flights",
-    copy: ["Three levels run back to back", "newer, intermediate, advanced"],
+    copy: ["Three levels run back to back", "Beginner, Intermediate, Advanced"],
     // From one spot: a high arc landing short, a mid arc, then the flat drive
     // landing deep. The ladder in ball flight.
     traces: [

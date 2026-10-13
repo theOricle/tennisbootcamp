@@ -2,7 +2,7 @@ import type { Program, ProgramGroup, TimetableSlot } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
 import { audienceLabel, isAgeBand } from "@/lib/ageBand";
 import { formatStartDate } from "@/lib/cohorts";
-import { levelNumber, levelWithinRange } from "@/lib/tiers";
+import { levelNumber, levelWithinRange, tierById, LEVEL_MAX, LEVEL_MIN, type Tier, type TierId } from "@/lib/tiers";
 
 // The program catalog's decision data (audit H7, M31; design specs §5.2;
 // groups per owner 2026-10-12): what a card says about a program or a group's
@@ -144,18 +144,39 @@ export function agesChipLabel(groups: readonly Pick<ProgramGroup, "ageMin" | "ag
   return label === "Any age" ? label : `Ages ${label}`;
 }
 
-/** The group's level band. */
-export function groupLevelRange(g: Pick<ProgramGroup, "levelMin" | "levelMax">): LevelRange {
-  return { min: g.levelMin, max: g.levelMax };
+/** The group's tier (its one level tag), or null for a group built for any level. */
+export function groupTier(g: Pick<ProgramGroup, "level">): Tier | null {
+  return g.level === null ? null : tierById(g.level);
 }
 
-/** A class's level band, or null when the slot is not banded. */
+/**
+ * The numeric band behind a group's level tag (internal: fit checks and
+ * cohort matching). Intermediate is 3.0–3.5, High Performance 5.0–7.0; a
+ * group built for any level spans the ladder.
+ */
+export function groupLevelRange(g: Pick<ProgramGroup, "level">): LevelRange {
+  const tier = groupTier(g);
+  return tier ? { min: tier.levelMin, max: tier.levelMax } : { min: LEVEL_MIN, max: LEVEL_MAX };
+}
+
+/** A class's level band, or null when the slot carries no level. */
 export function slotLevelRange(slot: TimetableSlot): LevelRange | null {
-  if (slot.levelMin === undefined || slot.levelMax === undefined) return null;
-  return { min: slot.levelMin, max: slot.levelMax };
+  if (slot.level === undefined) return null;
+  return groupLevelRange({ level: slot.level });
 }
 
-/** The program's tier span, or null when unset: unset renders nothing. */
+/**
+ * The level tags a program's groups carry, one per distinct tier in ladder
+ * order (owner, 2026-10-13): Youth Bootcamps reads [Beginner, Novice, High
+ * Performance]. `null` when any group takes every level (private lessons),
+ * which a card shows as "All levels". [] for a program with no groups.
+ */
+export function programLevelTags(groups: readonly Pick<ProgramGroup, "level">[]): TierId[] | null {
+  if (groups.some((g) => g.level === null)) return null;
+  return [...new Set(groups.map((g) => g.level as TierId))].sort((a, b) => a - b);
+}
+
+/** The program's numeric span (the union of its groups' tiers), or null when unset: unset renders nothing. */
 export function programLevelRange(p: Program): LevelRange | null {
   if (p.levelMin === undefined || p.levelMax === undefined) return null;
   return { min: p.levelMin, max: p.levelMax };

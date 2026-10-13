@@ -26,7 +26,7 @@ import { AGE_BANDS, ageBandIsMinor } from "../lib/ageBand";
 import { formatCohortSchedule, formatStartDate } from "../lib/cohorts";
 import { PROVISIONAL_TIER } from "../lib/level";
 import { recommendPrograms } from "../lib/recommend";
-import { formatTierSpan, levelWithinRange, tierById } from "../lib/tiers";
+import { formatTierSpan, tierById } from "../lib/tiers";
 import {
   agesChipLabel,
   cohortMatchesGroup,
@@ -35,6 +35,7 @@ import {
   formatGroupWhen,
   formatSlotWhen,
   groupAgeLabel,
+  groupLevelRange,
   groupStatus,
   nextCohortForGroup,
   programAgeLabel,
@@ -42,6 +43,7 @@ import {
   programFitsAge,
   programFitsPlayer,
   programLevelRange,
+  programLevelTags,
   programStatus,
   programTakesPlayerAge,
   slotLevelRange,
@@ -114,13 +116,13 @@ for (const p of listedPrograms) {
   const range = programLevelRange(p);
   check(`${p.id}: span set, on the half-step grid, 1.0 ≤ min ≤ max ≤ 7.0`, !!range && onGrid(range.min) && onGrid(range.max) && range.min <= range.max);
   check(
-    `${p.id}: span is the union of its groups' bands`,
-    !!range && range.min === Math.min(...groups.map((g) => g.levelMin)) && range.max === Math.max(...groups.map((g) => g.levelMax))
+    `${p.id}: span is the union of its groups' tier bands`,
+    !!range && range.min === Math.min(...groups.map((g) => groupLevelRange(g).min)) && range.max === Math.max(...groups.map((g) => groupLevelRange(g).max))
   );
   const slots = p.timetable ?? [];
   check(`${p.id}: one timetable slot per scheduled group, in lineup order`, slots.length === scheduled.length && slots.every((s, i) => s.group === scheduled[i].name && s.day === scheduled[i].day));
   check(`${p.id}: slot times come from the groups' 24-hour clock`, slots.every((s, i) => s.time === formatClassTime(scheduled[i].start!, scheduled[i].end!)));
-  check(`${p.id}: every slot carries its group's band`, slots.every((s, i) => slotLevelRange(s)?.min === scheduled[i].levelMin && slotLevelRange(s)?.max === scheduled[i].levelMax));
+  check(`${p.id}: every slot carries its group's level tag`, slots.every((s, i) => s.level === scheduled[i].level && slotLevelRange(s)?.min === groupLevelRange(scheduled[i]).min));
   if (scheduled.length > 0) {
     check(`${p.id}: enrollmentStatus set (owner D11)`, p.enrollmentStatus === "forming");
     check(`${p.id}: schedule names the day and every start`, !!p.schedule && p.schedule.includes(`${scheduled[0].day}s`) && scheduled.every((g) => p.schedule!.includes(twelveHourStart(g.start!))));
@@ -195,12 +197,16 @@ for (const band of AGE_BANDS) {
     const minor = ageBandIsMinor(band);
     const tierId = level ? PROVISIONAL_TIER[level] : undefined;
     const fits = !!top && programFitsPlayer(top.program, { is_minor: minor, age_band: band, level: tierId ?? null });
-    const inGroup = !top || tierId === undefined || levelWithinRange(tierId, top.groups[0].levelMin, top.groups[0].levelMax);
+    // The first group's tag is the provisional tier or the tier beside it
+    // (one tag per group, owner 2026-10-13), except the competitive track,
+    // which leads for a competitive or tournament youth by approval.
+    const first = top?.groups[0];
+    const inGroup = !first || tierId === undefined || first.level === null || first.id === "high-performance" || Math.abs(first.level - tierId) <= 1;
     check(`${band} (${level ?? "no level"}) → ${top?.program.id} fits the card's rule and its first group`, fits && inGroup);
   }
 }
 const competitiveTier = tierById(PROVISIONAL_TIER.competitive!);
-check("competitive provisional tier is at or above the High Performance floor", competitiveTier.id >= Math.floor(hp.levelMin));
+check("the High Performance group's tag is the top tier, above the competitive provisional tier", hp.level === 5 && competitiveTier.id < hp.level);
 
 // ── Suggestions ─────────────────────────────────────────────────────────────
 console.log("suggestProgramsFor");
@@ -261,9 +267,9 @@ check("no Next row without a cohort", !/<dt[^>]*>Next<\/dt>/.test(card));
 const [priceLead, ...priceRest] = PRICE_SUMMARY.split(" · ");
 const priceDd = card.match(/<dt[^>]*>Price<\/dt><dd[^>]*>([\s\S]*?)<\/dd>/)?.[1] ?? "";
 check("the price is stacked: lead in white, total in white/60, no middot", priceDd.includes(`font-semibold text-white">${priceLead}<`) && priceRest.every((part) => priceDd.includes(`text-white/60">${part}<`)) && !priceDd.includes("·"), priceDd);
-check("the Level block names the span", card.includes(`>${formatTierSpan(youth.levelMin, youth.levelMax)}<`) && card.includes("1.0–5.5"));
-check("the rail is in span mode", card.includes('aria-label="Built for Beginner to Elite, levels 1.0 to 5.5"'));
-check("the level note is under the rail", card.includes(youth.levelNote!));
+check("the Levels block shows one tag per group level, in ladder order: Beginner, Novice, High Performance", JSON.stringify(programLevelTags(groupsForProgram("youth-programs"))) === "[1,2,5]" && at(card, ">Beginner</span>") < at(card, ">Novice</span>") && at(card, ">Novice</span>") < at(card, ">High Performance</span>") && card.includes(">Levels</p>"));
+check("no span text, no band, no rail on the card", !card.includes(formatTierSpan(youth.levelMin, youth.levelMax) + "<") && !card.includes("1.0–7.0") && !card.includes('aria-label="Built for') && !card.includes('role="meter"'));
+check("the level note is under the tags", card.includes(youth.levelNote!) && at(card, youth.levelNote!) > at(card, ">High Performance</span>"));
 check("the CTA line is decoration", /<span aria-hidden="true"[^>]*>View Program/.test(card));
 check("no Learn more, no second button, no gradient scrim", !card.includes("Learn more") && !card.includes("<button") && !card.includes("bg-gradient-to-t"));
 
@@ -276,18 +282,18 @@ check("Next: every part is its own nowrap span, the middot attached to the part 
 const fitMaya = render(createElement(ProgramCard, { program: youth, fit: { name: "Maya", level: 2.5 } }));
 check("fit → Fits Maya eyebrow", fitMaya.includes("Fits Maya") && !fitMaya.includes("Juniors and teens · Saturdays"));
 check("fit → the caption names her tier and level", fitMaya.includes("Maya: Novice · 2.5"));
-check("fit → the rail carries her marker", fitMaya.includes("Maya&#x27;s tier, Novice, is in this range.") || fitMaya.includes("Maya's tier, Novice, is in this range."));
+check("fit → no rail marker on the card any more (tags only)", !fitMaya.includes("is in this range"));
 const fitYou = render(createElement(ProgramCard, { program: adult, fit: { name: null, level: 2.5 } }));
 check("fit with no name → Fits you, Your level", fitYou.includes("Fits you") && fitYou.includes("Your level: Novice · 2.5"));
 const outOfRange = render(createElement(ProgramCard, { program: adult, fit: { name: "Maya", level: 6.5 } }));
 check("a fit outside the span keeps the plain eyebrow", outOfRange.includes("Adults · Sundays") && !outOfRange.includes("Fits Maya"));
 
 const adultCard = render(createElement(ProgramCard, { program: adult }));
-check("Adult Bootcamps: 16 and up, the three classes by name", adultCard.includes(">16 and up<") && ["Newer players", "Intermediate", "Advanced"].every((s) => adultCard.includes(`>${s}<`)));
-check("Adult Bootcamps span reads Beginner – Elite", adultCard.includes(">Beginner – Elite<"));
+check("Adult Bootcamps: 16 and up, the three classes by their level-led names", adultCard.includes(">16 and up<") && ["Beginner Adult Bootcamp", "Intermediate Adult Bootcamp", "Advanced Adult Bootcamp"].every((s) => adultCard.includes(`>${s}<`)));
+check("Adult Bootcamps shows three tags: Beginner, Intermediate, Advanced", JSON.stringify(programLevelTags(groupsForProgram("bootcamps"))) === "[1,3,4]" && !adultCard.includes("Beginner – ") && count(adultCard, "<li><span class=\"inline-flex min-h-6 items-center gap-1.5 rounded-full") === 3);
 
 const privateCard = render(createElement(ProgramCard, { program: privateLessons }));
-check("Private Lessons: any age, by arrangement, rates on request, all levels", privateCard.includes(">Any age<") && privateCard.includes(">By arrangement<") && privateCard.includes(`>${PRIVATE_LESSONS_PRICE}<`) && privateCard.includes(">All levels<"));
+check("Private Lessons: any age, by arrangement, rates on request, all levels", privateCard.includes(">Any age<") && privateCard.includes(">By arrangement<") && privateCard.includes(`>${PRIVATE_LESSONS_PRICE}<`) && privateCard.includes(">All levels<") && programLevelTags(groupsForProgram("private-lessons")) === null);
 check(
   "Private Lessons: no status chip, so By arrangement reads twice (eyebrow, When row), never three times, never Groups forming",
   count(privateCard, "By arrangement") === 2 && !privateCard.includes('class="absolute right-3 top-3') && !privateCard.includes("Groups forming"),
@@ -321,15 +327,15 @@ const home = read("src/app/page.tsx");
 check("home: the three listed programs with the quiz line", home.includes("programs={listedPrograms}") && home.includes("quizLine"));
 const programsPage = read("src/app/programs/page.tsx");
 check("/programs: tier legend in the header", /aria-labelledby="levels"[\s\S]*<TierLine variant="ladder"/.test(programsPage));
-check("/programs: the legend line", programsPage.includes("Seven tiers, {TIER_LADDER_SPAN}."));
+check("/programs: the legend line reads the count and the span from tiers.ts", programsPage.includes("tiers, {TIER_LADDER_SPAN}.") && programsPage.includes("TIER_COUNT_WORD") && !programsPage.includes("Seven tiers"));
 check("/programs: the catalog of groups, then the quiz band, then the newsletter", programsPage.includes("<ProgramCatalog") && at(programsPage, "<ProgramCatalog") < at(programsPage, "<QuizBand") && at(programsPage, "<QuizBand") < at(programsPage, "<EmailCapture"));
 check("/programs: the header carries the primary quiz CTA", /source="programs-header"[\s\S]*data-quiz-cta/.test(programsPage));
 check("/programs: the next cohort per group is read once on the server", programsPage.includes("nextCohortForGroup(publicCohorts, g)") && count(programsPage, "getPublicCohorts()") === 1);
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("detail: the photo hero with its alt, 16:10, priority", /<Image[\s\S]*?src=\{program\.photo\.src\}[\s\S]*?alt=\{program\.photo\.alt\}[\s\S]*?priority/.test(detail) && detail.includes("aspect-[16/10]") && !detail.includes("ProgramPlate"));
-check("detail: the ages chip and the span chip under the description (L8)", detail.includes("{agesChipLabel(groups)}") && detail.includes("<TierRangeBadges levelMin={range.min} levelMax={range.max} />"));
+check("detail: the ages chip and one level tag per group level under the description (L8; owner 2026-10-13)", detail.includes("{agesChipLabel(groups)}") && detail.includes("<LevelTag key={id} level={id} />") && !detail.includes("<TierRangeBadges levelMin={range.min}"));
 check("detail: the groups as cards, the quiz as their action", detail.includes("<ProgramGroupCard") && detail.includes('source="program-group"') && detail.includes("nextCohortForGroup(publicCohorts, g)"));
-check("detail: Levels in this program ladder in span mode", detail.includes("Levels in this program") && /<TierLine variant="ladder" orientation="vertical"[^>]*span=\{range\}/.test(detail));
+check("detail: Levels in this program lights the groups' tags on the ladder", detail.includes("Levels in this program") && /<TierLine variant="ladder" orientation="vertical"[^>]*tiers=\{tags\}/.test(detail) && detail.includes("programLevelTags(groups)"));
 check("detail: How tiers work link", detail.includes('href="/assessment#ladder"'));
 check("detail: cohort cards carry the mark and the rail", detail.includes("<PlateMark plate={program.plate}") && detail.includes("artFocusForCohort(program, cohort)") && /tierGated &&[\s\S]*<TierLine[\s\S]*variant="rail"/.test(detail));
 check("detail: the start date helper is shared", detail.includes("formatStartDate(") && !detail.includes("fmtStartDate"));

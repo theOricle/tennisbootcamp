@@ -27,7 +27,8 @@ import {
   audienceLabel,
   isAgeBand,
 } from "../lib/ageBand";
-import { tierForLevel } from "../lib/tiers";
+import { LEVEL_STEPS, tierById, tierForLevel, type TierId } from "../lib/tiers";
+import { slotLevelRange } from "../lib/programCatalog";
 import {
   COURT,
   anchorPoints,
@@ -81,28 +82,21 @@ for (const p of programs) {
     check(`${p.id}: span on the half-step grid, 1.0 ≤ min ≤ max ≤ 7.0`, onGrid(p.levelMin!) && onGrid(p.levelMax!) && p.levelMin! <= p.levelMax!, `${p.levelMin}–${p.levelMax}`);
   }
   const slots = p.timetable ?? [];
-  const banded = slots.filter((s) => s.levelMin !== undefined || s.levelMax !== undefined);
-  check(`${p.id}: slots are all banded or none`, banded.length === 0 || banded.length === slots.length);
-  if (banded.length > 0 && banded.length === slots.length) {
-    // Groups split by level alone (Adult Bootcamps: one age range) climb in
-    // contiguous, non-overlapping bands; groups split by age first (Youth
-    // Bootcamps) may overlap in level, so there only the order and the union
-    // are pinned (owner lineup, 2026-10-12).
+  const tagged = slots.filter((s) => s.level !== undefined);
+  check(`${p.id}: slots all carry a level tag or none`, tagged.length === 0 || tagged.length === slots.length);
+  if (tagged.length > 0 && tagged.length === slots.length) {
+    // One level tag per group (owner, 2026-10-13). Groups split by level
+    // alone (Adult Bootcamps: one age range) climb strictly, one distinct
+    // tier each; groups split by age first (Youth Bootcamps) climb too, and
+    // their tags together span the program.
     const groups = groupsForProgram(p.slug);
     const oneAgeRange = new Set(groups.map((g) => `${g.ageMin}-${g.ageMax}`)).size === 1;
-    let valid = true;
-    let ascending = true;
-    let contiguous = true;
-    for (let i = 0; i < slots.length; i++) {
-      const s = slots[i];
-      if (s.levelMin === undefined || s.levelMax === undefined || !onGrid(s.levelMin) || !onGrid(s.levelMax) || s.levelMin > s.levelMax) valid = false;
-      if (i > 0 && s.levelMin! < slots[i - 1].levelMin!) ascending = false;
-      if (i > 0 && s.levelMin !== slots[i - 1].levelMax! + 0.5) contiguous = false;
-    }
-    check(`${p.id}: slot bands are valid and ascending`, valid && ascending);
-    if (oneAgeRange) check(`${p.id}: slot bands are contiguous and non-overlapping (one age range)`, contiguous);
-    check(`${p.id}: slot bands together cover the program span`, Math.min(...slots.map((s) => s.levelMin!)) === p.levelMin && Math.max(...slots.map((s) => s.levelMax!)) === p.levelMax);
-    check(`${p.id}: slot bands are whole tiers (x.0–y.5)`, slots.every((s) => Number.isInteger(s.levelMin!) && s.levelMax! % 1 === 0.5));
+    const levels = slots.map((s) => s.level as number);
+    check(`${p.id}: every slot tag is a tier id, in ascending order`, levels.every((l) => Number.isInteger(l) && l >= 1 && l <= 5) && levels.every((l, i) => i === 0 || l > levels[i - 1]));
+    if (oneAgeRange) check(`${p.id}: one distinct tier per slot (one age range)`, new Set(levels).size === levels.length);
+    const bands = slots.map((s) => slotLevelRange(s)!);
+    check(`${p.id}: the tags' bands together cover the program span`, Math.min(...bands.map((b) => b.min)) === p.levelMin && Math.max(...bands.map((b) => b.max)) === p.levelMax);
+    check(`${p.id}: every tag's band is its tier's`, slots.every((s) => slotLevelRange(s)?.min === tierById(s.level as TierId).levelMin && slotLevelRange(s)?.max === tierById(s.level as TierId).levelMax));
   }
 }
 for (const p of listedPrograms) {
@@ -114,22 +108,20 @@ const listedPlates = listedPrograms.map((p) => p.plate).filter((id) => id !== "c
 check("listed programs never share a plate", new Set(listedPlates).size === listedPlates.length);
 check("PRICE_SUMMARY is one line from the constants", /^\$\d+ a session · \$\d+ for \w+ weeks?$/.test(PRICE_SUMMARY), PRICE_SUMMARY);
 
-// Owner lineup 2026-10-12 (supersedes D2/D3): the spans are the union of the
-// groups' bands, pinned here so a drift shows.
-console.log("Level spans (owner lineup, 2026-10-12)");
+// Owner lineup 2026-10-13 (one level tag per group): the spans are the union
+// of the groups' tier bands, pinned here so a drift shows.
+console.log("Level tags and spans (owner lineup, 2026-10-13)");
 const byId = Object.fromEntries(programs.map((p) => [p.id, p]));
-check("Youth Bootcamps 1.0–5.5 (Beginner – Elite, the HP group on top)", byId["youth-programs"].levelMin === 1.0 && byId["youth-programs"].levelMax === 5.5);
-check("High Performance group 3.0–5.5 (Intermediate – Elite)", groupById("high-performance")?.levelMin === 3.0 && groupById("high-performance")?.levelMax === 5.5);
-check("High Performance floor is Intermediate, matching the quiz map competitive → Intermediate (D4)", tierForLevel(groupById("high-performance")?.levelMin)?.name === "Intermediate");
-check("Adult Bootcamps 1.0–5.5 (Beginner – Elite)", byId["bootcamps"].levelMin === 1.0 && byId["bootcamps"].levelMax === 5.5);
-check("Adult 4:00 Beginner – Novice", byId["bootcamps"].timetable?.[0].levelMin === 1.0 && byId["bootcamps"].timetable?.[0].levelMax === 2.5);
-check("Adult 5:00 Intermediate", byId["bootcamps"].timetable?.[1].levelMin === 3.0 && byId["bootcamps"].timetable?.[1].levelMax === 3.5);
-check("Adult 6:00 Advanced – Elite", byId["bootcamps"].timetable?.[2].levelMin === 4.0 && byId["bootcamps"].timetable?.[2].levelMax === 5.5);
-check("Youth 12:00 Beginner – Novice, 1:00 Beginner – Intermediate, 2:00 Intermediate – Elite", byId["youth-programs"].timetable?.map((s) => `${s.levelMin}-${s.levelMax}`).join("|") === "1-2.5|1-3.5|3-5.5");
-check("Private Lessons all levels 1.0–7.0", byId["private-lessons"].levelMin === 1.0 && byId["private-lessons"].levelMax === 7.0);
+check("Youth Bootcamps spans 1.0–7.0 (Beginner, Novice and High Performance tags)", byId["youth-programs"].levelMin === 1.0 && byId["youth-programs"].levelMax === 7.0);
+check("High Performance group is tagged High Performance (5.0–7.0)", groupById("high-performance")?.level === 5 && tierById(5).levelMin === 5 && tierById(5).levelMax === 7);
+check("the quiz map still sends competitive → Intermediate, and the recommender puts High Performance first by approval (D4, 2026-10-13)", tierForLevel(3)?.name === "Intermediate" && groupById("high-performance")?.joining === "approval");
+check("Adult Bootcamps spans 1.0–4.5 (Beginner, Intermediate and Advanced tags)", byId["bootcamps"].levelMin === 1.0 && byId["bootcamps"].levelMax === 4.5);
+check("Adult 4:00 Beginner, 5:00 Intermediate, 6:00 Advanced", byId["bootcamps"].timetable?.map((s) => s.level).join("|") === "1|3|4");
+check("Youth 12:00 Beginner, 1:00 Novice, 2:00 High Performance", byId["youth-programs"].timetable?.map((s) => s.level).join("|") === "1|2|5");
+check("Private Lessons all levels 1.0–7.0", byId["private-lessons"].levelMin === 1.0 && byId["private-lessons"].levelMax === 7.0 && groupById("private-lessons")?.level === null);
 check("Private Lessons is any age", ageBandsLabel(byId["private-lessons"].ageBands) === "Any age");
 // The recommender and the structured data match these strings; keep them.
-check("slot group strings are the group names", byId["bootcamps"].timetable?.map((s) => s.group).join("|") === "Newer players|Intermediate|Advanced" && byId["youth-programs"].timetable?.map((s) => s.group).join("|") === "Ages 7–10|Ages 11–15|High Performance");
+check("slot group strings are the level-led group names", byId["bootcamps"].timetable?.map((s) => s.group).join("|") === "Beginner Adult Bootcamp|Intermediate Adult Bootcamp|Advanced Adult Bootcamp" && byId["youth-programs"].timetable?.map((s) => s.group).join("|") === "Beginner Junior Bootcamp|Novice Youth Bootcamp|High Performance Youth Bootcamp");
 check("the retired High Performance entry is unlisted and keeps its plate", byId["high-performance"].unlisted === true && byId["high-performance"].plate === "high-performance");
 
 // ── Age band helpers ────────────────────────────────────────────────────────
@@ -179,13 +171,13 @@ type Case = { label: string; id: (typeof PLATE_IDS)[number]; variant: PlateVaria
 const cases: Case[] = [];
 for (const id of PLATE_IDS) {
   for (const side of ["deuce", "ad"] as const) {
-    cases.push({ label: `${id} base ${side}`, id, variant: { side, profileTier: null, emphasis: null } });
-    for (let tier = 1; tier <= 7; tier++) {
-      cases.push({ label: `${id} tier ${tier} ${side}`, id, variant: plateVariant({ plate: id, levelMin: tier, levelMax: tier + 0.5, seed: side === "ad" ? "b" : null }) });
+    cases.push({ label: `${id} base ${side}`, id, variant: { side, profileTier: null, profileLevel: null, emphasis: null } });
+    for (const level of LEVEL_STEPS) {
+      cases.push({ label: `${id} level ${level} ${side}`, id, variant: plateVariant({ plate: id, levelMin: level, levelMax: Math.min(7, level + 0.5), seed: side === "ad" ? "b" : null }) });
     }
     if (id === "bootcamps") {
       for (const focus of [0, 1, 2]) {
-        cases.push({ label: `${id} focus ${focus} ${side}`, id, variant: { side, profileTier: null, emphasis: focus } });
+        cases.push({ label: `${id} focus ${focus} ${side}`, id, variant: { side, profileTier: null, profileLevel: null, emphasis: focus } });
       }
     }
   }
@@ -206,12 +198,13 @@ for (const c of cases) {
 }
 check(`every flight clears the net by 0.3 m and lands in the doubles court (${cases.length} variants)`, physicsFailures.length === 0, `\n      ${physicsFailures.join("\n      ")}`);
 check("markers, bounces and zone vertices stay in the safe area", safeFailures.length === 0, `\n      ${safeFailures.join("\n      ")}`);
-check("bootcamps focus 1 lights the intermediate flight", resolvePlateSpec("bootcamps", { side: "deuce", profileTier: null, emphasis: 1 }).traces[1].role === "signature");
-check("bootcamps focus keeps exactly one signature", [0, 1, 2].every((f) => resolvePlateSpec("bootcamps", { side: "deuce", profileTier: null, emphasis: f }).traces.filter((t) => t.role === "signature").length === 1));
-const youthLow = resolvePlateSpec("youth-programs", { side: "deuce", profileTier: 1, emphasis: null }).traces.find((t) => t.role === "signature")!;
-const youthHigh = resolvePlateSpec("youth-programs", { side: "deuce", profileTier: 7, emphasis: null }).traces.find((t) => t.role === "signature")!;
-check("youth profile: a higher tier lands deeper and flies flatter", youthHigh.to[0] > youthLow.to[0] && youthHigh.apex < youthLow.apex);
-check("kids plate has no profile", resolvePlateSpec("kids-summer-camp", { side: "deuce", profileTier: 7, emphasis: null }) === PLATE_SPECS["kids-summer-camp"]);
+check("bootcamps focus 1 lights the intermediate flight", resolvePlateSpec("bootcamps", { side: "deuce", profileTier: null, profileLevel: null, emphasis: 1 }).traces[1].role === "signature");
+check("bootcamps focus keeps exactly one signature", [0, 1, 2].every((f) => resolvePlateSpec("bootcamps", { side: "deuce", profileTier: null, profileLevel: null, emphasis: f }).traces.filter((t) => t.role === "signature").length === 1));
+const youthLow = resolvePlateSpec("youth-programs", { side: "deuce", profileTier: 1, profileLevel: 1, emphasis: null }).traces.find((t) => t.role === "signature")!;
+const youthMid = resolvePlateSpec("youth-programs", { side: "deuce", profileTier: 5, profileLevel: 5.5, emphasis: null }).traces.find((t) => t.role === "signature")!;
+const youthHigh = resolvePlateSpec("youth-programs", { side: "deuce", profileTier: 5, profileLevel: 7, emphasis: null }).traces.find((t) => t.role === "signature")!;
+check("youth profile: a higher level lands deeper and flies flatter, inside High Performance too", youthHigh.to[0] > youthMid.to[0] && youthMid.to[0] > youthLow.to[0] && youthHigh.apex < youthMid.apex && youthMid.apex < youthLow.apex);
+check("kids plate has no profile", resolvePlateSpec("kids-summer-camp", { side: "deuce", profileTier: 5, profileLevel: 7, emphasis: null }) === PLATE_SPECS["kids-summer-camp"]);
 
 // ── Markup ──────────────────────────────────────────────────────────────────
 console.log("Court Plates: markup");
@@ -276,10 +269,10 @@ check("fnv1a32 test vectors", fnv1a32("") === 0x811c9dc5 && fnv1a32("a") === 0xe
 check("side is deterministic per seed", plateVariant({ plate: "court", seed: "cohort-1" }).side === plateVariant({ plate: "court", seed: "cohort-1" }).side);
 check("no seed is the deuce side", plateVariant({ plate: "court" }).side === "deuce");
 check("some seed lands on the ad side", ["a", "b", "c", "d", "e", "f"].some((s) => plateVariant({ plate: "court", seed: s }).side === "ad"));
-check("profile tier comes from the band's min", plateVariant({ plate: "youth-programs", levelMin: "3.5", levelMax: 4.5 }).profileTier === 3);
-check("profile tier falls back to max", plateVariant({ plate: "youth-programs", levelMin: null, levelMax: 5 }).profileTier === 5);
-check("no band, no profile", plateVariant({ plate: "youth-programs", levelMin: null, levelMax: null }).profileTier === null);
-check("bootcamps emphasis by tier: ≤2 newer, 3 intermediate, ≥4 advanced", plateVariant({ plate: "bootcamps", levelMin: 2 }).emphasis === 0 && plateVariant({ plate: "bootcamps", levelMin: 3 }).emphasis === 1 && plateVariant({ plate: "bootcamps", levelMin: 4.5 }).emphasis === 2);
+check("profile tier and level come from the band's min", plateVariant({ plate: "youth-programs", levelMin: "3.5", levelMax: 4.5 }).profileTier === 3 && plateVariant({ plate: "youth-programs", levelMin: "3.5", levelMax: 4.5 }).profileLevel === 3.5);
+check("profile tier falls back to max; 6.0 is High Performance at level 6.0", plateVariant({ plate: "youth-programs", levelMin: null, levelMax: 6 }).profileTier === 5 && plateVariant({ plate: "youth-programs", levelMin: null, levelMax: 6 }).profileLevel === 6);
+check("no band, no profile", plateVariant({ plate: "youth-programs", levelMin: null, levelMax: null }).profileTier === null && plateVariant({ plate: "youth-programs", levelMin: null, levelMax: null }).profileLevel === null);
+check("bootcamps emphasis by tier: ≤2 Beginner, 3 Intermediate, ≥4 Advanced", plateVariant({ plate: "bootcamps", levelMin: 2 }).emphasis === 0 && plateVariant({ plate: "bootcamps", levelMin: 3 }).emphasis === 1 && plateVariant({ plate: "bootcamps", levelMin: 4.5 }).emphasis === 2);
 check("focusSlot wins over the tier", plateVariant({ plate: "bootcamps", levelMin: 5, focusSlot: 0 }).emphasis === 0);
 check("emphasis is bootcamps only", plateVariant({ plate: "youth-programs", focusSlot: 1 }).emphasis === null);
 

@@ -186,7 +186,7 @@ const TIER_LINE_WIDTH = LEVEL_STEPS.reduce(
  * The tier line as a table (design specs §3.9), so it reads with images off:
  * thirteen `<td bgcolor>` cells, 2px apart within a tier and 6px between
  * tiers, lit in each tier's colour up to the player's level and unlit above
- * it, with the lowest and highest tier names ("Beginner", "World Class")
+ * it, with the lowest and highest tier names ("Beginner", "High Performance")
  * captioned under the ends.
  */
 export function tierLineTable(level: number): string {
@@ -210,11 +210,14 @@ export function tierLineTable(level: number): string {
     </table>`;
 }
 
-/** "Tier 3 of 7. Next tier: Advanced at 4.0." · "Tier 7 of 7. That's the top of the ladder." */
+/**
+ * "Tier 3 of 5. Next tier: Advanced at 4.0." · "Tier 5 of 5. High Performance
+ * runs 5.0–7.0. Next step: 6.0." · "Tier 5 of 5. That's the top of the ladder."
+ */
 export function tierStandingLine(level: number | string): string {
   const progress = tierProgress(level);
   if (!progress) return "";
-  const caption = progress.next ? progress.caption : "That's the top of the ladder.";
+  const caption = progress.atTop ? "That's the top of the ladder." : progress.caption;
   return `${tierOrdinal(progress.tier)}. ${caption}`;
 }
 
@@ -708,7 +711,7 @@ ${commercialFooterText("general")}`;
 
 /**
  * The level moment (audit M35): the tier's emblem, "You're in the
- * Intermediate tier.", where that sits on the ladder ("Tier 3 of 7. Next
+ * Intermediate tier.", where that sits on the ladder ("Tier 3 of 5. Next
  * tier: Advanced at 4.0.") and the
  * tier line as a table that reads with images off. The dashboard shows the
  * same card. HTML and text carry the same facts in the same order.

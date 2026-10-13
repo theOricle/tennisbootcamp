@@ -1,4 +1,4 @@
-// The seven tier emblems (audit H6, design specs §3.2).
+// The five tier emblems (audit H6, design specs §3.2; five tiers since 2026-10-13).
 //
 // One component, `TierEmblem`, draws any tier in any of four states —
 // earned, future, provisional, ghost — from the shape data in
@@ -102,13 +102,13 @@ export function TierEmblem({
 }
 
 // ─── Back-compat wrappers ─────────────────────────────────────────────────────
-// The seven named badges and BADGE_BY_TIER keep their old API (earned state).
+// The five named badges and BADGE_BY_TIER keep their old API (earned state).
 
 export type BadgeProps = {
   /** Rendered width/height in px. Default 64. */
   size?: number;
   className?: string;
-  /** Override the aria-label (defaults to e.g. "Beginner, tier 1 of 7"). */
+  /** Override the aria-label (defaults to e.g. "Beginner, tier 1 of 5"). */
   label?: string;
   /** Hide from assistive tech when a text label already names the tier. */
   decorative?: boolean;
@@ -124,17 +124,13 @@ export const BeginnerBadge = badgeFor(1);
 export const NoviceBadge = badgeFor(2);
 export const IntermediateBadge = badgeFor(3);
 export const AdvancedBadge = badgeFor(4);
-export const EliteBadge = badgeFor(5);
-export const ProBadge = badgeFor(6);
-export const WorldClassBadge = badgeFor(7);
+export const HighPerformanceBadge = badgeFor(5);
 
-/** All seven badge components, indexed by tier id (1–7). */
+/** All five badge components, indexed by tier id (1–5). */
 export const BADGE_BY_TIER: Record<TierId, (props: BadgeProps) => React.JSX.Element> = {
   1: BeginnerBadge,
   2: NoviceBadge,
   3: IntermediateBadge,
   4: AdvancedBadge,
-  5: EliteBadge,
-  6: ProBadge,
-  7: WorldClassBadge,
+  5: HighPerformanceBadge,
 };

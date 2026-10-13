@@ -13,6 +13,7 @@ import {
   ageQueryFor,
   catalogQueryString,
   clearFilters,
+  closestGroups,
   exactAgeQuery,
   filterGroups,
   initialCatalogQuery,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/programFilters";
 import { programEyebrow } from "@/lib/programCatalog";
 import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
+import { RIGHT_GROUP_PROMISE } from "@/content/programs";
 import { buttonClass } from "@/components/ui/Button";
 import { TrackedLink } from "@/components/ui/TrackedButton";
 import { FOCUS_RING } from "@/components/ui/focus";
@@ -34,6 +36,10 @@ import { ProgramGroupCard } from "./ProgramGroupCard";
 // The /programs catalog (owner, 2026-10-12): every group as its own card,
 // under its program, with an age filter and a level filter carried in the
 // URL so a filtered list can be shared and the quiz result can link to one.
+// The level filter matches a group's one level tag exactly (owner,
+// 2026-10-13); when no tagged group matches, the nearest-level groups for
+// that age follow under "Closest fit" with the week-one promise, never a
+// dead end.
 // The location is chosen first, above How joining works (LocationChoice,
 // owner 2026-10-12); both read the same URL, so the catalog shows the groups
 // at the chosen location, and clearing the filters keeps it.
@@ -176,6 +182,56 @@ function ProgramHeader({ program }: { program: CatalogProgram }) {
   );
 }
 
+/**
+ * "Closest fit" (owner, 2026-10-13): the nearest-level groups when the level
+ * filter matches no tagged group, with one honest line about week-one
+ * placement. The cards carry the program's title in their eyebrow, since
+ * they come from more than one program.
+ */
+function ClosestFit({
+  groups,
+  programs,
+  nextCohorts,
+  query,
+}: {
+  groups: ProgramGroup[];
+  programs: CatalogProgram[];
+  nextCohorts: Record<string, Cohort>;
+  query: CatalogQuery;
+}) {
+  if (groups.length === 0 || !query.tier) return null;
+  const scope = query.age ? ` for ${query.age.phrase}` : "";
+  return (
+    <section aria-labelledby="closest-fit" className="mt-10 border-t border-white/10 pt-8">
+      <h3 id="closest-fit" className="text-lg font-semibold tracking-tight text-white">
+        Closest fit
+      </h3>
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/70">
+        No group is tagged {query.tier.name}{scope} yet. These are the nearest levels. Your coach
+        confirms your level on court in week one. {RIGHT_GROUP_PROMISE}
+      </p>
+      <ul role="list" className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {groups.map((g) => {
+          const program = programs.find((p) => p.slug === g.programSlug);
+          if (!program) return null;
+          return (
+            <li key={g.id} className="flex [&>*]:w-full">
+              <ProgramGroupCard
+                group={g}
+                program={program}
+                nextCohort={nextCohorts[g.id]}
+                showProgram
+                source="programs-closest"
+                headingLevel={4}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 /** The catalog as pure markup for a given query; the live wrapper owns the state. */
 export function ProgramCatalogView({
   programs,
@@ -188,12 +244,13 @@ export function ProgramCatalogView({
   const sections = programs
     .map((program) => ({ program, groups: matching.filter((g) => g.programSlug === program.slug) }))
     .filter((s) => s.groups.length > 0);
+  const closest = closestGroups(groups, query);
 
   return (
     <section aria-labelledby="catalog-heading">
       <Heading id="catalog-heading">Every group</Heading>
       <p className="mt-2 max-w-2xl text-sm text-white/70">
-        Each group is built for an age range and a level band. Filter by the player&apos;s age
+        Each group is built for an age range and one level. Filter by the player&apos;s age
         and level, then take the 2-minute quiz and our coaches place them.
       </p>
 
@@ -203,7 +260,7 @@ export function ProgramCatalogView({
         {resultsLine(matching.length, query)}
       </p>
 
-      {sections.length > 0 ? (
+      {sections.length > 0 || closest.length > 0 ? (
         <div className="mt-8 space-y-12">
           {sections.map(({ program, groups: list }) => (
             <section key={program.slug} aria-labelledby={`catalog-${program.slug}`}>
@@ -225,6 +282,7 @@ export function ProgramCatalogView({
               </ul>
             </section>
           ))}
+          <ClosestFit groups={closest} programs={programs} nextCohorts={nextCohorts} query={query} />
         </div>
       ) : (
         // The empty state says what is true and what happens next (voice.md).

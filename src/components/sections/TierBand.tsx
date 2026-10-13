@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
-import { TIER_LADDER_SPAN } from "@/lib/tiers";
+import { TIERS, TIER_COUNT_WORD, TOP_TIER } from "@/lib/tiers";
+
+/** "Five" — the tier count, capitalised for the heading. */
+const COUNT = TIER_COUNT_WORD.charAt(0).toUpperCase() + TIER_COUNT_WORD.slice(1);
 
 /**
- * The home tier band (audit M36, design specs §3.7): the seven tiers, named
+ * The home tier band (audit M36, design specs §3.7): the five tiers, named
  * and drawn. A compact secondary section under the programs and the location
  * (owner, 2026-10-13: programs come first, never the tier list), so it sets
  * no padding, border or max-width of its own: the page's Container and rhythm
@@ -23,8 +26,10 @@ export function TierBand() {
             id="tier-band-title"
             className="mt-3 text-2xl font-semibold tracking-tight text-white md:text-3xl"
           >
-            {/* The span never breaks inside "World Class": the line wraps after "Seven tiers." instead. */}
-            Seven tiers. <span className="whitespace-nowrap">{TIER_LADDER_SPAN}.</span>
+            {/* The name never breaks inside "High Performance": on a phone the
+                line wraps before it instead, so the span reads "Beginner to /
+                High Performance." and nothing clips. */}
+            {COUNT} tiers. {TIERS[0].name} to <span className="whitespace-nowrap">{TOP_TIER.name}.</span>
           </h2>
           <p className="mt-3 text-pretty text-base text-white/75">
             Every player trains at a tier. Our coaches place you from your
@@ -36,7 +41,7 @@ export function TierBand() {
           </Link>
         </div>
         <div className="mt-8 min-w-0 lg:mt-0">
-          {/* Vertical on phones: seven plain names do not fit seven ~45px columns (specs §3.3). */}
+          {/* Vertical on phones: "High Performance" and "Intermediate" do not fit five ~65px columns (specs §3.3). */}
           <TierLine variant="ladder" orientation="responsive" density="compact" />
         </div>
       </div>

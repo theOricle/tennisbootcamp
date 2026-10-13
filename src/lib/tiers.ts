@@ -2,135 +2,159 @@
 //
 // The coach assigns a placement-grade numeric level on court (profiles.level and
 // assessment_bookings.level_result, NTRP-style 1.0–7.0 in half steps). Tiers
-// give that number a name to climb toward. Each tier spans one whole level, so a
-// half step reads as progress *within* a tier: level 2.5 is "Novice · 2.5",
-// still Novice, halfway to Intermediate.
+// give that number a name to climb toward. The first four tiers span one whole
+// level each, so a half step reads as progress *within* a tier: level 2.5 is
+// "Novice · 2.5", still Novice, halfway to Intermediate. The top tier, High
+// Performance, runs 5.0–7.0: five half steps that still show progress inside
+// it, and 7.0 is the top of the ladder.
 //
-// The names are plain words (owner, 2026-10-12): Beginner, Novice,
-// Intermediate, Advanced, Elite, Pro, World Class. They replaced the tennis-
-// score names (Love … Grand Slam); the numbers, colours and emblems did not
-// change, and LEGACY_TIER_SLUGS keeps every old emblem URL working.
+// Five tiers (owner, 2026-10-13): Beginner, Novice, Intermediate, Advanced,
+// High Performance. They replaced the seven plain names of 2026-10-12 (Elite,
+// Pro and World Class folded into High Performance), which had replaced the
+// tennis-score names (Love … Grand Slam). The stored value is always the
+// number and never moved; LEGACY_TIER_SLUGS keeps every old emblem URL working.
+//
+// High Performance is also the name of the competitive youth group (the High
+// Performance Youth Bootcamp, by approval). Copy keeps the two apart: "the High
+// Performance tier" is a level any player can reach; the group is "the High
+// Performance Youth Bootcamp" or "the competitive track" (ops/briefs/voice.md).
 //
 // This module is deterministic and data-only (no JSX, no DB). Every surface that
 // shows a tier derives it here — the stored value is always the number. The
-// tier colour ramp (audit H6, owner D1) lives here too, as display data; the
-// Tailwind class literals built from it are in src/lib/tierStyle.ts.
+// tier colour ramp (audit H6, owner D1; five colours since 2026-10-13) lives
+// here too, as display data; the Tailwind class literals built from it are in
+// src/lib/tierStyle.ts.
 
-export type TierId = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type TierId = 1 | 2 | 3 | 4 | 5;
 
 export type Tier = {
-  /** Whole-number tier, 1–7. */
+  /** Whole-number tier, 1–5. */
   id: TierId;
   /** Display name. */
   name: string;
   /** URL/CSS-safe slug. */
   slug: string;
+  /** The lowest level in the tier (x.0). */
+  levelMin: number;
+  /** The highest level in the tier (x.5, or 7.0 at the top). */
+  levelMax: number;
   /** Inclusive numeric level band this tier covers, e.g. "2.0–2.5". */
   band: string;
   /** One-line coach-voiced read on what this tier means. */
   blurb: string;
   /**
-   * The tier's colour in the ramp slate → lime → platinum → gold (owner D1).
-   * Graphics only (emblems, pips, connectors, the RankCard rule); tier names
-   * stay white text. Every value is at least 4.5:1 on the navy and on a card
-   * (pinned by test-tiers.ts).
+   * The tier's colour in the ramp slate → light slate → lime → lime → gold
+   * (owner D1; five steps since 2026-10-13). Graphics only (emblems, pips,
+   * connectors, the RankCard rule); tier names stay white text. Every value is
+   * at least 4.5:1 on the navy and on a card (pinned by test-tiers.ts).
    */
   color: string;
 };
 
+/** The lowest and highest level on the ladder. */
+export const LEVEL_MIN = 1;
+export const LEVEL_MAX = 7;
+
+function bandLabel(min: number, max: number): string {
+  return min === max ? min.toFixed(1) : `${min.toFixed(1)}–${max.toFixed(1)}`;
+}
+
+function tier(t: Omit<Tier, "band">): Tier {
+  return { ...t, band: bandLabel(t.levelMin, t.levelMax) };
+}
+
 /** The ladder, low to high. Index 0 is Beginner (tier 1). */
 export const TIERS: readonly Tier[] = [
-  {
+  tier({
     id: 1,
     name: "Beginner",
     slug: "beginner",
-    band: "1.0–1.5",
+    levelMin: 1,
+    levelMax: 1.5,
     blurb: "First swings. You're learning the court.",
     color: "#7D8CA3",
-  },
-  {
+  }),
+  tier({
     id: 2,
     name: "Novice",
     slug: "novice",
-    band: "2.0–2.5",
+    levelMin: 2,
+    levelMax: 2.5,
     blurb: "You can keep the ball alive across the net.",
     color: "#AEBBCD",
-  },
-  {
+  }),
+  tier({
     id: 3,
     name: "Intermediate",
     slug: "intermediate",
-    band: "3.0–3.5",
-    blurb: "Consistent strokes. Points played out, balanced play.",
+    levelMin: 3,
+    levelMax: 3.5,
+    blurb: "Consistent strokes. You play points out.",
     color: "#8CC63F",
-  },
-  {
+  }),
+  tier({
     id: 4,
     name: "Advanced",
     slug: "advanced",
-    band: "4.0–4.5",
+    levelMin: 4,
+    levelMax: 4.5,
     blurb: "You break down a rally and take control.",
     color: "#B4E655",
-  },
-  {
+  }),
+  tier({
     id: 5,
-    name: "Elite",
-    slug: "elite",
-    band: "5.0–5.5",
-    blurb: "Weapons on serve and groundstrokes.",
-    color: "#D2F28A",
-  },
-  {
-    id: 6,
-    name: "Pro",
-    slug: "pro",
-    band: "6.0–6.5",
-    blurb: "Tournament-tested. You close matches out.",
-    color: "#E6EBF0",
-  },
-  {
-    id: 7,
-    name: "World Class",
-    slug: "world-class",
-    band: "7.0",
-    blurb: "The top of the ladder.",
+    name: "High Performance",
+    slug: "high-performance",
+    levelMin: 5,
+    levelMax: 7,
+    blurb: "Weapons on serve and groundstrokes. Tournament-tested.",
     color: "#E3C46F",
-  },
+  }),
 ] as const;
 
 /** How many tiers there are — copy says "Tier 3 of {TIER_COUNT}". */
 export const TIER_COUNT = TIERS.length;
 
+/** The top tier (High Performance), the one that runs to 7.0. */
+export const TOP_TIER: Tier = TIERS[TIERS.length - 1];
+
 /**
- * "Beginner to World Class": the ladder's two ends, for every sentence that
- * names the whole ladder ("Seven tiers, Beginner to World Class."). Derived,
- * so no copy surface types a tier name of its own.
+ * "Beginner to High Performance": the ladder's two ends, for every sentence
+ * that names the whole ladder ("Five tiers, Beginner to High Performance.").
+ * Derived, so no copy surface types a tier name of its own.
  */
-export const TIER_LADDER_SPAN = `${TIERS[0].name} to ${TIERS[TIERS.length - 1].name}`;
+export const TIER_LADDER_SPAN = `${TIERS[0].name} to ${TOP_TIER.name}`;
+
+/** "five" — the tier count in words, for copy ("one of five tiers"). */
+export const TIER_COUNT_WORD = ["zero", "one", "two", "three", "four", "five", "six", "seven"][TIER_COUNT] ?? String(TIER_COUNT);
 
 /**
  * "a Beginner group" · "an Intermediate group": the indefinite article for a
- * phrase that leads with a tier name. Three of the plain names start with a
- * vowel (Intermediate, Advanced, Elite), so copy never hard-codes "a".
+ * phrase that leads with a tier name. Two of the plain names start with a
+ * vowel (Intermediate, Advanced), so copy never hard-codes "a".
  */
 export function withArticle(phrase: string): string {
   return `${/^[aeiou]/i.test(phrase.trim()) ? "an" : "a"} ${phrase}`;
 }
 
 /**
- * The retired tennis-score slugs (Love … Grand Slam) and the slug each one
- * became (owner, 2026-10-12). next.config.ts turns these into permanent
- * redirects, so a tier-emblem image in an email sent before the rename still
- * loads.
+ * Every retired slug and the slug it became: the tennis-score names (Love …
+ * Grand Slam, retired 2026-10-12) and the three top names that folded into
+ * High Performance (Elite, Pro, World Class, retired 2026-10-13; 5.0 and up
+ * is one tier now). next.config.ts turns these into permanent redirects, so a
+ * tier-emblem image in an email sent before either rename still loads.
  */
 export const LEGACY_TIER_SLUGS: Readonly<Record<string, string>> = {
   love: "beginner",
   rally: "novice",
   deuce: "intermediate",
   break: "advanced",
-  ace: "elite",
-  "match-point": "pro",
-  "grand-slam": "world-class",
+  ace: "high-performance",
+  "match-point": "high-performance",
+  "grand-slam": "high-performance",
+  elite: "high-performance",
+  pro: "high-performance",
+  "world-class": "high-performance",
 };
 
 /** The tier colours by id, derived from TIERS (one source). */
@@ -140,13 +164,14 @@ export const TIER_COLORS: Record<TierId, string> = Object.fromEntries(
 
 /** The thirteen half steps a level can take, 1.0 … 7.0. */
 export const LEVEL_STEPS: readonly number[] = Array.from(
-  { length: 13 },
-  (_, i) => 1 + i * 0.5
+  { length: (LEVEL_MAX - LEVEL_MIN) * 2 + 1 },
+  (_, i) => LEVEL_MIN + i * 0.5
 );
 
 /**
- * The one level picker list for admin selects (audit M29): "3.0 · Intermediate".
- * Replaces the three bare "1.0"…"7.0" arrays the admin clients used to keep.
+ * The one level picker list for admin selects (audit M29): "3.0 · Intermediate",
+ * "5.5 · High Performance". Replaces the three bare "1.0"…"7.0" arrays the
+ * admin clients used to keep.
  */
 export const LEVEL_OPTIONS: readonly { value: string; label: string }[] =
   LEVEL_STEPS.map((n) => ({
@@ -174,19 +199,27 @@ export function levelNumber(
   return toLevelNumber(level);
 }
 
+/** A level clamped onto the ladder, 1.0–7.0. */
+function clampLevel(n: number): number {
+  return Math.min(LEVEL_MAX, Math.max(LEVEL_MIN, n));
+}
+
 /**
- * The tier for a numeric level, or `null` when unranked. Floors to the whole
- * tier — 2.5 → Novice (floor(2.5) = 2) — and clamps into 1–7 so an out-of-range
- * value can never index off the ladder.
+ * The tier for a numeric level, or `null` when unranked. Each tier owns the
+ * levels from its levelMin up to the next tier's levelMin — 2.5 → Novice, and
+ * 5.0, 6.0 and 7.0 are all High Performance — and an out-of-range value is
+ * clamped onto the ladder, so it can never index off it.
  */
 export function tierForLevel(
   level: number | string | null | undefined
 ): Tier | null {
   const n = toLevelNumber(level);
   if (n === null) return null;
-  const floored = Math.floor(n);
-  const clamped = Math.min(7, Math.max(1, floored)) as TierId;
-  return TIERS[clamped - 1] ?? null;
+  const clamped = clampLevel(n);
+  for (let i = TIERS.length - 1; i >= 0; i--) {
+    if (clamped >= TIERS[i].levelMin) return TIERS[i];
+  }
+  return TIERS[0];
 }
 
 /** The tier by id. */
@@ -194,12 +227,19 @@ export function tierById(id: TierId): Tier {
   return TIERS[id - 1];
 }
 
-/** The tier above, or null at World Class. */
-export function nextTier(tier: Tier): Tier | null {
-  return tier.id >= 7 ? null : TIERS[tier.id];
+/** The tier by slug (live slugs only; a retired slug reads as null). */
+export function tierBySlug(slug: string | null | undefined): Tier | null {
+  if (!slug) return null;
+  const key = slug.trim().toLowerCase();
+  return TIERS.find((t) => t.slug === key) ?? null;
 }
 
-/** "Tier 3 of 7". */
+/** The tier above, or null at High Performance. */
+export function nextTier(tier: Tier): Tier | null {
+  return tier.id >= TIER_COUNT ? null : TIERS[tier.id];
+}
+
+/** "Tier 3 of 5". */
 export function tierOrdinal(tier: Tier): string {
   return `Tier ${tier.id} of ${TIER_COUNT}`;
 }
@@ -233,23 +273,31 @@ export type TierProgress = {
   tier: Tier;
   /** The level, clamped into 1.0–7.0. */
   level: number;
-  /** Which half step of the tier the player is on: x.0 is 1, x.5 is 2. */
-  step: 1 | 2;
-  /** Half steps in the tier: 2, or 1 at World Class. */
-  steps: 1 | 2;
+  /** Which half step of the tier the player is on: x.0 is 1, x.5 is 2 (High Performance runs 1–5). */
+  step: number;
+  /** Half steps in the tier: 2, or 5 at High Performance (5.0–7.0). */
+  steps: number;
+  /** The tier above, or null at High Performance. */
   next: Tier | null;
-  /** The level the next tier starts at, or null at the top. */
+  /**
+   * The next level that changes the caption: the level the next tier starts
+   * at, the next half step inside High Performance, or null at 7.0.
+   */
   nextLevel: number | null;
+  /** True at 7.0, the top of the ladder. */
+  atTop: boolean;
   /**
    * "Next tier: Intermediate at 3.0." · "Halfway to Intermediate. Next tier at 3.0." ·
-   * "Top of the ladder."
+   * "High Performance runs 5.0–7.0. Next step: 6.0." · "Top of the ladder."
    */
   caption: string;
 };
 
 /**
  * Where a level sits inside its tier and what comes next, for the RankCard
- * footer and the rail's "you are here". Null when unranked.
+ * footer and the rail's "you are here". Null when unranked. Inside the top
+ * tier the half steps still count as progress: 5.5 is step 2 of 5 in High
+ * Performance, and the caption names the next step until 7.0.
  */
 export function tierProgress(
   level: number | string | null | undefined
@@ -257,28 +305,36 @@ export function tierProgress(
   const tier = tierForLevel(level);
   const raw = toLevelNumber(level);
   if (!tier || raw === null) return null;
-  const clamped = Math.min(7, Math.max(1, raw));
+  const clamped = clampLevel(raw);
+  const steps = Math.round((tier.levelMax - tier.levelMin) * 2) + 1;
+  const step = Math.min(steps, Math.max(1, Math.round((clamped - tier.levelMin) * 2) + 1));
   const next = nextTier(tier);
   if (!next) {
+    const atTop = clamped >= tier.levelMax;
+    const nextStep = atTop ? null : Math.min(tier.levelMax, tier.levelMin + step * 0.5);
     return {
       tier,
       level: clamped,
-      step: 1,
-      steps: 1,
+      step,
+      steps,
       next: null,
-      nextLevel: null,
-      caption: "Top of the ladder.",
+      nextLevel: nextStep,
+      atTop,
+      caption: atTop
+        ? "Top of the ladder."
+        : `${tier.name} runs ${tier.band}. Next step: ${nextStep!.toFixed(1)}.`,
     };
   }
-  const halfway = clamped - tier.id >= 0.5;
-  const nextLevel = next.id;
+  const halfway = step > 1;
+  const nextLevel = next.levelMin;
   return {
     tier,
     level: clamped,
-    step: halfway ? 2 : 1,
-    steps: 2,
+    step,
+    steps,
     next,
     nextLevel,
+    atTop: false,
     caption: halfway
       ? `Halfway to ${next.name}. Next tier at ${nextLevel.toFixed(1)}.`
       : `Next tier: ${next.name} at ${nextLevel.toFixed(1)}.`,
@@ -318,32 +374,49 @@ export function formatTierRange(
     : `${range.min.name} – ${range.max.name}`;
 }
 
-/** True when a span runs the whole ladder, Beginner to World Class (min ≤ 1, max ≥ 7). */
+/** The numeric ends of a band, low then high, or null when unset. */
+function bandEnds(
+  levelMin: number | string | null | undefined,
+  levelMax: number | string | null | undefined
+): { lo: number; hi: number } | null {
+  const a = toLevelNumber(levelMin);
+  const b = toLevelNumber(levelMax);
+  if (a === null && b === null) return null;
+  const lo = Math.min(a ?? (b as number), b ?? (a as number));
+  const hi = Math.max(a ?? (b as number), b ?? (a as number));
+  return { lo, hi };
+}
+
+/** True when a span runs the whole ladder, 1.0 to 7.0 (min ≤ 1.0, max ≥ 7.0). */
 export function coversWholeLadder(
   levelMin: number | string | null | undefined,
   levelMax: number | string | null | undefined
 ): boolean {
-  const range = tierRangeForLevels(levelMin, levelMax);
-  return !!range && range.min.id <= 1 && range.max.id >= 7;
+  const ends = bandEnds(levelMin, levelMax);
+  return !!ends && ends.lo <= LEVEL_MIN && ends.hi >= LEVEL_MAX;
 }
 
 /**
- * The span as words: "Intermediate" · "Beginner – Novice" · "Advanced and up" (reaches the
- * top) · "All levels" (the whole ladder) · "" when unset. Open-ended spans are
- * written as levelMax 7.0, never as a missing bound, because a missing bound
- * means min = max for a cohort.
+ * The span as words: "Intermediate" · "Beginner – Novice" · "Advanced and up"
+ * (reaches 7.0, the top of the ladder, from a lower tier) · "All levels" (the
+ * whole ladder) · "" when unset. A band inside one tier reads that tier's
+ * name, so 5.0–7.0 and 5.0–5.5 both read "High Performance"; a band that
+ * ends inside High Performance from below (4.0–5.5) reads "Advanced – High
+ * Performance", because 5.5 is not the top. Open-ended spans are written as
+ * levelMax 7.0, never as a missing bound, because a missing bound means
+ * min = max for a cohort.
  */
 export function formatTierSpan(
   levelMin: number | string | null | undefined,
   levelMax: number | string | null | undefined
 ): string {
   const range = tierRangeForLevels(levelMin, levelMax);
-  if (!range) return "";
-  if (range.min.id <= 1 && range.max.id >= 7) return "All levels";
-  if (range.max.id >= 7 && range.min.id > 1) return `${range.min.name} and up`;
-  return range.min.id === range.max.id
-    ? range.min.name
-    : `${range.min.name} – ${range.max.name}`;
+  const ends = bandEnds(levelMin, levelMax);
+  if (!range || !ends) return "";
+  if (ends.lo <= LEVEL_MIN && ends.hi >= LEVEL_MAX) return "All levels";
+  if (range.min.id === range.max.id) return range.min.name;
+  if (ends.hi >= LEVEL_MAX) return `${range.min.name} and up`;
+  return `${range.min.name} – ${range.max.name}`;
 }
 
 /** The tier ids a span covers, inclusive and ascending; [] when unset. */
@@ -363,12 +436,9 @@ export function formatLevelBand(
   levelMin: number | string | null | undefined,
   levelMax: number | string | null | undefined
 ): string {
-  const a = toLevelNumber(levelMin);
-  const b = toLevelNumber(levelMax);
-  if (a === null && b === null) return "";
-  const min = Math.min(a ?? (b as number), b ?? (a as number));
-  const max = Math.max(a ?? (b as number), b ?? (a as number));
-  return min === max ? min.toFixed(1) : `${min.toFixed(1)}–${max.toFixed(1)}`;
+  const ends = bandEnds(levelMin, levelMax);
+  if (!ends) return "";
+  return bandLabel(ends.lo, ends.hi);
 }
 
 /**
@@ -388,6 +458,21 @@ export function levelWithinRange(
   if (min !== null && n < min) return false;
   if (max !== null && n > max) return false;
   return true;
+}
+
+/**
+ * Does any half step of this tier sit inside the band? True for Novice
+ * against 1.0–2.0 (2.0 is in), false against 3.0–3.5. High Performance
+ * (5.0–7.0) overlaps any band that reaches 5.0. False when the band is unset.
+ */
+export function tierOverlapsRange(
+  tier: Pick<Tier, "levelMin" | "levelMax">,
+  levelMin: number | string | null | undefined,
+  levelMax: number | string | null | undefined
+): boolean {
+  const ends = bandEnds(levelMin, levelMax);
+  if (!ends) return false;
+  return tier.levelMax >= ends.lo && tier.levelMin <= ends.hi;
 }
 
 /**

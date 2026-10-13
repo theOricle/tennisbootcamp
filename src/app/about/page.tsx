@@ -5,7 +5,7 @@ import { TrackedButton } from "@/components/ui/TrackedButton";
 import { TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import { coaches } from "@/content/coaches";
-import { TIER_LADDER_SPAN } from "@/lib/tiers";
+import { TIER_COUNT_WORD, TIER_LADDER_SPAN } from "@/lib/tiers";
 import {
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
@@ -136,10 +136,10 @@ export default function AboutPage() {
           </div>
 
           {/* The ladder itself, right after the card that names it (audit
-              M36): vertical on phones, the seven emblems in a row from md. */}
+              M36): vertical on phones, the five emblems in a row from md. */}
           <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-              <p className="text-sm font-semibold text-white">The seven tiers, {TIER_LADDER_SPAN}</p>
+              <p className="text-sm font-semibold text-white">The {TIER_COUNT_WORD} tiers, {TIER_LADDER_SPAN}</p>
               <Link href="/assessment#ladder" className={TEXT_LINK_LIME}>
                 How tiers work →
               </Link>

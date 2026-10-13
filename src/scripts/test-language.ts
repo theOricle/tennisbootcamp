@@ -78,21 +78,21 @@ const USER_FACING = ["src/app", "src/components", "src/lib", "src/content"]
 
 async function main() {
 // ── 1. Plain tier names ─────────────────────────────────────────────────────
-console.log("Plain tier names (owner, 2026-10-12)");
+console.log("Plain tier names (owner, 2026-10-12; five tiers, 2026-10-13)");
 check(
-  "the seven names, low to high",
-  TIERS.map((t) => t.name).join("|") === "Beginner|Novice|Intermediate|Advanced|Elite|Pro|World Class"
+  "the five names, low to high",
+  TIERS.map((t) => t.name).join("|") === "Beginner|Novice|Intermediate|Advanced|High Performance"
 );
 check(
-  "the seven slugs follow the names",
-  TIERS.map((t) => t.slug).join("|") === "beginner|novice|intermediate|advanced|elite|pro|world-class"
+  "the five slugs follow the names",
+  TIERS.map((t) => t.slug).join("|") === "beginner|novice|intermediate|advanced|high-performance"
 );
-check("the numbers did not move: Intermediate is 3.0–3.5", TIERS[2].band === "3.0–3.5" && TIERS[6].band === "7.0");
-check("the colours did not move (slate → lime → platinum → gold)", TIERS.map((t) => t.color).join(",") === "#7D8CA3,#AEBBCD,#8CC63F,#B4E655,#D2F28A,#E6EBF0,#E3C46F");
-check('TIER_LADDER_SPAN is "Beginner to World Class"', TIER_LADDER_SPAN === "Beginner to World Class");
+check("the numbers did not move: Intermediate is 3.0–3.5, High Performance 5.0–7.0", TIERS[2].band === "3.0–3.5" && TIERS[4].band === "5.0–7.0");
+check("the colours: slate, light slate, lime secondary, lime primary, gold", TIERS.map((t) => t.color).join(",") === "#7D8CA3,#AEBBCD,#8CC63F,#B4E655,#E3C46F");
+check('TIER_LADDER_SPAN is "Beginner to High Performance"', TIER_LADDER_SPAN === "Beginner to High Performance");
 check(
   "admin level picker reads the plain names",
-  LEVEL_OPTIONS[0].label === "1.0 · Beginner" && LEVEL_OPTIONS[4].label === "3.0 · Intermediate" && LEVEL_OPTIONS[12].label === "7.0 · World Class"
+  LEVEL_OPTIONS[0].label === "1.0 · Beginner" && LEVEL_OPTIONS[4].label === "3.0 · Intermediate" && LEVEL_OPTIONS[12].label === "7.0 · High Performance"
 );
 check(
   "a/an before a tier-led phrase",
@@ -100,20 +100,24 @@ check(
     withArticle("Novice – Intermediate group") === "a Novice – Intermediate group" &&
     withArticle("Intermediate group") === "an Intermediate group" &&
     withArticle("Advanced and up group") === "an Advanced and up group" &&
-    withArticle("Elite group") === "an Elite group" &&
-    withArticle("Pro group") === "a Pro group" &&
-    withArticle("World Class group") === "a World Class group"
+    withArticle("High Performance group") === "a High Performance group"
 );
 
 console.log("Old slugs redirect (tier-emblem PNGs in sent emails)");
-const OLD = ["love", "rally", "deuce", "break", "ace", "match-point", "grand-slam"];
-check("every retired slug maps to its tier's new slug, in order", OLD.every((old, i) => LEGACY_TIER_SLUGS[old] === TIERS[i].slug));
+const OLD_TO_NEW: [string, string][] = [
+  ["love", "beginner"], ["rally", "novice"], ["deuce", "intermediate"], ["break", "advanced"],
+  ["ace", "high-performance"], ["match-point", "high-performance"], ["grand-slam", "high-performance"],
+  ["elite", "high-performance"], ["pro", "high-performance"], ["world-class", "high-performance"],
+];
+const OLD = OLD_TO_NEW.map(([old]) => old);
+check("every retired slug maps to its live tier, 5.0 and up to high-performance", OLD_TO_NEW.every(([old, live]) => LEGACY_TIER_SLUGS[old] === live) && Object.keys(LEGACY_TIER_SLUGS).length === OLD.length);
+check("every target is a live slug", Object.values(LEGACY_TIER_SLUGS).every((slug) => TIERS.some((t) => t.slug === slug)));
 check("no retired slug is a live slug", Object.keys(LEGACY_TIER_SLUGS).every((old) => !TIERS.some((t) => t.slug === old)));
 check(
-  "next.config.ts redirects each one permanently to /tier-emblem/{new}",
-  TIER_EMBLEM_REDIRECTS.length === 7 &&
-    TIER_EMBLEM_REDIRECTS.every(
-      (r, i) => r.source === `/tier-emblem/${OLD[i]}` && r.destination === `/tier-emblem/${TIERS[i].slug}` && r.permanent === true
+  "next.config.ts redirects each one permanently to /tier-emblem/{live}",
+  TIER_EMBLEM_REDIRECTS.length === OLD.length &&
+    OLD_TO_NEW.every(([old, live]) =>
+      TIER_EMBLEM_REDIRECTS.some((r) => r.source === `/tier-emblem/${old}` && r.destination === `/tier-emblem/${live}` && r.permanent === true)
     )
 );
 {
@@ -126,14 +130,14 @@ check("the PNG route is static over the live slugs only", route.includes("TIERS.
 
 console.log("No retired tier name reaches a reader");
 // "Deuce and ad side" is the court's side on the admin art gallery, not a tier.
-const RETIRED = /\b(Love|Deuce|Match Point|Grand Slam)\b/;
+const RETIRED = /\b(Love|Deuce|Match Point|Grand Slam|World Class)\b/;
 const retiredHits = USER_FACING.flatMap((f) =>
   withoutComments(read(f))
     .split("\n")
     .filter((l) => RETIRED.test(l) && !l.includes("Deuce and ad side"))
     .map((l) => `${f}: ${l.trim().slice(0, 90)}`)
 );
-check("no Love, Deuce, Match Point or Grand Slam outside comments", retiredHits.length === 0, retiredHits.join(" | "));
+check("no Love, Deuce, Match Point, Grand Slam or World Class outside comments", retiredHits.length === 0, retiredHits.join(" | "));
 check("no hard-coded 'You're a {tier}' sentence in the emails", !/a \$\{tier\.name\}/.test(read("src/lib/emailBodies.ts")));
 
 console.log("The quiz self-estimate (stored values unchanged)");
@@ -265,7 +269,7 @@ check("wave: the owner-locked shape is untouched", wave.includes("Math.sin((fx +
 // ── voice.md follows the site ──────────────────────────────────────────────
 console.log("voice.md");
 const voice = read("ops/briefs/voice.md");
-check("locks the seven plain names", voice.includes("**Beginner, Novice, Intermediate, Advanced, Elite, Pro, World Class**"));
+check("locks the five plain names", voice.includes("**Beginner, Novice, Intermediate, Advanced, High Performance**") && !voice.includes("Elite, Pro, World Class**"));
 check("locks the coach title and the email sign-off", voice.includes("**Program Coordinator / High Performance Coach**") && voice.includes('"The Tennis Bootcamp coaching team"'));
 check("has the staff wording section", voice.includes("## Staff wording (owner, 2026-10-12)"));
 check("no longer tells anyone that Sina places players", !/Sina places/.test(voice.split("| 15 |")[0]));
