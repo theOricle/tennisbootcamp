@@ -16,7 +16,7 @@ import {
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Our coaches place every player by level and schedule; High Performance is the competitive track.",
+    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Our coaches place every player by level and schedule; the High Performance Youth Bootcamp is the competitive track.",
   alternates: { canonical: "/about" },
 };
 
@@ -119,7 +119,7 @@ export default function AboutPage() {
               {
                 heading: "Serious at every level",
                 body:
-                  `The training methods come from competitive player development, applied at every rung of the ladder — ${TIER_LADDER_SPAN}. Our coaches place every player by level and schedule, and every group trains with structure and intent. High Performance is the explicitly competitive track; the rest of the ladder builds your game seriously from wherever you start.`,
+                  `The training methods come from competitive player development, applied at every rung of the ladder — ${TIER_LADDER_SPAN}. Our coaches place every player by level and schedule, and every group trains with structure and intent. The High Performance Youth Bootcamp is the competitive track; every other group builds your game seriously from wherever you start.`,
               },
             ].map(({ heading, body }) => (
               <div

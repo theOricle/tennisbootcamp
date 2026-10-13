@@ -215,17 +215,20 @@ export function LevelTags({
   );
 }
 
-/** One "When" line per group: "Sat 12:00 · Beginner Junior Bootcamp". */
+/**
+ * One "When" entry per group, stacked the same way every time: the start
+ * ("Sat 12:00") in white on its own line, the level-led group name under it
+ * in white/65. Stacked on purpose, with no separator, so the three entries
+ * share one shape in the narrow column instead of wrapping where each name
+ * happens to run out of room (the Price row's pattern).
+ */
 function GroupLines({ groups }: { groups: ProgramGroup[] }) {
   return (
-    <ul role="list" className="space-y-1">
+    <ul role="list" className="space-y-1.5">
       {groups.map((g) => (
-        <li key={g.id} className="flex flex-wrap items-baseline gap-x-1">
-          <span className="whitespace-nowrap">
-            {formatGroupStart(g)}
-            <span aria-hidden="true" className="text-white/65"> ·</span>
-          </span>
-          <span className="min-w-0 text-white/65">{g.name}</span>
+        <li key={g.id}>
+          <span className="block text-white">{formatGroupStart(g)}</span>
+          <span className="block text-white/65">{g.name}</span>
         </li>
       ))}
     </ul>

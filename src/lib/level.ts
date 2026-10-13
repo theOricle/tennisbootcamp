@@ -29,9 +29,10 @@ export type SelfLevelOption = {
  * form and the admin. "elite" is the high-performance track; every list that
  * offers it passes it through unchanged. Its label is "Tournament player"
  * (owner, 2026-10-12), so no quiz answer reuses a tier name for a different
- * tier: the stored value stays "elite" (the intake contract) while the tier
- * called Elite is tier 5. The coach's on-court level is the
- * source of truth; this is only a starting point.
+ * tier: the stored value stays "elite" (the intake contract) while no tier
+ * carries that name (Elite folded into High Performance, 2026-10-13). The
+ * coach's on-court level is the source of truth; this is only a starting
+ * point.
  */
 export const SELF_LEVELS: readonly SelfLevelOption[] = [
   { value: "", label: "Prefer not to say", labelOther: "Prefer not to say" },
@@ -97,6 +98,27 @@ export function provisionalTierFor(value: string | null | undefined): Tier | nul
   if (!level) return null;
   const id = PROVISIONAL_TIER[level];
   return id === undefined ? null : tierById(id);
+}
+
+/**
+ * The tier a quiz-taker's link into the catalog filters to, or null for the
+ * age band alone. The provisional tier, except for a competitive or
+ * tournament junior or teen: the group the result puts first for them is the
+ * High Performance Youth Bootcamp, tagged High Performance (5.0–7.0, by
+ * approval), while their provisional tier is Intermediate or Advanced, and
+ * the catalog's exact level filter (owner, 2026-10-13) would leave that
+ * group out. Their link carries the band alone, so every youth group lists.
+ * Read by quizCatalogHref (the result's "Browse Programs") and the quiz flag
+ * ("See your groups"); recommend.ts reads the same answers the same way.
+ */
+export function catalogTierFor(
+  ageBand: string | null | undefined,
+  selfLevel: string | null | undefined
+): Tier | null {
+  const level = selfEstimateToLevel(selfLevel);
+  const youth = ageBand === "junior" || ageBand === "teen";
+  if (youth && (level === "competitive" || level === "elite")) return null;
+  return provisionalTierFor(selfLevel);
 }
 
 /**

@@ -6,7 +6,7 @@ import {
   AvailabilityHoursLegend,
 } from "@/components/ui/AvailabilityGrid";
 import { TierChip } from "@/components/tiers";
-import { LEVEL_OPTIONS, TIERS } from "@/lib/tiers";
+import { LEVEL_OPTIONS, TIERS, tierForLevel } from "@/lib/tiers";
 import { AGE_BAND_LABELS, isAgeBand } from "@/lib/ageBand";
 import { COHORT_STATUS_LABELS, programTitleFor, selfEstimateLine, statusLabel } from "@/lib/adminLabels";
 import { inviteNotice } from "@/lib/emailResult";
@@ -314,7 +314,7 @@ export function AdminPlayersClient() {
   const [view, setView] = useState<View>("all");
   const [sort, setSort] = useState<Sort>("level");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
-  const [band, setBand] = useState<string>("all"); // "all" | tier id "1".."7"
+  const [band, setBand] = useState<string>("all"); // "all" | a tier id, "1".."5"
   // Sticky search (audit L20): name, account name or email.
   const [query, setQuery] = useState("");
   // Invite from the pool (audit M28): tick players, pick a cohort, send.
@@ -422,15 +422,11 @@ export function AdminPlayersClient() {
     }
   }
 
-  // Tier band chips only make sense over leveled players.
+  // Tier band chips only make sense over leveled players. The tier comes from
+  // tierForLevel, the one rule, so the High Performance chip (5.0–7.0) takes
+  // a 6.0 player too; a whole-number floor would leave 6.0–7.0 under no chip.
   const byBand =
-    band === "all"
-      ? players
-      : players.filter(
-          (p) =>
-            p.level != null &&
-            Math.min(7, Math.max(1, Math.floor(p.level))) === Number(band)
-        );
+    band === "all" ? players : players.filter((p) => tierForLevel(p.level)?.id === Number(band));
   const needle = query.trim().toLowerCase();
   const filtered = needle
     ? byBand.filter((p) =>

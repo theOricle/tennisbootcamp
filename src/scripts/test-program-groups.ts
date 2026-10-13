@@ -110,7 +110,7 @@ const q = parseCatalogQuery(params("level=intermediate&age=14"));
 check("the query string has a fixed key order", catalogQueryString(q) === "age=14&level=intermediate");
 check("catalogHref", catalogHref(EMPTY_QUERY) === "/programs" && catalogHref(q) === "/programs?age=14&level=intermediate");
 check("parse ∘ serialise is stable", catalogQueryString(parseCatalogQuery(params(catalogQueryString(q)))) === catalogQueryString(q));
-check("quizCatalogHref: band and provisional tier", quizCatalogHref("teen", tierById(3)) === "/programs?age=teen&level=intermediate" && quizCatalogHref("junior", null) === "/programs?age=junior" && quizCatalogHref(undefined, null) === "/programs");
+check("quizCatalogHref: band and provisional tier from the self-estimate; the band alone for a competitive youth", quizCatalogHref("teen", "competitive") === "/programs?age=teen" && quizCatalogHref("adult", "competitive") === "/programs?age=adult&level=intermediate" && quizCatalogHref("teen", "rally") === "/programs?age=teen&level=novice" && quizCatalogHref("junior", undefined) === "/programs?age=junior" && quizCatalogHref(undefined, undefined) === "/programs");
 
 console.log("Catalog filters: matching");
 const g = (id: string) => groupById(id)!;
@@ -197,7 +197,7 @@ check("each program section links to its page with its photo thumbnail", listedP
 const teens = view(parseCatalogQuery(params("age=14&level=novice")));
 check("a filtered view keeps only the matching groups and sections", count(teens, "<article") === 2 && teens.includes("2 groups for age 14 at Novice") && !teens.includes('id="catalog-bootcamps"') && teens.includes('<option value="14" selected="">') && !teens.includes("Closest fit"));
 const nearest = view(parseCatalogQuery(params("age=14&level=intermediate")));
-check("Closest fit: the exact match (private lessons), then the nearest-level group with the week-one line", count(nearest, "<article") === 2 && nearest.includes("1 group for age 14 at Intermediate") && nearest.includes(">Closest fit</h3>") && nearest.includes("No group is tagged Intermediate for age 14 yet. These are the nearest levels.") && nearest.includes("on court in week one") && nearest.includes("we move you to it at the same price") && at(nearest, 'id="catalog-private-lessons"') < at(nearest, ">Closest fit</h3>") && at(nearest, ">Closest fit</h3>") < at(nearest, 'id="youth-11-15"'));
+check("Closest fit: the exact match (private lessons), then the nearest-level group with the week-one line", count(nearest, "<article") === 2 && nearest.includes("1 group for age 14 at Intermediate") && nearest.includes(">Closest fit</h3>") && nearest.includes("The nearest levels to Intermediate for age 14.") && !nearest.includes("tagged") && nearest.includes("on court in week one") && nearest.includes("we move you to it at the same price") && at(nearest, 'id="catalog-private-lessons"') < at(nearest, ">Closest fit</h3>") && at(nearest, ">Closest fit</h3>") < at(nearest, 'id="youth-11-15"'));
 check("Closest fit cards name their program in the eyebrow", nearest.includes(">Youth Bootcamps</p>"));
 const none = view(parseCatalogQuery(params("age=5&level=high-performance")), programGroups.filter((x) => x.id !== "private-lessons"));
 check("the empty state says what is true and what happens next, and only when nothing is near", none.includes("No group fits those filters yet.") && none.includes("Take the 2-minute quiz") && none.includes("widen the filters") && none.includes(">Clear filters</button>") && count(none, "<article") === 0 && !none.includes("Closest fit"));
@@ -228,7 +228,7 @@ check("matchGroupsLabel: one scheduled group → Group, private lessons → Less
 check("recommendationHref: one scheduled group → its card; several → the program; private lessons → the page, no anchor", recommendationHref(rec("teen", "elite")[0]) === "/programs/youth-programs#high-performance" && recommendationHref(rec("junior", "new")[0]) === "/programs/youth-programs" && recommendationHref(rec("adult", "rally", ["private"])[0]) === "/programs/private-lessons", recommendationHref(rec("adult", "rally", ["private"])[0]));
 const intake = read("src/app/intake/page.tsx");
 check("the quiz's match card lists the groups, labels them through matchGroupsLabel and links through recommendationHref", intake.includes("const href = recommendationHref(rec);") && intake.includes("groupSummaryLine(g)") && intake.includes("{matchGroupsLabel(groups)}") && !intake.includes('? "Group" : "Groups"') && !intake.includes("formatTierSpan(g."));
-check("Browse Programs on a one-player result opens the filtered catalog", intake.includes("<ResultLinks catalogHref={quizCatalogHref(result.ageBand, tier)} />"));
+check("Browse Programs on a one-player result opens the filtered catalog", intake.includes("<ResultLinks catalogHref={quizCatalogHref(result.ageBand, result.level)} />"));
 check("?program=private-lessons seeds the private option", intake.includes('"private-lessons": "private"') && !intake.includes('"kids-summer-camp"'));
 
 // ── Old URLs ────────────────────────────────────────────────────────────────

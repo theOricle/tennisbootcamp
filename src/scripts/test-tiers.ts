@@ -473,11 +473,12 @@ const complete = buildAssessmentCompleteEmail({ name: "Maya Chen", levelLabel: "
 check("assessment complete: the emblem PNG, the tier sentence and the standing", complete.html.includes(`<img src="`) && complete.html.includes("/tier-emblem/intermediate") && complete.html.includes('width="64"') && complete.html.includes("You're in the Intermediate tier.") && complete.html.includes("Tier 3 of 5. Next tier: Advanced at 4.0."));
 check("assessment complete: a table-built tier line of thirteen bgcolor cells with Beginner and High Performance captions", (complete.html.match(/<td width="14" height="8" bgcolor="#/g) ?? []).length === 13 && complete.html.includes(">Beginner</td>") && complete.html.includes(">High Performance</td>"));
 {
-  // 13 × 14px cells + 6 × 2px + 6 × 6px gaps = 230px, inside the card's
-  // ~261px content box on a 375px phone; the caption table matches it.
+  // 13 × 14px cells + 8 × 2px (within a tier) + 4 × 6px (between the five
+  // tiers) = 222px, inside the card's ~261px content box on a 375px phone;
+  // the caption table matches it.
   const line = tierLineTable(3);
   const widths = [...line.matchAll(/<td width="(\d+)"/g)].map((m) => Number(m[1]));
-  check("the tier line is 230px wide and its caption table matches", widths.reduce((a, b) => a + b, 0) === 230 && line.includes('width="230" style="border-collapse:collapse;width:230px;"'));
+  check("the tier line is 222px wide, four gaps between five tiers, and its caption table matches", widths.reduce((a, b) => a + b, 0) === 222 && widths.filter((w) => w === 6).length === 4 && widths.filter((w) => w === 2).length === 8 && line.includes('width="222" style="border-collapse:collapse;width:222px;"'));
 }
 check("assessment complete: the text body carries the same facts", complete.text.includes("You're in the Intermediate tier.") && complete.text.includes("Tier 3 of 5. Next tier: Advanced at 4.0.") && complete.text.includes("Solid forehand.") && complete.text.includes(DASHBOARD_URL));
 check("assessment complete: Browse Programs in the locked casing, and the dashboard button", complete.html.includes(">Browse Programs<") && !complete.html.includes("Browse programs") && complete.html.includes(">See it on your dashboard<"));

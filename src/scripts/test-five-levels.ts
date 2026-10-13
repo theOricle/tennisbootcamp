@@ -50,15 +50,18 @@ import {
   groupTakesTier,
   groupTakesTierNear,
   parseCatalogQuery,
+  quizCatalogHref,
   tierDistance,
   tierQueryFor,
 } from "../lib/programFilters";
 import { groupsFor, recommendPrograms } from "../lib/recommend";
+import { catalogTierFor } from "../lib/level";
+import { accountQuizStatus, quizFlagFor } from "../lib/quizStatus";
 import { levelNote } from "../lib/enrollPlayers";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { ProgramCard } from "../components/sections/ProgramCard";
 import { ProgramCatalogView, type CatalogProgram } from "../components/sections/ProgramCatalog";
-import { buildAssessmentCompleteEmail, buildCohortInviteEmail, cohortInviteSubject, tierStandingLine } from "../lib/emailBodies";
+import { buildAssessmentCompleteEmail, buildCohortInviteEmail, cohortInviteSubject, tierLineTable, tierStandingLine } from "../lib/emailBodies";
 import nextConfig, { TIER_EMBLEM_REDIRECTS } from "../../next.config";
 
 let failed = 0;
@@ -204,6 +207,15 @@ async function main() {
   check("Closest fit respects the age: age 5 at any level has nothing near", closest("age=5&level=advanced") === "" && filtered("age=5&level=advanced") === "private-lessons");
   check("Closest fit never lists an any-level group", LEVEL_STEPS.every(() => !closest("age=9&level=advanced").includes("private-lessons")));
 
+  console.log("Closest fit is decided per program (fix round 1): an adult group that overlaps the teen band never hides the youth program's nearest group");
+  check("teen at Intermediate: the Intermediate Adult Bootcamp (16 and up) and private lessons match; Closest fit is the Novice Youth Bootcamp", filtered("age=teen&level=intermediate") === "adult-intermediate,private-lessons" && closest("age=teen&level=intermediate") === "youth-11-15");
+  check("teen at Advanced: the Advanced Adult Bootcamp matches; Closest fit is High Performance", filtered("age=teen&level=advanced") === "adult-advanced,private-lessons" && closest("age=teen&level=advanced") === "high-performance");
+  check("junior at Intermediate: no exact tagged match; Closest fit is the Novice Youth Bootcamp", filtered("age=junior&level=intermediate") === "private-lessons" && closest("age=junior&level=intermediate") === "youth-11-15");
+  check("age 16 at Novice: each program contributes its own nearest, in lineup order", closest("age=16&level=novice") === "high-performance,adult-newer,adult-intermediate");
+  check("a program with an exact tagged match contributes nothing, whatever its other groups' distance", closest("age=16&level=intermediate") === "high-performance");
+  const teenView = render(createElement(ProgramCatalogView, { programs: listedPrograms.map((p) => ({ slug: p.slug, title: p.title, type: p.type, description: p.description, photo: p.photo, ageBands: p.ageBands, timetable: p.timetable, schedule: p.schedule })), groups: programGroups, nextCohorts: {}, query: parseCatalogQuery(params("age=teen&level=intermediate")), onChange: () => {} }));
+  check("catalog for a teen at Intermediate: the adult section, then Closest fit with the Novice Youth Bootcamp, and a line that stays true with an exact match above it", teenView.includes('id="catalog-bootcamps"') && teenView.includes('id="adult-intermediate"') && teenView.includes(">Closest fit</h3>") && teenView.includes('id="youth-11-15"') && teenView.includes("The nearest levels to Intermediate for teens (14–17).") && !teenView.includes("No group is") && !teenView.includes("tagged") && at(teenView, 'id="catalog-bootcamps"') < at(teenView, ">Closest fit</h3>"));
+
   console.log("The recommender reaches one tier either way; High Performance first for competitive youth");
   const base = { goals: [] as string[], programs: [] as string[], preferredLocationIds: [] as string[], availability: [] as string[] };
   const rec = (ageBand: "junior" | "teen" | "adult", level?: "new" | "rally" | "competitive" | "elite") =>
@@ -225,11 +237,12 @@ async function main() {
   check("the High Performance card: the bootcamp title, the High Performance tag with the gold mark, By approval, the competitive note", hp.includes(">High Performance Youth Bootcamp</h3>") && hp.includes("#E3C46F") && hp.includes(", tier 5 of 5, levels 5.0–7.0") && hp.includes("By approval") && hp.includes("The competitive track"));
   const programCard = render(createElement(ProgramCard, { program: youth }));
   check("program card: Levels block lists the three tags in ladder order and the When row names the level-led groups", programCard.includes(">Levels</p>") && at(programCard, ">Beginner</span>") < at(programCard, ">Novice</span>") && at(programCard, ">Novice</span>") < at(programCard, ">High Performance</span>") && programCard.includes("Beginner Junior Bootcamp") && !programCard.includes('aria-label="Built for'));
+  check("program card: every When entry stacks the same way, the start in white over the name in white/65, no middle dot", count(programCard, '<span class="block text-white">Sat ') === 3 && count(programCard, '<span class="block text-white/65">') === 3 && programCard.includes('<span class="block text-white">Sat 12:00</span><span class="block text-white/65">Beginner Junior Bootcamp</span>') && !programCard.includes("Sat 12:00 ·") && !programCard.includes("Sat 12:00<span"));
   const privateCard = render(createElement(ProgramCard, { program: listedPrograms[2] }));
   check("private lessons card: one Level, All levels", privateCard.includes(">Level</p>") && privateCard.includes(">All levels</span>") && count(privateCard, "All levels") === 1);
   const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({ slug: p.slug, title: p.title, type: p.type, description: p.description, photo: p.photo, ageBands: p.ageBands, timetable: p.timetable, schedule: p.schedule }));
   const view = render(createElement(ProgramCatalogView, { programs: catalogPrograms, groups: programGroups, nextCohorts: {}, query: parseCatalogQuery(params("age=9&level=intermediate")), onChange: () => {} }));
-  check("catalog: the five levels in the select, the intro says one level, Closest fit after the exact match", count(view, '<optgroup label="Exact age">') === 1 && TIERS.every((t) => new RegExp(`<option value="${t.slug}"( selected="")?>${t.name} · ${t.band.replace(/\./g, "\.")}</option>`).test(view)) && view.includes("an age range and one level") && view.includes(">Closest fit</h3>") && view.includes("No group is tagged Intermediate for age 9 yet.") && at(view, 'id="catalog-private-lessons"') < at(view, ">Closest fit</h3>") && view.includes('id="youth-7-10"'));
+  check("catalog: the five levels in the select, the intro says one level, Closest fit after the exact match", count(view, '<optgroup label="Exact age">') === 1 && TIERS.every((t) => new RegExp(`<option value="${t.slug}"( selected="")?>${t.name} · ${t.band.replace(/\./g, "\.")}</option>`).test(view)) && view.includes("an age range and one level") && view.includes(">Closest fit</h3>") && view.includes("The nearest levels to Intermediate for age 9.") && !view.includes("tagged") && at(view, 'id="catalog-private-lessons"') < at(view, ">Closest fit</h3>") && view.includes('id="youth-7-10"'));
   check("Closest fit carries the week-one line and the move-or-refund promise, no legal terms", view.includes("Your coach confirms your level on court in week one.") && view.includes("If another group fits you better, we move you to it at the same price.") && !/\b\d+ days?\b|fee|%/.test(view.slice(at(view, ">Closest fit</h3>"), at(view, 'id="youth-7-10"'))));
 
   const detail = read("src/app/programs/[slug]/page.tsx");
@@ -237,6 +250,24 @@ async function main() {
   check("the dashboard and the admin keep cohort bands: TierRangeBadges on cohorts only", read("src/app/dashboard/DashboardView.tsx").includes("<TierRangeBadges levelMin={cohort.levelMin}") && read("src/app/admin/cohorts/AdminCohortsClient.tsx").includes("LEVEL_OPTIONS"));
   const intake = read("src/app/intake/page.tsx");
   check("quiz result: the group line carries no span (the title leads with the level), and counts five", !intake.includes("formatTierSpan(g.") && intake.includes("one of ${TIER_COUNT_WORD} tiers"));
+
+  console.log("A competitive youth's links into the catalog carry the band alone (fix round 1)");
+  check("catalogTierFor: a competitive or tournament junior or teen gets no level; every other answer keeps its provisional tier", catalogTierFor("teen", "competitive") === null && catalogTierFor("junior", "elite") === null && catalogTierFor("teen", "rally")?.id === 2 && catalogTierFor("junior", "new")?.id === 1 && catalogTierFor("adult", "competitive")?.id === 3 && catalogTierFor("adult", "elite")?.id === 4 && catalogTierFor(undefined, "competitive")?.id === 3 && catalogTierFor("teen", "unsure") === null && catalogTierFor("teen", "") === null);
+  check("quizCatalogHref: Browse Programs for a competitive teen lists every teen group; the rest keep the level", quizCatalogHref("teen", "competitive") === "/programs?age=teen" && quizCatalogHref("junior", "competitive") === "/programs?age=junior" && quizCatalogHref("teen", "elite") === "/programs?age=teen" && quizCatalogHref("teen", "rally") === "/programs?age=teen&level=novice" && quizCatalogHref("adult", "elite") === "/programs?age=adult&level=advanced" && quizCatalogHref("junior", undefined) === "/programs?age=junior");
+  check("that list carries the High Performance Youth Bootcamp, which the exact filter at the provisional tier would not", filtered("age=teen").includes("high-performance") && filtered("age=junior").includes("high-performance") && !filtered("age=teen&level=intermediate").includes("high-performance") && !filtered("age=teen&level=advanced").includes("high-performance"));
+  check("the quiz flag and the account read the same rule: a competitive youth's See your groups carries the band alone, an adult keeps the tier", quizFlagFor({ playerCount: 1, ageBand: "teen", selfLevel: "competitive" }).tierSlug === null && quizFlagFor({ playerCount: 1, ageBand: "adult", selfLevel: "competitive" }).tierSlug === "intermediate" && accountQuizStatus([{ self_level: "elite", age_band: "junior" }]).matchedHref === "/programs?location=newtonbrook&age=junior" && accountQuizStatus([{ self_level: "elite", age_band: "adult" }]).matchedHref === "/programs?location=newtonbrook&age=adult&level=advanced");
+  check("the result screen passes the self-estimate, so the rule runs in one place", intake.includes("<ResultLinks catalogHref={quizCatalogHref(result.ageBand, result.level)} />"));
+  check("the recommender still puts High Performance first for the same player", ids(rec("teen", "competitive").groups).startsWith("high-performance") && ids(rec("junior", "elite").groups).startsWith("high-performance"));
+
+  console.log("Every tier read goes through tierForLevel (fix round 1)");
+  const admin = read("src/app/admin/players/AdminPlayersClient.tsx");
+  check("/admin/players: the tier chips read tierForLevel, so the High Performance chip takes 6.0 and 7.0 players", admin.includes("tierForLevel(p.level)?.id === Number(band)") && !admin.includes("Math.floor(p.level)") && [5, 5.5, 6, 6.5, 7].every((l) => tierForLevel(l)?.id === Number("5")) && tierForLevel(null) === null);
+  const line60 = tierLineTable(6);
+  check("the email tier line groups 5.0–7.0 as one tier: four 6px gaps, eight 2px gaps, 222px wide, ten lit cells at 6.0", count(line60, 'width="6"') === 4 && count(line60, 'width="2"') === 8 && line60.includes('width="222"') && count(line60, 'bgcolor="#E3C46F"') === 3 && count(line60, 'bgcolor="#1C2A3C"') === 2);
+  check("the ladder's soft hyphen is written as an escape, never a literal invisible character", line.includes('const SOFT_HYPHEN = "\\u00AD";') && !line.includes("­"));
+  const joining = read("src/components/sections/HowJoiningWorks.tsx");
+  const about = read("src/app/about/page.tsx");
+  check("How joining works and /about name the group, never the tier: the High Performance Youth Bootcamp is by approval / the competitive track", joining.includes("The High Performance Youth Bootcamp is by approval.") && !joining.includes(">High Performance is by approval") && count(about, "High Performance Youth Bootcamp is the competitive track") === 2 && !about.includes("High Performance is the"));
 
   // ── 4. Every surface counts five ──────────────────────────────────────────
   console.log("Every ladder surface counts five");

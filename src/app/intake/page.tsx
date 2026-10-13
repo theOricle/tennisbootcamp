@@ -535,7 +535,9 @@ function AssessmentSuggestion({
 /**
  * The two demoted links, shared by every result screen: 44px targets (audit
  * L4). "Browse Programs" opens the catalog filtered to the player's age band
- * and likely tier when the screen is about one player (owner, 2026-10-12).
+ * and likely tier when the screen is about one player (owner, 2026-10-12);
+ * the band alone for a competitive or tournament youth, so the High
+ * Performance Youth Bootcamp the result put first is in the list.
  */
 function ResultLinks({ catalogHref = "/programs" }: { catalogHref?: string }) {
   return (
@@ -603,7 +605,7 @@ function TentativeMatchScreen({
             onBook={() => goToBooking(router, form, result.level)}
           />
 
-          <ResultLinks catalogHref={quizCatalogHref(result.ageBand, tier)} />
+          <ResultLinks catalogHref={quizCatalogHref(result.ageBand, result.level)} />
         </div>
       </div>
     </main>

@@ -395,7 +395,7 @@ const NODE_COMPACT_CURRENT: Record<TierId, string> = {
 // gets no soft hyphen: a browser fills the first line greedily and would
 // print "High Perfor-" over "mance", so it breaks at its space instead
 // ("High" over "Performance"), which fits every horizontal ladder column.
-const SOFT_HYPHEN = "­";
+const SOFT_HYPHEN = "\u00AD";
 const LADDER_BREAKS: Partial<Record<TierId, string>> = {
   1: `Begin${SOFT_HYPHEN}ner`,
   3: `Inter${SOFT_HYPHEN}mediate`,

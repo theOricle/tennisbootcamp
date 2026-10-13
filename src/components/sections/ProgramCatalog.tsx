@@ -183,9 +183,12 @@ function ProgramHeader({ program }: { program: CatalogProgram }) {
 }
 
 /**
- * "Closest fit" (owner, 2026-10-13): the nearest-level groups when the level
- * filter matches no tagged group, with one honest line about week-one
- * placement. The cards carry the program's title in their eyebrow, since
+ * "Closest fit" (owner, 2026-10-13): the nearest-level groups of every
+ * program that has none at the chosen level (closestGroups), with one honest
+ * line about week-one placement. The line names the chosen level and age
+ * and nothing more, because another program may have matched exactly above
+ * (a teen at Intermediate sees the adult group, then the youth program's
+ * nearest). The cards carry the program's title in their eyebrow, since
  * they come from more than one program.
  */
 function ClosestFit({
@@ -207,8 +210,8 @@ function ClosestFit({
         Closest fit
       </h3>
       <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/70">
-        No group is tagged {query.tier.name}{scope} yet. These are the nearest levels. Your coach
-        confirms your level on court in week one. {RIGHT_GROUP_PROMISE}
+        The nearest levels to {query.tier.name}{scope}. Your coach confirms your level on court in
+        week one. {RIGHT_GROUP_PROMISE}
       </p>
       <ul role="list" className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {groups.map((g) => {

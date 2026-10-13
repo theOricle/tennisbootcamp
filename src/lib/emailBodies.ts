@@ -164,17 +164,21 @@ function tierChip(name: string): string {
 }
 
 /**
- * The tier line's cell width and total width. Thirteen 14px cells plus six
- * 2px and six 6px gaps come to 230px, which fits the card's content box on a
- * 375px phone (about 261px wide); 18px cells (282px) spilled past its border.
+ * The tier line's cell width and total width. Thirteen 14px cells plus eight
+ * 2px and four 6px gaps come to 222px, which fits the card's content box on a
+ * 375px phone (about 261px wide); 18px cells spilled past its border.
  */
 const TIER_LINE_CELL = 14;
 
-/** The gap after step `i`: 2px within a tier, 6px between tiers, none after the last. */
+/**
+ * The gap after step `i`: 2px within a tier, 6px between tiers, none after
+ * the last. The tier comes from tierForLevel, so 5.0 to 7.0 reads as one
+ * group (a whole-number floor would cut High Performance into three).
+ */
 function tierLineGap(i: number): number {
   const next = LEVEL_STEPS[i + 1];
   if (next === undefined) return 0;
-  return Math.floor(next) === Math.floor(LEVEL_STEPS[i]) ? 2 : 6;
+  return tierForLevel(next)?.id === tierForLevel(LEVEL_STEPS[i])?.id ? 2 : 6;
 }
 
 const TIER_LINE_WIDTH = LEVEL_STEPS.reduce(

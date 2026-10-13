@@ -123,7 +123,7 @@ check("step 1 on a program page carries the program", stepsAdults.includes('href
 check("step 2: how a spot is reserved today (quiz, invitation, hold, enroll)", steps.includes("The 2-minute quiz is how you ask for a spot. We email you an invitation with the group&#x27;s dates and price, and hold your spot while you enroll."));
 check("step 3: on court in week one, then the promise", steps.includes(`On court, in week one. ${RIGHT_GROUP_PROMISE}`));
 check("the optional assessment: certainty first, the mechanic, the exact label", steps.includes("Want certainty first?</span> " + ASSESSMENT_CERTAINTY_LINE) && /<a [^>]*href="\/assessment\/book"[^>]*>Book Your Assessment<span aria-hidden="true"[^>]*>→<\/span><\/a>/.test(steps));
-check("High Performance by approval when asked", steps.includes("High Performance is by approval.</span> " + APPROVAL_LINE) && !stepsAdults.includes("High Performance"));
+check("High Performance by approval when asked, named as the group, never the tier", steps.includes("The High Performance Youth Bootcamp is by approval.</span> " + APPROVAL_LINE) && !steps.includes(">High Performance is by approval") && !stepsAdults.includes("High Performance"));
 check("two links, neither a lime primary button", count(steps, "<a ") === 2 && !/<a [^>]*bg-\[#B4E655\]/.test(steps));
 
 // ── The pages ───────────────────────────────────────────────────────────────

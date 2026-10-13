@@ -23,7 +23,7 @@ import { AGE_BAND_QUERIES } from "@/lib/programFilters";
 import { isAgeBand, type AgeBand } from "@/lib/ageBand";
 import { hasAnyAvailability } from "@/lib/availability";
 import { hasLevel, TIERS } from "@/lib/tiers";
-import { provisionalTierFor } from "@/lib/level";
+import { catalogTierFor } from "@/lib/level";
 import { defaultLocation } from "@/content/locations";
 
 /** The device flag's cookie, also its localStorage key. First-party, functional. */
@@ -55,7 +55,12 @@ export type QuizFlag = {
   playerCount: number;
   /** The first player's age band, when one was answered. */
   ageBand: AgeBand | null;
-  /** The first player's provisional tier (its slug), when the quiz could name one. */
+  /**
+   * The tier the first player's "See your groups" filters to (its slug):
+   * their provisional tier when the quiz could name one, and none for a
+   * competitive or tournament youth, whose High Performance group the exact
+   * level filter would hide (catalogTierFor).
+   */
   tierSlug: string | null;
 };
 
@@ -98,10 +103,12 @@ export function quizFlagFor(input: {
   /** The first player's self-estimate ("new", "rally", …), as the Sheet stores it. */
   selfLevel?: unknown;
 }): QuizFlag {
+  const ageBand = isAgeBand(input.ageBand) ? input.ageBand : null;
+  const selfLevel = typeof input.selfLevel === "string" ? input.selfLevel : null;
   return {
     playerCount: Math.max(1, input.playerCount),
-    ageBand: isAgeBand(input.ageBand) ? input.ageBand : null,
-    tierSlug: provisionalTierFor(typeof input.selfLevel === "string" ? input.selfLevel : null)?.slug ?? null,
+    ageBand,
+    tierSlug: catalogTierFor(ageBand, selfLevel)?.slug ?? null,
   };
 }
 
@@ -193,7 +200,7 @@ export function accountQuizStatus(players: readonly QuizEvidencePlayer[]): QuizS
   const first = takers.find((p) => isAgeBand(p.age_band));
   const ageBand = bands.size === 1 && first ? (first.age_band as AgeBand) : null;
   const tierSlug =
-    takers.length === 1 && first?.self_level ? provisionalTierFor(first.self_level)?.slug ?? null : null;
+    takers.length === 1 && first?.self_level ? catalogTierFor(ageBand, first.self_level)?.slug ?? null : null;
   return { taken: true, playerCount: players.length, matchedHref: matchedGroupsHref(ageBand, tierSlug) };
 }
 
