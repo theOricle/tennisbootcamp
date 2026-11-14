@@ -11,12 +11,27 @@
 --                        (src/lib/players.ts).
 --   assessment_bookings  nothing. Every write goes through the server
 --                        (src/lib/assessments.ts, src/lib/assessmentCredit.ts).
--- A visitor who is not signed in gets no write on profiles.
+-- A visitor who is not signed in gets no write on any of the three.
 --
--- Unchanged: an account still reads its own rows, an admin still reads and
--- writes through is_admin() (0002), and the server (the service role) keeps
--- full access. src/scripts/test-own-row-writes.ts pins these limits and the
--- code that depends on them.
+-- Two layers:
+--   1. Privileges. Insert, update and delete on the three tables are withdrawn
+--      from public, anon and authenticated, and the one profiles column is
+--      granted back to authenticated. Truncate, references and trigger are
+--      withdrawn from anon and authenticated as well. Select is not touched.
+--   2. Row rules. The own-row write policies on participants and
+--      assessment_bookings are removed. profiles_update_own (0001) stays: it
+--      says in which row the one granted column may be updated.
+-- On participants and assessment_bookings each layer is enough on its own. A
+-- policy can only narrow what a privilege allows, so while layer 1 is in place
+-- a write policy on either table gives a signed-in account nothing, whichever
+-- file created it. On profiles the two work together: which column, which row.
+--
+-- Unchanged: an account still reads its own rows (the …_select_own policies
+-- and the select privilege), and the server (the service role) keeps full
+-- access. The admin policies (…_admin_all, through is_admin()) stay in place;
+-- with layer 1 they cover reads, and the admin pages write through the server
+-- like every other page. src/scripts/test-own-row-writes.ts pins these limits
+-- and the code that depends on them.
 --
 -- Run this in the Supabase SQL editor (Dashboard → SQL Editor → New query).
 -- Applied manually, same as 0001–0009 — there is no runner. Needs 0001–0009.
@@ -24,20 +39,35 @@
 -- drops are IF EXISTS, so a second run changes nothing. No table, column or
 -- row is added, changed or removed.
 -- If 0002 or 0007 is ever run again, run this file again after it: those two
--- files create the three policies removed below.
+-- files create the three policies removed in layer 2. Layer 1 holds in the
+-- meantime, and report rows 12–13 list the extra policies until then.
 
--- ─── profiles: one column a signed-in account may update ──────────────────────
--- A table-wide privilege covers every column, so it is withdrawn first and the
--- one column is granted on its own. The row rule stays as it is
--- (profiles_update_own, 0001): the grant says which column, the policy says
--- which row.
+-- ─── Layer 1: privileges ──────────────────────────────────────────────────────
+-- profiles: one column a signed-in account may update. A table-wide privilege
+-- covers every column, so it is withdrawn first and the one column is granted
+-- on its own: the grant says which column, the policy (layer 2) says which row.
 
 revoke insert, update, delete on table public.profiles from public, anon, authenticated;
 
 grant update (full_name) on table public.profiles to authenticated;
 
--- ─── participants, assessment_bookings: written by the server only ────────────
--- The read rules (…_select_own) and the admin rules (…_admin_all) stay.
+-- participants, assessment_bookings: written by the server only.
+
+revoke insert, update, delete
+  on table public.participants, public.assessment_bookings
+  from public, anon, authenticated;
+
+-- The three tables: truncate, references and trigger are withdrawn from a
+-- signed-in account and a visitor as well. Select stays as it is.
+
+revoke truncate, references, trigger
+  on table public.profiles, public.participants, public.assessment_bookings
+  from anon, authenticated;
+
+-- ─── Layer 2: row rules ───────────────────────────────────────────────────────
+-- participants, assessment_bookings: no own-row write policy. The read rules
+-- (…_select_own) and the admin rules (…_admin_all) stay, and so does
+-- profiles_update_own (0001).
 
 drop policy if exists "participants_insert_own" on public.participants;
 drop policy if exists "participants_update_own" on public.participants;
@@ -52,10 +82,19 @@ grant select, insert, update, delete
   to service_role;
 
 -- verify:
+-- Before you run it: at least one ordinary account (one that is not an admin)
+-- must exist, because the refusal test acts as one. Any test sign-up will do.
+-- Without one the refusal test does not run, and report rows 15–17 read
+-- "not run: needs an account that is not an admin" with `ok` false.
+--
 -- Two statements. Run them together, in the same run as the file or on their
 -- own afterwards: the report (2) lists the result of the refusal test (1).
 -- The SQL editor runs a whole query as one unit, which is what carries that
--- result across; in psql, use --single-transaction.
+-- result across; in psql, use --single-transaction. (A bare "not run" in rows
+-- 15–17 means the report was run without the refusal test.)
+-- When the whole file is pasted and run in one go, that one unit includes the
+-- migration above: an assertion that fails in the refusal test stops the run
+-- and undoes the migration itself as well, so nothing is left half-applied.
 --
 -- (1) Refusal test. Acts as an ordinary signed-in account and attempts three
 --     writes the limits above do not allow: its own role, its own level and
@@ -68,8 +107,9 @@ grant select, insert, update, delete
 --     so the row rules have a row to act on. It reads no name, email or phone,
 --     and it never prints the account it used.
 -- (2) Report. One row per check, the expected value beside the actual one.
---     Expected: 12 rows, `ok` true in every row. The SQL editor does not show
---     NOTICE lines; rows 10–12 carry the refusal test's result instead.
+--     Expected: 17 rows, `ok` true in every row. Row 14 is a count and nothing
+--     else. The SQL editor does not show NOTICE lines; rows 15–17 carry the
+--     refusal test's result instead.
 
 do $$
 declare
@@ -79,8 +119,9 @@ declare
   v_level   text := 'not run';
   v_booking text := 'not run';
 begin
-  -- One existing account without the admin role (an admin writes through
-  -- is_admin(), by design). Chosen by sign-up order; its id is never printed.
+  -- One existing account without the admin role: the test is about what an
+  -- ordinary account may write. Chosen by sign-up order; its id is never
+  -- printed.
   select p.id
     into v_account
     from public.profiles p
@@ -89,7 +130,11 @@ begin
    limit 1;
 
   if v_account is null then
-    raise notice 'refusal test not run: no account without the admin role on file';
+    -- The prerequisite is not met: say what is needed, in the report too.
+    v_role    := 'not run: needs an account that is not an admin';
+    v_level   := v_role;
+    v_booking := v_role;
+    raise notice 'refusal test not run: needs an account that is not an admin';
   else
     begin
       -- Placeholder rows owned by the account, so a refused update is a
@@ -237,6 +282,55 @@ from (
     ),
     (
       4,
+      'participants: insert, update or delete for a signed-in account or a visitor',
+      'none',
+      (select coalesce(string_agg(r.rol::text || ' ' || p.priv, ', ' order by r.rol::text, p.priv), 'none')
+         from (values ('anon'::name), ('authenticated'::name)) as r (rol)
+        cross join (values ('INSERT'::text), ('UPDATE'::text), ('DELETE'::text)) as p (priv)
+        where case when p.priv = 'DELETE'
+                   then has_table_privilege(r.rol, 'public.participants'::regclass, p.priv)
+                   else has_any_column_privilege(r.rol, 'public.participants'::regclass, p.priv)
+              end)
+    ),
+    (
+      5,
+      'assessment_bookings: insert, update or delete for a signed-in account or a visitor',
+      'none',
+      (select coalesce(string_agg(r.rol::text || ' ' || p.priv, ', ' order by r.rol::text, p.priv), 'none')
+         from (values ('anon'::name), ('authenticated'::name)) as r (rol)
+        cross join (values ('INSERT'::text), ('UPDATE'::text), ('DELETE'::text)) as p (priv)
+        where case when p.priv = 'DELETE'
+                   then has_table_privilege(r.rol, 'public.assessment_bookings'::regclass, p.priv)
+                   else has_any_column_privilege(r.rol, 'public.assessment_bookings'::regclass, p.priv)
+              end)
+    ),
+    (
+      6,
+      'three tables: truncate, references or trigger for a signed-in account or a visitor',
+      'none',
+      (select coalesce(string_agg(r.rol::text || ' ' || p.priv || ' on ' || t.tbl::text, ', ' order by t.tbl::text, r.rol::text, p.priv), 'none')
+         from (values ('anon'::name), ('authenticated'::name)) as r (rol)
+        cross join (values ('public.profiles'::regclass),
+                           ('public.participants'::regclass),
+                           ('public.assessment_bookings'::regclass)) as t (tbl)
+        cross join (values ('TRUNCATE'::text), ('REFERENCES'::text), ('TRIGGER'::text)) as p (priv)
+        where case when p.priv = 'REFERENCES'
+                   then has_any_column_privilege(r.rol, t.tbl, p.priv)
+                   else has_table_privilege(r.rol, t.tbl, p.priv)
+              end)
+    ),
+    (
+      7,
+      'signed-in account: select on the three tables',
+      '3 of 3',
+      (select count(*)::text || ' of 3'
+         from (values ('public.profiles'::regclass),
+                      ('public.participants'::regclass),
+                      ('public.assessment_bookings'::regclass)) as t (tbl)
+        where has_table_privilege('authenticated'::name, t.tbl, 'SELECT'::text))
+    ),
+    (
+      8,
       'server: insert, update and delete on the three tables',
       '9 of 9',
       (select count(*)::text || ' of 9'
@@ -247,7 +341,7 @@ from (
         where has_table_privilege('service_role'::name, t.tbl, p.priv))
     ),
     (
-      5,
+      9,
       'server: not subject to the row rules',
       'true',
       coalesce(
@@ -255,7 +349,7 @@ from (
         'role not found')
     ),
     (
-      6,
+      10,
       'row rules switched on for the three tables',
       '3 of 3',
       (select count(*)::text || ' of 3'
@@ -266,7 +360,7 @@ from (
           and k.relrowsecurity)
     ),
     (
-      7,
+      11,
       'profiles: policies',
       'profiles_select_own (SELECT), profiles_update_own (UPDATE)',
       (select coalesce(string_agg(pol.policyname::text || ' (' || pol.cmd || ')', ', ' order by pol.policyname), 'none')
@@ -274,7 +368,7 @@ from (
         where pol.schemaname = 'public' and pol.tablename = 'profiles')
     ),
     (
-      8,
+      12,
       'participants: policies',
       'participants_admin_all (ALL), participants_select_own (SELECT)',
       (select coalesce(string_agg(pol.policyname::text || ' (' || pol.cmd || ')', ', ' order by pol.policyname), 'none')
@@ -282,7 +376,7 @@ from (
         where pol.schemaname = 'public' and pol.tablename = 'participants')
     ),
     (
-      9,
+      13,
       'assessment_bookings: policies',
       'assessment_bookings_admin_all (ALL), assessment_bookings_select_own (SELECT)',
       (select coalesce(string_agg(pol.policyname::text || ' (' || pol.cmd || ')', ', ' order by pol.policyname), 'none')
@@ -290,19 +384,25 @@ from (
         where pol.schemaname = 'public' and pol.tablename = 'assessment_bookings')
     ),
     (
-      10,
+      14,
+      'accounts with the admin role',
+      '1',
+      (select count(*)::text from public.profiles p where p.role = 'admin')
+    ),
+    (
+      15,
       'refusal test: own role',
       'refused',
       coalesce(nullif(split_part(coalesce(current_setting('tb0010.refusal_test', true), ''), '|', 1), ''), 'not run')
     ),
     (
-      11,
+      16,
       'refusal test: own level and own player''s level',
       'refused',
       coalesce(nullif(split_part(coalesce(current_setting('tb0010.refusal_test', true), ''), '|', 2), ''), 'not run')
     ),
     (
-      12,
+      17,
       'refusal test: own booking''s status, paid flag and credit',
       'refused',
       coalesce(nullif(split_part(coalesce(current_setting('tb0010.refusal_test', true), ''), '|', 3), ''), 'not run')

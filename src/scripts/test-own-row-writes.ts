@@ -4,17 +4,21 @@
 // `profiles`, `participants` and `assessment_bookings` through the database's
 // public interface, and that the code in src/ stays inside those limits.
 //
-//   1. The migration. Its statements are read from the file: one profiles
-//      column (full_name) is updatable by a signed-in account, nothing is
-//      writable by a visitor who is not signed in, the two other tables take
-//      no own-row write, and the server keeps full access. The verify block
-//      carries the privilege and policy report and the refusal test, always
-//      rolled back, printing nothing about a person.
+//   1. The migration. Its statements are read from the file, in two layers.
+//      Privileges: one profiles column (full_name) is updatable by a signed-in
+//      account, no other insert, update or delete on the three tables is left
+//      to a signed-in account or a visitor, nor truncate, references or
+//      trigger, and select is not touched. Row rules: the two other tables
+//      take no own-row write policy. The server keeps full access. The verify
+//      block carries the privilege and policy report, a count of admin
+//      accounts and the refusal test, always rolled back, printing nothing
+//      about a person.
 //   2. The code. Every write to the three tables in src/ is listed with the
 //      client that makes it. A write made with the browser client or the
 //      signed-in user's server client must be an update of the columns the
 //      migration grants, written inline; everything else goes through the
-//      service-role client, in a server-only module or a route handler.
+//      service-role client, in a server-only module or a route handler. A
+//      database function is called (`.rpc(`) on the service-role client only.
 //
 // Pure: it reads files and nothing else. No network, no database, no env.
 // Exits non-zero on any failure.
@@ -90,6 +94,10 @@ const statements = body
 
 const REVOKE_PROFILES =
   "revoke insert, update, delete on table public.profiles from public, anon, authenticated";
+const REVOKE_OTHER_TABLES =
+  "revoke insert, update, delete on table public.participants, public.assessment_bookings from public, anon, authenticated";
+const REVOKE_REST =
+  "revoke truncate, references, trigger on table public.profiles, public.participants, public.assessment_bookings from anon, authenticated";
 const GRANT_SERVER =
   "grant select, insert, update, delete on table public.profiles, public.participants, public.assessment_bookings to service_role";
 const DROPPED_POLICIES: [policy: string, table: string][] = [
@@ -152,6 +160,8 @@ console.log("Migration 0010: profiles");
 
 console.log("Migration 0010: participants and assessment_bookings");
 {
+  check("insert, update and delete are withdrawn from public, anon and authenticated", statements.includes(REVOKE_OTHER_TABLES));
+  check("nothing on either table is granted to anyone but the server", statements.some((s) => /^grant\b.*\b(participants|assessment_bookings)\b/.test(s) && !s.endsWith(" to service_role")), false);
   for (const [policy, table] of DROPPED_POLICIES) {
     check(`${policy} is removed, if it exists`, statements.includes(`drop policy if exists "${policy}" on public.${table}`));
   }
@@ -161,20 +171,37 @@ console.log("Migration 0010: participants and assessment_bookings");
   check("row security is never switched off", /disable row level security|no force row level security/.test(body), false);
 }
 
+console.log("Migration 0010: the three tables, beyond insert, update and delete");
+{
+  const revokes = statements.filter((s) => s.startsWith("revoke "));
+  check("truncate, references and trigger are withdrawn from anon and authenticated", statements.includes(REVOKE_REST));
+  check("there are three revokes, and no others", revokes, [REVOKE_PROFILES, REVOKE_OTHER_TABLES, REVOKE_REST]);
+  check("select is never withdrawn", revokes.some((s) => /\b(select|all)\b/.test(s.slice(0, s.indexOf(" on table ")))), false);
+  check("nothing is withdrawn from the server", revokes.some((s) => s.includes("service_role")), false);
+  check("every revoke names its tables in full", revokes.every((s) => / on table (public\.(profiles|participants|assessment_bookings)(, )?)+ from /.test(s)));
+}
+
 console.log("Migration 0010: the server, and the shape of the file");
 {
   check("the service role keeps select, insert, update and delete on the three tables", statements.includes(GRANT_SERVER));
   check(
-    "the file is these statements and no others",
+    "the file is these statements and no others, in this order",
     statements,
     [
+      // Layer 1: privileges.
       REVOKE_PROFILES,
       "grant update (full_name) on table public.profiles to authenticated",
+      REVOKE_OTHER_TABLES,
+      REVOKE_REST,
+      // Layer 2: row rules.
       ...DROPPED_POLICIES.map(([policy, table]) => `drop policy if exists "${policy}" on public.${table}`),
+      // The server.
       GRANT_SERVER,
     ],
   );
-  check("no table, column or row is touched", /\b(create table|alter table|insert into|update |delete from|truncate)\b/.test(body), false);
+  const header = sqlRaw.slice(0, verifyAt);
+  check("the header describes the two layers", /^-- Two layers\b/m.test(header) && /^--   1\. Privileges\./m.test(header) && /^--   2\. Row rules\./m.test(header));
+  check("no table, column or row is touched: every statement is a revoke, a grant or a policy drop", statements.every((s) => /^(revoke|grant|drop policy if exists) /.test(s)));
   check("no explicit transaction control (the file runs as one unit)", statements.some((s) => /^(begin|commit|rollback)\b/.test(s)), false);
 }
 
@@ -195,8 +222,23 @@ console.log("Migration 0010: the verify block");
   const UNDO = "raise exception using errcode = 'tb010'";
   const UNDO_HANDLER = "exception when sqlstate 'tb010' then null; end;";
 
+  const NEEDS_ACCOUNT = "not run: needs an account that is not an admin";
+
   check("the refusal test is a do block", verify.includes("do $$"));
   check("it picks an account without the admin role", verify.includes("where p.role is distinct from 'admin'"));
+  check(
+    "without one, the three results say what is needed, word for word",
+    verify.includes(`if v_account is null then v_role := '${NEEDS_ACCOUNT}'; v_level := v_role; v_booking := v_role; raise notice 'refusal test ${NEEDS_ACCOUNT}'; else begin`),
+  );
+  check("…and that is never an expected value, so `ok` stays false", verify.includes(`'${NEEDS_ACCOUNT}',`), false);
+  check("the three results reach the report as they are", verify.includes("perform set_config( 'tb0010.refusal_test', v_role || '|' || v_level || '|' || v_booking, true );"));
+  const verifyComment = sqlRaw
+    .slice(verifyAt, sqlRaw.indexOf("do $$", verifyAt))
+    .replace(/\r?\n-- ?/g, " ")
+    .replace(/\s+/g, " ");
+  check("the comment states the account the test needs", verifyComment.includes("at least one ordinary account (one that is not an admin) must exist") && verifyComment.includes("Any test sign-up will do."));
+  check("…and what the report shows without one", verifyComment.includes(`"${NEEDS_ACCOUNT}"`));
+  check("the comment says a failed assertion undoes the migration too, when run in one go", verifyComment.includes("an assertion that fails in the refusal test stops the run and undoes the migration itself as well, so nothing is left half-applied"));
   check("it acts through the signed-in role", verify.includes("set local role authenticated"));
   check("…as that account", verify.includes("set_config('request.jwt.claim.sub', v_account::text, true)") && verify.includes("json_build_object('sub', v_account, 'role', 'authenticated')"));
   check("it confirms the account can read its own rows first", (verify.match(/test setup failed, the account cannot read its own (profile|player|booking)/g) ?? []).length, 3);
@@ -232,21 +274,63 @@ console.log("Migration 0010: the verify block");
   check("no personal column is read", /\b(email|phone|full_name|name|notes?|availability)\b/.test(reads.replace(/::name\b/g, "")), false);
   check("auth.users is never read", verify.includes("auth.users"), false);
 
-  // The report: expected beside actual, as the last statement.
-  for (const expected of [
-    "'full_name'::text",
-    "'profiles_select_own (select), profiles_update_own (update)'",
-    "'participants_admin_all (all), participants_select_own (select)'",
-    "'assessment_bookings_admin_all (all), assessment_bookings_select_own (select)'",
-    "'9 of 9'",
-    "'3 of 3'",
-  ]) {
-    check(`the report expects ${expected}`, verify.includes(expected));
-  }
-  check("the report lists the three refusals", (verify.match(/'refusal test: (?:[^']|'')*', 'refused'/g) ?? []).length, 3);
+  // The report: expected beside actual, as the last statement. Every row, in
+  // the order the owner sees them.
+  const REPORT: [name: string, expected: string][] = [
+    ["profiles: columns a signed-in account may update", "full_name"],
+    ["profiles: insert or delete for a signed-in account", "none"],
+    ["profiles: insert, update or delete for a visitor who is not signed in", "none"],
+    ["participants: insert, update or delete for a signed-in account or a visitor", "none"],
+    ["assessment_bookings: insert, update or delete for a signed-in account or a visitor", "none"],
+    ["three tables: truncate, references or trigger for a signed-in account or a visitor", "none"],
+    ["signed-in account: select on the three tables", "3 of 3"],
+    ["server: insert, update and delete on the three tables", "9 of 9"],
+    ["server: not subject to the row rules", "true"],
+    ["row rules switched on for the three tables", "3 of 3"],
+    ["profiles: policies", "profiles_select_own (SELECT), profiles_update_own (UPDATE)"],
+    ["participants: policies", "participants_admin_all (ALL), participants_select_own (SELECT)"],
+    ["assessment_bookings: policies", "assessment_bookings_admin_all (ALL), assessment_bookings_select_own (SELECT)"],
+    ["accounts with the admin role", "1"],
+    ["refusal test: own role", "refused"],
+    ["refusal test: own level and own player's level", "refused"],
+    ["refusal test: own booking's status, paid flag and credit", "refused"],
+  ];
+  const literal = (text: string) => `'${text.toLowerCase().replace(/'/g, "''")}'`;
+  const rowAt = REPORT.map(([name, expected], i) => {
+    const cast = i === 0 ? "::text" : ""; // the first row types the columns
+    return verify.indexOf(`( ${i + 1}, ${literal(name)}${cast}, ${literal(expected)}${cast}, `);
+  });
+  REPORT.forEach(([name, expected], i) => check(`row ${i + 1}: ${name} → ${expected}`, rowAt[i] > 0));
+  check("the rows are in that order", rowAt.every((at, i) => i === 0 || at > rowAt[i - 1]));
+  check(
+    `…and there are ${REPORT.length} of them, numbered in order`,
+    [...verify.matchAll(/\( (\d+), '/g)].map((m) => Number(m[1])),
+    REPORT.map((_, i) => i + 1),
+  );
+
+  const row = (n: number) => verify.slice(rowAt[n - 1], n < REPORT.length ? rowAt[n] : verify.length);
   check("the report reads the privileges and the policies", verify.includes("has_column_privilege('authenticated'::name") && verify.includes("has_any_column_privilege('anon'::name") && verify.includes("from pg_policies pol"));
+  for (const [n, table] of [[4, "participants"], [5, "assessment_bookings"]] as const) {
+    check(
+      `row ${n} reads insert, update and delete on ${table}, for a signed-in account and a visitor`,
+      row(n).includes("from (values ('anon'::name), ('authenticated'::name)) as r (rol) cross join (values ('insert'::text), ('update'::text), ('delete'::text)) as p (priv)") &&
+        row(n).includes(`then has_table_privilege(r.rol, 'public.${table}'::regclass, p.priv) else has_any_column_privilege(r.rol, 'public.${table}'::regclass, p.priv) end`),
+    );
+  }
+  check(
+    "row 6 reads truncate, references and trigger on the three tables, for both",
+    row(6).includes("from (values ('anon'::name), ('authenticated'::name)) as r (rol) cross join (values ('public.profiles'::regclass), ('public.participants'::regclass), ('public.assessment_bookings'::regclass)) as t (tbl) cross join (values ('truncate'::text), ('references'::text), ('trigger'::text)) as p (priv)") &&
+      row(6).includes("then has_any_column_privilege(r.rol, t.tbl, p.priv) else has_table_privilege(r.rol, t.tbl, p.priv) end"),
+  );
+  check("row 7 reads select for a signed-in account: reading is kept", row(7).includes("where has_table_privilege('authenticated'::name, t.tbl, 'select'::text)"));
+  check("row 14 is a count of admin accounts and nothing else", row(14).endsWith("(select count(*)::text from public.profiles p where p.role = 'admin') ), "));
+  check(
+    "the three refusal rows read the refusal test's results",
+    [15, 16, 17].map((n) => row(n).includes(`split_part(coalesce(current_setting('tb0010.refusal_test', true), ''), '|', ${n - 14})`)),
+    [true, true, true],
+  );
+  check("`ok` is true only when actual equals expected", verify.includes("coalesce(c.actual = c.expected, false) as ok"));
   check("the report is the last statement", verify.endsWith("as c (ord, check_name, expected, actual) order by c.ord;"));
-  check("…with twelve rows", (verify.match(/\( \d+, '/g) ?? []).length, 12);
 }
 
 console.log("Later migrations");
@@ -411,6 +495,21 @@ function refusal(chain: Chain, allowed: Record<string, string[]>): string | null
 
 const ALLOWED: Record<string, string[]> = { profiles: grantedColumns };
 
+/**
+ * Every `.rpc(` call in a file, with the client it is made on. The limits are
+ * pinned for table writes; a database function is called on the service-role
+ * client only, so those stay the whole picture.
+ */
+function rpcCalls(source: string): { line: number; client: ClientKind }[] {
+  const calls: { line: number; client: ClientKind }[] = [];
+  for (const m of source.matchAll(/\??\.\s*rpc\s*\(/g)) {
+    const at = m.index ?? 0;
+    const receiver = source.slice(0, at).match(/([A-Za-z_$][\w$]*)\s*$/)?.[1] ?? null;
+    calls.push({ line: source.slice(0, at).split("\n").length, client: clientOf(source, at, receiver) });
+  }
+  return calls;
+}
+
 console.log("The scanner, on samples");
 {
   const browser = `import { createClient } from "${BROWSER_MODULE}";\nconst supabase = createClient();\n`;
@@ -441,6 +540,17 @@ console.log("The scanner, on samples");
   check("the service client may write any column", verdict(`${service}await supabase.from("participants").update(patch).eq("id", id);\nawait supabase.from("assessment_bookings").insert(row);\nawait supabase.from(PLAYER_TABLE).upsert({ id, ...patch });`), [null, null, null]);
   check("another table is not this test's business", verdict(`${browser}await supabase.from("enrollments").update({ status: value });`), [null]);
   check("Array.from and friends are not database calls", verdict(`${browser}const a = Array.from(new Set(ids));\nconst b = Array.from({ length: 3 }, (_, i) => i);\nconst c = Buffer.from(svg).toString("base64");`), [null]);
+
+  const rpcOn = (source: string) => rpcCalls(source).map((c) => c.client);
+  check("rpc: a call on the service client is on the service client", rpcOn(`${service}await supabase.rpc("refresh_totals", { id });`), ["service"]);
+  check("rpc: a call on the browser client is not", rpcOn(`${browser}await supabase.rpc("refresh_totals", { id });`), ["browser"]);
+  check("rpc: a call on the user-session client is not", rpcOn(`${session}const { data } = await supabase\n  .rpc("refresh_totals");`), ["session"]);
+  check("rpc: an optional call reads the same", rpcOn(`${session}await supabase?.rpc("refresh_totals");`), ["session"]);
+  check("rpc: a client passed in by the caller is not known", rpcOn(`${service}async function run(client: SupabaseClient) {\n  await client.rpc("refresh_totals");\n}`), ["unknown"]);
+  check("rpc: a client built in place is not known", rpcOn(`${service}await createServiceClient().rpc("refresh_totals");`), ["unknown"]);
+  check("rpc: a call after another step in the chain is not known", rpcOn(`${service}await supabase.schema("public").rpc("refresh_totals");`), ["unknown"]);
+  check("rpc: every call in a file is counted", rpcOn(`${service}await supabase.rpc("a");\nawait supabase.rpc("b");`), ["service", "service"]);
+  check("rpc: a file with none has none", rpcOn(`${browser}await supabase.from("profiles").select("role");`), []);
 }
 
 function sourceFiles(dir: string): string[] {
@@ -462,9 +572,13 @@ console.log("src/: every write to the three tables");
   const outside: string[] = [];
   const writes: { file: string; chain: Chain }[] = [];
   const rawRest: string[] = [];
+  const rpcOffService: string[] = [];
   for (const file of files) {
     const source = read(file);
     if (source.includes("/rest/v1")) rawRest.push(file);
+    for (const call of rpcCalls(source)) {
+      if (call.client !== "service") rpcOffService.push(`${file}:${call.line} rpc (${call.client})`);
+    }
     for (const chain of chainsIn(source)) {
       const why = refusal(chain, ALLOWED);
       if (why) outside.push(`${file}:${chain.line} ${chain.table}.${chain.method || "from"} (${chain.client}): ${why}`);
@@ -480,6 +594,7 @@ console.log("src/: every write to the three tables");
   check("writes were found (the scanner sees the code)", writes.length > 0);
   check("no browser or user-session write is outside the allowed columns", outside, []);
   check("no file talks to the database's REST endpoint directly", rawRest, []);
+  check("no database function is called on anything but the service-role client", rpcOffService, []);
 
   const offService = writes
     .filter((w) => w.chain.client !== "service")
