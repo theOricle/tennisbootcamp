@@ -1,3 +1,4 @@
+-- Note: re-running this file re-creates own-row write policies that migration 0010 removed; run 0010 again afterwards.
 -- Tennis Bootcamp — Phase 1 assessment foundation (migration 0002)
 -- Run this in the Supabase SQL editor (Dashboard → SQL Editor → New query).
 -- Applied manually, same as 0001_init.sql — there is no runner.

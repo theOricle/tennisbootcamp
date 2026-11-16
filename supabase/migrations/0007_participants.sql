@@ -1,3 +1,4 @@
+-- Note: re-running this file re-creates own-row write policies that migration 0010 removed; run 0010 again afterwards.
 -- Tennis Bootcamp — household accounts: one holder, many participants (migration 0007)
 -- Backlog #11: one account holder (a parent, a spouse) registers several
 -- people, and every flow knows who it is for.
