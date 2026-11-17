@@ -68,11 +68,17 @@ export type ProgramCatalogProps = {
   levels?: ReactNode;
 };
 
+// A dropdown shows its chosen value whole. On phones Age and Level share a
+// row, so the padding and the chevron's room are tighter there, and the
+// value is 14px below 375 wide and 16px from 375 (the width iPhones start
+// at, where anything smaller makes Safari zoom the page on a tap). A value
+// that still cannot fit (the location on the narrowest phones) ends in an
+// ellipsis, never a sliced letter.
 const SELECT_CLASS =
-  "min-h-[44px] w-full appearance-none rounded-full border border-white/35 bg-[#061427] py-2 pl-4 pr-10 text-base text-white " +
-  `hover:border-white/50 md:text-[15px] ${FOCUS_RING}`;
+  "min-h-[44px] w-full appearance-none truncate rounded-full border border-white/35 bg-[#061427] py-2 pl-3 pr-7 text-sm text-white " +
+  `hover:border-white/50 min-[375px]:text-base md:pl-4 md:pr-10 md:text-[15px] ${FOCUS_RING}`;
 const CHEVRON =
-  "pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60";
+  "pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60 md:right-4";
 const FIELD_LABEL = "mb-1.5 block text-[13px] text-white/70";
 const SECTION_TITLE = "text-[22px] font-semibold leading-tight tracking-tight text-white";
 const GROUP_GRID = "mt-3.5 grid gap-3 md:grid-cols-3 md:gap-4";
@@ -87,8 +93,10 @@ function Chevron() {
 
 /**
  * Three labelled dropdowns: the location on a row of its own on phones, all
- * three in one row from md. While there is one location it is the only
- * option, already chosen; a second one adds "All locations".
+ * three in one row from md. On phones the Level column is the wider of the
+ * two under it (11 to 14), so the longest level and the longest age band
+ * both show whole. While there is one location it is the only option,
+ * already chosen; a second one adds "All locations".
  */
 function Filters({
   query,
@@ -101,7 +109,7 @@ function Filters({
   const ageId = useId();
   const levelId = useId();
   return (
-    <fieldset className="mt-[22px] grid max-w-[860px] grid-cols-2 gap-3 md:grid-cols-[1.75fr_0.9fr_1fr] md:gap-4 lg:grid-cols-[1.5fr_1fr_1fr]">
+    <fieldset className="mt-[22px] grid max-w-[860px] grid-cols-[minmax(0,11fr)_minmax(0,14fr)] gap-3 md:grid-cols-[1.75fr_0.9fr_1fr] md:gap-4 lg:grid-cols-[1.5fr_1fr_1fr]">
       <legend className="sr-only">Filter the groups</legend>
       <div className="col-span-2 min-w-0 md:col-span-1">
         <label htmlFor={locationId} className={FIELD_LABEL}>
@@ -184,7 +192,8 @@ function ProgramHeading({ program, groups }: { program: CatalogProgram; groups: 
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
       <h2 id={`catalog-${program.slug}`} className={SECTION_TITLE}>
-        <Link href={`/programs/${program.slug}`} className={`rounded underline-offset-4 hover:underline ${FOCUS_RING}`}>
+        {/* A 44px target: the padding is on an inline box, so the row keeps its height. */}
+        <Link href={`/programs/${program.slug}`} className={`rounded py-2.5 underline-offset-4 hover:underline ${FOCUS_RING}`}>
           {program.title}
         </Link>
       </h2>

@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { FOOTER_GROUPS, NEWSLETTER_ANCHOR, site } from "@/content/site";
 import { Container } from "@/components/layout/Container";
-import { EmailCapture } from "@/components/sections/EmailCapture";
+import { FooterNewsletter } from "@/components/layout/FooterNewsletter";
 
 const FOCUS =
   "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 " +
@@ -16,7 +16,8 @@ const COLUMN_HEADING = "text-xs font-semibold uppercase tracking-[0.12em] text-w
 /**
  * Site footer (audit M11, L6; owner-approved design, 2026-11-17). On top,
  * the one newsletter line every page shares, with an id a "Notify me" button
- * can point at. Then the columns: the logo and tagline, the site links
+ * can point at; it records the page it sits on as the signup's source
+ * (FooterNewsletter). Then the columns: the logo and tagline, the site links
  * (Locations and Assessment live here now), the policies, and a mailto
  * contact, inside one footer <nav>. Then the copyright and the credit line.
  *
@@ -33,12 +34,13 @@ export function Footer() {
           id={NEWSLETTER_ANCHOR}
           className="scroll-mt-24 border-b border-white/10 py-6 md:py-7 [body:has([data-page-newsletter])_&]:hidden"
         >
-          <EmailCapture variant="line" source="footer_email_capture" />
+          <FooterNewsletter />
         </div>
 
         <div className="grid gap-6 py-7 md:grid-cols-[1.3fr_2fr_1.2fr] md:gap-8 md:py-10">
           <div>
-            <Link href="/" className={`inline-flex rounded-lg ${FOCUS}`}>
+            {/* A 44px target around the 36px logo; the negative margin keeps the column where it was. */}
+            <Link href="/" className={`-my-1 inline-flex min-h-[44px] items-center rounded-lg ${FOCUS}`}>
               <Image
                 src="/images/brand/logo.svg"
                 alt="Tennis Bootcamp home"

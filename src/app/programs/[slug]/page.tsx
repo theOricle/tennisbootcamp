@@ -403,7 +403,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   </p>
                 )}
                 <Link href="/assessment#ladder" className={`mt-2 ${TEXT_LINK_LIME}`}>
-                  How tiers work →
+                  How levels work →
                 </Link>
               </div>
               <div className="mt-6 min-w-0 md:mt-0">
@@ -526,11 +526,13 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   <h2 id="cohorts" className="scroll-mt-24 text-xl font-semibold text-white">
                     Upcoming cohorts
                   </h2>
-                  {/* The groups above are real; the dated cohorts are not public
-                      yet (fall 2026 runs with the coach's private students). Status
-                      wording follows owner default D11, "Groups forming". */}
+                  {/* The groups above are real and open to join; the dated
+                      cohorts are not public yet (fall 2026 runs with the
+                      coach's private students). The line says only that:
+                      "Groups are forming." left it, because the closing one
+                      block below reads "Groups are open to join." */}
                   <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
-                    Groups are forming. Cohort dates aren&apos;t public yet.{" "}
+                    Cohort dates aren&apos;t public yet.{" "}
                     <ViewerSwap
                       guest={
                         <>

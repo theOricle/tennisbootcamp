@@ -121,7 +121,7 @@ Standard:
   rounded-2xl border border-white/10 bg-white/[0.03] p-6
   hover (when the whole card is a link): border-white/25
 
-Primary (wizard chrome) — the only rounded-3xl surface:
+Primary (wizard chrome) — rounded-3xl, a radius it shares only with the home page's two class blocks from lg:
   rounded-3xl border border-white/10 bg-white/5 p-6 md:p-8
 
 Lime-tinted highlight:

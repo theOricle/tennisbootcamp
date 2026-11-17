@@ -364,7 +364,10 @@ check("detail: the photo hero with its alt, 16:10, priority", /<Image[\s\S]*?src
 check("detail: the ages chip and one level tag per group level under the description (L8; owner 2026-10-13)", detail.includes("{agesChipLabel(groups)}") && detail.includes("<LevelTag key={id} level={id} />") && !detail.includes("<TierRangeBadges levelMin={range.min}"));
 check("detail: the groups as cards, with their next cohort and seats", detail.includes("<ProgramGroupCard") && detail.includes('source="program-group"') && detail.includes("nextCohortForGroup(publicCohorts, g)") && detail.includes("seatsLeft={groupSeats[g.id]}"));
 check("detail: Levels in this program lights the groups' tags on the ladder", detail.includes("Levels in this program") && /<TierLine variant="ladder" orientation="vertical"[^>]*tiers=\{tags\}/.test(detail) && detail.includes("programLevelTags(groups)"));
-check("detail: How tiers work link", detail.includes('href="/assessment#ladder"'));
+// One name for one link (fix round, 2026-11-17): the home page and /programs read "How levels work →" to the same ladder.
+check("detail: the ladder link reads How levels work, like the strip's", /<Link href="\/assessment#ladder" className=\{`mt-2 \$\{TEXT_LINK_LIME\}`\}>\s*How levels work →\s*<\/Link>/.test(detail) && !detail.includes("How tiers work"));
+// The closing one block below reads "Groups are open to join.", so the empty state no longer opens on "Groups are forming."
+check("detail: with no public cohort, the line says the dates are not public yet, and no longer that groups are forming", detail.includes("Cohort dates aren&apos;t public yet.{\" \"}") && !/>\s*Groups are forming\./.test(detail) && !detail.includes("Groups are forming. Cohort dates"));
 check("detail: cohort cards carry the mark and the rail", detail.includes("<PlateMark plate={program.plate}") && detail.includes("artFocusForCohort(program, cohort)") && /tierGated &&[\s\S]*<TierLine[\s\S]*variant="rail"/.test(detail));
 check("detail: the start date helper is shared", detail.includes("formatStartDate(") && !detail.includes("fmtStartDate"));
 const panelOpen = at(detail, "<ProgramViewerPanel");

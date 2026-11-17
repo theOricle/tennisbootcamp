@@ -28,6 +28,9 @@ export const metadata: Metadata = {
 // The two parts of every class, named once in src/content/bootcamp.ts.
 const [tennis, fitness] = CLASS_PARTS;
 
+/** One sentence of the title: it never breaks inside itself where the page is wide enough to hold it. */
+const TITLE_SENTENCE = "min-[360px]:whitespace-nowrap";
+
 export default function AboutPage() {
   // The founder section is the coach card: the one place the name and title
   // show (owner, 2026-10-12). Both come from src/content/coaches.ts.
@@ -37,8 +40,14 @@ export default function AboutPage() {
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div className="tb-gradient">
         <Container className="py-16">
-          <Heading as="h1" className="max-w-3xl">
-            Serious training. Measurable progress. No filler.
+          {/* The lines are balanced, and from 360 wide each sentence stays
+              whole (below that "Measurable progress." is wider than the
+              page), so the title never ends on a word alone and never
+              breaks inside a sentence. */}
+          <Heading as="h1" className="max-w-3xl text-balance">
+            <span className={TITLE_SENTENCE}>Serious training.</span>{" "}
+            <span className={TITLE_SENTENCE}>Measurable progress.</span>{" "}
+            <span className={TITLE_SENTENCE}>No filler.</span>
           </Heading>
           {/* What we run, then the cohort with its plain definition (voice.md,
               jargon budget: the About hero is where "cohort" is defined). */}
@@ -126,7 +135,7 @@ export default function AboutPage() {
               {
                 heading: "Serious at every level",
                 body:
-                  `The training methods come from competitive player development, applied at every rung of the ladder — ${TIER_LADDER_SPAN}. Our coaches place every player by level and schedule, and every group trains with structure and intent. The High Performance Youth Bootcamp is the competitive track; every other group builds your game seriously from wherever you start.`,
+                  `The training methods come from competitive player development, applied at every rung of the ladder — ${TIER_LADDER_SPAN}. Every group trains at one level, and your coach confirms yours on court in week one. The High Performance Youth Bootcamp is the competitive track; every other group builds your game seriously from wherever you start.`,
               },
             ].map(({ heading, body }) => (
               <div
@@ -148,7 +157,7 @@ export default function AboutPage() {
             <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
               <p className="text-sm font-semibold text-white">The {TIER_COUNT_WORD} tiers, {TIER_LADDER_SPAN}</p>
               <Link href="/assessment#ladder" className={TEXT_LINK_LIME}>
-                How tiers work →
+                How levels work →
               </Link>
             </div>
             <TierLine

@@ -254,6 +254,19 @@ check(
   `h2 ${count(all, "<h2")} · h3 ${count(all, "<h3")} · h4 ${count(all, "<h4")}`
 );
 check("three labelled dropdowns in the band, and no Clear button beside them", count(all, "<select") === 3 && all.includes(">Location</label>") && all.includes(">Player’s age</label>".replace("’", "&#x27;")) && all.includes(">Level</label>") && !all.includes(">Clear filters</button>"));
+// Fix round, 2026-11-17: on phones the dropdowns cut their value ("High
+// Performan"). Tighter padding and chevron room below md, the Level column
+// the wider of the two under the location, 16px from 375 wide and 14px
+// below, and an ellipsis as the safety net. What it looks like at 320 to
+// 1440 is checked in a browser; this pins the classes that do it.
+const selectTags = all.match(/<select [^>]*>/g) ?? [];
+const selectClasses = selectTags.map((tag) => (tag.match(/class="([^"]*)"/)?.[1] ?? "").split(" "));
+check("each dropdown is 44px tall and full width", selectClasses.length === 3 && selectClasses.every((c) => c.includes("min-h-[44px]") && c.includes("w-full")));
+check("a value that cannot fit ends in an ellipsis, never a sliced letter", selectClasses.every((c) => c.includes("truncate")));
+check("on phones the padding and the chevron's room are tighter; from md they are as designed", selectClasses.every((c) => c.includes("pl-3") && c.includes("pr-7") && c.includes("md:pl-4") && c.includes("md:pr-10")) && count(all, 'class="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60 md:right-4"') === 3);
+check("the value is 16px from 375 wide (no zoom on an iPhone), 14px below, 15px from md", selectClasses.every((c) => c.includes("text-sm") && c.includes("min-[375px]:text-base") && c.includes("md:text-[15px]") && !c.includes("text-base")));
+check("on phones the location takes a row and Level is the wider of the two under it; one row of three from md, in the same order", all.includes('<fieldset class="mt-[22px] grid max-w-[860px] grid-cols-[minmax(0,11fr)_minmax(0,14fr)] gap-3 md:grid-cols-[1.75fr_0.9fr_1fr] md:gap-4 lg:grid-cols-[1.5fr_1fr_1fr]">') && all.includes('<div class="col-span-2 min-w-0 md:col-span-1"><label') && at(all, ">Location</label>") < at(all, ">Player&#x27;s age</label>") && at(all, ">Player&#x27;s age</label>") < at(all, ">Level</label>"));
+check("a program's title link is a 44px target by inline padding, so its row keeps its height", listedPrograms.every((p) => new RegExp(`<a class="rounded py-2\\.5 underline-offset-4 hover:underline [^"]*" href="/programs/${p.slug}">`).test(all)));
 check("the results line stays a live region, for screen readers only", /<p role="status" aria-live="polite" class="sr-only">7 groups<\/p>/.test(all));
 check("the age select keeps the bands and the exact ages", all.includes('<optgroup label="Age group">') && all.includes('<optgroup label="Exact age">') && all.includes('<option value="14">14</option>') && all.includes('<option value="adult">Adult (18+)</option>'));
 check("the level select offers the five tier names by slug, no number bands", TIERS.every((t) => all.includes(`<option value="${t.slug}">${t.name}</option>`)) && TIERS.every((t) => !all.includes(`${t.name} · ${t.band}`)) && count(all, "<option value=") === 1 + 1 + 3 + EXACT_AGES.length + 1 + TIERS.length);

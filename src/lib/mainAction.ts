@@ -32,32 +32,52 @@ export const QUIZ_TAKEN_LEAD = "Your quiz answers are in.";
 export const MAIN_CTA_ATTR = "data-main-cta";
 
 /**
- * Routes where the bar never shows: the programs page and the program pages
- * (the bar would point at the page the visitor is on, and every group there
- * has its own button), the quiz itself, sign-in and password flows, the
- * assessment booking flow, and the signed-in areas (the header shows
- * Dashboard there).
+ * The areas that are not public: the dashboard, the profile, enrolling and
+ * the admin. A visitor there is past choosing a group (on the enroll page
+ * the page's own lime button is the next step, and "Join a group" beside it
+ * would lead away from paying), so the main button shows nowhere on them:
+ * not in the header, not in the phone menu, not in the bar. A display rule
+ * on the path only; who may open these pages is decided elsewhere.
+ */
+export const PRIVATE_AREA_PREFIXES = ["/dashboard", "/profile", "/enroll", "/admin"] as const;
+
+/**
+ * Routes where the header and the phone menu carry no main button: the quiz
+ * (its own Next button is the only primary, audit L12) and the areas that
+ * are not public.
+ */
+export const HEADER_JOIN_HIDDEN_PREFIXES = ["/intake", ...PRIVATE_AREA_PREFIXES] as const;
+
+/**
+ * Routes where the bar never shows: everywhere the header's button is
+ * hidden, and also the programs page and the program pages (the bar would
+ * point at the page the visitor is on, and every group there has its own
+ * button), sign-in and password flows, and the assessment booking flow.
  */
 export const JOIN_BAR_HIDDEN_PREFIXES = [
   "/programs",
-  "/intake",
   "/login",
   "/auth",
   "/set-password",
   "/assessment/book",
   "/assessment/booked",
-  "/dashboard",
-  "/profile",
-  "/enroll",
-  "/admin",
+  ...HEADER_JOIN_HIDDEN_PREFIXES,
 ] as const;
+
+/** True when the path is one of the prefixes or sits below one. Matches whole path segments. */
+function onAnyPrefix(pathname: string, prefixes: readonly string[]): boolean {
+  const path = pathname.split(/[?#]/)[0] || "/";
+  return prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
+/** True on routes where the header and the phone menu show the main button. */
+export function headerJoinAllowedOn(pathname: string): boolean {
+  return !onAnyPrefix(pathname, HEADER_JOIN_HIDDEN_PREFIXES);
+}
 
 /** True on routes where the bar may show. Matches whole path segments. */
 export function joinBarAllowedOn(pathname: string): boolean {
-  const path = pathname.split(/[?#]/)[0] || "/";
-  return !JOIN_BAR_HIDDEN_PREFIXES.some(
-    (prefix) => path === prefix || path.startsWith(`${prefix}/`)
-  );
+  return !onAnyPrefix(pathname, JOIN_BAR_HIDDEN_PREFIXES);
 }
 
 /** Scroll distance before the bar may appear, so it never covers a first paint. */

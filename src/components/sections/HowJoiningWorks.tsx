@@ -37,7 +37,9 @@ export const JOINING_STEPS: readonly Step[] = [
   },
   {
     title: "Pay online",
-    body: `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. Card or e-transfer.`,
+    // E-transfer only: card payment is not live. The design's "Card or
+    // e-transfer." returns when it is, with join-and-pay.
+    body: `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. By e-transfer.`,
     icon: <PayCardIcon className={STEP_GLYPH} />,
   },
   {

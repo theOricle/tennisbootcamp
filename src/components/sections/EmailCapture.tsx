@@ -12,8 +12,9 @@ import { FOCUS_RING } from "@/components/ui/focus";
 type EmailCaptureProps = {
   /**
    * Where the signup happened, written to the newsletter sheet's source
-   * column and the analytics event (audit M12), e.g. "footer_email_capture"
-   * or "program_youth-programs_email_capture".
+   * column and the analytics event (audit M12), e.g. "homepage_email_capture"
+   * or "program_youth-programs_email_capture". The footer's line names the
+   * page it sits on (src/lib/newsletterSource.ts).
    */
   source: string;
   /**

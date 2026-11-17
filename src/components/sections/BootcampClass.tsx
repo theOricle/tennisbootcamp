@@ -45,7 +45,10 @@ const RUN_GLYPHS: Record<(typeof CLASS_RUNS)[number]["icon"], ReactNode> = {
   players: <PlayersIcon className={RUN_GLYPH} />,
 };
 
-const BLOCK = "rounded-[20px] border px-[18px] py-[22px] md:px-6 md:py-7 lg:rounded-3xl lg:px-10 lg:pb-10 lg:pt-9";
+// Below 360 wide the four tile labels need more room than a block has
+// ("Technique" and "Footwork" touched at 320), so there the side padding is
+// 12px and the labels are 12px; from 360 both are as designed.
+const BLOCK = "rounded-[20px] border px-3 py-[22px] min-[360px]:px-[18px] md:px-6 md:py-7 lg:rounded-3xl lg:px-10 lg:pb-10 lg:pt-9";
 /** Tennis: the lime block, navy words and navy tiles. */
 const BLOCK_LIME = `${BLOCK} border-[#B4E655] bg-[#B4E655] text-[#061427]`;
 /** Fitness: the court navy (the Court Plates' court), a hairline border, lime tiles. */
@@ -82,7 +85,7 @@ export function BootcampClass() {
                   {part.trains.map((tile) => (
                     <li
                       key={tile.label}
-                      className="flex min-w-0 flex-col items-center gap-2 text-center text-[13px] font-semibold lg:gap-3 lg:text-base"
+                      className="flex min-w-0 flex-col items-center gap-2 text-center text-[12px] font-semibold min-[360px]:text-[13px] lg:gap-3 lg:text-base"
                     >
                       <span
                         aria-hidden="true"

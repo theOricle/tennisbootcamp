@@ -17,17 +17,26 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   GROUPS_ANCHOR,
+  HEADER_JOIN_HIDDEN_PREFIXES,
   JOIN_BAR_HIDDEN_PREFIXES,
   JOIN_BAR_MIN_SCROLL,
   JOIN_CTA_HREF,
   JOIN_CTA_LABEL,
   MAIN_CTA_ATTR,
+  PRIVATE_AREA_PREFIXES,
   QUIZ_CTA_LABEL,
   QUIZ_SIDE_LEAD,
   QUIZ_TAKEN_LEAD,
+  headerJoinAllowedOn,
   joinBarAllowedOn,
   joinBarVisible,
 } from "../lib/mainAction";
+import {
+  FOOTER_NEWSLETTER_SOURCE,
+  HOME_NEWSLETTER_SOURCE,
+  PROGRAMS_NEWSLETTER_SOURCE,
+  footerNewsletterSource,
+} from "../lib/newsletterSource";
 import { FOOTER_GROUPS, NAV_LINKS, NEWSLETTER_ANCHOR, site } from "../content/site";
 import { CONTAINER_CLASS, SECTION_RHYTHM_CLASS } from "../components/layout/Container";
 import { CARD_CLASS } from "../components/ui/Card";
@@ -63,6 +72,11 @@ check("then the side line: the lead, and the quiz link with its locked label", m
 check("the side line keeps the quiz-taken behaviour: QuizSwap, the answers-are-in line, the quiz-aware link", mainAction.includes("<QuizSwap") && mainAction.includes("{QUIZ_TAKEN_LEAD} {link}") && !mainAction.includes("quizAware={false}"));
 check("the main button never wraps", mainAction.includes('className="whitespace-nowrap" data-main-cta'));
 check("the quiz is never a lime button in the main action", (mainAction.match(/variant="primary"/g) ?? []).length === 1);
+// Fix round, 2026-11-17: the side line broke inside its link on phones ("quiz" alone on a line), and the link was an 18px target.
+check("the lime link in a sentence never breaks inside itself, so a break falls between the question and the link", mainAction.includes('const LIME_LINK_TEXT = "whitespace-nowrap rounded font-semibold text-[#B4E655]') && mainAction.includes("export const INLINE_LIME_LINK = `${LIME_LINK_TEXT} ${FOCUS_RING}`;"));
+const sideLineLink = mainAction.slice(at(mainAction, "const SIDE_LINE_LINK ="), at(mainAction, "export function QuizSideLine"));
+check("the side line's link is a 44px target by inline padding, which cannot move the line", sideLineLink.includes("`${LIME_LINK_TEXT} relative py-[13px] focus:outline-none `") && mainAction.includes('<TrackedLink href={quizHref} track="quiz" source={source} className={SIDE_LINE_LINK}>') && !/inline-flex|inline-block|min-h-|\bblock\b/.test(sideLineLink));
+check("its focus ring is the one ring, drawn inside the padding so it hugs the words", ["after:absolute", "after:inset-x-0", "after:inset-y-[13px]", "after:content-['']", "after:pointer-events-none", "focus-visible:after:ring-2", "focus-visible:after:ring-[#B4E655]/50", "focus-visible:after:ring-offset-2", "focus-visible:after:ring-offset-[#061427]"].every((c) => sideLineLink.includes(c)));
 
 // ── Phone bar rules (M13) ───────────────────────────────────────────────────
 console.log("Phone bar (M13): it follows the main button");
@@ -81,6 +95,25 @@ check("query strings do not defeat the route rule", !joinBarAllowedOn("/intake?p
 for (const required of ["/programs", "/intake", "/login", "/auth", "/assessment/book"]) {
   check(`route ${required} is in the hidden list`, (JOIN_BAR_HIDDEN_PREFIXES as readonly string[]).includes(required));
 }
+// The header's main button (fix round, 2026-11-17): hidden inside the quiz
+// and on the pages that are not public, from the one list the bar reads too.
+// A rule on the path only: nothing here knows who is signed in.
+console.log("The header's main button: one path rule, shared with the bar");
+for (const path of ["/enroll", "/enroll/abc", "/enroll/abc/confirmed", "/dashboard", "/profile", "/admin", "/admin/cohorts/123", "/intake", "/intake/", "/intake?program=bootcamps"]) {
+  check(`header button hidden on ${path}`, !headerJoinAllowedOn(path));
+}
+for (const path of ["/", "/programs", "/programs/youth-programs", "/programs?age=14&level=intermediate", "/about", "/locations", "/assessment", "/assessment/book", "/login", "/legal/privacy", "/enrollment", "/dashboards", "/administration", "/intake-guide"]) {
+  check(`header button shown on ${path}`, headerJoinAllowedOn(path));
+}
+check("the pages that are not public: the dashboard, the profile, enrolling and the admin", [...PRIVATE_AREA_PREFIXES].sort().join("|") === "/admin|/dashboard|/enroll|/profile");
+check("the header hides it on those and inside the quiz, and nowhere else", [...HEADER_JOIN_HIDDEN_PREFIXES].sort().join("|") === "/admin|/dashboard|/enroll|/intake|/profile");
+check("one list, not two: the bar hides everywhere the header's button does", HEADER_JOIN_HIDDEN_PREFIXES.every((prefix) => (JOIN_BAR_HIDDEN_PREFIXES as readonly string[]).includes(prefix)) && new Set(JOIN_BAR_HIDDEN_PREFIXES).size === JOIN_BAR_HIDDEN_PREFIXES.length);
+{
+  const rule = read("src/lib/mainAction.ts");
+  check("…because the bar's list is built from the header's, and the header's from the private areas", rule.includes('export const HEADER_JOIN_HIDDEN_PREFIXES = ["/intake", ...PRIVATE_AREA_PREFIXES] as const;') && /export const JOIN_BAR_HIDDEN_PREFIXES = \[[^\]]*\.\.\.HEADER_JOIN_HIDDEN_PREFIXES,\s*\] as const;/.test(rule));
+  check("the rule reads the path and nothing else: no sign-in, session or role", !/signedIn|isAdmin|useAuthState|supabase|cookie/i.test(rule.slice(rule.indexOf("export const PRIVATE_AREA_PREFIXES"), rule.indexOf("/** Scroll distance"))));
+}
+
 const base = { allowed: true, signedIn: false, scrollY: JOIN_BAR_MIN_SCROLL + 400, ctaInView: false };
 check("shows once the page's main button has scrolled out", joinBarVisible(base));
 check("hidden while an in-page main button is on screen", !joinBarVisible({ ...base, ctaInView: true }));
@@ -186,7 +219,7 @@ check("newsletter button is the outline secondary", capture.includes('buttonClas
 check("newsletter takes a source prop and sends it", /source\s*:\s*string/.test(capture) && capture.includes("JSON.stringify({ email, source,"));
 check("newsletter field id is per form", capture.includes("useId()") && !capture.includes('id="email-capture"'));
 check("newsletter button never wraps", capture.includes("shrink-0 whitespace-nowrap"));
-check("every EmailCapture call names its source", ["src/components/layout/Footer.tsx", "src/app/programs/[slug]/page.tsx", "src/app/events/page.tsx", "src/app/video-lessons/page.tsx"].every((f) => read(f).includes("<EmailCapture") && !read(f).includes("<EmailCapture />") && /<EmailCapture[^>]*source=/.test(read(f))));
+check("every EmailCapture call names its source", ["src/components/layout/FooterNewsletter.tsx", "src/app/programs/[slug]/page.tsx", "src/app/events/page.tsx", "src/app/video-lessons/page.tsx"].every((f) => read(f).includes("<EmailCapture") && !read(f).includes("<EmailCapture />") && /<EmailCapture[^>]*source=/.test(read(f))));
 check("detail: Book Your Assessment is an outline pill", /<(?:Tracked)?Button\s+variant="secondary"\s+href="\/assessment\/book"[^>]*>\s*Book Your Assessment\s*<\/(?:Tracked)?Button>/.test(detail));
 check("detail: no 'Or Book Your Assessment' grey link", !detail.includes("Or Book Your Assessment"));
 // QA 2026-10-10: /assessment hand-rolled two lime pills, the quiz CTA's style.
@@ -229,9 +262,12 @@ check("page scroll locks while the drawer is open", navbar.includes('html.style.
 check("the lock is on the root only, never on body", !navbar.includes("document.body.style.overflow"));
 check("header is solid navy from the top, no blur", navbar.includes("bg-[#061427]") && !navbar.includes("backdrop-blur"));
 check("current page is marked", navbar.includes("aria-current={current}"));
-check("header and phone menu carry the main button, for everyone, never a quiz button", (navbar.match(/\{JOIN_CTA_LABEL\}/g) ?? []).length === 2 && !navbar.includes("QUIZ_CTA_LABEL") && !navbar.includes('track="quiz"'));
+check("header and phone menu carry the main button, signed in or not, never a quiz button", (navbar.match(/\{JOIN_CTA_LABEL\}/g) ?? []).length === 2 && !navbar.includes("QUIZ_CTA_LABEL") && !navbar.includes('track="quiz"'));
 check("on /programs the main button scrolls to the group list instead of reloading the page", navbar.includes("const joinHref = pathname === JOIN_CTA_HREF ? `#${GROUPS_ANCHOR}` : JOIN_CTA_HREF;") && (navbar.match(/href=\{joinHref\}/g) ?? []).length === 2);
-check("inside the quiz the header carries no main button", (navbar.match(/\{!inQuiz && \(/g) ?? []).length === 2);
+// Fix round, 2026-11-17: on /enroll the header's lime button sat beside the page's own and led away from paying.
+check("inside the quiz and on the pages that are not public, neither carries it: both read the one path rule", navbar.includes("const showJoin = headerJoinAllowedOn(pathname);") && (navbar.match(/\{showJoin && \(/g) ?? []).length === 2 && (navbar.match(/showJoin/g) ?? []).length === 3 && !navbar.includes("inQuiz"));
+check("the header keeps no route list of its own", !/startsWith\("\//.test(navbar) && !/pathname === "\/(intake|enroll|dashboard|profile|admin)/.test(navbar));
+check("the header logo is a 44px target", navbar.includes('<Link href="/" className={`flex min-h-[44px] shrink-0 items-center rounded-lg ${FOCUS}`}>'));
 check("Sign in, or Dashboard and Sign out when signed in, as before", navbar.includes('href="/login"') && navbar.includes('href="/dashboard"') && (navbar.match(/Sign out\s*<\/button>/g) ?? []).length === 2);
 check("the menu button gives way where the text links show: md signed out, lg signed in", navbar.includes('const SHOW_WIDE = signedIn ? "lg:flex" : "md:flex";') && navbar.includes('const HIDE_WIDE = signedIn ? "lg:hidden" : "md:hidden";'));
 
@@ -243,7 +279,25 @@ for (const href of ["/programs", "/locations", "/about", "/assessment", "/legal/
 check("footer Site column: Programs, Locations, About, Assessment", FOOTER_GROUPS[0].heading === "Site" && FOOTER_GROUPS[0].links.map((l) => l.label).join("|") === "Programs|Locations|About|Assessment");
 check("footer columns: Site, then Policies, then Contact", FOOTER_GROUPS.map((g) => g.heading).join("|") === "Site|Policies" && at(footer, "FOOTER_GROUPS.map") < at(footer, "Contact"));
 // The one newsletter line, on every page, with an id a "Notify me" button points at.
-check("footer opens with the newsletter line: its own source, an id to link to", NEWSLETTER_ANCHOR === "notify" && footer.includes("id={NEWSLETTER_ANCHOR}") && footer.includes('<EmailCapture variant="line" source="footer_email_capture" />') && at(footer, "<EmailCapture") < at(footer, "FOOTER_GROUPS.map"));
+const footerLine = read("src/components/layout/FooterNewsletter.tsx");
+check("footer opens with the newsletter line, with an id to link to", NEWSLETTER_ANCHOR === "notify" && footer.includes("id={NEWSLETTER_ANCHOR}") && footer.includes("<FooterNewsletter />") && !footer.includes("<EmailCapture") && at(footer, "<FooterNewsletter />") < at(footer, "FOOTER_GROUPS.map"));
+// Fix round, 2026-11-17: the line recorded one source for every page. The
+// live site tells home signups from Programs signups in the sheet's source
+// column, so the line records the page it sits on, in the same values.
+check("the line records the page it sits on: it reads the path and passes the source on", footerLine.includes('"use client"') && footerLine.includes("const pathname = usePathname()") && footerLine.includes('<EmailCapture variant="line" source={footerNewsletterSource(pathname)} />'));
+check("the three values: the home page, the programs page, and the footer's own", HOME_NEWSLETTER_SOURCE === "homepage_email_capture" && PROGRAMS_NEWSLETTER_SOURCE === "programs_email_capture" && FOOTER_NEWSLETTER_SOURCE === "footer_email_capture");
+for (const path of ["/", "/?utm_source=ad", "/#notify"]) {
+  check(`a signup on ${path} is recorded as the home page's`, footerNewsletterSource(path) === "homepage_email_capture", footerNewsletterSource(path));
+}
+for (const path of ["/programs", "/programs/", "/programs?age=14&level=intermediate", "/programs#groups"]) {
+  check(`a signup on ${path} is recorded as the programs page's`, footerNewsletterSource(path) === "programs_email_capture", footerNewsletterSource(path));
+}
+for (const path of ["/programs/youth-programs", "/programs/bootcamps", "/about", "/locations", "/assessment", "/legal/privacy", "/programs-guide", "/home", "/this-page-does-not-exist"]) {
+  check(`a signup on ${path} is recorded as the footer's`, footerNewsletterSource(path) === "footer_email_capture", footerNewsletterSource(path));
+}
+check("the analytics event follows the same value: the form sends and tracks the one source", capture.includes("JSON.stringify({ email, source,") && capture.includes('trackEvent("newsletter_signup", { source })'));
+check("the newsletter route still takes the source as short text, and was not changed for this", read("src/app/api/newsletter/route.ts").includes("source: cleanText(parsed?.source, TEXT_LIMITS.short),"));
+check("the footer logo is a 44px target, and the column stays where it was", footer.includes('<Link href="/" className={`-my-1 inline-flex min-h-[44px] items-center rounded-lg ${FOCUS}`}>'));
 check("never two newsletter forms on a page: a page's own form is marked, and the footer line hides for it", footer.includes("[body:has([data-page-newsletter])_&]:hidden") && /<section aria-labelledby=\{titleId\} data-page-newsletter>/.test(capture) && (capture.match(/data-page-newsletter>/g) ?? []).length === 1);
 check("the line says what the band says, and keeps the form's behaviour and bot check", capture.includes("Be first to know when a new cohort opens.") && (capture.match(/\{bot\.field\}/g) ?? []).length === 1 && (capture.match(/fetch\("\/api\/newsletter"/g) ?? []).length === 1);
 check("footer links sit in a labelled nav", footer.includes('<nav aria-label="Footer"'));

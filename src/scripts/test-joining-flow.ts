@@ -141,7 +141,8 @@ check(
     JOINING_STEPS.map((step) => step.title).join("|") === "Pick a group|Pay online|Start on court"
 );
 check("step 1: by age and level", steps.includes(">By age and level.</p>"));
-check("step 2: the price, read from the constants, then how it is paid", JOINING_STEPS[1].body === `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. Card or e-transfer.` && steps.includes(`>${JOINING_STEPS[1].body}</p>`));
+// Card payment is not live, so the step says e-transfer only; the design's "Card or e-transfer." returns with join-and-pay.
+check("step 2: the price, read from the constants, then how it is paid today: by e-transfer, and no card", JOINING_STEPS[1].body === `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. By e-transfer.` && steps.includes(`>${JOINING_STEPS[1].body}</p>`) && !/card/i.test(steps.replace(/<[^>]+>/g, " ")));
 check("step 3: the coach confirms the level in week one, then the promise, the one constant", JOINING_STEPS[2].body === `Your coach confirms your level in week one. ${RIGHT_GROUP_PROMISE}` && steps.includes(`Your coach confirms your level in week one. ${RIGHT_GROUP_PROMISE}`));
 check("no link and no button in the steps: the main action sits in the hero and the closing", count(steps, "<a ") === 0 && count(steps, "<button") === 0);
 const joining = read("src/components/sections/HowJoiningWorks.tsx");
@@ -322,6 +323,24 @@ check("About: on the one Container and the one heading scale", !aboutSrc.include
 check(
   "About: the founder paragraphs and the tier ladder are as they were",
   aboutSrc.includes("built Tennis Bootcamp on a single conviction") && aboutSrc.includes("His coaching is built around four pillars: technique, strategy,") && aboutSrc.includes('variant="ladder"')
+);
+// Fix round, 2026-11-17: beside "Pick your group and join", the card no longer says our coaches place every player.
+check(
+  "About: the Serious at every level card says each group trains at one level, confirmed on court in week one, and no longer that every player is placed",
+  aboutPage.includes("Every group trains at one level, and your coach confirms yours on court in week one. The High Performance Youth Bootcamp is the competitive track;") &&
+    !aboutPage.includes("place every player") &&
+    !aboutPage.includes("structure and intent")
+);
+check(
+  "About: the title is balanced and keeps each sentence whole from 360 wide, in the same words",
+  aboutSrc.includes('<Heading as="h1" className="max-w-3xl text-balance">') &&
+    aboutSrc.includes('const TITLE_SENTENCE = "min-[360px]:whitespace-nowrap";') &&
+    /<h1 class="[^"]*text-balance"><span class="min-\[360px\]:whitespace-nowrap">Serious training\.<\/span> <span class="min-\[360px\]:whitespace-nowrap">Measurable progress\.<\/span> <span class="min-\[360px\]:whitespace-nowrap">No filler\.<\/span><\/h1>/.test(aboutPage.replace(/<!-- -->/g, ""))
+);
+check("About: the ladder's link reads How levels work, the label the home page and Programs use", aboutSrc.includes("How levels work →") && !aboutSrc.includes("How tiers work") && />How levels work →<\/a>/.test(aboutPage));
+check(
+  "About: the side line's quiz link never breaks inside itself and is a 44px target",
+  /<a [^>]*class="whitespace-nowrap [^"]*py-\[13px\][^"]*"[^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a>|<a [^>]*href="\/intake"[^>]*class="whitespace-nowrap [^"]*py-\[13px\][^"]*"[^>]*>Take the 2-minute quiz<\/a>/.test(aboutPage)
 );
 check("About: nothing said the old way, on the page or in its description", !OLD_WAY.test(aboutPage.replace(/<[^>]+>/g, " ")), aboutPage.replace(/<[^>]+>/g, " ").match(OLD_WAY)?.[0]);
 

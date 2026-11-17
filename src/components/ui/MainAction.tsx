@@ -15,8 +15,28 @@ import {
 // One component, so the hero, the closing, the 404 and the pages that end on
 // it always say the same two things in the same order.
 
+/**
+ * How a lime link inside a sentence reads. It never breaks inside itself, so
+ * a line break falls between the sentence and the link, never after
+ * "2-minute".
+ */
+const LIME_LINK_TEXT = "whitespace-nowrap rounded font-semibold text-[#B4E655] underline-offset-[3px] hover:underline";
+
 /** The lime link inside a sentence. */
-export const INLINE_LIME_LINK = `rounded font-semibold text-[#B4E655] underline-offset-[3px] hover:underline ${FOCUS_RING}`;
+export const INLINE_LIME_LINK = `${LIME_LINK_TEXT} ${FOCUS_RING}`;
+
+/**
+ * The side line's link is the line's one action, so it is a 44px target
+ * (WCAG 2.5.8). The padding is on an inline box: it grows the area that
+ * takes a tap, and leaves the line, and everything around it, where it was.
+ * The focus ring is the same ring, drawn on a pseudo-element inset by that
+ * padding, so it still hugs the words instead of crossing the line above.
+ */
+const SIDE_LINE_LINK =
+  `${LIME_LINK_TEXT} relative py-[13px] focus:outline-none ` +
+  "after:pointer-events-none after:absolute after:inset-x-0 after:inset-y-[13px] after:rounded after:content-[''] " +
+  "focus-visible:after:ring-2 focus-visible:after:ring-[#B4E655]/50 " +
+  "focus-visible:after:ring-offset-2 focus-visible:after:ring-offset-[#061427]";
 
 /**
  * The quiz as a side line. A visitor who has taken the quiz is not asked
@@ -37,7 +57,7 @@ export function QuizSideLine({
   className?: string;
 }) {
   const link = (
-    <TrackedLink href={quizHref} track="quiz" source={source} className={INLINE_LIME_LINK}>
+    <TrackedLink href={quizHref} track="quiz" source={source} className={SIDE_LINE_LINK}>
       {QUIZ_CTA_LABEL}
     </TrackedLink>
   );

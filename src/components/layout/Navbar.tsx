@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Container } from "@/components/layout/Container";
 import { FOCUS_RING as FOCUS } from "@/components/ui/focus";
 import { NAV_LINKS, type NavLink } from "@/content/site";
-import { GROUPS_ANCHOR, JOIN_CTA_HREF, JOIN_CTA_LABEL } from "@/lib/mainAction";
+import { GROUPS_ANCHOR, JOIN_CTA_HREF, JOIN_CTA_LABEL, headerJoinAllowedOn } from "@/lib/mainAction";
 import { signOut, useAuthState } from "@/lib/useAuthState";
 
 /** "page" on the link's own page, "true" inside its section (a program page under Programs). */
@@ -51,11 +51,14 @@ export function Navbar() {
 
   // The top menu (owner, 2026-11-16): Programs and About, plus Admin for an admin.
   const links: NavLink[] = isAdmin ? [...NAV_LINKS, { href: "/admin", label: "Admin" }] : [...NAV_LINKS];
-  // Inside the quiz the header carries no main button (audit L12): the
-  // page's own Next button is the only primary.
-  const inQuiz = pathname === "/intake" || pathname.startsWith("/intake/");
-  // The main button, for everyone: to the groups. On /programs it scrolls to
-  // the group list instead of reloading the page.
+  // The header carries no main button inside the quiz (audit L12: the page's
+  // own Next button is the only primary) or on the pages that are not public
+  // (the dashboard, the profile, enrolling, the admin), where it would sit
+  // beside the page's own next step. One rule, shared with the phone bar:
+  // src/lib/mainAction.ts. It reads the path and nothing else.
+  const showJoin = headerJoinAllowedOn(pathname);
+  // The main button, for everyone on a public page: to the groups. On
+  // /programs it scrolls to the group list instead of reloading the page.
   const joinHref = pathname === JOIN_CTA_HREF ? `#${GROUPS_ANCHOR}` : JOIN_CTA_HREF;
   // Two links, "Sign in" and the button fit from md. A signed-in visitor has
   // more in the header (Sign out, Dashboard, Admin for an admin), so their
@@ -135,7 +138,7 @@ export function Navbar() {
       }`}
     >
       <Container className="flex items-center justify-between gap-4 py-2.5 md:py-3.5">
-        <Link href="/" className={`flex shrink-0 items-center rounded-lg ${FOCUS}`}>
+        <Link href="/" className={`flex min-h-[44px] shrink-0 items-center rounded-lg ${FOCUS}`}>
           <Image
             src="/images/brand/logo.svg"
             alt="Tennis Bootcamp"
@@ -184,13 +187,14 @@ export function Navbar() {
 
           {/* The actions: tablet and desktop. Phones get the menu and the
               bar at the bottom. A signed-in visitor keeps Dashboard, and
-              everyone gets the main button, except inside the quiz. */}
+              everyone gets the main button on a public page, outside the
+              quiz. */}
           {signedIn && (
             <Button variant="secondary" size="compact" href="/dashboard" className="hidden md:inline-flex">
               Dashboard
             </Button>
           )}
-          {!inQuiz && (
+          {showJoin && (
             <Button
               variant="primary"
               size="compact"
@@ -285,8 +289,8 @@ export function Navbar() {
                   Sign in
                 </Link>
               )}
-              {/* The main button closes the list, for everyone. */}
-              {!inQuiz && (
+              {/* The main button closes the list, under the same rule as the header's. */}
+              {showJoin && (
                 <Button variant="primary" href={joinHref} onClick={() => setMenuOpen(false)} className="w-full">
                   {JOIN_CTA_LABEL}
                 </Button>
