@@ -21,8 +21,8 @@ export default function EventsPage() {
         <div className="mx-auto max-w-6xl px-6 py-14">
           <h1 className="text-3xl font-semibold text-white">Events</h1>
           <p className="mt-3 max-w-2xl text-white/70">
-            No events are scheduled right now. Training runs as weekend
-            classes; join the email list below and you&apos;ll hear when an
+            No events are scheduled right now. Training runs as group
+            bootcamps; join the email list below and you&apos;ll hear when an
             event is added.
           </p>
         </div>

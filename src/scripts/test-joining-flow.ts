@@ -13,7 +13,8 @@
 // page (pick a group, pay online, start on court), "Good to know" under the
 // groups on /programs and the program pages, and nothing on a group card
 // but its own action; and the bootcamp words: every class is tennis and
-// fitness, named Tennis and Fitness, with the words that never appear.
+// fitness, named Tennis and Fitness, with the words that never appear. Pass 2
+// adds the same words on the two bootcamp programs' entries and on About.
 // Exits non-zero on any failure. Never spells the cohort length or total.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -30,11 +31,16 @@ import {
   PLACEMENT_LINE,
   RIGHT_GROUP_PROMISE,
   RIGHT_GROUP_PROMISE_SHORT,
+  CLASS_LINE,
+  SESSION_MINUTES,
   SESSION_PRICE_LABEL,
   listedPrograms,
+  numberInWords,
   programGroups,
+  programs,
 } from "../content/programs";
-import { CLASS_HEADING, CLASS_PARTS, CLASS_RUNS } from "../content/bootcamp";
+import { CLASS_HEADING, CLASS_IDEA, CLASS_PARTS, CLASS_RUNS, trainsInWords } from "../content/bootcamp";
+import AboutPage from "../app/about/page";
 import { COOLING_OFF_DAYS } from "../content/policies";
 import { groupStatus } from "../lib/programCatalog";
 import { nextStepFor } from "../lib/dashboardState";
@@ -194,6 +200,130 @@ check("real lists: four things under each part, three lines under both", count(c
 check("every word is text", [...CLASS_PARTS.flatMap((part) => part.trains.map((t) => t.label)), "Built for tennis", ...CLASS_RUNS.map((run) => run.text)].every((word) => classSection.includes(`${word}</`)));
 check("the rotate glyph between the blocks, and every icon, is decoration", count(classSection, "<svg") === 12 && count(classSection, '<svg aria-hidden="true" focusable="false"') === 12 && classSection.includes('<div aria-hidden="true" class="grid h-[52px] place-items-center'));
 check("the icons are drawn here: inline SVG in the text colour, no icon font and no package", (() => { const icons = read("src/components/ui/icons.tsx"); return icons.includes('stroke="currentColor"') && icons.includes('aria-hidden="true"') && icons.includes('focusable="false"') && !/^import .* from "(?!react")/m.test(icons); })());
+
+// ── The bootcamp words on the other pages (backlog #69, pass 2) ─────────────
+// The program entries cannot import src/content/bootcamp.ts (it reads the
+// group size from src/content/programs.ts), so their lines are typed there
+// and pinned here to the class words, word for word.
+console.log("The bootcamp words on the program entries and About");
+const [tennis, fitness] = CLASS_PARTS;
+check("the idea inside a sentence is the heading's own words", CLASS_IDEA === "tennis and fitness in every class" && `${CLASS_IDEA.charAt(0).toUpperCase()}${CLASS_IDEA.slice(1)}.` === CLASS_HEADING);
+check("what each part trains, in words", trainsInWords(tennis) === "technique, footwork, tactics and focus" && trainsInWords(fitness) === "power, speed, stamina and mobility");
+check(
+  "how a class runs, in one sentence: players rotate between tennis drills and fitness drills built for tennis, and finish with point play",
+  CLASS_LINE === "In every class, players rotate between tennis drills and fitness drills built for tennis, then finish with point play."
+);
+const TENNIS_LINE = `${tennis.name}: ${trainsInWords(tennis)}`;
+const FITNESS_LINE = `${fitness.name} ${(fitness.tag ?? "").toLowerCase()}: ${trainsInWords(fitness)}`;
+const OLD_WAY = /\bhalf\b|percent|%|circuit|strength-and-conditioning|fitness session|group class|weekend class|group lesson|per court|capped/i;
+for (const p of [youth, adults]) {
+  check(`${p.id}: the kind of class is Group bootcamp`, p.type === "Group bootcamp");
+  check(`${p.id}: the card line opens on the idea`, p.description.startsWith(`${CLASS_HEADING.slice(0, -1)}: `), p.description);
+  check(
+    `${p.id}: the long description opens on how a class runs, then the cohort, and still ends on the week-one line`,
+    p.longDescription.startsWith(`${CLASS_LINE} Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one ${SESSION_MINUTES}-minute class every `) && p.longDescription.endsWith(PLACEMENT_LINE),
+    p.longDescription
+  );
+  check(`${p.id}: the search line says group bootcamps, tennis and fitness in every class`, (p.metaDescription ?? "").includes(CLASS_IDEA) && /group bootcamps/.test(p.metaDescription ?? ""), p.metaDescription);
+  const list = p.includes ?? [];
+  check(
+    `${p.id}: what's included is the class, the group size, the two parts and how it ends, then one line of its own`,
+    list.length === 6 &&
+      list[0] === `One ${SESSION_MINUTES}-minute class a week for ${COHORT_LENGTH}` &&
+      list[1] === CLASS_RUNS[2].text &&
+      list[2] === TENNIS_LINE &&
+      list[3] === FITNESS_LINE &&
+      list[4] === "Point play to finish every class",
+    list.join(" | ")
+  );
+  const words = [p.description, p.longDescription, p.metaDescription ?? "", p.levelNote ?? "", ...list].join(" ");
+  check(`${p.id}: no share of the class, no circuit, no separate fitness session, nothing said the old way`, !OLD_WAY.test(words), words.match(OLD_WAY)?.[0]);
+}
+check(
+  "Youth Bootcamps keeps its groups, ages and times, and its week-one line in the list",
+  ["the Beginner Junior Bootcamp (ages 7–10) at 12:00", "the Novice Youth Bootcamp (ages 11–15) at 1:00", "the High Performance Youth Bootcamp at 2:00 for players 12–17 who compete, or are training to"].every((fact) => youth.longDescription.includes(fact)) &&
+    youth.description.endsWith("three Saturday groups for ages 7–17.") &&
+    (youth.levelNote ?? "").startsWith("Three groups by age and level") &&
+    youth.includes?.[5] === "One level per group, confirmed on court in week one"
+);
+check(
+  "Adult Bootcamps keeps its levels, ages and times, and the coach's corrections in the list",
+  adults.longDescription.includes("Three levels run back to back: Beginner at 4:00, Intermediate at 5:00, Advanced at 6:00. Players 16 and up are welcome.") &&
+    adults.description.endsWith("three Sunday levels for adults and players 16 and up.") &&
+    (adults.levelNote ?? "").endsWith("back to back") &&
+    adults.includes?.[5] === "Corrections from the coach every session"
+);
+const programsSrc = read("src/content/programs.ts");
+check("the entries type no group size: the list reads GROUP_MAX_PLAYERS", programsSrc.includes("`Up to ${GROUP_MAX_PLAYERS} players a group`") && !/Up to \d/.test(programsSrc));
+const entry = (id: string) => programs.find((p) => p.id === id)!;
+check(
+  "Private Lessons, the unlisted High Performance entry and the retired Group Lessons entry keep their words",
+  entry("private-lessons").type === "One-to-one coaching" &&
+    entry("private-lessons").description === "One-to-one coaching for any age and level, at a time arranged with you." &&
+    !(entry("private-lessons").longDescription + entry("private-lessons").metaDescription).includes(CLASS_IDEA) &&
+    entry("high-performance").unlisted === true &&
+    entry("high-performance").description === "The competitive track, now a Saturday group inside Youth Bootcamps." &&
+    entry("high-performance").longDescription === entry("high-performance").description &&
+    entry("group-lessons").unlisted === true &&
+    entry("group-lessons").type === "Group Lessons" &&
+    entry("group-lessons").description.startsWith("Adult lessons capped at")
+);
+check(
+  "one label for every scheduled program, Group bootcamp, and the type allows no other",
+  programs.filter((p) => p.timetable?.length || p.id === "high-performance").every((p) => p.type === "Group bootcamp") &&
+    read("src/types/program.ts").includes('export type ProgramType = "Group bootcamp" | "One-to-one coaching" | "Group Lessons";')
+);
+check(
+  "the label is read from the entry wherever it shows: the program page, the quiz's match card and the enroll page",
+  detail.includes('<span className="font-semibold text-[#B4E655]">{program.type}</span>') &&
+    read("src/app/intake/page.tsx").includes("{program.type}</span>") &&
+    read("src/app/enroll/[cohortId]/EnrollWizard.tsx").includes('{program?.type ?? "Program"}')
+);
+
+const aboutSrc = read("src/app/about/page.tsx");
+const aboutPage = render(createElement(AboutPage));
+check(
+  "About: the hero says every group is a bootcamp, in the heading's words, and still defines a cohort",
+  aboutPage.includes(`Every group is a bootcamp: ${CLASS_IDEA}. You train in a cohort — a fixed group that trains together for ${COHORT_LENGTH}.`) && aboutSrc.includes("is a bootcamp: {CLASS_IDEA}.")
+);
+check(
+  "About: how a cohort works says how a class runs, in the programs' sentence, then what Tennis and Fitness train, from the class words",
+  aboutPage.replace(/<!-- -->/g, "").includes(`<p>${CLASS_LINE} Tennis trains ${trainsInWords(tennis)}. Fitness trains ${trainsInWords(fitness)}.</p>`) &&
+    aboutSrc.includes('{CLASS_LINE} {tennis.name} trains {trainsInWords(tennis)}. {fitness.name} trains{" "}')
+);
+check(
+  "About: the class item says both parts are in the one class",
+  aboutPage.includes(`>One ${SESSION_MINUTES}-minute class a week</p>`) &&
+    aboutPage.includes(">Tennis and fitness in the same class, every week.</p>") &&
+    aboutSrc.includes("detail: `${tennis.name} and ${fitness.name.toLowerCase()} in the same class, every week.`")
+);
+check(
+  "About: the group size reads GROUP_MAX_PLAYERS in words, with its one line of why",
+  aboutPage.includes(`>Up to ${numberInWords(GROUP_MAX_PLAYERS)} players a group</p>`) &&
+    aboutPage.includes(">More reps for each player, and feedback from your coach every session.</p>") &&
+    aboutSrc.includes("label: `Up to ${numberInWords(GROUP_MAX_PLAYERS)} players a group`") &&
+    count(aboutSrc, "Up to ") === 1 &&
+    !/\d+ players|per court|capped/i.test(aboutSrc)
+);
+check(
+  "About: closes on the main action, the lime Join a group and the quiz side line; no lime quiz button, no Browse Programs",
+  aboutSrc.includes('<JoinClosing source="about-closing" />') &&
+    /<a [^>]*data-main-cta="true"[^>]*href="\/programs"[^>]*>Join a group<\/a>/.test(aboutPage) &&
+    aboutPage.includes("Not sure which group? <a ") &&
+    /<a [^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a>/.test(aboutPage) &&
+    count(aboutPage, "bg-[#B4E655] text-[#061427]") === 1 &&
+    count(aboutPage, "data-main-cta") === 1 &&
+    !aboutSrc.includes('variant="primary"') &&
+    !aboutSrc.includes("TrackedButton") &&
+    !aboutPage.includes("Browse Programs") &&
+    !aboutPage.includes("Not sure where you fit?")
+);
+check("About: on the one Container and the one heading scale", !aboutSrc.includes("max-w-6xl") && count(aboutSrc, "<Heading") === 4 && !/<h[12][ >]/.test(aboutSrc) && count(aboutPage, "<h1") === 1);
+check(
+  "About: the founder paragraphs and the tier ladder are as they were",
+  aboutSrc.includes("built Tennis Bootcamp on a single conviction") && aboutSrc.includes("His coaching is built around four pillars: technique, strategy,") && aboutSrc.includes('variant="ladder"')
+);
+check("About: nothing said the old way, on the page or in its description", !OLD_WAY.test(aboutPage.replace(/<[^>]+>/g, " ")), aboutPage.replace(/<[^>]+>/g, " ").match(OLD_WAY)?.[0]);
 
 console.log("The words that never appear");
 {

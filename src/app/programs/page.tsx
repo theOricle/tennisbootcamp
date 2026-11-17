@@ -1,12 +1,6 @@
 import type { Metadata } from "next";
-import {
-  COHORT_LENGTH,
-  COHORT_LENGTH_ADJ,
-  SESSION_MINUTES,
-  SESSION_PRICE_LABEL,
-  listedPrograms,
-  programGroups,
-} from "@/content/programs";
+import { COHORT_LENGTH, SESSION_MINUTES, listedPrograms, programGroups } from "@/content/programs";
+import { PROGRAMS_DESCRIPTION } from "@/content/site";
 import type { Cohort } from "@/types/cohort";
 import { getPublicCohorts } from "@/lib/cohortsDb";
 import { readGroupSeats } from "@/lib/groupSeats";
@@ -26,8 +20,7 @@ export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Programs",
-  description:
-    `Tennis in Toronto for every age and level: Youth Bootcamps on Saturdays, Adult Bootcamps on Sundays, private lessons by arrangement. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
+  description: PROGRAMS_DESCRIPTION,
   alternates: { canonical: "/programs" },
 };
 

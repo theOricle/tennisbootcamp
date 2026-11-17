@@ -132,6 +132,30 @@ export const ASSESSMENT_CERTAINTY_LINE =
 export const PLACEMENT_LINE =
   "Pick the group that fits your age and level, and your coach confirms your level on court in week one.";
 
+// ─── What a class is (owner, 2026-11-16 and 2026-11-17) ──────────────────────
+// Every group is a group bootcamp: tennis and fitness built for tennis in
+// every class. The two bootcamp programs say it in their description, their
+// long description, their search line and their list. The words are typed
+// here, not read from src/content/bootcamp.ts, because that file reads the
+// group size from this one and the two cannot import each other;
+// test-joining-flow pins every line below to it, word for word.
+
+/** How a class runs, in one sentence: the bootcamp programs' long descriptions open with it, and About says it. */
+export const CLASS_LINE =
+  "In every class, players rotate between tennis drills and fitness drills built for tennis, then finish with point play.";
+
+/**
+ * What a class includes, on both bootcamp programs' lists: the length, the
+ * group size, the two parts and what each trains, and how it ends.
+ */
+const CLASS_INCLUDES = [
+  `One ${SESSION_MINUTES}-minute class a week for ${COHORT_LENGTH}`,
+  `Up to ${GROUP_MAX_PLAYERS} players a group`,
+  "Tennis: technique, footwork, tactics and focus",
+  "Fitness built for tennis: power, speed, stamina and mobility",
+  "Point play to finish every class",
+];
+
 // ─── Groups (owner lineup, 2026-10-13) ───────────────────────────────────────
 // One level per group and a level-led title, "{Level} {Audience} Bootcamp"
 // (owner: "Just one tag for each program, e.g. Intermediate Adult bootcamp.
@@ -318,15 +342,15 @@ export const programs: Program[] = [
     id: "youth-programs",
     slug: "youth-programs",
     title: "Youth Bootcamps",
-    description: "Saturday group classes for ages 7–17, in three groups by age and level.",
+    description: "Tennis and fitness in every class: three Saturday groups for ages 7–17.",
     metaDescription:
-      `Saturday tennis in Toronto for ages 7–17: three groups by age and level, High Performance included. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
+      `Saturday group bootcamps in Toronto for ages 7–17: tennis and fitness in every class, three groups by age and level. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
     longDescription:
+      `${CLASS_LINE} ` +
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one ${SESSION_MINUTES}-minute class every Saturday. ` +
       "Three groups run back to back: the Beginner Junior Bootcamp (ages 7–10) at 12:00, the Novice Youth Bootcamp (ages 11–15) at 1:00, and the High Performance Youth Bootcamp at 2:00 for players 12–17 who compete, or are training to. " +
-      "Every class works the fundamentals — forehand, backhand, serve, volley and movement — and puts them into rally and point play the same day. " +
       PLACEMENT_LINE,
-    type: "Weekend group class",
+    type: "Group bootcamp",
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/youth-programs",
@@ -351,14 +375,7 @@ export const programs: Program[] = [
     ageGroup: ageBandsLabel(YOUTH_BANDS),
     priceLine: PRICE_LINE,
     timetable: timetableFor("youth-programs"),
-    includes: [
-      `One ${SESSION_MINUTES}-minute class a week for ${COHORT_LENGTH}`,
-      "Three groups: Beginner (ages 7–10), Novice (ages 11–15) and High Performance (ages 12–17)",
-      "One level per group, confirmed on court in week one",
-      "Forehand, backhand, serve and volley fundamentals",
-      "Movement and agility work",
-      "Rally and point play every class",
-    ],
+    includes: [...CLASS_INCLUDES, "One level per group, confirmed on court in week one"],
   },
   {
     // id and slug stay "bootcamps" so /programs/bootcamps and existing cohort
@@ -366,15 +383,15 @@ export const programs: Program[] = [
     id: "bootcamps",
     slug: "bootcamps",
     title: "Adult Bootcamps",
-    description: "Sunday group classes for adults and players 16 and up, in three levels back to back.",
+    description: "Tennis and fitness in every class: three Sunday levels for adults and players 16 and up.",
     metaDescription:
-      `Sunday tennis for adults in Toronto, 16 and up: Beginner, Intermediate and Advanced classes back to back. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
+      `Sunday group bootcamps for adults in Toronto, 16 and up: tennis and fitness in every class, three levels back to back. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
     longDescription:
+      `${CLASS_LINE} ` +
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one ${SESSION_MINUTES}-minute class every Sunday. ` +
       "Three levels run back to back: Beginner at 4:00, Intermediate at 5:00, Advanced at 6:00. Players 16 and up are welcome. " +
-      `Each class works one part of the game — groundstrokes, serve and return, net play, rally and point play — and the ${COHORT_LENGTH} build on each other. ` +
       PLACEMENT_LINE,
-    type: "Weekend group class",
+    type: "Group bootcamp",
     comingSoon: false,
     ctaText: "View Program",
     ctaHref: "/programs/bootcamps",
@@ -399,13 +416,7 @@ export const programs: Program[] = [
     ageGroup: ageBandsLabel(ADULT_BANDS),
     priceLine: PRICE_LINE,
     timetable: timetableFor("bootcamps"),
-    includes: [
-      `One ${SESSION_MINUTES}-minute class a week for ${COHORT_LENGTH}`,
-      "Three levels: Beginner, Intermediate, Advanced",
-      "Groundstrokes, serve and return, net play",
-      "Rally and point play every class",
-      "Corrections from the coach every session",
-    ],
+    includes: [...CLASS_INCLUDES, "Corrections from the coach every session"],
   },
   {
     id: "private-lessons",
@@ -448,7 +459,7 @@ export const programs: Program[] = [
     title: "High Performance",
     description: "The competitive track, now a Saturday group inside Youth Bootcamps.",
     longDescription: "The competitive track, now a Saturday group inside Youth Bootcamps.",
-    type: "Weekend group class",
+    type: "Group bootcamp",
     unlisted: true,
     ctaText: "View Program",
     ctaHref: "/programs/youth-programs#high-performance",

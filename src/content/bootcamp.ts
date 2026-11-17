@@ -27,6 +27,13 @@ export type ClassPart = {
 /** The home section's heading. */
 export const CLASS_HEADING = "Tennis and fitness in every class.";
 
+/**
+ * The heading's words as they sit inside a sentence: "tennis and fitness in
+ * every class". Page descriptions and the quiz's reason lines read it, so the
+ * idea is typed once.
+ */
+export const CLASS_IDEA = `${CLASS_HEADING.charAt(0).toLowerCase()}${CLASS_HEADING.slice(1, -1)}`;
+
 /** The two parts of every class, in the order they are shown. */
 export const CLASS_PARTS: readonly ClassPart[] = [
   {
@@ -51,6 +58,12 @@ export const CLASS_PARTS: readonly ClassPart[] = [
     ],
   },
 ];
+
+/** "technique, footwork, tactics and focus": what a part trains, as it sits in a sentence. */
+export function trainsInWords(part: ClassPart): string {
+  const words = part.trains.map((tile) => tile.label.toLowerCase());
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
 
 /**
  * How a class runs, and how many it takes: the three lines under the blocks.

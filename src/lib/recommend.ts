@@ -1,4 +1,5 @@
 import type { Program, ProgramGroup } from "@/types/program";
+import { CLASS_IDEA } from "@/content/bootcamp";
 import {
   COHORT_LENGTH,
   groupsForProgram,
@@ -98,6 +99,11 @@ function groupLine(g: ProgramGroup): string {
   return g.day && g.start ? `${g.name} group, ${g.day} at ${twelveHourStart(g.start)}` : g.name;
 }
 
+/**
+ * The one-line reason for a match. For the two bootcamp programs it says what
+ * a class is (owner, 2026-11-16: every group is a group bootcamp, tennis and
+ * fitness in every class), in the words of src/content/bootcamp.ts.
+ */
 function buildReason(program: Program, groups: ProgramGroup[], form: IntakeFormSnapshot): string {
   const { level, goals } = form;
   const first = groups[0];
@@ -106,24 +112,24 @@ function buildReason(program: Program, groups: ProgramGroup[], form: IntakeFormS
     if (first?.id === "high-performance" && isCompetitive(form)) {
       const when = first.day && first.start ? `, every ${first.day} at ${twelveHourStart(first.start)}` : "";
       return level === "elite"
-        ? `The competitive track — pattern play, serve plus the next shot, and match play with the score on${when}.`
-        : `Built for players who compete — pattern play and match play with the score on${when}.`;
+        ? `The competitive track — ${CLASS_IDEA}, pattern play and match play with the score on${when}.`
+        : `Built for players who compete — ${CLASS_IDEA}, and match play with the score on${when}.`;
     }
     if (groups.length === 1 && first) {
-      return `${groupLine(first)}, grouped by level — fundamentals built into rally and point play every week.`;
+      return `${groupLine(first)} — ${CLASS_IDEA}, finishing with point play.`;
     }
-    return "Saturday classes grouped by age and level — fundamentals built into rally and point play every week.";
+    return `Saturday bootcamps grouped by age and level — ${CLASS_IDEA}, finishing with point play.`;
   }
 
   if (program.id === "bootcamps") {
     const day = first?.day ?? "Weekend";
     if (level === "new" && first)
-      return `${groupLine(first)} — one part of the game each week, with corrections every session.`;
+      return `${groupLine(first)} — ${CLASS_IDEA}, with corrections every session.`;
     if (level === "rally")
-      return `${day} classes grouped by level — groundstrokes, serve and return, and net play built into rally and point play.`;
+      return `${day} bootcamps grouped by level — ${CLASS_IDEA}, finishing with point play.`;
     if (goals.includes("technique"))
-      return "One part of the game each week, with corrections from the coach every session.";
-    return `${day} group classes for adults, grouped by level, ${COHORT_LENGTH} that build on each other.`;
+      return `Corrections from the coach every session, with ${CLASS_IDEA}.`;
+    return `${day} bootcamps for adults, grouped by level — ${CLASS_IDEA} for ${COHORT_LENGTH}.`;
   }
 
   if (program.id === "private-lessons") {

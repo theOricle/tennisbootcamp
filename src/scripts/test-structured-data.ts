@@ -158,6 +158,8 @@ for (const program of listedPrograms) {
   check("@type is Course", course["@type"] === "Course");
   check("name is the program title", course.name === program.title);
   check("description is present", typeof course.description === "string" && (course.description as string).length > 0);
+  // Every group is a group bootcamp (backlog #69): the Course says what a class is, in the program's own card line.
+  check("description is the program's card line, and says tennis and fitness in every class", course.description === program.description && (course.description as string).startsWith("Tennis and fitness in every class"), course.description as string);
   check("url is the program page on SITE_URL", course.url === `${SITE_URL}/programs/${program.slug}`);
   check("provider is the Organization by @id", (course.provider as JsonLdObject)?.["@id"] === ORGANIZATION_ID);
   check("provider carries its name and url inline (audit M10)", (course.provider as JsonLdObject)?.name === "Tennis Bootcamp" && typeof (course.provider as JsonLdObject)?.url === "string" && (course.provider as JsonLdObject)?.["@type"] === "Organization");

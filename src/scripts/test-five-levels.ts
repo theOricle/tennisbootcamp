@@ -43,6 +43,7 @@ import { EMBLEM_SHAPES, TIER_IDS, emblemLabel } from "../components/tiers/emblem
 import { TierLine } from "../components/tiers/TierLine";
 import { LevelTag, TierChip } from "../components/tiers";
 import { bootcampTitle, groupById, groupsForProgram, listedPrograms, programGroups } from "../content/programs";
+import { ABOUT_DESCRIPTION } from "../content/site";
 import { groupLevelRange, groupTier, programLevelTags, slotLevelRange } from "../lib/programCatalog";
 import {
   EXACT_AGES,
@@ -241,7 +242,7 @@ async function main() {
   // The short card (backlog #69, owner-approved design 2026-11-17): no
   // eyebrow and no labelled rows; the one level tag opens the card, and the
   // day is a plain line under the title.
-  check("group card: the level-led title, no eyebrow, no day there", card.includes(">Intermediate Adult Bootcamp</h3>") && !card.includes("Weekend group class") && !/<p class="[^"]*">Sundays<\/p>/.test(card));
+  check("group card: the level-led title, no eyebrow, no day there", card.includes(">Intermediate Adult Bootcamp</h3>") && listedPrograms[1].type === "Group bootcamp" && !card.includes(listedPrograms[1].type) && !/<p class="[^"]*">Sundays<\/p>/.test(card));
   check("group card: the one level tag first, then the title, who, when (the day as a plain line), where, the price", at(card, ">Intermediate</span>") > 0 && at(card, ", tier 3 of 5, levels 3.0–3.5") < at(card, "<h3") && at(card, "<h3") < at(card, "16 and up</li>") && at(card, "16 and up</li>") < at(card, ">Sundays 5:00–6:00 pm</span>") && at(card, ">Sundays 5:00–6:00 pm</span>") < at(card, "Newtonbrook Tennis Club</li>") && at(card, "Newtonbrook Tennis Club</li>") < at(card, " a session</span>") && count(card, ", tier 3 of 5") === 1);
   check("group card: no range, no visible band, no rail, one link", !card.includes(" – ") && !/text-white\/60">3\.0–3\.5</.test(card) && !card.includes('aria-label="Built for') && !card.includes('role="meter"') && count(card, "<a ") === 1);
   const hp = render(createElement(ProgramGroupCard, { group: g("high-performance"), program: youth }));
@@ -281,7 +282,7 @@ async function main() {
   const goodToKnow = read("src/components/sections/GoodToKnow.tsx");
   const goodToKnowRow = render(createElement(GoodToKnow, { source: "test", approvalGroup: g("high-performance").name }));
   const about = read("src/app/about/page.tsx");
-  check("Good to know and /about name the group, never the tier: the High Performance Youth Bootcamp is by approval / the competitive track", goodToKnow.includes("title: `The ${approvalGroup} is by approval`") && goodToKnowRow.includes(">The High Performance Youth Bootcamp is by approval</h3>") && !goodToKnow.includes("High Performance is by approval") && !goodToKnowRow.includes(">High Performance is by approval") && count(about, "High Performance Youth Bootcamp is the competitive track") === 2 && !about.includes("High Performance is the"));
+  check("Good to know and /about name the group, never the tier: the High Performance Youth Bootcamp is by approval / the competitive track", goodToKnow.includes("title: `The ${approvalGroup} is by approval`") && goodToKnowRow.includes(">The High Performance Youth Bootcamp is by approval</h3>") && !goodToKnow.includes("High Performance is by approval") && !goodToKnowRow.includes(">High Performance is by approval") && count(about, "High Performance Youth Bootcamp is the competitive track") === 1 && !about.includes("High Performance is the") && !ABOUT_DESCRIPTION.includes("High Performance"));
 
   // ── 4. Every surface counts five ──────────────────────────────────────────
   console.log("Every ladder surface counts five");
