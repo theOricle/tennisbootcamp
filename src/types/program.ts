@@ -2,8 +2,9 @@ import type { AgeBand } from "@/lib/ageBand";
 import type { PlateId } from "@/lib/plates/specs";
 import type { TierId } from "@/lib/tiers";
 
-// The eyebrow above a program's title, so it never repeats the title.
-export type ProgramType = "Weekend group class" | "One-to-one coaching" | "Group Lessons";
+// The eyebrow above a program's title, so it never repeats the title. Every
+// scheduled group is a group bootcamp (owner, 2026-11-16).
+export type ProgramType = "Group bootcamp" | "One-to-one coaching" | "Group Lessons";
 
 export type ClassDay = "Saturday" | "Sunday";
 

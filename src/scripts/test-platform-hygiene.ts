@@ -63,7 +63,7 @@ async function main() {
   // ── M40: the SDK off the header's critical path ───────────────────────────
   console.log("Supabase SDK off the critical path (M40)");
   const STATIC_SDK = /^import[^\n]*from "@\/lib\/supabase\/browser";/m;
-  for (const file of ["src/components/layout/Navbar.tsx", "src/components/layout/MobileQuizBar.tsx", "src/lib/useAuthState.ts"]) {
+  for (const file of ["src/components/layout/Navbar.tsx", "src/components/layout/MobileJoinBar.tsx", "src/lib/useAuthState.ts"]) {
     check(`${file} has no static SDK import`, !STATIC_SDK.test(read(file)));
   }
   const auth = read("src/lib/useAuthState.ts");
@@ -80,7 +80,8 @@ async function main() {
   const notFound = read("src/app/not-found.tsx");
   check("the 404 is a server component", !notFound.includes('"use client"'));
   check("the 404 has its own title", notFound.includes('title: "Page not found"'));
-  check("the 404 quiz CTA is still tracked", notFound.includes('track="quiz"') && notFound.includes('source="not-found"'));
+  // The 404's quiz link is the main action's side line now (backlog #69): same event, same source tag.
+  check("the 404 quiz link is still tracked", notFound.includes('<MainAction source="not-found"') && read("src/components/ui/MainAction.tsx").includes('<TrackedLink href={quizHref} track="quiz" source={source}'));
   check("the Course provider is named inline", /name: site\.name,\s*url: SITE_URL,/.test(read("src/lib/structuredData.ts")));
   check("the error page offers info@", read("src/app/error.tsx").includes("info@tennisbootcamp.ca"));
 

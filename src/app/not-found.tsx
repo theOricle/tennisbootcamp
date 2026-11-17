@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/Button";
 import { Heading } from "@/components/ui/Heading";
-import { TrackedButton } from "@/components/ui/TrackedButton";
-import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
+import { MainAction } from "@/components/ui/MainAction";
 
 // A server component, so the 404 carries its own title (audit M10) instead of
-// the bare site name. Only the tracked quiz button runs on the client.
+// the bare site name. Only the quiz side line's link runs on the client.
 export const metadata: Metadata = {
   title: "Page not found",
   robots: { index: false, follow: true },
@@ -21,18 +20,10 @@ export default function NotFound() {
         </Heading>
         <p className="mt-3 text-white/70">Maybe these links help —</p>
 
-        {/* One primary, two outlines: the quiz is the lime CTA here too (audit M12). */}
-        <nav aria-label="Helpful links" className="mt-10 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
-          <TrackedButton
-            variant="primary"
-            href="/intake"
-            track="quiz"
-            source="not-found"
-            className="whitespace-nowrap"
-            data-quiz-cta
-          >
-            {QUIZ_CTA_LABEL}
-          </TrackedButton>
+        {/* The main action is the lime button here too (audit M12; owner,
+            2026-11-16), with the quiz as its side line; then two outlines. */}
+        <MainAction source="not-found" className="mt-10 justify-center" />
+        <nav aria-label="Helpful links" className="mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
           <Button variant="secondary" href="/programs">
             Programs
           </Button>

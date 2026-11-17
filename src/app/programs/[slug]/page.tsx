@@ -5,13 +5,14 @@ import Link from "next/link";
 import { CONTACT_EMAIL, SESSION_PRICE_LABEL, groupsForProgram, programs } from "@/content/programs";
 import type { Program } from "@/types/program";
 import { EmailCapture } from "@/components/sections/EmailCapture";
-import { HowJoiningWorks } from "@/components/sections/HowJoiningWorks";
-import { QuizBand } from "@/components/sections/QuizBand";
+import { GoodToKnow } from "@/components/sections/GoodToKnow";
+import { JoinClosing } from "@/components/sections/JoinClosing";
 import { ProgramGroupCard } from "@/components/sections/ProgramGroupCard";
 import { CHIP_NEUTRAL } from "@/components/sections/ProgramCard";
 import { Container } from "@/components/layout/Container";
 import { Heading } from "@/components/ui/Heading";
 import { Button } from "@/components/ui/Button";
+import { QuizSideLine } from "@/components/ui/MainAction";
 import { TrackedButton } from "@/components/ui/TrackedButton";
 import {
   formatDateRange,
@@ -20,12 +21,20 @@ import {
   formatStartDate,
 } from "@/lib/cohorts";
 import { getPublicCohorts } from "@/lib/cohortsDb";
-import { getSeatsRemaining } from "@/lib/seatCount";
+import { groupSeatsFromSnapshot, readSeatSnapshot } from "@/lib/groupSeats";
+import { seatsFromSnapshot } from "@/lib/seatCount";
+import { GROUPS_ANCHOR, JOIN_CTA_LABEL } from "@/lib/mainAction";
 import { locationLine } from "@/content/locations";
 import { membershipNote } from "@/lib/membership";
 import { locationsForProgram } from "@/lib/locationCatalog";
 import { LocationLine } from "@/components/locations/LocationLine";
-import { agesChipLabel, nextCohortForGroup, programLevelRange, programLevelTags } from "@/lib/programCatalog";
+import {
+  LOW_SEATS_THRESHOLD,
+  agesChipLabel,
+  nextCohortForGroup,
+  programLevelRange,
+  programLevelTags,
+} from "@/lib/programCatalog";
 import { TIER_COUNT_WORD, TIER_LADDER_SPAN, tierById } from "@/lib/tiers";
 import { artFocusForCohort } from "@/lib/plates/variant";
 import { LevelTag, TierLine, TierRangeBadges } from "@/components/tiers";
@@ -88,11 +97,13 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const publicCohorts = await getPublicCohorts();
   const openCohorts = publicCohorts.filter((c) => c.programId === program.id);
 
-  // Fetch live seat counts for all cohorts in parallel (null = credentials not set)
-  const seatCountEntries = await Promise.all(
-    openCohorts.map(async (c) => [c.id, await getSeatsRemaining(c.id, c.capacityMax)] as const)
+  // Live seat counts, from one read of the enrollment sheet per render (none
+  // while the program has no public cohort; null = credentials not set or
+  // the read failed). The cohort cards and the group cards share it.
+  const seatSnapshot = openCohorts.length > 0 ? await readSeatSnapshot() : null;
+  const seatCounts: Record<string, number | null> = Object.fromEntries(
+    openCohorts.map((c) => [c.id, seatSnapshot ? seatsFromSnapshot(seatSnapshot, c.id, c.capacityMax) : null] as const)
   );
-  const seatCounts: Record<string, number | null> = Object.fromEntries(seatCountEntries);
 
   const hasOpenCohorts = openCohorts.length > 0;
   // Earliest public cohort (public cohorts are all inviting/confirmed → "open")
@@ -117,6 +128,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // 2026-10-12); one with no fixed class (private lessons) states its terms
   // in the panel instead, so the page never shows the same card twice.
   const scheduledGroups = groups.filter((g) => g.day !== null);
+  // Seats left in each group's next public cohort, for the cards' "Full" and
+  // "{n} spots left" (display only; absent reads "Open to join").
+  const groupSeats = groupSeatsFromSnapshot(scheduledGroups, publicCohorts, seatSnapshot);
+  // The page's own group list, which the main button scrolls to.
+  const groupListHref = scheduledGroups.length > 0 ? `#${GROUPS_ANCHOR}` : undefined;
   // Where the program's groups train (owner, 2026-10-12): one club today.
   const programLocations = locationsForProgram(program.slug);
   const arranged = scheduledGroups.length === 0 && !program.comingSoon;
@@ -226,22 +242,37 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   Next cohort starts {formatStartDate(nextOpenCohort.startDate)}
                 </p>
               )}
-              {/* Primary, then the optional assessment as an outline pill
-                  at 44px, not 12px grey text (audit M12), for a scheduled
-                  program. A signed-in holder is already on our list: the
-                  panel shows them their players' tiers against this span
-                  instead of a second quiz (M32). */}
+              {/* The main button (owner, 2026-11-16): "Join a group", to this
+                  page's own group list, with the quiz as a side line under
+                  it, for this program. A program booked by arrangement has
+                  no group to join: its lime button asks about lessons, and
+                  leads where it always led, the quiz for the program (it
+                  keeps its own words for a quiz-taker too). Then the
+                  optional assessment as an outline pill at 44px, not 12px
+                  grey text (audit M12), for a scheduled program. A signed-in
+                  holder is already on our list: the panel shows them their
+                  players' tiers against this span instead (M32). */}
               <ProgramViewerPanel span={range}>
-                <TrackedButton
-                  variant="primary"
-                  href={quizHref}
-                  track="quiz"
-                  source="program-detail"
-                  className="mt-4 w-full"
-                  data-quiz-cta
-                >
-                  Take the 2-minute quiz
-                </TrackedButton>
+                {groupListHref ? (
+                  <>
+                    <Button variant="primary" href={groupListHref} className="mt-4 w-full" data-main-cta>
+                      {JOIN_CTA_LABEL}
+                    </Button>
+                    <QuizSideLine source="program-detail" quizHref={quizHref} className="mt-3 text-center" />
+                  </>
+                ) : (
+                  <TrackedButton
+                    variant="primary"
+                    href={quizHref}
+                    track="quiz"
+                    source="program-detail"
+                    quizAware={false}
+                    className="mt-4 w-full"
+                    data-main-cta
+                  >
+                    Ask about lessons
+                  </TrackedButton>
+                )}
                 {!arranged && (
                   <>
                     <TrackedButton
@@ -274,40 +305,48 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* How joining works, then the groups (owner, 2026-10-12): each
-            its own card with its one level tag, the age range, the time,
-            the price, how to join with the week-one promise, and the quiz
-            (level-led titles, 2026-10-13). The High Performance card is the anchor
-            /programs/high-performance redirects to. A program with no fixed
-            class (private lessons) has no group to pick or move between, so
+        {/* The groups (owner, 2026-10-12; the short card, 2026-11-17): each
+            its own card with its one level tag, the ages, the time, the
+            club, the price and one button (level-led titles, 2026-10-13).
+            The heading is the anchor the main button scrolls to, and the
+            High Performance card is the anchor /programs/high-performance
+            redirects to. Then what is good to know, said once: week one on
+            court, High Performance by approval where that group trains, the
+            optional assessment, the policies. A program with no fixed class
+            (private lessons) has no group to pick or move between, so
             neither section. */}
         {scheduledGroups.length > 0 && (
           <>
-            <HowJoiningWorks
-              className="mt-12"
-              quizHref={quizHref}
-              source="program-joining"
-              showApproval={scheduledGroups.some((g) => g.joining === "approval")}
-            />
-            <section aria-labelledby="groups" className="mt-12">
-              <h2 id="groups" className="text-xl font-semibold text-white">{groupsHeading}</h2>
+            <section aria-labelledby={GROUPS_ANCHOR} className="mt-12">
+              <h2 id={GROUPS_ANCHOR} className="scroll-mt-24 text-xl font-semibold text-white">{groupsHeading}</h2>
               <p className="mt-2 max-w-2xl text-sm text-white/70">
                 Each group is built for an age range and one level. Pick the one that fits, or
                 take the 2-minute quiz and our coaches place you.
               </p>
-              <ul role="list" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <ul role="list" className="mt-6 grid gap-3 md:grid-cols-3 md:gap-4">
                 {scheduledGroups.map((g) => (
                   <li key={g.id} className="flex [&>*]:w-full">
                     <ProgramGroupCard
                       group={g}
                       program={program}
                       nextCohort={nextCohortForGroup(publicCohorts, g)}
+                      seatsLeft={groupSeats[g.id]}
                       source="program-group"
+                      // With no public cohort the page carries its own
+                      // newsletter form (and the footer hides its line), so
+                      // "Notify me" points at that one.
+                      notifyHref={hasOpenCohorts ? undefined : "#cohorts"}
                     />
                   </li>
                 ))}
               </ul>
             </section>
+            <GoodToKnow
+              className="mt-12"
+              headingSize="sub"
+              source="program-good-to-know"
+              approvalGroup={scheduledGroups.find((g) => g.joining === "approval")?.name}
+            />
           </>
         )}
 
@@ -360,11 +399,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   <p className="mt-2 text-sm leading-relaxed text-white/70">
                     {arranged
                       ? "Our coaches place every player on the ladder, from the quiz or on court."
-                      : "Our coaches place every player on the ladder from the quiz, and confirm the level on court in week one."}
+                      : "Every group trains at one level, and your coach confirms yours on court in week one."}
                   </p>
                 )}
                 <Link href="/assessment#ladder" className={`mt-2 ${TEXT_LINK_LIME}`}>
-                  How tiers work →
+                  How levels work →
                 </Link>
               </div>
               <div className="mt-6 min-w-0 md:mt-0">
@@ -402,7 +441,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                     {openCohorts.map((cohort) => {
                       const seats = seatCounts[cohort.id] ?? null;
                       const isFull = seats !== null && seats <= 0;
-                      const isLowStock = seats !== null && seats > 0 && seats <= 3;
+                      const isLowStock = seats !== null && seats > 0 && seats <= LOW_SEATS_THRESHOLD;
                       const tierGated = cohort.levelMin != null || cohort.levelMax != null;
                       return (
                         <div
@@ -484,14 +523,16 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               ) : (
                 /* Zero renderable cohorts: empty state, no card, no enroll link */
                 <div>
-                  <h2 id="cohorts" className="text-xl font-semibold text-white">
+                  <h2 id="cohorts" className="scroll-mt-24 text-xl font-semibold text-white">
                     Upcoming cohorts
                   </h2>
-                  {/* The groups above are real; the dated cohorts are not public
-                      yet (fall 2026 runs with the coach's private students). Status
-                      wording follows owner default D11, "Groups forming". */}
+                  {/* The groups above are real and open to join; the dated
+                      cohorts are not public yet (fall 2026 runs with the
+                      coach's private students). The line says only that:
+                      "Groups are forming." left it, because the closing one
+                      block below reads "Groups are open to join." */}
                   <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
-                    Groups are forming. Cohort dates aren&apos;t public yet.{" "}
+                    Cohort dates aren&apos;t public yet.{" "}
                     <ViewerSwap
                       guest={
                         <>
@@ -538,14 +579,14 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           </p>
         )}
 
-        {/* The page closes on the primary CTA, not a newsletter box (audit
-            M13) — for a visitor. A signed-in holder already took the quiz
-            (audit M32); their next step sits in the panel. */}
+        {/* The page closes on the main action, not a newsletter box (audit
+            M13) — for a visitor: the button goes to this page's group list
+            where it has one, and the side line to this program's quiz. A
+            signed-in holder is on our list already (audit M32); their next
+            step sits in the panel. */}
         <ViewerSwap
           guest={
-            <div className="mt-12">
-              <QuizBand href={quizHref} source="program-closing" />
-            </div>
+            <JoinClosing className="mt-12" source="program-closing" quizHref={quizHref} href={groupListHref} />
           }
           member={null}
         />

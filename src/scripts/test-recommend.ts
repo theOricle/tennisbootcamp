@@ -10,6 +10,7 @@
 import { recommendPrograms, recommendationHref, type IntakeFormSnapshot } from "../lib/recommend";
 import { AGE_BANDS } from "../lib/ageBand";
 import { groupById } from "../content/programs";
+import { CLASS_IDEA } from "../content/bootcamp";
 
 let passed = true;
 
@@ -178,6 +179,35 @@ check(
   !!newerReason?.startsWith("Beginner Adult Bootcamp group, Sunday at 4:00"),
   newerReason
 );
+
+
+// Every group is a group bootcamp (backlog #69, owner 2026-11-16): the reason
+// for a bootcamp program says what a class is, in the class section's words.
+{
+  const forms: IntakeFormSnapshot[] = [];
+  for (const ageBand of AGE_BANDS) {
+    for (const level of ["new", "rally", "competitive", "elite", undefined] as const) {
+      for (const goals of [[], ["technique"]]) {
+        forms.push({ ...base, who: ageBand === "adult" ? "adult" : "youth", ageBand, level, goals });
+      }
+    }
+  }
+  const reasons = forms.flatMap((form) => recommendPrograms(form)).map((rec) => rec.reason);
+  check("one bootcamp reason per player, across every band, level and goal", reasons.length === forms.length && forms.length === 30, reasons.length);
+  check(
+    "every bootcamp reason says tennis and fitness in every class",
+    CLASS_IDEA === "tennis and fitness in every class" && reasons.every((r) => r.includes(CLASS_IDEA)),
+    reasons.filter((r) => !r.includes(CLASS_IDEA))
+  );
+  check(
+    "no reason says it the old way: no group classes, no fundamentals line, no court cap, no share of the class",
+    reasons.every((r) => !/\bclasses\b|group class|part of the game|fundamentals built into|per court|circuit|\bhalf\b/i.test(r)),
+    reasons.filter((r) => /\bclasses\b|group class|part of the game|fundamentals built into|per court|circuit|\bhalf\b/i.test(r))
+  );
+  check("every reason is one sentence", reasons.every((r) => /^[A-Z][^.]*\.$/.test(r)), reasons.filter((r) => !/^[A-Z][^.]*\.$/.test(r)));
+  const privateReason = recommendPrograms({ ...base, who: "adult", ageBand: "adult", level: "rally", programs: ["private"] })[0];
+  check("the private lessons reason is unchanged: one player, one coach", privateReason?.program.id === "private-lessons" && privateReason.reason.startsWith("One player, one coach, at a time arranged with you") && !privateReason.reason.includes(CLASS_IDEA), privateReason?.reason);
+}
 
 console.log(passed ? "\nAll assertions passed." : "\nSome assertions FAILED.");
 process.exit(passed ? 0 : 1);

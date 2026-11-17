@@ -1,24 +1,38 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
-import { TrackedButton } from "@/components/ui/TrackedButton";
+import { Container } from "@/components/layout/Container";
+import { JoinClosing } from "@/components/sections/JoinClosing";
+import { Heading } from "@/components/ui/Heading";
 import { TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
+import { CLASS_IDEA, CLASS_PARTS, trainsInWords } from "@/content/bootcamp";
 import { coaches } from "@/content/coaches";
+import { ABOUT_DESCRIPTION } from "@/content/site";
 import { TIER_COUNT_WORD, TIER_LADDER_SPAN } from "@/lib/tiers";
 import {
+  CLASS_LINE,
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
   COHORT_WEEKS_WORD,
+  GROUP_MAX_PLAYERS,
   SESSION_MINUTES,
+  numberInWords,
 } from "@/content/programs";
 
 export const metadata: Metadata = {
   title: "About",
-  description:
-    "Structured tennis training in Toronto — serious at every level, from first rally to tournament play. Our coaches place every player by level and schedule; the High Performance Youth Bootcamp is the competitive track.",
+  description: ABOUT_DESCRIPTION,
   alternates: { canonical: "/about" },
 };
+
+// The two parts of every class, named once in src/content/bootcamp.ts.
+const [tennis, fitness] = CLASS_PARTS;
+
+/**
+ * One sentence of the title: it stays whole when its line can hold it, and
+ * wraps inside itself when it cannot, so it never pushes the page sideways.
+ */
+const TITLE_SENTENCE = "inline-block";
 
 export default function AboutPage() {
   // The founder section is the coach card: the one place the name and title
@@ -28,25 +42,31 @@ export default function AboutPage() {
     <main>
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div className="tb-gradient">
-        <div className="mx-auto max-w-6xl px-6 py-16">
-          <h1 className="max-w-3xl text-4xl font-bold leading-tight text-white">
-            Serious training. Measurable progress. No filler.
-          </h1>
+        <Container className="py-16">
+          {/* The lines are balanced, and each sentence is its own box: it
+              stays whole where it fits and wraps inside itself where it does
+              not, so the title never ends on a word alone and never runs
+              off the page. */}
+          <Heading as="h1" className="max-w-3xl text-balance">
+            <span className={TITLE_SENTENCE}>Serious training.</span>{" "}
+            <span className={TITLE_SENTENCE}>Measurable progress.</span>{" "}
+            <span className={TITLE_SENTENCE}>No filler.</span>
+          </Heading>
+          {/* What we run, then the cohort with its plain definition (voice.md,
+              jargon budget: the About hero is where "cohort" is defined). */}
           <p className="mt-5 max-w-2xl text-lg text-white/70">
-            Tennis Bootcamp is not a club program or a drop-in clinic. It&apos;s a
-            structured, cohort-based training model — a cohort is a fixed group
-            that trains together for {COHORT_LENGTH}. The training is serious at every
-            level, from your first rally to tournament play, and every block is
-            built to move specific, measurable parts of your game: technique,
-            tactics, physical conditioning, and the mental game.
+            Tennis Bootcamp is not a club program or a drop-in clinic. Every group
+            is a bootcamp: {CLASS_IDEA}. You train in a cohort — a fixed group
+            that trains together for {COHORT_LENGTH}. The training is serious at
+            every level, from your first rally to tournament play.
           </p>
-        </div>
+        </Container>
       </div>
 
       {/* ── How a cohort works ────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-6xl px-6 py-16">
+      <Container as="section" className="py-16">
         <div className="border-l-2 border-[#B4E655] pl-6">
-          <h2 className="text-2xl font-bold text-white">How a cohort works</h2>
+          <Heading>How a cohort works</Heading>
         </div>
 
         <div className="mt-8 grid gap-8 md:grid-cols-2">
@@ -57,32 +77,31 @@ export default function AboutPage() {
               one builds the foundation that week {COHORT_WEEKS_WORD} builds on. Drop-in attendance
               breaks that chain.
             </p>
+            {/* How a class runs, in the sentence the bootcamp programs open
+                with, then what each part trains, from the class words. */}
             <p>
-              Groups are kept small on purpose. A capped court means more reps per
-              player, more eyes on each ball, and real-time feedback every session —
-              not every third session when the coach finally reaches your end of the
-              line.
+              {CLASS_LINE} {tennis.name} trains {trainsInWords(tennis)}. {fitness.name} trains{" "}
+              {trainsInWords(fitness)}.
             </p>
           </div>
 
           {/* What a cohort is, from the same constants as every program page
-              and the Program Policies (audit H3): one class a week, one fixed
-              group, six per court and eight at most. */}
+              and the home page's class section (audit H3; owner, 2026-11-16):
+              one class a week with both parts in it, one fixed group, and the
+              public group size with its one line of why. */}
           <ul className="space-y-4">
             {[
               {
                 label: `One ${SESSION_MINUTES}-minute class a week`,
-                detail:
-                  "Realistic rally play, point-play pressure, and stroke-specific work in every class.",
+                detail: `${tennis.name} and ${fitness.name.toLowerCase()} in the same class, every week.`,
               },
               {
                 label: `The same group for all ${COHORT_LENGTH}`,
                 detail: "The players you start with are the players you finish with.",
               },
               {
-                label: "Six players per court, eight at most",
-                detail:
-                  "Courts are capped so your coach can work with every player on every ball, not just supervise.",
+                label: `Up to ${numberInWords(GROUP_MAX_PLAYERS)} players a group`,
+                detail: "More reps for each player, and feedback from your coach every session.",
               },
             ].map(({ label, detail }) => (
               <li key={label} className="flex gap-4">
@@ -95,13 +114,13 @@ export default function AboutPage() {
             ))}
           </ul>
         </div>
-      </section>
+      </Container>
 
       {/* ── What makes this different ─────────────────────────────────────── */}
       <section className="border-t border-white/10">
-        <div className="mx-auto max-w-6xl px-6 py-16">
+        <Container className="py-16">
           <div className="border-l-2 border-[#B4E655] pl-6">
-            <h2 className="text-2xl font-bold text-white">What makes this different</h2>
+            <Heading>What makes this different</Heading>
           </div>
 
           <div className="mt-8 grid gap-6 md:grid-cols-3">
@@ -119,7 +138,7 @@ export default function AboutPage() {
               {
                 heading: "Serious at every level",
                 body:
-                  `The training methods come from competitive player development, applied at every rung of the ladder — ${TIER_LADDER_SPAN}. Our coaches place every player by level and schedule, and every group trains with structure and intent. The High Performance Youth Bootcamp is the competitive track; every other group builds your game seriously from wherever you start.`,
+                  `The training methods come from competitive player development, applied at every rung of the ladder — ${TIER_LADDER_SPAN}. Every group trains at one level, and your coach confirms yours on court in week one. The High Performance Youth Bootcamp is the competitive track; every other group builds your game seriously from wherever you start.`,
               },
             ].map(({ heading, body }) => (
               <div
@@ -141,7 +160,7 @@ export default function AboutPage() {
             <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
               <p className="text-sm font-semibold text-white">The {TIER_COUNT_WORD} tiers, {TIER_LADDER_SPAN}</p>
               <Link href="/assessment#ladder" className={TEXT_LINK_LIME}>
-                How tiers work →
+                How levels work →
               </Link>
             </div>
             <TierLine
@@ -151,14 +170,14 @@ export default function AboutPage() {
               className="mt-4"
             />
           </div>
-        </div>
+        </Container>
       </section>
 
       {/* ── Founder ───────────────────────────────────────────────────────── */}
       <section className="border-t border-white/10">
-        <div className="mx-auto max-w-6xl px-6 py-16">
+        <Container className="py-16">
           <div className="border-l-2 border-[#B4E655] pl-6">
-            <h2 className="text-2xl font-bold text-white">{lead.name}</h2>
+            <Heading>{lead.name}</Heading>
             <p className="mt-1 text-sm text-[#B4E655]">{lead.role}</p>
           </div>
 
@@ -177,32 +196,18 @@ export default function AboutPage() {
               match.
             </p>
           </div>
-        </div>
+        </Container>
       </section>
 
-      {/* ── Closing CTA: quiz first, programs second (audit H3) ─────────────── */}
-      <section className="border-t border-white/10">
-        <div className="mx-auto max-w-6xl px-6 py-16">
-          <div className="rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-6 md:flex md:items-center md:justify-between md:gap-10 md:p-10">
-            <div className="max-w-xl">
-              <h2 className="text-2xl font-bold text-white">Not sure where you fit?</h2>
-              <p className="mt-2 text-pretty text-white/70">
-                Tell us each player&apos;s age, level and free time. Our coaches
-                place them in the class that fits.
-              </p>
-            </div>
-            <div className="mt-6 flex flex-wrap gap-3 md:mt-0 md:shrink-0">
-              {/* A quiz-taker's button reads their next step (owner, 2026-10-12). */}
-              <TrackedButton variant="primary" href="/intake" track="quiz" source="about-closing">
-                Take the 2-minute quiz
-              </TrackedButton>
-              <Button variant="secondary" href="/programs">
-                Browse Programs
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* ── Closing CTA: the main action (owner, 2026-11-16) ─────────────────
+          The lime "Join a group" and the quiz as a side line, the same
+          closing as the home page and the program pages. A quiz-taker's side
+          line reads their next step (owner, 2026-10-12). */}
+      <div className="border-t border-white/10">
+        <Container className="py-16">
+          <JoinClosing source="about-closing" />
+        </Container>
+      </div>
     </main>
   );
 }

@@ -8,11 +8,13 @@
 //   2. the catalog query: ?location= is read, the one location is
 //      preselected and left out of the URL, Clear filters keeps it, and the
 //      groups are filtered by it;
-//   3. the surfaces: /programs opens with "Where do you want to train?",
-//      group cards and program pages show the club, the home page has "Our
-//      location", /locations is back (nav, footer, sitemap), the enroll
-//      summary and confirmation show the Location first, and the dashboard
-//      names the club;
+//   3. the surfaces: on /programs the Location is the first of the three
+//      dropdowns (backlog #69, owner-approved design 2026-11-17; it replaced
+//      the "Where do you want to train?" cards), group cards and program
+//      pages show the club, the home page has "Where we train", /locations
+//      stays (footer, sitemap; the top menu is Programs and About), the
+//      enroll summary and confirmation show the Location first, and the
+//      dashboard names the club;
 //   4. the stand-ins are gone: no VENUE_LINE anywhere, the invitation names
 //      the club, and the club-membership line stays neutral (D19).
 // Exits non-zero on any failure.
@@ -54,10 +56,11 @@ import { membershipNote } from "../lib/membership";
 import { buildCohortInviteEmail } from "../lib/emailBodies";
 import { NAV_LINKS, FOOTER_GROUPS } from "../content/site";
 import sitemap from "../app/sitemap";
-import { LocationChoiceView } from "../components/locations/LocationChoice";
-import { LocationSection } from "../components/locations/LocationSection";
 import { LocationBlock, LocationLine } from "../components/locations/LocationLine";
+import { ProgramCatalogView } from "../components/sections/ProgramCatalog";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
+import { WhereAndWho } from "../components/sections/WhereAndWho";
+import { coaches } from "../content/coaches";
 import LocationsPage from "../app/locations/page";
 import type { ProgramGroup } from "../types/program";
 
@@ -142,42 +145,31 @@ check(
 );
 
 // ── 3. The surfaces ─────────────────────────────────────────────────────────
-console.log("/programs opens with the location");
-const options = locations.map((location) => ({ location, summary: locationProgramsLine(location) }));
-const choice = render(createElement(LocationChoiceView, { options, selectedId: "newtonbrook", onSelect: () => {} }));
-check("an h2 asks the question", choice.includes('<h2 id="where-to-train"') && choice.includes(">Where do you want to train?</h2>"));
-check("the section is labelled by it", choice.includes('<section aria-labelledby="where-to-train">'));
-check("the one location says why it is preselected", choice.includes("Right now we train at one club, so it&#x27;s already selected."));
-check("a fieldset with a legend, one radio, checked", choice.includes("<fieldset") && choice.includes('<legend class="sr-only">Location</legend>') && (choice.match(/type="radio"/g) ?? []).length === 1 && /type="radio"[^>]*checked=""/.test(choice));
-check("the radio is labelled by the club's card", choice.includes('<label for="location-newtonbrook"') && choice.includes('id="location-newtonbrook"'));
-check("the card names the club, the area and what runs there", choice.includes(`>${NAME}</span>`) && choice.includes(`>${AREA}</span>`) && choice.includes("Youth Bootcamps on Saturdays"));
-check(
-  "the map link sits outside the label, in a new tab, named for the club",
-  at(choice, "</label>") < at(choice, MAPS.replace(/&/g, "&amp;")) &&
-    choice.includes('target="_blank" rel="noopener noreferrer"') &&
-    choice.includes(`(${NAME}, opens in a new tab)`)
-);
-const unchosen = render(createElement(LocationChoiceView, { options, selectedId: null, onSelect: () => {} }));
-check("nothing is checked when no location is chosen", !/checked=""/.test(unchosen));
+console.log("/programs: the Location is the first dropdown");
+const catalogPrograms = listedPrograms.map((p) => ({ slug: p.slug, title: p.title }));
+const catalogView = (query = initialCatalogQuery()) =>
+  render(createElement(ProgramCatalogView, { programs: catalogPrograms, groups: programGroups, nextCohorts: {}, header: null, query, onChange: () => {} }));
+const view = catalogView();
+check("three labelled dropdowns, the location first", at(view, ">Location</label>") > 0 && at(view, ">Location</label>") < at(view, ">Player&#x27;s age</label>") && at(view, ">Player&#x27;s age</label>") < at(view, ">Level</label>") && (view.match(/<select /g) ?? []).length === 3);
+check("each dropdown is tied to its label", (view.match(/<label for="/g) ?? []).length === 3 && [...view.matchAll(/<label for="([^"]+)"/g)].every(([, id]) => view.includes(`<select id="${id}"`)));
+check("the one location is the only option, already chosen: the club and its area", view.includes(`<option value="newtonbrook" selected="">${NAME} · North York</option>`) && !view.includes("All locations"));
+check("they sit in a fieldset with a legend", view.includes("<fieldset") && view.includes('<legend class="sr-only">Filter the groups</legend>'));
+check("no chooser cards and no map link in the band (the map link stays on home, the program pages and /locations)", !view.includes("Where do you want to train?") && !view.includes('type="radio"') && !view.includes("google.com/maps"));
 const programsPage = read("src/app/programs/page.tsx");
-check(
-  "/programs: the location opens the content, before How joining works and the filters",
-  programsPage.includes("<LocationChoice options={locationOptions} />") &&
-    at(programsPage, "<LocationChoice") < at(programsPage, "<HowJoiningWorks") &&
-    at(programsPage, "<HowJoiningWorks") < at(programsPage, "<ProgramCatalog programs=")
-);
+check("/programs: no location section of its own, the catalog carries the dropdown", !programsPage.includes("LocationChoice") && programsPage.includes("<ProgramCatalog"));
 const catalogSrc = read("src/components/sections/ProgramCatalog.tsx");
 check("the catalog clears filters but keeps the location, and starts preselected", catalogSrc.includes("onChange(clearFilters(query))") && !catalogSrc.includes("onChange(EMPTY_QUERY)") && catalogSrc.includes("query={initialCatalogQuery()}"));
-const choiceSrc = read("src/components/locations/LocationChoice.tsx");
-check("the choice reads the URL in Suspense and writes it with replaceState", choiceSrc.includes("useSearchParams()") && choiceSrc.includes("<Suspense") && choiceSrc.includes("window.history.replaceState(null"));
+check("the dropdown writes the same ?location= the catalog reads, in Suspense, with replaceState", catalogSrc.includes("location: locationQueryFor(e.target.value)") && catalogSrc.includes("useSearchParams()") && catalogSrc.includes("<Suspense") && catalogSrc.includes("window.history.replaceState(null"));
+check("a second location would add an All locations option", catalogSrc.includes('{locations.length > 1 && <option value="">All locations</option>}'));
 
 console.log("Group cards and program pages show the club");
 const youth = listedPrograms[0];
 const card = render(createElement(ProgramGroupCard, { group: programGroups[0], program: youth }));
-check("a Where row: the club, then the area", /<dt[^>]*>Where<\/dt><dd[^>]*><span class="block">Newtonbrook Tennis Club<\/span><span class="block text-white\/60">North York, Toronto<\/span><\/dd>/.test(card));
-check("Where sits after Time and before Price", at(card, ">Time</dt>") < at(card, ">Where</dt>") && at(card, ">Where</dt>") < at(card, ">Price</dt>"));
+check("the where line: the club's name, a plain line with a pin and no label", card.includes(`${NAME}</li>`) && !card.includes(">Where<") && !card.includes("<dt"));
+check("the area left the card (it is on the page, beside the club's name)", !card.includes("North York"));
+check("where sits after when and before the price", at(card, "Saturdays 12:00–1:00 pm") > 0 && at(card, "Saturdays 12:00–1:00 pm") < at(card, `${NAME}</li>`) && at(card, `${NAME}</li>`) < at(card, " a session"));
 check("the card keeps one link (no map link on a card)", (card.match(/<a /g) ?? []).length === 1 && !card.includes("google.com/maps"));
-check("every group card shows the club", programGroups.every((g) => render(createElement(ProgramGroupCard, { group: g, program: listedPrograms.find((p) => p.slug === g.programSlug)! })).includes(">Where</dt>")));
+check("every group card shows the club", programGroups.filter((g) => g.day !== null).every((g) => render(createElement(ProgramGroupCard, { group: g, program: listedPrograms.find((p) => p.slug === g.programSlug)! })).includes(`${NAME}</li>`)));
 const line = render(createElement(LocationLine, { location: club!, mapLink: true }));
 check("LocationLine: name · area · map link", line.includes(`>${NAME}</span>`) && line.includes(`</span>${AREA}</span>`) && line.includes("Open in Google Maps"));
 const detail = read("src/app/programs/[slug]/page.tsx");
@@ -185,13 +177,15 @@ check("program pages show the location with its map link", detail.includes("<Loc
 check("program pages: the cohort list names the club, not a stand-in", detail.includes("At {programLocations.map(locationLine).join(\" and \")}.") && !detail.includes("VENUE_LINE"));
 check("program pages: the cohort list keeps the neutral club-membership line (D19)", detail.includes("<p>{membershipNote()}</p>"));
 
-console.log("Home: Our location");
+console.log("Home: Where we train");
 const home = read("src/app/page.tsx");
-check("the home page renders the location section after the programs", home.includes("<LocationSection />") && at(home, "<ProgramsGrid") < at(home, "<LocationSection />") && at(home, "<LocationSection />") < at(home, "<Coaches"));
-const section = render(createElement(LocationSection));
-check("a labelled section headed Our location", section.includes('<section aria-labelledby="our-location-title">') && section.includes(">Our location</h2>"));
-check("the name, the area, the honest line and the map link", section.includes(`>${NAME}</h3>`) && section.includes(`>${AREA}</p>`) && section.includes("All our training is here right now:") && section.includes(MAPS.replace(/&/g, "&amp;")));
-check("it links to /locations", section.includes('href="/locations"') && section.includes("Location details →"));
+check("the home page renders where and who after the programs and the joining steps", home.includes("<WhereAndWho />") && at(home, "<ProgramsGrid") < at(home, "<WhereAndWho />") && at(home, "<HowJoiningWorks") < at(home, "<WhereAndWho />"));
+const section = render(createElement(WhereAndWho));
+check("a labelled section headed Where we train", section.includes('<section aria-labelledby="where-we-train"') && /<h2 id="where-we-train"[^>]*>.*Where we train<\/h2>/.test(section));
+check("the name, the area and the map link, from the locations list", section.includes(`>${NAME}</p>`) && section.includes(`>${AREA}</p>`) && section.includes(MAPS.replace(/&/g, "&amp;")) && section.includes(`(${NAME}, opens in a new tab)`));
+check("no boxes: hairlines only", !section.includes("rounded-2xl") && !section.includes("bg-white/"));
+check("beside it, Coaching: the lead coach's name and title from coaches.ts, and the way to About", section.includes('<section aria-labelledby="coaching"') && section.includes(`>${coaches[0].name}</p>`) && section.includes(`>${coaches[0].role}</p>`) && /<a [^>]*href="\/about"[^>]*>About us/.test(section));
+check("the component types no club and no coach: both come from content", !read("src/components/sections/WhereAndWho.tsx").includes("Newtonbrook") && read("src/components/sections/WhereAndWho.tsx").includes("{lead.name}") && read("src/components/sections/WhereAndWho.tsx").includes("{location.name}"));
 
 console.log("/locations is back");
 const page = render(createElement(LocationsPage));
@@ -200,11 +194,12 @@ check("the intro names the club plainly", page.includes(`We train at one club ri
 check("a card per club with its h2, area and map link", page.includes(`>${NAME}</h2>`) && page.includes(`>${AREA}</p>`) && page.includes(MAPS.replace(/&/g, "&amp;")));
 check("what runs there, every group with its time", programGroups.every((g) => page.includes(`>${g.name}</span>`)) && page.includes("Saturdays 12:00–1:00 pm") && page.includes("By arrangement"));
 check("each program links to its page", listedPrograms.every((p) => page.includes(`href="/programs/${p.slug}"`)));
-check("Browse Programs to the catalog, the club line neutral, and the quiz to close", page.includes(">Browse Programs<") && page.includes('href="/programs"') && page.includes(membershipNote()) && page.includes("Take the 2-minute quiz"));
+check("Browse Programs to the catalog, the club line neutral, and the main action to close", page.includes(">Browse Programs<") && page.includes('href="/programs"') && page.includes(membershipNote()) && page.includes(">Groups are open to join.</h2>") && page.includes(">Join a group</a>") && page.includes("Not sure which group?") && page.includes("Take the 2-minute quiz"));
 const locationsSrc = read("src/app/locations/page.tsx");
 check("its metadata: a canonical and a description under 155 characters", locationsSrc.includes('alternates: { canonical: "/locations" }') && /LOCATIONS_META_DESCRIPTION =/.test(locationsSrc));
 check("no street address, hours or courts on the page", !/\b(St|Ave|Rd|Blvd)\b\.?\s|\bhours\b|\bcourts\b/i.test(page.replace(/<[^>]+>/g, " ")));
-check("Locations in the nav and footer, beside Programs", NAV_LINKS[1]?.href === "/locations" && NAV_LINKS[1]?.label === "Locations" && FOOTER_GROUPS[0].links.some((l) => l.href === "/locations"));
+// Owner, 2026-11-16: the top menu is Programs and About; Locations moved to the footer.
+check("Locations in the footer, beside Programs, and no longer in the top menu", FOOTER_GROUPS[0].links[1]?.href === "/locations" && FOOTER_GROUPS[0].links[1]?.label === "Locations" && !NAV_LINKS.some((l) => l.href === "/locations"));
 check("/locations in the sitemap", sitemap().some((e) => e.url.endsWith("/locations")));
 
 console.log("Enrollment shows the location first");

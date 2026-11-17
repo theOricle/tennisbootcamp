@@ -261,7 +261,7 @@ check("no className fills in the emblem", !/className\s*[=:]/.test(read("src/com
 
 // Banned words and the text floor inside the tier UI (design specs §1.2).
 const BANNED = ["unlock", "level up", "rank up", "next level", "journey", "Requires "];
-const tierFiles = ["index.tsx", "TierLine.tsx", "RankCard.tsx", "badges.tsx"].map((f) => `src/components/tiers/${f}`).concat(["src/components/sections/TierBand.tsx", "src/app/admin/tiers/TierGallery.tsx"]);
+const tierFiles = ["index.tsx", "TierLine.tsx", "RankCard.tsx", "badges.tsx"].map((f) => `src/components/tiers/${f}`).concat(["src/components/sections/LevelsStrip.tsx", "src/app/admin/tiers/TierGallery.tsx"]);
 for (const f of tierFiles) {
   const src = read(f);
   check(`${f}: no banned tier words`, !BANNED.some((w) => src.toLowerCase().includes(w.toLowerCase())));
@@ -272,21 +272,24 @@ for (const f of tierFiles) {
 
 // Home, /assessment, /about, booking (M36).
 const home = read("src/app/page.tsx");
-const band = read("src/components/sections/TierBand.tsx");
-// Owner, 2026-10-13: programs first, the tier band lower (after the programs
-// and the location, never between the hero and the programs).
+// The simpler site (backlog #69, owner 2026-11-17): the larger tier band left
+// the home page. The five levels are one slim strip, the same component under
+// the home page's program cards and under the filters on /programs.
+const strip = read("src/components/sections/LevelsStrip.tsx");
+const homeGrid = read("src/components/sections/ProgramsGrid.tsx");
 const homeAt = (needle: string) => (home.includes(needle) ? home.indexOf(needle) : Infinity);
 check(
-  "home mounts the TierBand after the programs and the location, before the coach",
-  homeAt("<ProgramsGrid") < homeAt("<TierBand />") && homeAt("<LocationSection />") < homeAt("<TierBand />") && homeAt("<TierBand />") < homeAt("<Coaches")
+  "home shows the five levels as a strip under the program cards, never between the hero and the programs",
+  homeGrid.indexOf("<ProgramCardList") > 0 && homeGrid.indexOf("<ProgramCardList") < homeGrid.indexOf("<LevelsStrip") && homeAt("<ProgramsGrid") < homeAt("<HowJoiningWorks") && !home.includes("<TierBand") && !home.includes("<TierLine")
 );
-check("the band sits in the page's Container, with no gutter, padding or border of its own", /<PageStack>[\s\S]*<TierBand \/>[\s\S]*<\/PageStack>/.test(home) && !band.includes("<Container") && !/\b(py-|px-|border-b|mx-auto|max-w-6xl)/.test(band));
+check("one component, used twice: home and /programs", homeGrid.includes("<LevelsStrip") && read("src/app/programs/page.tsx").includes("<LevelsStrip"));
+check("the strip sits in the page's Container, with no gutter or page width of its own", !strip.includes("<Container") && !/(^|[\s"'`])(px-6|mx-auto|max-w-6xl|-mx-)/.test(strip));
 check(
-  "the band splits into two columns at lg, never md (the ladder keeps the full width to 1024)",
-  band.includes("lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-12") && band.includes("mt-8 min-w-0 lg:mt-0") && !band.includes("md:grid") && !band.includes("md:mt-0")
+  "the five level tags low to high, wrapping on phones, in one row joined by hairlines from md",
+  strip.includes("{TIERS.map((tier, i) => (") && strip.includes("<LevelTag level={tier.id} plain") && strip.includes("flex flex-wrap items-center") && strip.includes("md:flex-nowrap") && strip.includes('<span aria-hidden="true" className="mx-3.5 hidden h-px min-w-3 flex-1 bg-white/[0.18] md:block" />')
 );
-check("the band says the five tiers, never breaking inside the top name, and links to the ladder", band.includes('{COUNT} tiers. {TIERS[0].name} to <span className="whitespace-nowrap">{TOP_TIER.name}.</span>') && TIER_LADDER_SPAN === "Beginner to High Performance" && band.includes('href="/assessment#ladder"') && band.includes("How tiers work"));
-check("the band carries the owner's body copy and no new button", band.includes("Every player trains at a tier.") && band.includes("Our coaches place you from your") && !band.includes("<Button"));
+check("the strip says the count from tiers.ts, that each group trains at one, and links to the ladder", strip.includes('<b className="font-semibold text-white">{COUNT} levels.</b> Each group trains at one.') && strip.includes("TIER_COUNT_WORD") && TIER_LADDER_SPAN === "Beginner to High Performance" && strip.includes('href="/assessment#ladder"') && strip.includes("How levels work"));
+check("the strip types no tier name and carries no button", !/Beginner|Novice|Intermediate|Advanced/.test(strip.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "")) && !strip.includes("<Button") && !strip.includes("<button"));
 const assessment = read("src/app/assessment/page.tsx");
 check("/assessment has the #ladder anchor with blurbs, responsive", assessment.includes('id="ladder"') && assessment.includes("scroll-mt-24") && assessment.includes('orientation="responsive" showBlurbs'));
 check("/assessment shows the re-rate line only when set (L18)", assessment.includes("{TIER_RERATE_LINE && ("));

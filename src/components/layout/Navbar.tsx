@@ -5,11 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { TrackedButton } from "@/components/ui/TrackedButton";
 import { Container } from "@/components/layout/Container";
 import { FOCUS_RING as FOCUS } from "@/components/ui/focus";
 import { NAV_LINKS, type NavLink } from "@/content/site";
-import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
+import { GROUPS_ANCHOR, JOIN_CTA_HREF, JOIN_CTA_LABEL, headerJoinAllowedOn } from "@/lib/mainAction";
 import { signOut, useAuthState } from "@/lib/useAuthState";
 
 /** "page" on the link's own page, "true" inside its section (a program page under Programs). */
@@ -21,7 +20,7 @@ function currentState(pathname: string, href: string): "page" | "true" | undefin
 
 function MenuIcon({ open }: { open: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-[22px] w-[22px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
       {open ? (
         <path d="M6 6l12 12M18 6L6 18" />
       ) : (
@@ -30,6 +29,9 @@ function MenuIcon({ open }: { open: boolean }) {
     </svg>
   );
 }
+
+const TEXT_ACTION = `min-h-[44px] items-center rounded-full px-3 text-sm font-semibold text-white/70 transition-colors hover:text-white ${FOCUS}`;
+const DRAWER_ROW = `-mx-4 flex min-h-[48px] items-center rounded-xl px-4 text-base transition-colors hover:bg-white/5 hover:text-white ${FOCUS}`;
 
 export function Navbar() {
   const pathname = usePathname() ?? "/";
@@ -47,10 +49,24 @@ export function Navbar() {
     setMenuOpen(false);
   }
 
+  // The top menu (owner, 2026-11-16): Programs and About, plus Admin for an admin.
   const links: NavLink[] = isAdmin ? [...NAV_LINKS, { href: "/admin", label: "Admin" }] : [...NAV_LINKS];
-  // Inside the quiz the header carries no quiz CTA (audit L12): the page's
-  // own Next button is the only primary.
-  const inQuiz = pathname === "/intake" || pathname.startsWith("/intake/");
+  // The header carries no main button inside the quiz (audit L12: the page's
+  // own Next button is the only primary) or on the pages that are not public
+  // (the dashboard, the profile, enrolling, the admin), where it would sit
+  // beside the page's own next step. One rule, shared with the phone bar:
+  // src/lib/mainAction.ts. It reads the path and nothing else.
+  const showJoin = headerJoinAllowedOn(pathname);
+  // The main button, for everyone on a public page: to the groups. On
+  // /programs it scrolls to the group list instead of reloading the page.
+  const joinHref = pathname === JOIN_CTA_HREF ? `#${GROUPS_ANCHOR}` : JOIN_CTA_HREF;
+  // Two links, "Sign in" and the button fit from md. A signed-in visitor has
+  // more in the header (Sign out, Dashboard, Admin for an admin), so their
+  // text links wait for lg, as they always did, and the menu button stays
+  // until then. Complete class literals, so Tailwind keeps both.
+  const wideFrom = signedIn ? 1024 : 768;
+  const SHOW_WIDE = signedIn ? "lg:flex" : "md:flex";
+  const HIDE_WIDE = signedIn ? "lg:hidden" : "md:hidden";
 
   const closeMenu = useCallback((returnFocus: boolean) => {
     setMenuOpen(false);
@@ -67,7 +83,7 @@ export function Navbar() {
 
   // Drawer open: focus moves in, Escape closes and returns focus, a tap
   // outside the header closes, the page behind stops scrolling, and growing
-  // to the desktop layout closes it (audit L5).
+  // to the wide layout closes it (audit L5).
   useEffect(() => {
     if (!menuOpen) return;
     firstLinkRef.current?.focus();
@@ -78,8 +94,8 @@ export function Navbar() {
     function onPointerDown(e: PointerEvent) {
       if (headerRef.current && !headerRef.current.contains(e.target as Node)) closeMenu(false);
     }
-    const desktop = window.matchMedia("(min-width: 1024px)");
-    function onDesktop(e: MediaQueryListEvent) {
+    const wide = window.matchMedia(`(min-width: ${wideFrom}px)`);
+    function onWide(e: MediaQueryListEvent) {
       if (e.matches) closeMenu(false);
     }
 
@@ -93,14 +109,14 @@ export function Navbar() {
 
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("pointerdown", onPointerDown);
-    desktop.addEventListener("change", onDesktop);
+    wide.addEventListener("change", onWide);
     return () => {
       html.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onPointerDown);
-      desktop.removeEventListener("change", onDesktop);
+      wide.removeEventListener("change", onWide);
     };
-  }, [menuOpen, closeMenu]);
+  }, [menuOpen, closeMenu, wideFrom]);
 
   // The Supabase SDK loads only when someone signs out (audit M40).
   function handleSignOut() {
@@ -121,77 +137,72 @@ export function Navbar() {
         scrolled || menuOpen ? "border-white/10" : "border-transparent"
       }`}
     >
-      <Container className="flex items-center justify-between gap-4 py-3">
-        <Link href="/" className={`flex shrink-0 items-center rounded-lg ${FOCUS}`}>
+      <Container className="flex items-center justify-between gap-4 py-2.5 md:py-3.5">
+        <Link href="/" className={`flex min-h-[44px] shrink-0 items-center rounded-lg ${FOCUS}`}>
           <Image
             src="/images/brand/logo.svg"
             alt="Tennis Bootcamp"
             width={192}
             height={52}
-            className="h-10 w-auto"
+            className="h-9 w-auto md:h-10"
             priority
           />
         </Link>
 
-        <div className="flex items-center gap-2">
-          {/* Text links: desktop only (audit M11). */}
-          <nav aria-label="Main" className="hidden items-center gap-1 lg:flex">
-            {links.map(({ href, label }) => {
-              const current = currentState(pathname, href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-current={current}
-                  className={`inline-flex min-h-[44px] items-center rounded-full px-3 text-sm font-semibold transition-colors ${FOCUS} ${
-                    current
-                      ? "text-white underline decoration-[#B4E655] decoration-2 underline-offset-[10px]"
-                      : "text-white/70 hover:text-white"
-                  }`}
-                >
-                  {label}
-                </Link>
-              );
-            })}
-            <span className="mx-2 h-5 w-px bg-white/15" aria-hidden="true" />
-            {signedIn ? (
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className={`inline-flex min-h-[44px] items-center rounded-full px-3 text-sm font-semibold text-white/70 transition-colors hover:text-white ${FOCUS}`}
-              >
-                Sign out
-              </button>
-            ) : (
+        {/* Text links, between the logo and the actions (audit M11). */}
+        <nav aria-label="Main" className={`hidden items-center gap-1 ${SHOW_WIDE}`}>
+          {links.map(({ href, label }) => {
+            const current = currentState(pathname, href);
+            return (
               <Link
-                href="/login"
-                aria-current={currentState(pathname, "/login")}
-                className={`inline-flex min-h-[44px] items-center rounded-full px-3 text-sm font-semibold text-white/70 transition-colors hover:text-white ${FOCUS}`}
+                key={href}
+                href={href}
+                aria-current={current}
+                className={`inline-flex min-h-[44px] items-center rounded-full px-3.5 text-sm font-medium transition-colors ${FOCUS} ${
+                  current
+                    ? "text-white underline decoration-[#B4E655] decoration-2 underline-offset-[10px]"
+                    : "text-white/70 hover:text-white"
+                }`}
               >
-                Sign in
+                {label}
               </Link>
-            )}
-          </nav>
+            );
+          })}
+        </nav>
 
-          {/* The one action slot: tablet and desktop. Phones get the drawer
-              and the sticky quiz bar. A quiz-taker's slot reads "See your
-              groups" instead (owner, 2026-10-12; TrackedButton swaps it once
-              the browser knows). */}
+        <div className="flex items-center gap-2">
           {signedIn ? (
+            <button type="button" onClick={handleSignOut} className={`hidden lg:inline-flex ${TEXT_ACTION}`}>
+              Sign out
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              aria-current={currentState(pathname, "/login")}
+              className={`hidden md:inline-flex ${TEXT_ACTION}`}
+            >
+              Sign in
+            </Link>
+          )}
+
+          {/* The actions: tablet and desktop. Phones get the menu and the
+              bar at the bottom. A signed-in visitor keeps Dashboard, and
+              everyone gets the main button on a public page, outside the
+              quiz. */}
+          {signedIn && (
             <Button variant="secondary" size="compact" href="/dashboard" className="hidden md:inline-flex">
               Dashboard
             </Button>
-          ) : inQuiz ? null : (
-            <TrackedButton
+          )}
+          {showJoin && (
+            <Button
               variant="primary"
               size="compact"
-              href="/intake"
-              track="quiz"
-              source="navbar"
+              href={joinHref}
               className="hidden whitespace-nowrap md:inline-flex"
             >
-              {QUIZ_CTA_LABEL}
-            </TrackedButton>
+              {JOIN_CTA_LABEL}
+            </Button>
           )}
 
           <button
@@ -201,7 +212,7 @@ export function Navbar() {
             aria-expanded={menuOpen}
             aria-controls="mobile-menu"
             onClick={() => setMenuOpen((o) => !o)}
-            className={`inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 text-white/85 transition-colors hover:border-white/30 hover:text-white lg:hidden ${FOCUS}`}
+            className={`-mr-2.5 inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors hover:bg-white/5 ${HIDE_WIDE} ${FOCUS}`}
           >
             <MenuIcon open={menuOpen} />
           </button>
@@ -213,7 +224,7 @@ export function Navbar() {
       <div
         id="mobile-menu"
         inert={!menuOpen}
-        className={`absolute inset-x-0 top-full lg:hidden ${menuOpen ? "visible" : "invisible"}`}
+        className={`absolute inset-x-0 top-full ${HIDE_WIDE} ${menuOpen ? "visible" : "invisible"}`}
       >
         <div
           aria-hidden="true"
@@ -238,9 +249,7 @@ export function Navbar() {
                     href={href}
                     aria-current={current}
                     onClick={() => setMenuOpen(false)}
-                    className={`-mx-4 flex min-h-[48px] items-center rounded-xl px-4 text-base font-semibold transition-colors hover:bg-white/5 ${FOCUS} ${
-                      current ? "text-white" : "text-white/80 hover:text-white"
-                    }`}
+                    className={`${DRAWER_ROW} font-semibold ${current ? "text-white" : "text-white/80"}`}
                   >
                     {current ? (
                       <span className="mr-3 h-4 w-0.5 rounded-full bg-[#B4E655]" aria-hidden="true" />
@@ -250,13 +259,13 @@ export function Navbar() {
                 );
               })}
             </nav>
-            <div className="mt-3 border-t border-white/10 pt-4">
+            <div className="mt-3 flex flex-col gap-3 border-t border-white/10 pt-4">
               {signedIn ? (
                 <div className="flex flex-col gap-1">
                   <Link
                     href="/dashboard"
                     onClick={() => setMenuOpen(false)}
-                    className={`-mx-4 flex min-h-[48px] items-center rounded-xl px-4 text-base font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white ${FOCUS}`}
+                    className={`${DRAWER_ROW} font-semibold text-white/80`}
                   >
                     Dashboard
                   </Link>
@@ -266,33 +275,25 @@ export function Navbar() {
                       setMenuOpen(false);
                       handleSignOut();
                     }}
-                    className={`-mx-4 flex min-h-[48px] items-center rounded-xl px-4 text-left text-base text-white/70 transition-colors hover:bg-white/5 hover:text-white ${FOCUS}`}
+                    className={`${DRAWER_ROW} text-left text-white/70`}
                   >
                     Sign out
                   </button>
                 </div>
               ) : (
-                <div className="flex flex-col gap-3">
-                  <Link
-                    href="/login"
-                    onClick={() => setMenuOpen(false)}
-                    className={`-mx-4 flex min-h-[48px] items-center rounded-xl px-4 text-base font-semibold text-white/80 transition-colors hover:bg-white/5 hover:text-white ${FOCUS}`}
-                  >
-                    Sign in
-                  </Link>
-                  {!inQuiz && (
-                    <TrackedButton
-                      variant="primary"
-                      href="/intake"
-                      track="quiz"
-                      source="navbar"
-                      onClick={() => setMenuOpen(false)}
-                      className="w-full"
-                    >
-                      {QUIZ_CTA_LABEL}
-                    </TrackedButton>
-                  )}
-                </div>
+                <Link
+                  href="/login"
+                  onClick={() => setMenuOpen(false)}
+                  className={`${DRAWER_ROW} font-semibold text-white/80`}
+                >
+                  Sign in
+                </Link>
+              )}
+              {/* The main button closes the list, under the same rule as the header's. */}
+              {showJoin && (
+                <Button variant="primary" href={joinHref} onClick={() => setMenuOpen(false)} className="w-full">
+                  {JOIN_CTA_LABEL}
+                </Button>
               )}
             </div>
           </Container>

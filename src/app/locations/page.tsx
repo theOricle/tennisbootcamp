@@ -10,7 +10,7 @@ import { PageStack } from "@/components/layout/PageStack";
 import { Heading } from "@/components/ui/Heading";
 import { Button } from "@/components/ui/Button";
 import { FOCUS_RING } from "@/components/ui/focus";
-import { QuizBand } from "@/components/sections/QuizBand";
+import { JoinClosing } from "@/components/sections/JoinClosing";
 import { MapLink, PinIcon } from "@/components/locations/LocationLine";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 
@@ -18,7 +18,7 @@ import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 // train at. One card per location: the name and area, the map link (a Google
 // Maps search, since no street address is published), and what runs there,
 // group by group, from the lineup in src/content/programs.ts. The page closes
-// on the quiz (audit M13). Static: nothing here changes without a deploy.
+// on the main action (audit M13). Static: nothing here changes without a deploy.
 
 const [first] = locations;
 
@@ -133,7 +133,7 @@ export default function LocationsPage() {
           <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/60">{membershipNote()}</p>
         </div>
 
-        <QuizBand source="locations-closing" />
+        <JoinClosing source="locations-closing" />
       </PageStack>
     </main>
   );

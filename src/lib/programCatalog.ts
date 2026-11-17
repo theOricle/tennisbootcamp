@@ -19,6 +19,7 @@ export type ProgramStatusKind =
   | "full"
   | "forming"
   | "open"
+  | "low"
   | "approval";
 
 export type ProgramStatus = { kind: ProgramStatusKind; label: string };
@@ -40,25 +41,71 @@ export function programStatus(p: Program, nextCohort?: Cohort | null): ProgramSt
 }
 
 /**
- * A group's status chip (joining flow, owner 2026-10-12): how a player gets
- * in. A by-approval group (High Performance) reads "By approval" whatever its
- * dates, since that is the fact a visitor needs first (the Next row still
- * carries a public cohort), unless it is full or invite only. Otherwise the
- * next public cohort's start, then "Full", "Invite only", and "Open to join"
- * for a group taking players. An arranged group (private lessons) shows no
- * chip: the card's Time row already says so.
+ * A group card names how many spots are left at this many or fewer: the
+ * enroll page's own threshold ("Only 2 spots left", EnrollWizard), so the
+ * card and the page a visitor lands on never disagree.
  */
-export function groupStatus(g: ProgramGroup, nextCohort?: Cohort | null): ProgramStatus | null {
-  if (g.joining === "approval" && g.status !== "full" && g.status !== "invite-only") {
-    return { kind: "approval", label: "By approval" };
-  }
-  if (nextCohort) {
-    return { kind: "next-cohort", label: `Next cohort ${formatStartDate(nextCohort.startDate)}` };
-  }
-  if (g.status === "full") return { kind: "full", label: "Full" };
-  if (g.status === "invite-only") return { kind: "invite-only", label: "Invite only" };
+export const LOW_SEATS_THRESHOLD = 3;
+
+/**
+ * A group's status chip (joining flow, owner 2026-10-12; seats, owner-approved
+ * design 2026-11-17): how a player gets in, in one of four states. "Full"
+ * when the group is marked full or its next public cohort has no seat left.
+ * "Invite only" keeps its chip. A by-approval group (High Performance) reads
+ * "By approval" whatever its seats, since that is the fact a visitor needs
+ * first. "{n} spots left" when the next public cohort is down to
+ * LOW_SEATS_THRESHOLD or fewer, and "Open to join" otherwise. An arranged
+ * group (private lessons) shows no chip.
+ *
+ * `seatsLeft` is the seat count of the group's next public cohort, the one
+ * the enroll page reads (src/lib/seatCount.ts through src/lib/groupSeats.ts).
+ * Null or absent means it could not be read, or there is no public cohort:
+ * the group then reads "Open to join", never an error. Display only.
+ */
+export function groupStatus(g: ProgramGroup, seatsLeft?: number | null): ProgramStatus | null {
   if (g.status === "arranged") return null;
+  const seats = typeof seatsLeft === "number" && Number.isFinite(seatsLeft) ? seatsLeft : null;
+  if (g.status === "full" || (seats !== null && seats <= 0)) return { kind: "full", label: "Full" };
+  if (g.status === "invite-only") return { kind: "invite-only", label: "Invite only" };
+  if (g.joining === "approval") return { kind: "approval", label: "By approval" };
+  if (seats !== null && seats <= LOW_SEATS_THRESHOLD) {
+    return { kind: "low", label: `${seats} spot${seats === 1 ? "" : "s"} left` };
+  }
   return { kind: "open", label: "Open to join" };
+}
+
+/** What a group card's one button does. */
+export type GroupActionKind = "join" | "ask" | "notify";
+
+export type GroupAction = {
+  kind: GroupActionKind;
+  /** The button's words: "Join", "Ask to join", "Notify me", "Ask about lessons". */
+  label: string;
+  /** The rest of its accessible name, after the label: " the Beginner Junior Bootcamp". */
+  nameSuffix: string;
+};
+
+/** "the Beginner Junior Bootcamp" · "the One-to-one coaching group". */
+function groupNamed(name: string): string {
+  return `the ${name}${/bootcamp$/i.test(name) ? "" : " group"}`;
+}
+
+/**
+ * A group card's one action, from its status (owner-approved design,
+ * 2026-11-17): a lime "Join" for a group that is open or down to its last
+ * spots, an outline "Notify me" for a full one, an outline "Ask to join" for
+ * a by-approval or invite-only one, and "Ask about lessons" for a group with
+ * no fixed class. Each is named for its group for assistive tech ("Join the
+ * Beginner Junior Bootcamp").
+ */
+export function groupAction(g: Pick<ProgramGroup, "name">, status: ProgramStatus | null): GroupAction {
+  const named = groupNamed(g.name);
+  if (status === null) return { kind: "ask", label: "Ask about lessons", nameSuffix: "" };
+  if (status.kind === "full") return { kind: "notify", label: "Notify me", nameSuffix: ` when ${named} has a spot` };
+  if (status.kind === "approval" || status.kind === "invite-only") {
+    return { kind: "ask", label: "Ask to join", nameSuffix: ` ${named}` };
+  }
+  return { kind: "join", label: "Join", nameSuffix: ` ${named}` };
 }
 
 /** What the eyebrow reads: the bands, the timetable's days, else the schedule line or the type. */
@@ -142,6 +189,58 @@ export function programAgeLabel(groups: readonly Pick<ProgramGroup, "ageMin" | "
 export function agesChipLabel(groups: readonly Pick<ProgramGroup, "ageMin" | "ageMax">[]): string {
   const label = programAgeLabel(groups);
   return label === "Any age" ? label : `Ages ${label}`;
+}
+
+/** "Ages 7–10" · "16 and up" · "Any age": an age label as a plain line, with no "Ages" row label in front. */
+function agesLine(label: string): string {
+  return /^\d/.test(label) && !label.includes("and up") ? `Ages ${label}` : label.replace(/^up to/, "Ages up to");
+}
+
+/** "Ages 7–10" · "16 and up" · "Any age": who a group is for, the first plain line on its card. */
+export function groupWhoLabel(g: Pick<ProgramGroup, "ageMin" | "ageMax">): string {
+  return agesLine(groupAgeLabel(g));
+}
+
+/** "Ages 7–17" · "16 and up" · "Any age": who a program is for, from its groups. */
+export function programWhoLabel(groups: readonly Pick<ProgramGroup, "ageMin" | "ageMax">[]): string {
+  return agesLine(programAgeLabel(groups));
+}
+
+/** "Saturdays" · "Saturdays and Sundays" · "By arrangement": the days a program's groups train. */
+export function programDaysLabel(groups: readonly Pick<ProgramGroup, "day">[]): string {
+  const days = [...new Set(groups.flatMap((g) => (g.day ? [`${g.day}s`] : [])))];
+  return days.length > 0 ? days.join(" and ") : "By arrangement";
+}
+
+/**
+ * Who and when in one line, for the home page's program card: "Ages 7–17 ·
+ * Saturdays", "16 and up · Sundays", "Any age · By arrangement".
+ */
+export function programWhoWhenLine(groups: readonly Pick<ProgramGroup, "ageMin" | "ageMax" | "day">[]): string {
+  return `${programWhoLabel(groups)} · ${programDaysLabel(groups)}`;
+}
+
+/**
+ * The line beside a program's title on /programs: when, then who, for a
+ * program with fixed classes ("Saturdays · ages 7–17", "Sundays · 16 and
+ * up"); who and the level for one with none ("Any age · any level").
+ */
+export function programHeadingLine(
+  groups: readonly Pick<ProgramGroup, "ageMin" | "ageMax" | "day" | "level">[]
+): string {
+  const who = programWhoLabel(groups);
+  if (groups.some((g) => g.day !== null)) {
+    return `${programDaysLabel(groups)} · ${who.charAt(0).toLowerCase()}${who.slice(1)}`;
+  }
+  const tags = programLevelTags(groups);
+  const level = tags === null || tags.length === 0 ? "any level" : tags.map((id) => tierById(id).name).join(" and ");
+  return `${who} · ${level}`;
+}
+
+/** The class time and, when a public cohort exists, the day it starts: "Saturdays 12:00–1:00 pm" and "starts Jan 16". */
+export function groupWhenParts(g: ProgramGroup, nextCohort?: Pick<Cohort, "startDate"> | null): string[] {
+  const when = formatGroupWhen(g);
+  return nextCohort ? [when, `starts ${formatStartDate(nextCohort.startDate)}`] : [when];
 }
 
 /** The group's tier (its one level tag), or null for a group built for any level. */

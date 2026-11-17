@@ -25,4 +25,8 @@ jobs:
 
       - run: npm test
 
+      # The build's type check loads the Google API type definitions and needs
+      # about 1.8 GB, which is at the runner's default heap limit.
       - run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096

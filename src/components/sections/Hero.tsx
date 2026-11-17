@@ -3,12 +3,10 @@
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/Button";
-import { TrackedButton } from "@/components/ui/TrackedButton";
-import { QuizSwap, RetakeQuizLink } from "@/components/quiz/QuizSwap";
+import { MainAction } from "@/components/ui/MainAction";
 import { Container } from "@/components/layout/Container";
 import { COHORT_LENGTH_ADJ } from "@/content/programs";
-import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
+import { HERO_TAG } from "@/content/bootcamp";
 // A static import (audit L24): the file gets a content-hashed URL that is
 // cached for a year, instead of a public/ path revalidated on every visit.
 import playerImage from "../../../public/images/hero/player.png";
@@ -54,6 +52,11 @@ const FEATHER =
   "[mask-image:radial-gradient(ellipse_56%_72%_at_50%_44%,#000_60%,transparent_100%)] " +
   "[-webkit-mask-image:radial-gradient(ellipse_56%_72%_at_50%_44%,#000_60%,transparent_100%)]";
 
+// The hero says who we are and offers the main action, and nothing else
+// (owner, 2026-11-17): no price, no group size and no promise here. The
+// price is on every program and group card and in the joining steps; the
+// group size is a line under the class section; the week-one promise is in
+// the joining steps and under "Good to know" on /programs.
 export function Hero() {
   const waveReady = useWaveWhenIdle();
 
@@ -66,10 +69,11 @@ export function Hero() {
       <div className="absolute inset-0 z-10">{waveReady && <CourtBackground />}</div>
 
       {/* z-20 — soft vignette, then the text scrim: top-down on phones so the
-          dots never run through the buttons and note (audit M15), left-right
-          from md. It holds at 90% navy or more through the copy column, down
-          to the $20 note on phones and across the copy's width from md, then
-          lets the wave through behind the player (QA 2026-10-10). */}
+          dots never run through the button and the quiz line (audit M15),
+          left-right from md. It holds at 90% navy or more through the copy
+          column, down past the quiz line on phones and across the copy's
+          width from md, then lets the wave through behind the player (QA
+          2026-10-10). */}
       <div className="pointer-events-none absolute inset-0 z-20 tb-gradient opacity-60" />
       <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-b from-[#061427]/95 from-0% via-[#061427]/90 via-[72%] to-[#061427]/35 to-100% md:bg-gradient-to-r md:from-[#061427]/95 md:from-0% md:via-[#061427]/90 md:via-[50%] md:to-transparent md:to-100%" />
 
@@ -88,7 +92,7 @@ export function Hero() {
               so no live-status ping. */}
           <div className="inline-flex items-center gap-2 rounded-full border border-[#B4E655]/40 bg-[#B4E655]/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-[#B4E655]">
             <span className="inline-flex h-2 w-2 rounded-full bg-[#B4E655]" aria-hidden="true" />
-            Weekend classes · Toronto
+            {HERO_TAG}
           </div>
 
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white md:text-6xl">
@@ -99,37 +103,10 @@ export function Hero() {
             Structured {COHORT_LENGTH_ADJ} cohorts. A system that makes progress inevitable. Built for athletes who want to compete.
           </p>
 
-          <div className="mt-8 flex flex-col items-start gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* A quiz-taker's primary reads their next step (owner,
-                  2026-10-12): "See your groups", or "Open your dashboard"
-                  when signed in. TrackedButton swaps it once the browser
-                  knows; the server render is the visitor's quiz. */}
-              <TrackedButton variant="primary" href="/intake" track="quiz" source="hero" data-quiz-cta>
-                {QUIZ_CTA_LABEL}
-              </TrackedButton>
-              <Button variant="secondary" href="/programs" className="bg-[#061427]/80">
-                Browse Programs
-              </Button>
-            </div>
-            <p className="max-w-md text-xs leading-relaxed text-white/65">
-              <QuizSwap
-                guest={
-                  <>The quiz is free. Optional: a 20-minute on-court assessment for $20 — join a program after and it comes off the price.</>
-                }
-                taken={
-                  <>
-                    Your quiz answers are in, and our coaches place you from them.{" "}
-                    <RetakeQuizLink
-                      source="hero"
-                      className="rounded font-semibold text-[#B4E655] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]"
-                    />{" "}
-                    if they change.
-                  </>
-                }
-              />
-            </p>
-          </div>
+          {/* The main action (owner, 2026-11-16): "Join a group", then the
+              quiz as a side line. A quiz-taker's side line reads their next
+              step instead; the server render is the new visitor's. */}
+          <MainAction source="hero" className="mt-6 md:mt-8" />
         </div>
 
         {/* The owner's 640/720px player (DECISIONS 2026-04-25), restored past
@@ -146,7 +123,7 @@ export function Hero() {
             preload
             fetchPriority="high"
             sizes="(max-width: 767px) 380px, (max-width: 1023px) 640px, 720px"
-            className={`h-auto w-full max-w-[380px] md:w-[640px] md:max-w-none lg:w-[720px] ${FEATHER}`}
+            className={"h-auto w-full max-w-[380px] md:w-[640px] md:max-w-none lg:w-[720px] " + FEATHER}
           />
         </div>
       </Container>

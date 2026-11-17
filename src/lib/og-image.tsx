@@ -1,4 +1,5 @@
 import { brandMarkDataUrl } from "@/lib/brandMark";
+import { HERO_TAG } from "@/content/bootcamp";
 
 /**
  * Shared layout for all per-page OG cards (audit L25): the brand mark and
@@ -6,12 +7,15 @@ import { brandMarkDataUrl } from "@/lib/brandMark";
  * subtitle in a solid grey at 4.5:1 or better. Returns the JSX passed to
  * ImageResponse.
  *
+ * A card with no subtitle of its own reads the hero's tag, "Group bootcamps ·
+ * Toronto": what we run and where (owner, 2026-11-16).
+ *
  * With `plate` (a 1200×380 SVG data URI, the program's Court Plate in its
  * strip frame; audit H1) the title sits in the top 250px and the plate fills
  * the bottom of the card. Satori draws the data URI as an image, so the SVG
  * must carry its own width and height and no vector-effect.
  */
-export function buildOgImage(title: string, subtitle = "Elite Coaching · Toronto", plate?: string) {
+export function buildOgImage(title: string, subtitle: string = HERO_TAG, plate?: string) {
   const compact = !!plate;
   return (
     <div

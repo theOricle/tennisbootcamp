@@ -22,6 +22,7 @@ import {
 } from "../lib/tiers";
 import { SELF_LEVELS, provisionalTierFor } from "../lib/level";
 import { coaches } from "../content/coaches";
+import { SITE_DESCRIPTION } from "../content/site";
 import nextConfig, { TIER_EMBLEM_REDIRECTS } from "../../next.config";
 import type { Recommendation } from "../lib/recommend";
 import {
@@ -186,8 +187,10 @@ check("no Sina, Kassaian or Head Coach in user-facing code", nameHits.length ===
   check("About: the name only in the founder section", start > 0 && end > start && !/\bSina\b|Head Coach/.test(outside));
   check("About: the founder heading and title come from coaches.ts", about.includes("{lead.name}") && about.includes("{lead.role}"));
 }
-check("the placement line is the team's", read("src/components/sections/TrustBar.tsx").includes('label: "Placed by our coaches"'));
-check("site meta: our coaches place you", read("src/content/site.ts").includes("Take the 2-minute quiz and our coaches place you."));
+// The trust bar left the home page (backlog #69); where the site still says who places a player, it is the team.
+check("the placement line is the team's", read("src/components/sections/ProgramCatalog.tsx").includes("and our coaches place you.") && read("src/components/sections/ProgramCatalog.tsx").includes("and our coaches place you from them."));
+// The site description says what we run since backlog #69 and no longer carries a placement line; if one returns, it is the team's.
+check("site meta: no placement line, or the team's", !/\bplaces? (you|them|every player)\b/.test(SITE_DESCRIPTION) || SITE_DESCRIPTION.includes("our coaches place"), SITE_DESCRIPTION);
 
 console.log("Emails: the coaching team signs, and nobody says I");
 const recommendation = { program: { title: "Adult Bootcamps" }, score: 1, reason: "" } as unknown as Recommendation;
@@ -232,6 +235,16 @@ for (const [name, build] of EMAILS) {
   check(`${name}: no coach named, no Head Coach`, !/\b(Sina|Kassaian)\b|Head Coach/.test(body));
   check(`${name}: speaks as we, never I`, !/\bI\b|\bme\b/.test(text.replace(/https?:\S+/g, "")));
 }
+// Backlog #69: every group is a group bootcamp. No email says what a class is
+// (each names the program, the group and the dates), so none can keep the old
+// way of saying it.
+check(
+  "no email describes a class the old way: no weekend or group class, no court cap",
+  EMAILS.every(([, build]) => {
+    const { subject, html, text } = build();
+    return !/weekend class|group class|group lesson|per court|capped/i.test(subject + html + text);
+  })
+);
 {
   const complete = buildAssessmentCompleteEmail({ name: "Maya Chen", levelLabel: "4.0", coachNote: "Good feet." });
   check("assessment complete: the tier sentence takes no article", complete.text.includes("You're in the Advanced tier.") && !/You're an? (Advanced|Intermediate|Elite)\b/.test(complete.html));
@@ -246,7 +259,7 @@ for (const [name, build] of EMAILS) {
 // ── 3. The coach title ──────────────────────────────────────────────────────
 console.log("Coach title (owner, 2026-10-12)");
 check("coaches.ts: Program Coordinator / High Performance Coach", coaches[0]?.role === "Program Coordinator / High Performance Coach");
-check("the home coach card renders the role from coaches.ts", read("src/components/sections/Coaches.tsx").includes("{c.role}"));
+check("the home page's Coaching column renders the name and the role from coaches.ts", read("src/components/sections/WhereAndWho.tsx").includes("const lead = coaches[0];") && read("src/components/sections/WhereAndWho.tsx").includes("{lead.name}") && read("src/components/sections/WhereAndWho.tsx").includes("{lead.role}"));
 check("JSON-LD carries it as jobTitle", read("src/lib/structuredData.ts").includes("jobTitle: leadCoach.role"));
 
 // ── 4. QA quick fixes (2026-10-10) ──────────────────────────────────────────

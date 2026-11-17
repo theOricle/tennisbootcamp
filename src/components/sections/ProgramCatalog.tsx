@@ -1,8 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { Suspense, useId, useState } from "react";
+import { Suspense, useId, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Cohort } from "@/types/cohort";
 import type { Program, ProgramGroup } from "@/types/program";
@@ -17,52 +16,72 @@ import {
   exactAgeQuery,
   filterGroups,
   initialCatalogQuery,
-  isEmptyQuery,
+  locationQueryFor,
   parseCatalogQuery,
   resultsLine,
   tierQueryFor,
   type CatalogQuery,
 } from "@/lib/programFilters";
-import { programEyebrow } from "@/lib/programCatalog";
-import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
+import { programHeadingLine } from "@/lib/programCatalog";
+import { GROUPS_ANCHOR, QUIZ_CTA_LABEL } from "@/lib/mainAction";
 import { RIGHT_GROUP_PROMISE } from "@/content/programs";
-import { buttonClass } from "@/components/ui/Button";
+import { locations } from "@/content/locations";
+import { Container } from "@/components/layout/Container";
 import { TrackedLink } from "@/components/ui/TrackedButton";
+import { INLINE_LIME_LINK, PADDED_INLINE_LINK, QuizSideLine } from "@/components/ui/MainAction";
+import { QuizSwap } from "@/components/quiz/QuizSwap";
 import { FOCUS_RING } from "@/components/ui/focus";
-import { Heading } from "@/components/ui/Heading";
-import { EYEBROW_CLASS } from "./ProgramCard";
-import { ProgramGroupCard } from "./ProgramGroupCard";
+import { ArrangedGroupRow, ProgramGroupCard } from "./ProgramGroupCard";
 
-// The /programs catalog (owner, 2026-10-12): every group as its own card,
-// under its program, with an age filter and a level filter carried in the
-// URL so a filtered list can be shared and the quiz result can link to one.
-// The level filter matches a group's one level tag exactly (owner,
-// 2026-10-13); when no tagged group matches, the nearest-level groups for
-// that age follow under "Closest fit" with the week-one promise, never a
-// dead end.
-// The location is chosen first, above How joining works (LocationChoice,
-// owner 2026-10-12); both read the same URL, so the catalog shows the groups
-// at the chosen location, and clearing the filters keeps it.
-// The page is static (ISR); the filter is read and written in the browser
+// The /programs catalog (owner, 2026-10-12; the simpler page, owner-approved
+// design 2026-11-17). The header band carries the page's title and lead (the
+// page passes them in), then three labelled dropdowns in one row — Location
+// first ("People need to choose location first"), Player's age, Level — the
+// five levels as one strip, and the quiz as a side line. Under the band,
+// every group at the chosen location under its program's heading row: a
+// card per group with a fixed class, one row for a group booked by
+// arrangement (private lessons).
+//
+// The filters are carried in the URL (?location=…&age=14&level=intermediate)
+// so a filtered list can be shared and the quiz result can link to one. The
+// level filter matches a group's one level tag exactly (owner, 2026-10-13);
+// when a program has no group at the chosen level, its nearest-level groups
+// follow under "Closest fit" with the week-one promise, never a dead end.
+// The page is static (ISR); the filters are read and written in the browser
 // with the native history API, so no request is made when a select changes.
 // The server prerenders the unfiltered list as the Suspense fallback, so a
 // crawler and a reader with no script see every group.
 
 /** The program data the catalog needs, serialisable for the client. */
-export type CatalogProgram = Pick<Program, "slug" | "title" | "type" | "description" | "photo" | "ageBands" | "timetable" | "schedule">;
+export type CatalogProgram = Pick<Program, "slug" | "title">;
 
 export type ProgramCatalogProps = {
   programs: CatalogProgram[];
   groups: ProgramGroup[];
   /** The earliest public cohort per group id, already fetched by the page. */
   nextCohorts: Record<string, Cohort>;
+  /** Seats left in those cohorts, by group id, read once by the page (src/lib/groupSeats.ts). */
+  seats?: Record<string, number>;
+  /** The band's title and lead, rendered by the page. */
+  header: ReactNode;
+  /** The five-levels strip, rendered by the page; it sits under the dropdowns. */
+  levels?: ReactNode;
 };
 
+// A dropdown shows its chosen value whole. On phones Age and Level share a
+// row, so the padding and the chevron's room are tighter there, and the
+// value is 14px below 375 wide and 16px from 375 (the width iPhones start
+// at, where anything smaller makes Safari zoom the page on a tap). A value
+// that still cannot fit (the location on the narrowest phones) ends in an
+// ellipsis, never a sliced letter.
 const SELECT_CLASS =
-  "min-h-[44px] w-full appearance-none rounded-full border border-white/35 bg-[#061427] py-2 pl-4 pr-10 text-base text-white " +
-  `hover:border-white/50 md:text-sm ${FOCUS_RING}`;
+  "min-h-[44px] w-full appearance-none truncate rounded-full border border-white/35 bg-[#061427] py-2 pl-3 pr-7 text-sm text-white " +
+  `hover:border-white/50 min-[375px]:text-base md:pl-4 md:pr-10 md:text-[15px] ${FOCUS_RING}`;
 const CHEVRON =
-  "pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60";
+  "pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60 md:right-4";
+const FIELD_LABEL = "mb-1.5 block text-[13px] text-white/70";
+const SECTION_TITLE = "text-[22px] font-semibold leading-tight tracking-tight text-white";
+const GROUP_GRID = "mt-3.5 grid gap-3 md:grid-cols-3 md:gap-4";
 
 function Chevron() {
   return (
@@ -72,6 +91,13 @@ function Chevron() {
   );
 }
 
+/**
+ * Three labelled dropdowns: the location on a row of its own on phones, all
+ * three in one row from md. On phones the Level column is the wider of the
+ * two under it (11 to 14), so the longest level and the longest age band
+ * both show whole. While there is one location it is the only option,
+ * already chosen; a second one adds "All locations".
+ */
 function Filters({
   query,
   onChange,
@@ -79,14 +105,35 @@ function Filters({
   query: CatalogQuery;
   onChange: (next: CatalogQuery) => void;
 }) {
+  const locationId = useId();
   const ageId = useId();
   const levelId = useId();
-  const active = !isEmptyQuery(query);
   return (
-    <fieldset className="mt-6 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+    <fieldset className="mt-[22px] grid max-w-[860px] grid-cols-[minmax(0,11fr)_minmax(0,14fr)] gap-3 md:grid-cols-[1.75fr_0.9fr_1fr] md:gap-4 lg:grid-cols-[1.5fr_1fr_1fr]">
       <legend className="sr-only">Filter the groups</legend>
-      <div>
-        <label htmlFor={ageId} className="mb-1.5 block text-sm text-white/70">
+      <div className="col-span-2 min-w-0 md:col-span-1">
+        <label htmlFor={locationId} className={FIELD_LABEL}>
+          Location
+        </label>
+        <div className="relative">
+          <select
+            id={locationId}
+            value={query.location?.id ?? ""}
+            onChange={(e) => onChange({ ...query, location: locationQueryFor(e.target.value) })}
+            className={SELECT_CLASS}
+          >
+            {locations.length > 1 && <option value="">All locations</option>}
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name} · {l.locality}
+              </option>
+            ))}
+          </select>
+          <Chevron />
+        </div>
+      </div>
+      <div className="min-w-0">
+        <label htmlFor={ageId} className={FIELD_LABEL}>
           Player&apos;s age
         </label>
         <div className="relative">
@@ -115,8 +162,8 @@ function Filters({
           <Chevron />
         </div>
       </div>
-      <div>
-        <label htmlFor={levelId} className="mb-1.5 block text-sm text-white/70">
+      <div className="min-w-0">
+        <label htmlFor={levelId} className={FIELD_LABEL}>
           Level
         </label>
         <div className="relative">
@@ -129,55 +176,28 @@ function Filters({
             <option value="">Any level</option>
             {TIERS.map((t) => (
               <option key={t.id} value={t.slug}>
-                {t.name} · {t.band}
+                {t.name}
               </option>
             ))}
           </select>
           <Chevron />
         </div>
       </div>
-      <button
-        type="button"
-        onClick={() => onChange(clearFilters(query))}
-        disabled={!active}
-        className={buttonClass("secondary", "compact")}
-      >
-        Clear filters
-      </button>
     </fieldset>
   );
 }
 
-function ProgramHeader({ program }: { program: CatalogProgram }) {
-  const headingId = `catalog-${program.slug}`;
+/** A program's heading row: its title, linked to its page, and one derived line ("Saturdays · ages 7–17"). */
+function ProgramHeading({ program, groups }: { program: CatalogProgram; groups: ProgramGroup[] }) {
   return (
-    <div className="flex items-start gap-4">
-      {program.photo && (
-        <div className="hidden w-24 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#061427] sm:block">
-          <div className="aspect-[16/10]">
-            <Image
-              src={program.photo.src}
-              alt={program.photo.alt}
-              width={program.photo.width}
-              height={program.photo.height}
-              sizes="96px"
-              className="h-full w-full object-cover"
-            />
-          </div>
-        </div>
-      )}
-      <div className="min-w-0">
-        <p className={EYEBROW_CLASS}>{programEyebrow(program)}</p>
-        <h3 id={headingId} className="mt-1 text-lg font-semibold tracking-tight text-white">
-          <Link
-            href={`/programs/${program.slug}`}
-            className={`rounded underline-offset-4 hover:underline ${FOCUS_RING}`}
-          >
-            {program.title} <span aria-hidden="true">→</span>
-          </Link>
-        </h3>
-        <p className="mt-1 text-sm text-white/70">{program.description}</p>
-      </div>
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+      <h2 id={`catalog-${program.slug}`} className={SECTION_TITLE}>
+        {/* A 44px target with the ring on the words: the side line's padded inline link, so the row keeps its height. */}
+        <Link href={`/programs/${program.slug}`} className={`underline-offset-4 hover:underline ${PADDED_INLINE_LINK}`}>
+          {program.title}
+        </Link>
+      </h2>
+      <p className="text-sm text-white/60">{programHeadingLine(groups)}</p>
     </div>
   );
 }
@@ -188,32 +208,34 @@ function ProgramHeader({ program }: { program: CatalogProgram }) {
  * line about week-one placement. The line names the chosen level and age
  * and nothing more, because another program may have matched exactly above
  * (a teen at Intermediate sees the adult group, then the youth program's
- * nearest). The cards carry the program's title in their eyebrow, since
- * they come from more than one program.
+ * nearest). Each card's title names its group, so cards from more than one
+ * program read apart.
  */
 function ClosestFit({
   groups,
   programs,
   nextCohorts,
+  seats,
   query,
 }: {
   groups: ProgramGroup[];
   programs: CatalogProgram[];
   nextCohorts: Record<string, Cohort>;
+  seats: Record<string, number>;
   query: CatalogQuery;
 }) {
   if (groups.length === 0 || !query.tier) return null;
   const scope = query.age ? ` for ${query.age.phrase}` : "";
   return (
-    <section aria-labelledby="closest-fit" className="mt-10 border-t border-white/10 pt-8">
-      <h3 id="closest-fit" className="text-lg font-semibold tracking-tight text-white">
+    <section aria-labelledby="closest-fit" className="pt-8 md:pt-11">
+      <h2 id="closest-fit" className={SECTION_TITLE}>
         Closest fit
-      </h3>
+      </h2>
       <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/70">
         The nearest levels to {query.tier.name}{scope}. Your coach confirms your level on court in
         week one. {RIGHT_GROUP_PROMISE}
       </p>
-      <ul role="list" className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ul role="list" className={GROUP_GRID}>
         {groups.map((g) => {
           const program = programs.find((p) => p.slug === g.programSlug);
           if (!program) return null;
@@ -223,9 +245,8 @@ function ClosestFit({
                 group={g}
                 program={program}
                 nextCohort={nextCohorts[g.id]}
-                showProgram
+                seatsLeft={seats[g.id]}
                 source="programs-closest"
-                headingLevel={4}
               />
             </li>
           );
@@ -240,77 +261,109 @@ export function ProgramCatalogView({
   programs,
   groups,
   nextCohorts,
+  seats = {},
+  header,
+  levels,
   query,
   onChange,
 }: ProgramCatalogProps & { query: CatalogQuery; onChange: (next: CatalogQuery) => void }) {
   const matching = filterGroups(groups, query);
   const sections = programs
-    .map((program) => ({ program, groups: matching.filter((g) => g.programSlug === program.slug) }))
-    .filter((s) => s.groups.length > 0);
+    .map((program) => ({
+      program,
+      // The heading line describes the program, so it reads every group of it.
+      all: groups.filter((g) => g.programSlug === program.slug),
+      shown: matching.filter((g) => g.programSlug === program.slug),
+    }))
+    .filter((s) => s.shown.length > 0);
   const closest = closestGroups(groups, query);
+  // A group booked by arrangement (private lessons) takes every age and
+  // level, so it is always listed. "Nothing matches" means no group with a
+  // fixed class does, and none is near.
+  const noClassMatches = !matching.some((g) => g.day !== null) && closest.length === 0;
 
   return (
-    <section aria-labelledby="catalog-heading">
-      <Heading id="catalog-heading">Every group</Heading>
-      <p className="mt-2 max-w-2xl text-sm text-white/70">
-        Each group is built for an age range and one level. Filter by the player&apos;s age
-        and level, then take the 2-minute quiz and our coaches place them.
-      </p>
-
-      <Filters query={query} onChange={onChange} />
-
-      <p role="status" aria-live="polite" className="mt-4 text-sm font-semibold text-white/85">
-        {resultsLine(matching.length, query)}
-      </p>
-
-      {sections.length > 0 || closest.length > 0 ? (
-        <div className="mt-8 space-y-12">
-          {sections.map(({ program, groups: list }) => (
-            <section key={program.slug} aria-labelledby={`catalog-${program.slug}`}>
-              <ProgramHeader program={program} />
-              <ul role="list" className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {list.map((g) => (
-                  <li key={g.id} className="flex [&>*]:w-full">
-                    {/* The program's title above is an h3, so each group is an h4 under it. */}
-                    <ProgramGroupCard
-                      group={g}
-                      program={program}
-                      nextCohort={nextCohorts[g.id]}
-                      showProgram={false}
-                      source="programs-group"
-                      headingLevel={4}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-          <ClosestFit groups={closest} programs={programs} nextCohorts={nextCohorts} query={query} />
-        </div>
-      ) : (
-        // The empty state says what is true and what happens next (voice.md).
-        <div className="mt-8 rounded-2xl border border-dashed border-white/20 p-6">
-          <p className="text-base font-semibold text-white">No group fits those filters yet.</p>
-          <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/70">
-            Our coaches still place every player by level and schedule. Take the 2-minute quiz and
-            tell us about the player, or widen the filters.
+    <>
+      {/* Header band (audit H2): the title and lead, the three dropdowns,
+          the five levels, the quiz side line. Full bleed, the Container
+          inside. */}
+      <div className="tb-gradient">
+        <Container className="pb-1 pt-9 md:pb-2 md:pt-[60px]">
+          {header}
+          <Filters query={query} onChange={onChange} />
+          {levels}
+          <QuizSideLine source="programs-filters" className="mt-3.5" />
+          {/* The results line, for screen readers: each change is announced. */}
+          <p role="status" aria-live="polite" className="sr-only">
+            {resultsLine(matching.length, query)}
           </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            {/* A quiz-taker's button reads their next step instead (owner, 2026-10-12). */}
-            <TrackedLink href="/intake" track="quiz" source="programs-empty" className={buttonClass("primary")}>
-              {QUIZ_CTA_LABEL}
-            </TrackedLink>
+        </Container>
+      </div>
+
+      <Container id={GROUPS_ANCHOR} className="scroll-mt-24">
+        {sections.map(({ program, all, shown }) => (
+          <section key={program.slug} aria-labelledby={`catalog-${program.slug}`} className="pt-8 md:pt-11">
+            <ProgramHeading program={program} groups={all} />
+            {shown.some((g) => g.day !== null) && (
+              <ul role="list" className={GROUP_GRID}>
+                {shown
+                  .filter((g) => g.day !== null)
+                  .map((g) => (
+                    <li key={g.id} className="flex [&>*]:w-full">
+                      {/* The program's title above is an h2, so each group is an h3 under it. */}
+                      <ProgramGroupCard
+                        group={g}
+                        program={program}
+                        nextCohort={nextCohorts[g.id]}
+                        seatsLeft={seats[g.id]}
+                        source="programs-group"
+                      />
+                    </li>
+                  ))}
+              </ul>
+            )}
+            {shown
+              .filter((g) => g.day === null)
+              .map((g) => (
+                <div key={g.id} className="mt-3.5">
+                  <ArrangedGroupRow group={g} program={program} source="programs-group" />
+                </div>
+              ))}
+          </section>
+        ))}
+
+        <ClosestFit groups={closest} programs={programs} nextCohorts={nextCohorts} seats={seats} query={query} />
+
+        {noClassMatches && (
+          // The empty state says what is true and what happens next (voice.md):
+          // the quiz, where our coaches place the player. A quiz-taker is not
+          // asked again (owner, 2026-10-12).
+          <div className="mt-7 rounded-2xl border border-dashed border-white/25 p-5 text-[15px] text-white/75">
+            <p>
+              No group matches that age and level.{" "}
+              <QuizSwap
+                guest={
+                  <>
+                    <TrackedLink href="/intake" track="quiz" source="programs-empty" className={INLINE_LIME_LINK}>
+                      {QUIZ_CTA_LABEL}
+                    </TrackedLink>{" "}
+                    and our coaches place you.
+                  </>
+                }
+                taken={<>Your quiz answers are in, and our coaches place you from them.</>}
+              />
+            </p>
             <button
               type="button"
               onClick={() => onChange(clearFilters(query))}
-              className={buttonClass("secondary", "compact")}
+              className={`mt-1 inline-flex min-h-[44px] items-center rounded text-sm font-semibold text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline ${FOCUS_RING}`}
             >
               Clear filters
             </button>
           </div>
-        </div>
-      )}
-    </section>
+        )}
+      </Container>
+    </>
   );
 }
 
