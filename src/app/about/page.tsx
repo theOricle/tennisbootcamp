@@ -28,8 +28,11 @@ export const metadata: Metadata = {
 // The two parts of every class, named once in src/content/bootcamp.ts.
 const [tennis, fitness] = CLASS_PARTS;
 
-/** One sentence of the title: it never breaks inside itself where the page is wide enough to hold it. */
-const TITLE_SENTENCE = "min-[360px]:whitespace-nowrap";
+/**
+ * One sentence of the title: it stays whole when its line can hold it, and
+ * wraps inside itself when it cannot, so it never pushes the page sideways.
+ */
+const TITLE_SENTENCE = "inline-block";
 
 export default function AboutPage() {
   // The founder section is the coach card: the one place the name and title
@@ -40,10 +43,10 @@ export default function AboutPage() {
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div className="tb-gradient">
         <Container className="py-16">
-          {/* The lines are balanced, and from 360 wide each sentence stays
-              whole (below that "Measurable progress." is wider than the
-              page), so the title never ends on a word alone and never
-              breaks inside a sentence. */}
+          {/* The lines are balanced, and each sentence is its own box: it
+              stays whole where it fits and wraps inside itself where it does
+              not, so the title never ends on a word alone and never runs
+              off the page. */}
           <Heading as="h1" className="max-w-3xl text-balance">
             <span className={TITLE_SENTENCE}>Serious training.</span>{" "}
             <span className={TITLE_SENTENCE}>Measurable progress.</span>{" "}

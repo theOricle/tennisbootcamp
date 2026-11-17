@@ -399,7 +399,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   <p className="mt-2 text-sm leading-relaxed text-white/70">
                     {arranged
                       ? "Our coaches place every player on the ladder, from the quiz or on court."
-                      : "Our coaches place every player on the ladder from the quiz, and confirm the level on court in week one."}
+                      : "Every group trains at one level, and your coach confirms yours on court in week one."}
                   </p>
                 )}
                 <Link href="/assessment#ladder" className={`mt-2 ${TEXT_LINK_LIME}`}>

@@ -12,6 +12,7 @@ import { footerNewsletterSource } from "@/lib/newsletterSource";
  * same value.
  */
 export function FooterNewsletter() {
-  const pathname = usePathname() ?? "/";
+  // No fallback here: an unknown path records the footer's own value.
+  const pathname = usePathname();
   return <EmailCapture variant="line" source={footerNewsletterSource(pathname)} />;
 }

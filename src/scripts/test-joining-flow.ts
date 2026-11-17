@@ -182,6 +182,13 @@ check("/programs: the lead says what every group is, and reads the lengths from 
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("detail: Good to know after the groups, only for a program with fixed classes", /scheduledGroups\.length > 0 && \(\s*<>\s*<section aria-labelledby=\{GROUPS_ANCHOR\}/.test(detail) && at(detail, "aria-labelledby={GROUPS_ANCHOR}") < at(detail, "<GoodToKnow") && !detail.includes("<HowJoiningWorks"));
 check("detail: it lists High Performance only where it trains, and the side line links the program's quiz", detail.includes('approvalGroup={scheduledGroups.find((g) => g.joining === "approval")?.name}') && detail.includes('<QuizSideLine source="program-detail" quizHref={quizHref}'));
+// Second fix round, 2026-11-17: the levels block said the old way in, beside "Pick your group and join"; it now says what About says. Private Lessons keeps its own line.
+check(
+  "detail: the levels block says each group trains at one level, confirmed on court in week one; Private Lessons keeps its line",
+  detail.includes('"Every group trains at one level, and your coach confirms yours on court in week one."') &&
+    detail.includes('"Our coaches place every player on the ladder, from the quiz or on court."') &&
+    !detail.includes("on the ladder from the quiz, and confirm")
+);
 check("detail: the assessment button says optional", detail.includes("Optional, if you want your level confirmed before you enroll."));
 
 // ── The bootcamp words (owner, 2026-11-16 and 2026-11-17) ───────────────────
@@ -332,10 +339,11 @@ check(
     !aboutPage.includes("structure and intent")
 );
 check(
-  "About: the title is balanced and keeps each sentence whole from 360 wide, in the same words",
+  "About: the title is balanced and each sentence is its own inline box, whole where it fits and wrapping where it does not, in the same words",
   aboutSrc.includes('<Heading as="h1" className="max-w-3xl text-balance">') &&
-    aboutSrc.includes('const TITLE_SENTENCE = "min-[360px]:whitespace-nowrap";') &&
-    /<h1 class="[^"]*text-balance"><span class="min-\[360px\]:whitespace-nowrap">Serious training\.<\/span> <span class="min-\[360px\]:whitespace-nowrap">Measurable progress\.<\/span> <span class="min-\[360px\]:whitespace-nowrap">No filler\.<\/span><\/h1>/.test(aboutPage.replace(/<!-- -->/g, ""))
+    aboutSrc.includes('const TITLE_SENTENCE = "inline-block";') &&
+    !aboutSrc.includes("whitespace-nowrap") &&
+    /<h1 class="[^"]*text-balance"><span class="inline-block">Serious training\.<\/span> <span class="inline-block">Measurable progress\.<\/span> <span class="inline-block">No filler\.<\/span><\/h1>/.test(aboutPage.replace(/<!-- -->/g, ""))
 );
 check("About: the ladder's link reads How levels work, the label the home page and Programs use", aboutSrc.includes("How levels work →") && !aboutSrc.includes("How tiers work") && />How levels work →<\/a>/.test(aboutPage));
 check(

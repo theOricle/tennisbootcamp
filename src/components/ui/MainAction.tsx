@@ -26,17 +26,21 @@ const LIME_LINK_TEXT = "whitespace-nowrap rounded font-semibold text-[#B4E655] u
 export const INLINE_LIME_LINK = `${LIME_LINK_TEXT} ${FOCUS_RING}`;
 
 /**
- * The side line's link is the line's one action, so it is a 44px target
- * (WCAG 2.5.8). The padding is on an inline box: it grows the area that
- * takes a tap, and leaves the line, and everything around it, where it was.
- * The focus ring is the same ring, drawn on a pseudo-element inset by that
- * padding, so it still hugs the words instead of crossing the line above.
+ * A 44px target on an inline link (WCAG 2.5.8). The padding is on an inline
+ * box: it grows the area that takes a tap, and leaves the line, and
+ * everything around it, where it was. The focus ring is the one ring, drawn
+ * on a pseudo-element inset by that padding, so it hugs the words instead of
+ * crossing the line above or below. The quiz side line and the program
+ * titles on /programs use it.
  */
-const SIDE_LINE_LINK =
-  `${LIME_LINK_TEXT} relative py-[13px] focus:outline-none ` +
+export const PADDED_INLINE_LINK =
+  "relative py-[13px] focus:outline-none " +
   "after:pointer-events-none after:absolute after:inset-x-0 after:inset-y-[13px] after:rounded after:content-[''] " +
   "focus-visible:after:ring-2 focus-visible:after:ring-[#B4E655]/50 " +
   "focus-visible:after:ring-offset-2 focus-visible:after:ring-offset-[#061427]";
+
+/** The side line's link is the line's one action, so it is a 44px target. */
+const SIDE_LINE_LINK = `${LIME_LINK_TEXT} ${PADDED_INLINE_LINK}`;
 
 /**
  * The quiz as a side line. A visitor who has taken the quiz is not asked

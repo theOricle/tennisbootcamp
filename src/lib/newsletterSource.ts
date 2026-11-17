@@ -16,8 +16,12 @@ export const PROGRAMS_NEWSLETTER_SOURCE = "programs_email_capture";
 /** A signup from the footer line on any other page. */
 export const FOOTER_NEWSLETTER_SOURCE = "footer_email_capture";
 
-/** The source the footer's newsletter line records on a given path. */
-export function footerNewsletterSource(pathname: string): string {
+/**
+ * The source the footer's newsletter line records on a given path. An
+ * unknown path (null) is the footer's own value, never the home page's.
+ */
+export function footerNewsletterSource(pathname: string | null): string {
+  if (pathname === null) return FOOTER_NEWSLETTER_SOURCE;
   const path = (pathname.split(/[?#]/)[0] || "/").replace(/\/+$/, "") || "/";
   if (path === "/") return HOME_NEWSLETTER_SOURCE;
   if (path === "/programs") return PROGRAMS_NEWSLETTER_SOURCE;

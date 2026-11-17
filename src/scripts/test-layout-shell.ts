@@ -74,8 +74,8 @@ check("the main button never wraps", mainAction.includes('className="whitespace-
 check("the quiz is never a lime button in the main action", (mainAction.match(/variant="primary"/g) ?? []).length === 1);
 // Fix round, 2026-11-17: the side line broke inside its link on phones ("quiz" alone on a line), and the link was an 18px target.
 check("the lime link in a sentence never breaks inside itself, so a break falls between the question and the link", mainAction.includes('const LIME_LINK_TEXT = "whitespace-nowrap rounded font-semibold text-[#B4E655]') && mainAction.includes("export const INLINE_LIME_LINK = `${LIME_LINK_TEXT} ${FOCUS_RING}`;"));
-const sideLineLink = mainAction.slice(at(mainAction, "const SIDE_LINE_LINK ="), at(mainAction, "export function QuizSideLine"));
-check("the side line's link is a 44px target by inline padding, which cannot move the line", sideLineLink.includes("`${LIME_LINK_TEXT} relative py-[13px] focus:outline-none `") && mainAction.includes('<TrackedLink href={quizHref} track="quiz" source={source} className={SIDE_LINE_LINK}>') && !/inline-flex|inline-block|min-h-|\bblock\b/.test(sideLineLink));
+const sideLineLink = mainAction.slice(at(mainAction, "export const PADDED_INLINE_LINK ="), at(mainAction, "export function QuizSideLine"));
+check("the side line's link is a 44px target by inline padding, which cannot move the line", sideLineLink.includes('export const PADDED_INLINE_LINK =\n  "relative py-[13px] focus:outline-none "') && sideLineLink.includes("const SIDE_LINE_LINK = `${LIME_LINK_TEXT} ${PADDED_INLINE_LINK}`;") && mainAction.includes('<TrackedLink href={quizHref} track="quiz" source={source} className={SIDE_LINE_LINK}>') && !/inline-flex|inline-block|min-h-|\bblock\b/.test(sideLineLink));
 check("its focus ring is the one ring, drawn inside the padding so it hugs the words", ["after:absolute", "after:inset-x-0", "after:inset-y-[13px]", "after:content-['']", "after:pointer-events-none", "focus-visible:after:ring-2", "focus-visible:after:ring-[#B4E655]/50", "focus-visible:after:ring-offset-2", "focus-visible:after:ring-offset-[#061427]"].every((c) => sideLineLink.includes(c)));
 
 // ── Phone bar rules (M13) ───────────────────────────────────────────────────
@@ -167,6 +167,8 @@ check("/programs does not link to itself", !programsPage.includes('href="/progra
 check("/programs renders no newsletter form of its own: the footer's line is the one", !programsPage.includes("<EmailCapture"));
 check("/programs header band uses the Container (the catalog draws it, with the filters inside)", /tb-gradient[\s\S]*<Container/.test(catalog));
 check("the groups sit in the one Container, under the anchor the main button scrolls to", catalog.includes("<Container id={GROUPS_ANCHOR}") && GROUPS_ANCHOR === "groups");
+// Second fix round, 2026-11-17: the program title's 44px target drew its ring around the padding, through the line under it.
+check("a program title is a 44px target whose focus ring hugs the words: the side line's padded inline link, not a second copy", catalog.includes("className={`underline-offset-4 hover:underline ${PADDED_INLINE_LINK}`}") && !catalog.includes("py-2.5") && !catalog.includes("after:inset-y-"));
 check("the catalog sets no gutter or page width of its own", !/(^|[\s"'`])(mx-auto|max-w-6xl|px-6|-mx-)/.test(catalog));
 check("/programs: no lime button in the band (the main button is the header's)", !programsPage.includes('variant="primary"') && !catalog.includes('variant="primary"') && !catalog.includes('buttonClass("primary")'));
 
@@ -286,6 +288,8 @@ check("footer opens with the newsletter line, with an id to link to", NEWSLETTER
 // column, so the line records the page it sits on, in the same values.
 check("the line records the page it sits on: it reads the path and passes the source on", footerLine.includes('"use client"') && footerLine.includes("const pathname = usePathname()") && footerLine.includes('<EmailCapture variant="line" source={footerNewsletterSource(pathname)} />'));
 check("the three values: the home page, the programs page, and the footer's own", HOME_NEWSLETTER_SOURCE === "homepage_email_capture" && PROGRAMS_NEWSLETTER_SOURCE === "programs_email_capture" && FOOTER_NEWSLETTER_SOURCE === "footer_email_capture");
+// Second fix round, 2026-11-17: an unknown path is the footer's own value, never the home page's.
+check("an unknown path (null) is recorded as the footer's, and the line passes the null through", footerNewsletterSource(null) === "footer_email_capture" && !footerLine.includes('usePathname() ?? "/"'), footerNewsletterSource(null));
 for (const path of ["/", "/?utm_source=ad", "/#notify"]) {
   check(`a signup on ${path} is recorded as the home page's`, footerNewsletterSource(path) === "homepage_email_capture", footerNewsletterSource(path));
 }

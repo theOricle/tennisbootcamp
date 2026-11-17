@@ -28,7 +28,7 @@ import { RIGHT_GROUP_PROMISE } from "@/content/programs";
 import { locations } from "@/content/locations";
 import { Container } from "@/components/layout/Container";
 import { TrackedLink } from "@/components/ui/TrackedButton";
-import { INLINE_LIME_LINK, QuizSideLine } from "@/components/ui/MainAction";
+import { INLINE_LIME_LINK, PADDED_INLINE_LINK, QuizSideLine } from "@/components/ui/MainAction";
 import { QuizSwap } from "@/components/quiz/QuizSwap";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { ArrangedGroupRow, ProgramGroupCard } from "./ProgramGroupCard";
@@ -192,8 +192,8 @@ function ProgramHeading({ program, groups }: { program: CatalogProgram; groups: 
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
       <h2 id={`catalog-${program.slug}`} className={SECTION_TITLE}>
-        {/* A 44px target: the padding is on an inline box, so the row keeps its height. */}
-        <Link href={`/programs/${program.slug}`} className={`rounded py-2.5 underline-offset-4 hover:underline ${FOCUS_RING}`}>
+        {/* A 44px target with the ring on the words: the side line's padded inline link, so the row keeps its height. */}
+        <Link href={`/programs/${program.slug}`} className={`underline-offset-4 hover:underline ${PADDED_INLINE_LINK}`}>
           {program.title}
         </Link>
       </h2>
