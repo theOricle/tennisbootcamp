@@ -1,176 +1,219 @@
+import Link from "next/link";
 import type { Program, ProgramGroup } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
-import { formatGroupWhen, groupAgeLabel, groupStatus } from "@/lib/programCatalog";
-import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
-import { APPROVAL_LINE, RIGHT_GROUP_PROMISE_SHORT } from "@/content/programs";
-import { locationById } from "@/content/locations";
-import { TrackedLink } from "@/components/ui/TrackedButton";
-import { LevelTag } from "@/components/tiers";
 import {
-  CARD_SHELL,
-  CohortSchedule,
-  EYEBROW_CLASS,
-  LABEL_CLASS,
-  PriceSummary,
-  ROW_CLASS,
-  STRETCHED_LINK,
-  StatusChip,
-  VALUE_CLASS,
-} from "./ProgramCard";
+  formatGroupWhen,
+  groupAction,
+  groupStatus,
+  groupWhenParts,
+  groupWhoLabel,
+  type GroupAction,
+} from "@/lib/programCatalog";
+import { locationById } from "@/content/locations";
+import { NEWSLETTER_ANCHOR } from "@/content/site";
+import { buttonClass } from "@/components/ui/Button";
+import { CARD_CLASS } from "@/components/ui/Card";
+import { TrackedLink } from "@/components/ui/TrackedButton";
+import { CalendarIcon, PersonIcon } from "@/components/ui/icons";
+import { PinIcon } from "@/components/locations/LocationLine";
+import { LevelTag } from "@/components/tiers";
+import { StatusChip } from "./ProgramCard";
 
 // One group as its own card (owner, 2026-10-12; one level per group and a
-// level-led title, 2026-10-13): the title leads with the level ("Intermediate
-// Adult Bootcamp"), then the decision rows — the one level tag (a tier chip
-// with its emblem, never a span or a rail), the age range, when it trains
-// (a detail row, never the title or the eyebrow), where (the club and its
-// area; the map link lives on the pages, so the card keeps one link), the
-// price, how to join ("Open to join" or "By approval") with the week-one
-// promise, and one action — the quiz, where our coaches place the player.
-// The same spec-sheet grammar as the program card, without a photo: the
-// program's photograph sits on the program card and the page hero; the group
-// is the decision data under it.
+// level-led title, 2026-10-13; the short card, owner-approved design
+// 2026-11-17). Top row: the one level tag and the status chip. Then the
+// level-led title ("Intermediate Adult Bootcamp"). Then three plain lines,
+// each with a small icon and no label: who (the ages), when (the class time,
+// and the day it starts once a public cohort exists), where (the club's
+// name). Then, on a hairline pinned to the bottom so sibling cards line up,
+// the price once (the session price over the cohort total, both from the
+// constants in src/content/programs.ts) and one button.
 //
-// One link, one tab stop: the CTA line is the stretched link, named for the
-// group ("Take the 2-minute quiz, for the Beginner Junior Bootcamp"), so
-// seven cards on /programs read as seven distinct actions. Nothing between
-// the article and the link is positioned; the article carries the focus ring.
+// No rules on the card: the week-one promise, High Performance by approval
+// and the optional assessment are said once on the page, under "Good to
+// know". No photo: the program's photograph identifies the program.
+//
+// One interactive element, the button, named for its group for assistive
+// tech ("Join the Beginner Junior Bootcamp"), so seven cards on /programs
+// are seven distinct actions. Four states (groupStatus and groupAction,
+// src/lib/programCatalog.ts): open, a lime "Join"; down to its last spots,
+// the warn chip and a lime "Join"; full, an outline "Notify me"; by approval
+// (and invite only), an outline "Ask to join".
+//
+// Until join-and-pay is built, "Join" and "Ask to join" open what the card's
+// link always opened: the quiz for this program, which is how a spot is
+// asked for today. The button always reads its own action: it opts out of
+// the quiz-taken swap (`quizAware={false}`), which would relabel it "See
+// your groups". "Notify me" goes to the newsletter line in the footer.
 
-/** The joining rows' value: the spec value's size, a step quieter, for running text. */
-const TERMS_CLASS = "min-w-0 text-sm leading-relaxed text-white/80";
+const FACT_GLYPH = "mt-[3px] h-[15px] w-[15px] shrink-0 opacity-65";
 
 export type ProgramGroupCardProps = {
   group: ProgramGroup;
-  program: Pick<Program, "slug" | "title" | "type">;
-  /** The earliest public cohort that trains in this group, if any. */
+  program: Pick<Program, "slug">;
+  /** The earliest public cohort that trains in this group, if any: its start date joins the "when" line. */
   nextCohort?: Cohort;
-  /** /programs: the program's title leads the eyebrow, so a filtered list stays readable. */
-  showProgram?: boolean;
+  /**
+   * Seats left in that cohort, read once per page (src/lib/groupSeats.ts).
+   * Absent or null reads "Open to join". Display only.
+   */
+  seatsLeft?: number | null;
   /** The quiz link's analytics source. */
   source?: string;
-  /** The title's level: h3 under a page section's h2 (the program page); h4 under the catalog's program h3. */
+  /** The title's level: h3 under a page section's h2 (the default); h4 under an h3. */
   headingLevel?: 2 | 3 | 4;
+  /** Where "Notify me" goes: the footer's newsletter line, or a page's own form when it has one. */
+  notifyHref?: string;
 };
 
-/** ", for the Beginner Junior Bootcamp" · ", for the One-to-one coaching group". */
-function linkSuffix(name: string): string {
-  return `, for the ${name}${/bootcamp$/i.test(name) ? "" : " group"}`;
+/** The card's one button. A link in every state, styled as the lime or the outline button. */
+function GroupButton({
+  action,
+  programSlug,
+  source,
+  notifyHref,
+}: {
+  action: GroupAction;
+  programSlug: string;
+  source: string;
+  notifyHref: string;
+}) {
+  const label = (
+    <>
+      {action.label}
+      {action.nameSuffix && <span className="sr-only">{action.nameSuffix}</span>}
+    </>
+  );
+  // One height for the lime and the outline button (the outline's border
+  // adds 2px to the shared 44px), so the feet of sibling cards line up.
+  const shape = "h-[46px] whitespace-nowrap";
+  if (action.kind === "notify") {
+    return (
+      <Link href={notifyHref} className={`${buttonClass("secondary")} ${shape}`}>
+        {label}
+      </Link>
+    );
+  }
+  return (
+    <TrackedLink
+      href={`/intake?program=${programSlug}`}
+      track="quiz"
+      source={source}
+      quizAware={false}
+      className={`${buttonClass(action.kind === "join" ? "primary" : "secondary")} ${shape}`}
+    >
+      {label}
+    </TrackedLink>
+  );
+}
+
+/** The price, once: the session price in white, the cohort total under it. "Rates on request" is one line. */
+function GroupPrice({ text }: { text: string }) {
+  const [lead, ...rest] = text.split(" · ");
+  return (
+    <p className="min-w-0 text-sm tabular-nums">
+      <span className="block font-medium text-white">{lead}</span>
+      {rest.map((part) => (
+        <span key={part} className="block text-[13px] text-white/60">
+          {part}
+        </span>
+      ))}
+    </p>
+  );
 }
 
 export function ProgramGroupCard({
   group: g,
   program,
   nextCohort,
-  showProgram = false,
+  seatsLeft,
   source = "group-card",
   headingLevel = 3,
+  notifyHref = `#${NEWSLETTER_ANCHOR}`,
 }: ProgramGroupCardProps) {
   const Title = headingLevel === 2 ? "h2" : headingLevel === 4 ? "h4" : "h3";
-  const status = groupStatus(g, nextCohort);
-  const scheduled = g.day !== null;
-  // The eyebrow never carries the day or time (owner, 2026-10-13): the
-  // program's title on a mixed list, else the kind of class it is, unless
-  // that would repeat the title (private lessons are "One-to-one coaching"
-  // twice over), when the program's title steps in.
-  const eyebrow = showProgram || program.type === g.name ? program.title : program.type;
+  const status = groupStatus(g, seatsLeft);
+  const action = groupAction(g, status);
   const location = locationById(g.locationId);
+  const when = groupWhenParts(g, nextCohort);
 
   return (
-    <article id={g.id} className={`${CARD_SHELL} scroll-mt-24 p-5 md:p-6`}>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-        <p className={EYEBROW_CLASS}>{eyebrow}</p>
+    <article
+      id={g.id}
+      className={`${CARD_CLASS} flex h-full scroll-mt-24 flex-col px-[18px] pb-4 pt-[18px] md:px-5 md:pb-[18px] md:pt-5`}
+    >
+      {/* The level tag and the status chip share a row; in the narrow
+          three-across cards of a tablet they stack, the same way on every
+          card, so sibling titles stay level. */}
+      <div className="flex min-h-[26px] flex-wrap items-center justify-between gap-x-2 gap-y-1.5 md:flex-col md:items-start lg:flex-row lg:items-center">
+        <LevelTag level={g.level} plain />
         {status && <StatusChip status={status} />}
       </div>
 
-      <Title className="mt-3 text-lg font-semibold tracking-tight text-white">{g.name}</Title>
+      <Title className="mt-2.5 text-lg font-semibold leading-tight tracking-tight text-white">{g.name}</Title>
 
-      <dl className="mt-4 space-y-2.5 border-t border-white/10 pt-4">
-        {/* The one level tag (owner, 2026-10-13), first: it is the group's
-            one level statement, the same word the title leads with. */}
-        <div className={`${ROW_CLASS} items-center`}>
-          <dt className={LABEL_CLASS}>Level</dt>
-          <dd className="min-w-0">
-            <LevelTag level={g.level} />
-          </dd>
-        </div>
-        <div className={ROW_CLASS}>
-          <dt className={`${LABEL_CLASS} pt-0.5`}>Ages</dt>
-          <dd className={VALUE_CLASS}>{groupAgeLabel(g)}</dd>
-        </div>
-        <div className={ROW_CLASS}>
-          <dt className={`${LABEL_CLASS} pt-0.5`}>When</dt>
-          <dd className={VALUE_CLASS}>{formatGroupWhen(g)}</dd>
-        </div>
-        {location && (
-          <div className={ROW_CLASS}>
-            <dt className={`${LABEL_CLASS} pt-0.5`}>Where</dt>
-            <dd className={VALUE_CLASS}>
-              <span className="block">{location.name}</span>
-              <span className="block text-white/60">{location.area}</span>
-            </dd>
-          </div>
-        )}
-        <div className={ROW_CLASS}>
-          <dt className={`${LABEL_CLASS} pt-0.5`}>Price</dt>
-          <dd className={VALUE_CLASS}>
-            <PriceSummary text={g.price} />
-          </dd>
-        </div>
-        {nextCohort && (
-          <div className={ROW_CLASS}>
-            <dt className={`${LABEL_CLASS} pt-0.5`}>Next</dt>
-            <dd className={VALUE_CLASS}>
-              <CohortSchedule cohort={nextCohort} />
-            </dd>
-          </div>
-        )}
-      </dl>
-
-      {/* The group's one plain line (High Performance's competitive note)
-          sits under the rows, not under the title, so the Level, Ages, When
-          and Price rows line up across sibling cards in a row. */}
-      {g.note && <p className="mt-4 text-sm leading-relaxed text-white/70">{g.note}</p>}
-
-      {/* The card's foot, pinned to the bottom so sibling cards' Week 1 rows
-          and CTAs line up whatever sits above them. How to join and the
-          right-group promise (joining flow, owner 2026-10-12) are two more
-          spec rows on a hairline: "Join" for a by-approval group only, "Week
-          1" on every group with a fixed class. Private lessons have no group
-          to move between, so neither row. */}
-      <div className="mt-auto">
-        {scheduled && (
-          <dl className="mt-4 space-y-2.5 border-t border-white/10 pt-4">
-            {g.joining === "approval" && (
-              <div className={ROW_CLASS}>
-                <dt className={`${LABEL_CLASS} pt-0.5`}>Join</dt>
-                <dd className={TERMS_CLASS}>{APPROVAL_LINE}</dd>
-              </div>
-            )}
-            <div className={ROW_CLASS}>
-              <dt className={`${LABEL_CLASS} pt-0.5`}>Week 1</dt>
-              <dd className={TERMS_CLASS}>{RIGHT_GROUP_PROMISE_SHORT}</dd>
-            </div>
-          </dl>
-        )}
-
-        {/* The one link: the quiz, named for this group. The arrow is decoration. */}
-        <p className="pt-5 text-sm font-semibold text-[#B4E655]">
-          <TrackedLink
-            href={`/intake?program=${program.slug}`}
-            track="quiz"
-            source={source}
-            className={STRETCHED_LINK}
-          >
-            {QUIZ_CTA_LABEL}
-            <span className="sr-only">{linkSuffix(g.name)}</span>
-          </TrackedLink>{" "}
-          <span
-            aria-hidden="true"
-            className="inline-block motion-safe:transition-transform motion-safe:duration-150 motion-safe:group-hover:translate-x-1"
-          >
-            →
+      {/* Who, when, where: three plain lines. The glyphs are decoration. */}
+      <ul role="list" className="mb-4 mt-2 space-y-1 text-sm text-white/75">
+        <li className="flex items-start gap-2 text-white/90">
+          <PersonIcon className={FACT_GLYPH} />
+          {groupWhoLabel(g)}
+        </li>
+        <li className="flex items-start gap-2">
+          <CalendarIcon className={FACT_GLYPH} />
+          {/* The parts wrap whole, and the dot rides with the part before
+              it, so a second line never opens with a separator. */}
+          <span className="flex min-w-0 flex-wrap gap-x-1 tabular-nums">
+            {when.map((part, i) => (
+              <span key={part} className="whitespace-nowrap">
+                {part}
+                {i < when.length - 1 && <span aria-hidden="true"> ·</span>}
+              </span>
+            ))}
           </span>
+        </li>
+        {location && (
+          <li className="flex items-start gap-2">
+            <PinIcon className={FACT_GLYPH} />
+            {location.name}
+          </li>
+        )}
+      </ul>
+
+      {/* The foot, pinned to the bottom. Price left, button right; in the
+          narrow three-across cards of a tablet the button takes its own row. */}
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3.5 md:flex-col md:items-stretch lg:flex-row lg:items-center">
+        <GroupPrice text={g.price} />
+        <GroupButton action={action} programSlug={program.slug} source={source} notifyHref={notifyHref} />
+      </div>
+    </article>
+  );
+}
+
+/**
+ * A group with no fixed class (private lessons) as one row: its name, "By
+ * arrangement" and the price in a line, and one outline button, which leads
+ * where the private card's link always led: the quiz for the program.
+ */
+export function ArrangedGroupRow({
+  group: g,
+  program,
+  source = "group-card",
+  headingLevel = 3,
+}: Pick<ProgramGroupCardProps, "group" | "program" | "source" | "headingLevel">) {
+  const Title = headingLevel === 2 ? "h2" : headingLevel === 4 ? "h4" : "h3";
+  const action = groupAction(g, groupStatus(g));
+  return (
+    <article
+      id={g.id}
+      className={`${CARD_CLASS} flex scroll-mt-24 flex-wrap items-center justify-between gap-x-6 gap-y-3.5 p-[18px] md:p-5`}
+    >
+      <div className="min-w-0">
+        <Title className="text-lg font-semibold leading-tight text-white">{g.name}</Title>
+        <p className="mt-0.5 text-sm text-white/75">
+          {formatGroupWhen(g)} · {g.price}
         </p>
       </div>
+      <GroupButton action={action} programSlug={program.slug} source={source} notifyHref={`#${NEWSLETTER_ANCHOR}`} />
     </article>
   );
 }

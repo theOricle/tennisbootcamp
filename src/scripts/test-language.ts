@@ -186,7 +186,8 @@ check("no Sina, Kassaian or Head Coach in user-facing code", nameHits.length ===
   check("About: the name only in the founder section", start > 0 && end > start && !/\bSina\b|Head Coach/.test(outside));
   check("About: the founder heading and title come from coaches.ts", about.includes("{lead.name}") && about.includes("{lead.role}"));
 }
-check("the placement line is the team's", read("src/components/sections/TrustBar.tsx").includes('label: "Placed by our coaches"'));
+// The trust bar left the home page (backlog #69); where the site still says who places a player, it is the team.
+check("the placement line is the team's", read("src/components/sections/ProgramCatalog.tsx").includes("and our coaches place you.") && read("src/components/sections/ProgramCatalog.tsx").includes("and our coaches place you from them."));
 check("site meta: our coaches place you", read("src/content/site.ts").includes("Take the 2-minute quiz and our coaches place you."));
 
 console.log("Emails: the coaching team signs, and nobody says I");
@@ -246,7 +247,7 @@ for (const [name, build] of EMAILS) {
 // ── 3. The coach title ──────────────────────────────────────────────────────
 console.log("Coach title (owner, 2026-10-12)");
 check("coaches.ts: Program Coordinator / High Performance Coach", coaches[0]?.role === "Program Coordinator / High Performance Coach");
-check("the home coach card renders the role from coaches.ts", read("src/components/sections/Coaches.tsx").includes("{c.role}"));
+check("the home page's Coaching column renders the name and the role from coaches.ts", read("src/components/sections/WhereAndWho.tsx").includes("const lead = coaches[0];") && read("src/components/sections/WhereAndWho.tsx").includes("{lead.name}") && read("src/components/sections/WhereAndWho.tsx").includes("{lead.role}"));
 check("JSON-LD carries it as jobTitle", read("src/lib/structuredData.ts").includes("jobTitle: leadCoach.role"));
 
 // ── 4. QA quick fixes (2026-10-10) ──────────────────────────────────────────

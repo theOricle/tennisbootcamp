@@ -72,9 +72,9 @@ import { defaultLocation } from "../content/locations";
 import { MAX_PARTICIPANTS_PER_ACCOUNT } from "../lib/participantInput";
 import { buildAccountSetupEmail, SIGN_OFF_NAME } from "../lib/emailBodies";
 import { senderLine } from "../lib/casl";
-import { QUIZ_CTA_LABEL } from "../lib/quizBar";
-import { QuizBand } from "../components/sections/QuizBand";
+import { JOIN_CTA_LABEL, QUIZ_CTA_LABEL, QUIZ_SIDE_LEAD, QUIZ_TAKEN_LEAD } from "../lib/mainAction";
 import { HowJoiningWorks } from "../components/sections/HowJoiningWorks";
+import { MainAction, QuizSideLine } from "../components/ui/MainAction";
 import { TrackedButton } from "../components/ui/TrackedButton";
 
 let failed = 0;
@@ -286,8 +286,14 @@ console.log("Quiz-aware CTAs: TrackedButton and TrackedLink");
 const tracked = read("src/components/ui/TrackedButton.tsx");
 check("a quiz CTA swaps to the taker's next step once known, an assessment CTA never", tracked.includes('track === "quiz" && quizAware !== false && quiz.state === "taken"') && tracked.includes("useQuizStatus()"));
 check("the swapped click is tagged -taken for analytics", tracked.includes("`${source}-taken`"));
-check("quizAware={false} keeps the quiz (Retake the quiz)", read("src/components/quiz/QuizSwap.tsx").includes("quizAware={false}") && read("src/components/quiz/QuizSwap.tsx").includes("RETAKE_QUIZ_LABEL"));
-check("every Retake link opens the first step: the hero's default and the band's program link both go through retakeQuizHref", read("src/components/quiz/QuizSwap.tsx").includes("href={retakeQuizHref(href)}") && read("src/components/sections/QuizBand.tsx").includes("<RetakeQuizLink\n                href={href}") && !read("src/components/sections/Hero.tsx").includes('<RetakeQuizLink href="/intake"'));
+// The simpler site (backlog #69): the hero's note and the quiz band, the two
+// surfaces that carried the small "Retake the quiz" link, left the pages, and
+// the RetakeQuizLink component went with them. The label and the link that
+// opens the first step stay on the quiz's own already-taken panel and on the
+// dashboard (both pinned below). quizAware={false} now keeps a group card's
+// button, and "Ask about lessons", reading their own words for a taker.
+check("quizAware={false} keeps a link's own words: a group card's button, and Ask about lessons", read("src/components/sections/ProgramGroupCard.tsx").includes("quizAware={false}") && /quizAware=\{false\}[\s\S]{0,120}Ask about lessons/.test(read("src/app/programs/[slug]/page.tsx")));
+check("no surface is left holding a Retake link component nobody renders", !read("src/components/quiz/QuizSwap.tsx").includes("RetakeQuizLink") && retakeQuizHref("/intake") === "/intake?retake=1");
 {
   const ssr = render(createElement(TrackedButton, { href: "/intake", track: "quiz", source: "test", variant: "primary" }, QUIZ_CTA_LABEL));
   check("the server render is the visitor's quiz: href and label", ssr.includes('href="/intake"') && ssr.includes(QUIZ_CTA_LABEL) && !ssr.includes(SEE_GROUPS_LABEL));
@@ -313,29 +319,39 @@ check("an untouched draft (every visit writes one) does not hide the panel", !in
 check("Add another player opens on a child's block", intakePage.includes('guests: [emptyGuest("child")]'));
 
 console.log("Every quiz prompt becomes the taker's next step");
+// Since the simpler site (backlog #69, owner 2026-11-16) the lime button is
+// "Join a group" for everyone, and the quiz is a side line. The side line is
+// the quiz prompt now: it keeps the taker's behaviour (their answers are in,
+// and the link is their next step), and nothing else on the chrome asks.
 const navbar = read("src/components/layout/Navbar.tsx");
-check("navbar: desktop slot and drawer are quiz-aware, the label locked", (navbar.match(/<TrackedButton[\s\S]*?track="quiz"[\s\S]*?source="navbar"/g) ?? []).length === 2 && navbar.includes("{QUIZ_CTA_LABEL}") && !navbar.includes("trackQuizCtaClick"));
+check("navbar: the bar and the phone menu carry the main button, and no quiz prompt to swap", (navbar.match(/\{JOIN_CTA_LABEL\}/g) ?? []).length === 2 && !navbar.includes('track="quiz"') && !navbar.includes("QUIZ_CTA_LABEL") && !navbar.includes("trackQuizCtaClick"));
 const hero = read("src/components/sections/Hero.tsx");
-check("hero: the primary is quiz-aware and marked for the bar; the note swaps with a retake link", /<TrackedButton variant="primary" href="\/intake" track="quiz" source="hero" data-quiz-cta>/.test(hero) && hero.includes("<QuizSwap") && hero.includes("<RetakeQuizLink") && hero.includes("Your quiz answers are in"));
-const bar = read("src/components/layout/MobileQuizBar.tsx");
-check("mobile bar: the one button is quiz-aware", bar.includes('track="quiz" source="mobile-bar"') && !bar.includes("trackQuizCtaClick"));
-const band = read("src/components/sections/QuizBand.tsx");
-check("quiz band: heading, body and button change for a taker; a retake link stays", band.includes('taken ? "Your quiz answers are in." : "Not sure which program fits?"') && band.includes("<RetakeQuizLink") && band.includes('track="quiz"') && band.includes("data-quiz-cta"));
+check("hero: the main action, whose side line swaps for a taker", hero.includes('<MainAction source="hero"') && !hero.includes("<TrackedButton") && !hero.includes("QUIZ_CTA_LABEL"));
+const bar = read("src/components/layout/MobileJoinBar.tsx");
+check("phone bar: the main button, and no quiz prompt to swap", bar.includes("{JOIN_CTA_LABEL}") && !bar.includes('track="quiz"') && !bar.includes("trackQuizCtaClick"));
+const mainAction = read("src/components/ui/MainAction.tsx");
+check("the side line: the lead and the quiz link for a visitor; for a taker, their answers are in and the quiz-aware link", mainAction.includes("<QuizSwap") && mainAction.includes("{QUIZ_SIDE_LEAD} {link}") && mainAction.includes("{QUIZ_TAKEN_LEAD} {link}") && mainAction.includes('<TrackedLink href={quizHref} track="quiz" source={source}') && !mainAction.includes("quizAware={false}"));
+check("the lead-ins", QUIZ_SIDE_LEAD === "Not sure which group?" && QUIZ_TAKEN_LEAD === "Your quiz answers are in.");
 {
-  const ssr = render(createElement(QuizBand, { source: "test" }));
-  check("quiz band server render is the visitor's", ssr.includes("Not sure which program fits?") && ssr.includes(QUIZ_CTA_LABEL) && !ssr.includes("Your quiz answers are in"));
-  const steps = render(createElement(HowJoiningWorks, { source: "test" }));
-  check("how joining works step 1 server render is unchanged", /Not sure which fits\? <a [^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a> and our coaches place you\./.test(steps));
+  const ssr = render(createElement(QuizSideLine, { source: "test" }));
+  check("the side line's server render is the visitor's", /Not sure which group\? <a [^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a>/.test(ssr) && !ssr.includes("Your quiz answers are in") && !ssr.includes(SEE_GROUPS_LABEL));
+  const forProgram = render(createElement(QuizSideLine, { source: "test", quizHref: "/intake?program=bootcamps" }));
+  check("on a program page the side line carries the program", forProgram.includes('href="/intake?program=bootcamps"'));
+  const action = render(createElement(MainAction, { source: "test" }));
+  check("the main action's server render: Join a group to /programs, then the side line", new RegExp(`<a [^>]*href="/programs"[^>]*>${JOIN_CTA_LABEL}</a>`).test(action) && action.indexOf(JOIN_CTA_LABEL) < action.indexOf("Not sure which group?") && action.includes(QUIZ_CTA_LABEL));
+  check("the main button is the same for everyone: it is no quiz prompt, so nothing swaps it", !/<TrackedButton[^>]*>\s*\{JOIN_CTA_LABEL\}/.test(mainAction) && /<Button variant="primary" href=\{href\}[^>]*data-main-cta>\s*\{JOIN_CTA_LABEL\}/.test(mainAction));
+  const steps = render(createElement(HowJoiningWorks));
+  check("how joining works carries no quiz prompt", !steps.includes("quiz") && !steps.includes("<a "));
 }
-const joining = read("src/components/sections/HowJoiningWorks.tsx");
-check("how joining works step 1 swaps the sentence for a taker", joining.includes("<QuizSwap") && joining.includes("You&apos;ve taken the quiz, so our"));
-check("home programs line swaps", read("src/components/sections/ProgramsGrid.tsx").includes("<QuizSwap") && read("src/components/sections/ProgramsGrid.tsx").includes("You&apos;ve taken the quiz:"));
-check("the catalog's empty state is quiz-aware", read("src/components/sections/ProgramCatalog.tsx").includes('<TrackedLink href="/intake" track="quiz" source="programs-empty"'));
-check("group cards and the /programs header already use the quiz-aware links", read("src/components/sections/ProgramGroupCard.tsx").includes("<TrackedLink") && /source="programs-header"[\s\S]*data-quiz-cta/.test(read("src/app/programs/page.tsx")));
+check("the home page's programs carry no quiz line of their own", !read("src/components/sections/ProgramsGrid.tsx").includes("QuizSwap") && !read("src/components/sections/ProgramsGrid.tsx").includes("quiz"));
+const catalogSrc = read("src/components/sections/ProgramCatalog.tsx");
+check("the catalog's empty state is quiz-aware: the quiz for a visitor, their answers for a taker", catalogSrc.includes('<TrackedLink href="/intake" track="quiz" source="programs-empty"') && catalogSrc.includes("taken={<>Your quiz answers are in, and our coaches place you from them.</>}"));
+check("/programs: the quiz prompt in the band is the side line", catalogSrc.includes('<QuizSideLine source="programs-filters"') && !read("src/app/programs/page.tsx").includes("data-quiz-cta"));
+check("a group card always reads its own action: its link opts out of the taker's swap", read("src/components/sections/ProgramGroupCard.tsx").includes("<TrackedLink") && read("src/components/sections/ProgramGroupCard.tsx").includes("quizAware={false}"));
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("program pages: the sentences swap for a signed-out taker, the panel for a member", detail.includes("taken={<>You&apos;ve taken the quiz, so you&apos;re on our list already.</>}") && detail.includes("You&apos;ve taken the quiz: our coaches place you in a group by level"));
 check("ViewerSwap takes a taken node, members first", read("src/components/programs/ProgramViewer.tsx").includes('if (viewer.state === "member") return <>{member}</>;') && read("src/components/programs/ProgramViewer.tsx").includes('taken !== undefined && quiz.state === "taken" && !quiz.signedIn'));
-check("404 and About are quiz-aware", /<TrackedButton\s+variant="primary"\s+href="\/intake"\s+track="quiz"/.test(read("src/app/not-found.tsx")) && read("src/app/about/page.tsx").includes('track="quiz" source="about-closing"'));
+check("404 and About are quiz-aware", read("src/app/not-found.tsx").includes('<MainAction source="not-found"') && read("src/app/about/page.tsx").includes('track="quiz" source="about-closing"'));
 check("/assessment and the booking page swap their sentences", read("src/app/assessment/page.tsx").includes("You&apos;ve taken the quiz, so our coaches place you from your answers either") && read("src/app/assessment/book/page.tsx").includes("You&apos;ve taken the quiz, so our coaches already place you"));
 const login = read("src/app/login/page.tsx");
 check("login: a taker is told an account exists and how to get in", login.includes("<QuizSwap") && login.includes("Took the quiz already? An account was created for your email.") && login.includes('href="/auth/forgot-password"'));

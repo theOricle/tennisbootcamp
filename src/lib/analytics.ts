@@ -198,9 +198,11 @@ export function trackAssessmentCtaClick(source: string) {
 // ─── Quiz-first events (backlog #22) ──────────────────────────────────────────
 
 /**
- * A player taps a "Take the 2-minute quiz" CTA. `source` distinguishes where
- * (audit L13): "hero" | "navbar" | "not-found" | "program-detail" |
- * "assessment-page" | a QuizBand's own source ("home-closing", "program-closing").
+ * A player taps a link that opens the 2-minute quiz: the quiz side line, or
+ * a group card's button. `source` distinguishes where (audit L13): "hero" |
+ * "not-found" | "program-detail" | "programs-filters" | "assessment-page" |
+ * a closing's own source ("home-closing", "program-closing") | a group
+ * card's ("programs-group", "program-group", "programs-closest").
  */
 export function trackQuizCtaClick(source: string) {
   trackEvent("quiz_cta_click", { source });

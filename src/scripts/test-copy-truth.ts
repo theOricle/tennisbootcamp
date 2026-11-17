@@ -84,7 +84,9 @@ check("home renders Events only with a real event", read("src/app/page.tsx").inc
 // ── voice.md matches the funnel (rule 6, examples #4 and #6, buttons) ───────
 console.log("ops/briefs/voice.md (D17)");
 const voice = read("ops/briefs/voice.md");
-check("rule 6 is quiz first", /6\. \*\*No stale promises\.\*\*[^\n]*quiz first/.test(voice));
+// Owner, 2026-11-16 (backlog #69): groups are open to join, and the quiz is the side path.
+check("rule 6: groups are open to join, the quiz is the side path", /6\. \*\*No stale promises\.\*\*[^\n]*groups are open to join, and the quiz is the side path/.test(voice));
+check("rule 6 still keeps the assessment optional, never a step", /6\. \*\*No stale promises\.\*\*[^\n]*assessment is optional[^\n]*never a step every player must take/.test(voice));
 check("rule 6 no longer says assessment-first", !/6\. \*\*No stale promises\.\*\*[^\n]*assessment-first/.test(voice));
 check("button note uses the locked label", /\*\*Buttons\*\*[^\n]*"Book Your Assessment"/.test(voice));
 check("High Performance is the competitive track", voice.includes("explicitly competitive track"));

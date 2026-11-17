@@ -28,15 +28,27 @@ export const site: SiteConfig = {
   footerNote: "Design and Development QUANTUMAPPS",
 };
 
+/**
+ * The id of the newsletter line at the top of the footer, on every page: a
+ * "Notify me" button on a full group points at it (`#notify`).
+ */
+export const NEWSLETTER_ANCHOR = "notify";
+
 export type NavLink = { href: string; label: string };
 
 /**
- * The header and mobile-drawer text links (audit M11). Events and Video
- * Lessons stay out until they have real content (audit M6, owner default
- * D24); their pages still resolve, with noindex. Locations returns beside
- * Programs now that the club is named (owner, 2026-10-12).
+ * The header and phone-menu text links (audit M11; owner, 2026-11-16: the
+ * top menu is Programs and About). Locations and Assessment live in the
+ * footer. Events and Video Lessons stay out until they have real content
+ * (audit M6, owner default D24); their pages still resolve, with noindex.
  */
 export const NAV_LINKS: readonly NavLink[] = [
+  { href: "/programs", label: "Programs" },
+  { href: "/about", label: "About" },
+];
+
+/** The footer's "Site" column: the top menu's two, plus Locations and Assessment. */
+export const FOOTER_SITE_LINKS: readonly NavLink[] = [
   { href: "/programs", label: "Programs" },
   { href: "/locations", label: "Locations" },
   { href: "/about", label: "About" },
@@ -45,7 +57,7 @@ export const NAV_LINKS: readonly NavLink[] = [
 
 /** The footer's link columns (audit M11): the site, then the policies. */
 export const FOOTER_GROUPS: readonly { heading: string; links: readonly NavLink[] }[] = [
-  { heading: "Site", links: NAV_LINKS },
+  { heading: "Site", links: FOOTER_SITE_LINKS },
   {
     heading: "Policies",
     links: [

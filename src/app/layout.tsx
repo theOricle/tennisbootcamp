@@ -4,7 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { MobileQuizBar } from "@/components/layout/MobileQuizBar";
+import { MobileJoinBar } from "@/components/layout/MobileJoinBar";
 import { PreviewBanner } from "@/components/layout/PreviewBanner";
 import { AnalyticsPageLocation } from "@/components/layout/AnalyticsPageLocation";
 import { FirstTouchCapture } from "@/components/layout/FirstTouchCapture";
@@ -55,7 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </div>
         <Footer />
-        <MobileQuizBar />
+        <MobileJoinBar />
       </body>
       {process.env.NEXT_PUBLIC_GA_ID && (
         <>

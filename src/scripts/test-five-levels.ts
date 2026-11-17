@@ -61,6 +61,7 @@ import { accountQuizStatus, quizFlagFor } from "../lib/quizStatus";
 import { levelNote } from "../lib/enrollPlayers";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { ProgramCard } from "../components/sections/ProgramCard";
+import { GoodToKnow } from "../components/sections/GoodToKnow";
 import { ProgramCatalogView, type CatalogProgram } from "../components/sections/ProgramCatalog";
 import { buildAssessmentCompleteEmail, buildCohortInviteEmail, cohortInviteSubject, tierLineTable, tierStandingLine } from "../lib/emailBodies";
 import nextConfig, { TIER_EMBLEM_REDIRECTS } from "../../next.config";
@@ -220,8 +221,8 @@ async function main() {
   check("age 17 at Beginner: the Beginner Adult Bootcamp matches exactly; no Closest fit, and never High Performance four away", filtered("age=17&level=beginner") === "adult-newer,private-lessons" && closest("age=17&level=beginner") === "" && closest("age=16&level=beginner") === "");
   check("age 16 at Advanced: High Performance is one away, so it still follows the exact adult match", filtered("age=16&level=advanced") === "adult-advanced,private-lessons" && closest("age=16&level=advanced") === "high-performance");
   check("the reach rule never shows a by-approval group more than one tier from the level, at any age", EXACT_AGES.concat([18, 30]).every((age) => TIERS.every((t) => closestGroups(programGroups, parseCatalogQuery(params(`age=${age}&level=${t.slug}`))).every((x) => x.joining !== "approval" || tierDistance(x, t) <= 1))));
-  const teenView = render(createElement(ProgramCatalogView, { programs: listedPrograms.map((p) => ({ slug: p.slug, title: p.title, type: p.type, description: p.description, photo: p.photo, ageBands: p.ageBands, timetable: p.timetable, schedule: p.schedule })), groups: programGroups, nextCohorts: {}, query: parseCatalogQuery(params("age=teen&level=intermediate")), onChange: () => {} }));
-  check("catalog for a teen at Intermediate: the adult section, then Closest fit with the Novice Youth Bootcamp, and a line that stays true with an exact match above it", teenView.includes('id="catalog-bootcamps"') && teenView.includes('id="adult-intermediate"') && teenView.includes(">Closest fit</h3>") && teenView.includes('id="youth-11-15"') && teenView.includes("The nearest levels to Intermediate for teens (14–17).") && !teenView.includes("No group is") && !teenView.includes("tagged") && at(teenView, 'id="catalog-bootcamps"') < at(teenView, ">Closest fit</h3>"));
+  const teenView = render(createElement(ProgramCatalogView, { programs: listedPrograms.map((p) => ({ slug: p.slug, title: p.title })), groups: programGroups, nextCohorts: {}, header: null, query: parseCatalogQuery(params("age=teen&level=intermediate")), onChange: () => {} }));
+  check("catalog for a teen at Intermediate: the adult section, then Closest fit with the Novice Youth Bootcamp, and a line that stays true with an exact match above it", teenView.includes('id="catalog-bootcamps"') && teenView.includes('id="adult-intermediate"') && teenView.includes(">Closest fit</h2>") && teenView.includes('id="youth-11-15"') && teenView.includes("The nearest levels to Intermediate for teens (14–17).") && !teenView.includes("No group is") && !teenView.includes("tagged") && at(teenView, 'id="catalog-bootcamps"') < at(teenView, ">Closest fit</h2>"));
 
   console.log("The recommender reaches one tier either way; High Performance first for competitive youth");
   const base = { goals: [] as string[], programs: [] as string[], preferredLocationIds: [] as string[], availability: [] as string[] };
@@ -237,20 +238,23 @@ async function main() {
   console.log("Cards and pages read tags, never spans");
   const youth = listedPrograms[0];
   const card = render(createElement(ProgramGroupCard, { group: g("adult-intermediate"), program: listedPrograms[1] }));
-  check("group card: the level-led title, the type as the eyebrow, no day there", card.includes(">Intermediate Adult Bootcamp</h3>") && card.includes(">Weekend group class</p>") && !/<p class="[^"]*">Sundays<\/p>/.test(card));
-  check("group card: Level row first with one tag, then Ages, When (the day as a detail row), Where, Price", /<dt[^>]*>Level<\/dt><dd class="min-w-0"><span class="inline-flex[^"]*">.*?>Intermediate<\/span>/.test(card) && at(card, ">Level</dt>") < at(card, ">Ages</dt>") && /<dt[^>]*>When<\/dt><dd[^>]*>Sundays 5:00–6:00 pm<\/dd>/.test(card) && at(card, ">When</dt>") < at(card, ">Where</dt>"));
+  // The short card (backlog #69, owner-approved design 2026-11-17): no
+  // eyebrow and no labelled rows; the one level tag opens the card, and the
+  // day is a plain line under the title.
+  check("group card: the level-led title, no eyebrow, no day there", card.includes(">Intermediate Adult Bootcamp</h3>") && !card.includes("Weekend group class") && !/<p class="[^"]*">Sundays<\/p>/.test(card));
+  check("group card: the one level tag first, then the title, who, when (the day as a plain line), where, the price", at(card, ">Intermediate</span>") > 0 && at(card, ", tier 3 of 5, levels 3.0–3.5") < at(card, "<h3") && at(card, "<h3") < at(card, "16 and up</li>") && at(card, "16 and up</li>") < at(card, ">Sundays 5:00–6:00 pm</span>") && at(card, ">Sundays 5:00–6:00 pm</span>") < at(card, "Newtonbrook Tennis Club</li>") && at(card, "Newtonbrook Tennis Club</li>") < at(card, " a session</span>") && count(card, ", tier 3 of 5") === 1);
   check("group card: no range, no visible band, no rail, one link", !card.includes(" – ") && !/text-white\/60">3\.0–3\.5</.test(card) && !card.includes('aria-label="Built for') && !card.includes('role="meter"') && count(card, "<a ") === 1);
   const hp = render(createElement(ProgramGroupCard, { group: g("high-performance"), program: youth }));
-  check("the High Performance card: the bootcamp title, the High Performance tag with the gold mark, By approval, the competitive note", hp.includes(">High Performance Youth Bootcamp</h3>") && hp.includes("#E3C46F") && hp.includes(", tier 5 of 5, levels 5.0–7.0") && hp.includes("By approval") && hp.includes("The competitive track"));
+  check("the High Performance card: the bootcamp title, the High Performance tag with the gold mark, By approval, Ask to join", hp.includes(">High Performance Youth Bootcamp</h3>") && hp.includes("#E3C46F") && hp.includes(", tier 5 of 5, levels 5.0–7.0") && hp.includes("By approval") && hp.includes(">Ask to join<") && !hp.includes("The competitive track"));
   const programCard = render(createElement(ProgramCard, { program: youth }));
   check("program card: Levels block lists the three tags in ladder order and the When row names the level-led groups", programCard.includes(">Levels</p>") && at(programCard, ">Beginner</span>") < at(programCard, ">Novice</span>") && at(programCard, ">Novice</span>") < at(programCard, ">High Performance</span>") && programCard.includes("Beginner Junior Bootcamp") && !programCard.includes('aria-label="Built for'));
   check("program card: every When entry stacks the same way, the start in white over the name in white/65, no middle dot", count(programCard, '<span class="block text-white">Sat ') === 3 && count(programCard, '<span class="block text-white/65">') === 3 && programCard.includes('<span class="block text-white">Sat 12:00</span><span class="block text-white/65">Beginner Junior Bootcamp</span>') && !programCard.includes("Sat 12:00 ·") && !programCard.includes("Sat 12:00<span"));
   const privateCard = render(createElement(ProgramCard, { program: listedPrograms[2] }));
   check("private lessons card: one Level, All levels", privateCard.includes(">Level</p>") && privateCard.includes(">All levels</span>") && count(privateCard, "All levels") === 1);
-  const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({ slug: p.slug, title: p.title, type: p.type, description: p.description, photo: p.photo, ageBands: p.ageBands, timetable: p.timetable, schedule: p.schedule }));
-  const view = render(createElement(ProgramCatalogView, { programs: catalogPrograms, groups: programGroups, nextCohorts: {}, query: parseCatalogQuery(params("age=9&level=intermediate")), onChange: () => {} }));
-  check("catalog: the five levels in the select, the intro says one level, Closest fit after the exact match", count(view, '<optgroup label="Exact age">') === 1 && TIERS.every((t) => new RegExp(`<option value="${t.slug}"( selected="")?>${t.name} · ${t.band.replace(/\./g, "\.")}</option>`).test(view)) && view.includes("an age range and one level") && view.includes(">Closest fit</h3>") && view.includes("The nearest levels to Intermediate for age 9.") && !view.includes("tagged") && at(view, 'id="catalog-private-lessons"') < at(view, ">Closest fit</h3>") && view.includes('id="youth-7-10"'));
-  check("Closest fit carries the week-one line and the move-or-refund promise, no legal terms", view.includes("Your coach confirms your level on court in week one.") && view.includes("If another group fits you better, we move you to it at the same price.") && !/\b\d+ days?\b|fee|%/.test(view.slice(at(view, ">Closest fit</h3>"), at(view, 'id="youth-7-10"'))));
+  const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({ slug: p.slug, title: p.title }));
+  const view = render(createElement(ProgramCatalogView, { programs: catalogPrograms, groups: programGroups, nextCohorts: {}, header: null, query: parseCatalogQuery(params("age=9&level=intermediate")), onChange: () => {} }));
+  check("catalog: the five levels in the select by name, Closest fit after the exact match", count(view, '<optgroup label="Exact age">') === 1 && TIERS.every((t) => new RegExp(`<option value="${t.slug}"( selected="")?>${t.name}</option>`).test(view)) && view.includes(">Closest fit</h2>") && view.includes("The nearest levels to Intermediate for age 9.") && !view.includes("tagged") && at(view, 'id="catalog-private-lessons"') < at(view, ">Closest fit</h2>") && view.includes('id="youth-7-10"'));
+  check("Closest fit carries the week-one line and the move-or-refund promise, no legal terms", view.includes("Your coach confirms your level on court in week one.") && view.includes("If another group fits you better, we move you to it at the same price.") && !/\b\d+ days?\b|fee|%/.test(view.slice(at(view, ">Closest fit</h2>"), at(view, 'id="youth-7-10"'))));
 
   const detail = read("src/app/programs/[slug]/page.tsx");
   check("detail page: one LevelTag per group level, the ladder in set mode, no span chip", detail.includes("<LevelTag key={id} level={id} />") && detail.includes("tiers={tags}") && !detail.includes("<TierRangeBadges levelMin={range.min}") && !detail.includes("formatTierSpan(range") && detail.includes("an age range and one level"));
@@ -272,9 +276,12 @@ async function main() {
   const line60 = tierLineTable(6);
   check("the email tier line groups 5.0–7.0 as one tier: four 6px gaps, eight 2px gaps, 222px wide, ten lit cells at 6.0", count(line60, 'width="6"') === 4 && count(line60, 'width="2"') === 8 && line60.includes('width="222"') && count(line60, 'bgcolor="#E3C46F"') === 3 && count(line60, 'bgcolor="#1C2A3C"') === 2);
   check("the ladder's soft hyphen is written as an escape, never a literal invisible character", line.includes('const SOFT_HYPHEN = "\\u00AD";') && !line.includes("\u00AD"));
-  const joining = read("src/components/sections/HowJoiningWorks.tsx");
+  // The by-approval line moved from How joining works to "Good to know"
+  // (backlog #69); it still names the group in full, never the tier.
+  const goodToKnow = read("src/components/sections/GoodToKnow.tsx");
+  const goodToKnowRow = render(createElement(GoodToKnow, { source: "test", approvalGroup: g("high-performance").name }));
   const about = read("src/app/about/page.tsx");
-  check("How joining works and /about name the group, never the tier: the High Performance Youth Bootcamp is by approval / the competitive track", joining.includes("The High Performance Youth Bootcamp is by approval.") && !joining.includes(">High Performance is by approval") && count(about, "High Performance Youth Bootcamp is the competitive track") === 2 && !about.includes("High Performance is the"));
+  check("Good to know and /about name the group, never the tier: the High Performance Youth Bootcamp is by approval / the competitive track", goodToKnow.includes("title: `The ${approvalGroup} is by approval`") && goodToKnowRow.includes(">The High Performance Youth Bootcamp is by approval</h3>") && !goodToKnow.includes("High Performance is by approval") && !goodToKnowRow.includes(">High Performance is by approval") && count(about, "High Performance Youth Bootcamp is the competitive track") === 2 && !about.includes("High Performance is the"));
 
   // ── 4. Every surface counts five ──────────────────────────────────────────
   console.log("Every ladder surface counts five");
@@ -293,10 +300,11 @@ async function main() {
       .map((l) => `${f}: ${l.trim().slice(0, 90)}`)
   );
   check("no World Class or Grand Slam outside comments", topHits.length === 0, topHits.join(" | "));
-  const band = read("src/components/sections/TierBand.tsx");
-  check("home band: Five tiers. Beginner to High Performance.", band.includes("{COUNT} tiers.") && render(createElement(TierLine, { variant: "ladder", orientation: "horizontal", density: "compact" })).includes("High Performance") && band.includes("TIER_COUNT_WORD"));
+  // The home band became the five-levels strip (backlog #69), on home and /programs.
+  const strip = read("src/components/sections/LevelsStrip.tsx");
+  check("the levels strip: Five levels, the five names from tiers.ts", strip.includes("{COUNT} levels.") && strip.includes("TIER_COUNT_WORD") && strip.includes("{TIERS.map((tier, i) => (") && render(createElement(TierLine, { variant: "ladder", orientation: "horizontal", density: "compact" })).includes("High Performance"));
   check("/assessment: a five-rung ladder, and the top rung's range explained", read("src/app/assessment/page.tsx").includes("{TIER_COUNT_WORD}-rung ladder") && read("src/app/assessment/page.tsx").includes("runs from 5.0 to 7.0"));
-  check("/about, /programs and the booking page read the count from tiers.ts", read("src/app/about/page.tsx").includes("The {TIER_COUNT_WORD} tiers") && read("src/app/programs/page.tsx").includes("TIER_COUNT_WORD") && read("src/app/assessment/book/page.tsx").includes("one of {TIER_COUNT_WORD}"));
+  check("/about, /programs (through the strip) and the booking page read the count from tiers.ts", read("src/app/about/page.tsx").includes("The {TIER_COUNT_WORD} tiers") && read("src/app/programs/page.tsx").includes("<LevelsStrip") && strip.includes("TIER_COUNT_WORD") && !/>\s*Five (levels|tiers)/.test(read("src/app/programs/page.tsx")) &&read("src/app/assessment/book/page.tsx").includes("one of {TIER_COUNT_WORD}"));
   const ghost = read("src/app/dashboard/page.tsx");
   check("the dashboard skeleton draws five rail groups, the last five pips wide", ghost.includes('{ height: "h-[18px]", flex: "flex-[5]", pips: 5 }') && count(ghost, "pips: 2") === 4);
   const gallery = read("src/app/admin/tiers/TierGallery.tsx");

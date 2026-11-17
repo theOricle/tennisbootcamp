@@ -7,16 +7,21 @@
 // dashboard suggestions), the program card rendered to markup (one link per
 // card, a real spec list, the photo with its alt, the Level block, the
 // dashboard fit marker) and the surfaces that use it, as source checks since
-// the repo has no DOM test runner. Exits non-zero on any failure. The cohort
-// length and totals come from the constants; this file never spells them.
+// the repo has no DOM test runner. Since the simpler site (backlog #69,
+// owner-approved design 2026-11-17) the spec sheet is the dashboard's card,
+// and the home page shows the same component in its compact variant, pinned
+// here too. Exits non-zero on any failure. The cohort length and totals come
+// from the constants; this file never spells them.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  COHORT_TOTAL_LABEL,
   PRICE_SUMMARY,
   PRIVATE_LESSONS_PRICE,
+  SESSION_PRICE_LABEL,
   groupsForProgram,
   listedPrograms,
   programGroups,
@@ -46,6 +51,7 @@ import {
   programLevelTags,
   programStatus,
   programTakesPlayerAge,
+  programWhoWhenLine,
   slotLevelRange,
   suggestProgramsFor,
   suggestionsSubCopy,
@@ -163,9 +169,12 @@ check("a public cohort still gives an arranged program the Next cohort chip", pr
 check("groups forming by default", programStatus(youth)?.label === "Groups forming");
 
 console.log("groupStatus precedence");
-check("next cohort first", groupStatus({ ...hp, status: "full" }, cohort)?.kind === "next-cohort");
+// Since the simpler site (backlog #69) a group's chip no longer carries the
+// next cohort: the start date joins the card's when line, and the chip says
+// how a player gets in. The seat rules are pinned in test-program-groups.ts.
+check("the next cohort is never a group's chip", groupStatus(first7)?.kind === "open" && groupStatus({ ...hp, status: "full" })?.kind === "full" && [groupStatus(first7), groupStatus(first7, 8), groupStatus(hp), groupStatus(hp, 8)].every((status) => status?.kind !== "next-cohort"));
 check("full, then invite only, then open to join", groupStatus({ ...first7, status: "full" })?.label === "Full" && groupStatus({ ...first7, status: "invite-only" })?.label === "Invite only" && groupStatus(first7)?.label === "Open to join" && groupStatus(first7)?.kind === "open");
-check("by approval (High Performance) beats the next cohort, never full or invite only", groupStatus(hp)?.label === "By approval" && groupStatus(hp, cohort)?.kind === "approval" && groupStatus({ ...hp, status: "full" })?.label === "Full" && groupStatus({ ...hp, status: "invite-only" })?.label === "Invite only");
+check("by approval (High Performance), never when full or invite only", groupStatus(hp)?.label === "By approval" && groupStatus(hp)?.kind === "approval" && groupStatus({ ...hp, status: "full" })?.label === "Full" && groupStatus({ ...hp, status: "invite-only" })?.label === "Invite only");
 check("an arranged group shows no chip", groupStatus(solo) === null);
 
 console.log("cohorts and groups");
@@ -305,6 +314,23 @@ const h2 = render(createElement(ProgramCard, { program: youth, headingLevel: 2 }
 check("headingLevel 2 renders an h2", h2.includes("<h2") && !h2.includes("<h3"));
 check("from md the card lies on its side, at lg it stacks again", card.includes("md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:flex") && card.includes("md:aspect-auto md:h-full") && card.includes("lg:aspect-[16/10]"));
 
+// ── The compact card (home) ─────────────────────────────────────────────────
+console.log("ProgramCard, compact (the home page)");
+const compact = render(createElement(ProgramCard, { program: youth, variant: "compact" }));
+const compactPrivate = render(createElement(ProgramCard, { program: privateLessons, variant: "compact" }));
+check("one link, the title, stretched over the card, to the program's page", count(compact, "<a ") === 1 && /<h3[^>]*><a [^>]*href="\/programs\/youth-programs"[^>]*>Youth Bootcamps<\/a><\/h3>/.test(compact) && compact.includes("after:absolute after:inset-0"));
+check("the photo with its real alt text", compact.includes("<img") && compact.includes(`alt="${youth.photo!.alt}"`));
+check("one line of who and when, derived from the groups", compact.includes(">Ages 7–17 · Saturdays</p>") && programWhoWhenLine(groupsForProgram("youth-programs")) === "Ages 7–17 · Saturdays" && programWhoWhenLine(groupsForProgram("bootcamps")) === "16 and up · Sundays" && programWhoWhenLine(groupsForProgram("private-lessons")) === "Any age · By arrangement");
+check("the session price, read from the price constants; the card types none", compact.includes(`>${SESSION_PRICE_LABEL} a session</p>`) && PRICE_SUMMARY.startsWith(`${SESSION_PRICE_LABEL} a session · `) && !compact.includes(COHORT_TOTAL_LABEL) && !/\$\d/.test(read("src/components/sections/ProgramCard.tsx")));
+check("See groups for a program with groups", compact.includes(">See groups") && !compact.includes("View Program"));
+check("private lessons: any age, by arrangement, rates on request, See details", compactPrivate.includes(">Any age · By arrangement</p>") && compactPrivate.includes(`>${PRIVATE_LESSONS_PRICE}</p>`) && compactPrivate.includes(">See details") && /<a [^>]*href="\/programs\/private-lessons"/.test(compactPrivate));
+check("no description, no labelled rows, no levels block, no chip", !compact.includes(youth.description) && !compact.includes("<dl") && !compact.includes(">Levels</p>") && !compact.includes("Groups forming") && !compact.includes("uppercase"));
+check("the photo sits left on phones and on top from md", compact.includes("grid-cols-[116px_minmax(0,1fr)]") && compact.includes("md:flex md:flex-col") && compact.includes("md:aspect-[16/10]"));
+check("headingLevel still sets the title's rank", render(createElement(ProgramCard, { program: youth, variant: "compact", headingLevel: 2 })).includes("<h2") && !compact.includes("<h2"));
+const compactList = render(createElement(ProgramCardList, { programs: listedPrograms, variant: "compact" }));
+check("the compact list: a real list, three across from md, one link per card", compactList.startsWith('<ul role="list"') && compactList.includes("md:grid-cols-3") && !compactList.includes("lg:grid-cols-3") && count(compactList, "<article") === listedPrograms.length && count(compactList, "<a ") === listedPrograms.length);
+check("the dashboard's card did not change: the spec sheet is the default", card === render(createElement(ProgramCard, { program: youth, variant: "spec" })) && card.includes("<dl") && card.includes(">Levels</p>"));
+
 console.log("ProgramCardList");
 const grid = render(createElement(ProgramCardList, { programs: listedPrograms, publicCohorts: [cohort] }));
 check("a real list of cards, three across from lg", grid.startsWith('<ul role="list"') && grid.includes("lg:grid-cols-3") && count(grid, "<article") === listedPrograms.length);
@@ -315,26 +341,28 @@ check("every listed photo is drawn once", listedPrograms.every((p) => count(grid
 // ── Surfaces ────────────────────────────────────────────────────────────────
 console.log("Surfaces");
 const cardSrc = read("src/components/sections/ProgramCard.tsx");
-check("card: no Learn more, no hover-only strip, no second button", !cardSrc.includes("Learn more") && !cardSrc.includes("group-hover:max-h") && count(cardSrc, "<Link") === 1);
+check("card: no Learn more, no hover-only strip, no second button (one Link in each variant)", !cardSrc.includes("Learn more") && !cardSrc.includes("group-hover:max-h") && count(cardSrc, "<Link") === 2 && count(cardSrc, "<Link href={p.ctaHref} className={STRETCHED_LINK}>") === 2);
 check("card: stretched link and has-focus ring", cardSrc.includes("after:absolute after:inset-0 after:z-10") && cardSrc.includes("has-[a:focus-visible]:ring-2"));
 check("card: no scale on hover, no plate import", !cardSrc.includes("hover:scale") && !cardSrc.includes("ProgramPlate"));
 check("card: the photo through next/image with sizes", cardSrc.includes('from "next/image"') && cardSrc.includes("sizes={PHOTO_SIZES}"));
 check("card: one StatusChip, rendered inside the photo column", count(cardSrc, "<StatusChip status={status} />") === 1);
 const gridSrc = read("src/components/sections/ProgramsGrid.tsx");
-check("grid renders ProgramCardList and reads cohorts once", gridSrc.includes("<ProgramCardList") && count(gridSrc, "getPublicCohorts()") === 1);
-check("grid: the quiz line with the locked label", gridSrc.includes("Not sure which fits?") && gridSrc.includes("{QUIZ_CTA_LABEL}") && gridSrc.includes("our coaches place you by level and schedule"));
+check("home grid renders the compact ProgramCardList and reads no cohort", gridSrc.includes('<ProgramCardList programs={programs} variant="compact" />') && !gridSrc.includes("getPublicCohorts") && !gridSrc.includes("async "));
+check("home grid: the five levels as a strip under the cards, no quiz line", gridSrc.includes("<LevelsStrip") && !gridSrc.includes("QUIZ_CTA_LABEL") && !gridSrc.includes("Not sure which fits?"));
 const home = read("src/app/page.tsx");
-check("home: the three listed programs with the quiz line", home.includes("programs={listedPrograms}") && home.includes("quizLine"));
+check("home: the three listed programs", home.includes("<ProgramsGrid programs={listedPrograms} />"));
 const programsPage = read("src/app/programs/page.tsx");
-check("/programs: tier legend in the header", /aria-labelledby="levels"[\s\S]*<TierLine variant="ladder"/.test(programsPage));
-check("/programs: the legend line reads the count and the span from tiers.ts", programsPage.includes("tiers, {TIER_LADDER_SPAN}.") && programsPage.includes("TIER_COUNT_WORD") && !programsPage.includes("Seven tiers"));
-check("/programs: the catalog of groups, then the quiz band, then the newsletter", programsPage.includes("<ProgramCatalog") && at(programsPage, "<ProgramCatalog") < at(programsPage, "<QuizBand") && at(programsPage, "<QuizBand") < at(programsPage, "<EmailCapture"));
-check("/programs: the header carries the primary quiz CTA", /source="programs-header"[\s\S]*data-quiz-cta/.test(programsPage));
+const catalogSrc = read("src/components/sections/ProgramCatalog.tsx");
+const stripSrc = read("src/components/sections/LevelsStrip.tsx");
+check("/programs: the five levels as a strip, under the dropdowns and above the quiz side line", programsPage.includes("levels={<LevelsStrip") && at(catalogSrc, "<Filters query={query}") < at(catalogSrc, "{levels}") && at(catalogSrc, "{levels}") < at(catalogSrc, "<QuizSideLine") && !programsPage.includes("<TierLine"));
+check("the strip reads the count and the names from tiers.ts, and links to the ladder", stripSrc.includes("TIER_COUNT_WORD") && stripSrc.includes("TIERS.map") && stripSrc.includes("<LevelTag level={tier.id} plain") && stripSrc.includes('href="/assessment#ladder"') && !/Beginner|Novice|Intermediate|Advanced|Five/.test(stripSrc.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "")));
+check("/programs: the catalog of groups, then Good to know; no quiz band and no newsletter band", programsPage.includes("<ProgramCatalog") && at(programsPage, "<ProgramCatalog") < at(programsPage, "<GoodToKnow") && !programsPage.includes("<QuizBand") && !programsPage.includes("<EmailCapture"));
+check("/programs: no lime button in the header band; the quiz is the side line", !programsPage.includes('variant="primary"') && !programsPage.includes("data-quiz-cta") && catalogSrc.includes('<QuizSideLine source="programs-filters"'));
 check("/programs: the next cohort per group is read once on the server", programsPage.includes("nextCohortForGroup(publicCohorts, g)") && count(programsPage, "getPublicCohorts()") === 1);
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("detail: the photo hero with its alt, 16:10, priority", /<Image[\s\S]*?src=\{program\.photo\.src\}[\s\S]*?alt=\{program\.photo\.alt\}[\s\S]*?priority/.test(detail) && detail.includes("aspect-[16/10]") && !detail.includes("ProgramPlate"));
 check("detail: the ages chip and one level tag per group level under the description (L8; owner 2026-10-13)", detail.includes("{agesChipLabel(groups)}") && detail.includes("<LevelTag key={id} level={id} />") && !detail.includes("<TierRangeBadges levelMin={range.min}"));
-check("detail: the groups as cards, the quiz as their action", detail.includes("<ProgramGroupCard") && detail.includes('source="program-group"') && detail.includes("nextCohortForGroup(publicCohorts, g)"));
+check("detail: the groups as cards, with their next cohort and seats", detail.includes("<ProgramGroupCard") && detail.includes('source="program-group"') && detail.includes("nextCohortForGroup(publicCohorts, g)") && detail.includes("seatsLeft={groupSeats[g.id]}"));
 check("detail: Levels in this program lights the groups' tags on the ladder", detail.includes("Levels in this program") && /<TierLine variant="ladder" orientation="vertical"[^>]*tiers=\{tags\}/.test(detail) && detail.includes("programLevelTags(groups)"));
 check("detail: How tiers work link", detail.includes('href="/assessment#ladder"'));
 check("detail: cohort cards carry the mark and the rail", detail.includes("<PlateMark plate={program.plate}") && detail.includes("artFocusForCohort(program, cohort)") && /tierGated &&[\s\S]*<TierLine[\s\S]*variant="rail"/.test(detail));

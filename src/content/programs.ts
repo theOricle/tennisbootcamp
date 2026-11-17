@@ -28,6 +28,12 @@ export const COHORT_WEEKS: number = 6;
  * data durations.
  */
 export const SESSION_MINUTES: number = 60;
+/**
+ * The public "up to N players a group" line (owner, 2026-11-16). It is what
+ * the site promises a visitor; each group's own minimum and capacity stay
+ * per group in admin (/admin/cohorts), and nothing here changes them.
+ */
+export const GROUP_MAX_PLAYERS: number = 8;
 
 const NUMBER_WORDS = [
   "zero", "one", "two", "three", "four", "five", "six",
@@ -94,17 +100,28 @@ const ADULT_BANDS: AgeBand[] = ["adult"];
 // of the written agreement and the first session. The policy sentence for
 // move-or-refund goes to counsel before public launch.
 
-/** Step 3's promise in full, on the How joining works section. */
+/**
+ * The right-group promise in full, one wording everywhere it is said in
+ * full: the home page's "Start on court" step, "Good to know" on /programs
+ * and the program pages, and the catalog's Closest fit line.
+ */
 export const RIGHT_GROUP_PROMISE =
   "If another group fits you better, we move you to it at the same price. If none does, we refund you in full.";
 
-/** The same promise on a group card's "Week 1" row. */
+/** The same promise in one short line, on the enroll page beside the group's ages. */
 export const RIGHT_GROUP_PROMISE_SHORT =
   "Your coach confirms your level. If another group fits better, we move you; if none does, full refund.";
 
-/** How a by-approval group (High Performance) is joined, on its card and the How joining works section. */
+/** How a by-approval group (High Performance) is joined, where the enroll page stops a visitor with no invitation. */
 export const APPROVAL_LINE =
   "Take the 2-minute quiz and our coaches approve each spot. No assessment needed.";
+
+/**
+ * The same fact under "Good to know", beside a card whose button reads "Ask
+ * to join": what asking is, who decides, and that no assessment is needed.
+ */
+export const APPROVAL_ASK_LINE =
+  "Ask to join: it is the 2-minute quiz, and our coaches approve each spot. No assessment needed.";
 
 /** The optional assessment, for certainty before paying, with its mechanic spelled out (voice.md rule 2). */
 export const ASSESSMENT_CERTAINTY_LINE =

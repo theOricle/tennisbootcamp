@@ -36,6 +36,8 @@ const CHIP_BASE =
   "inline-flex min-h-6 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium";
 const CHIP_NEUTRAL = "border border-white/15 bg-white/5 text-white/85";
 const CHIP_DASHED = "border border-dashed border-white/30 bg-white/5 text-white/85";
+/** A level tag with no chip: the 20px mark and the name, 13px. */
+const LEVEL_TAG_PLAIN = "inline-flex items-center gap-1.5 text-[13px] text-white";
 
 /**
  * Labeled tier badge — emblem + tier name + numeric level ("Novice · 2.5").
@@ -135,25 +137,34 @@ export function TierChip({
  * group built for any level (private lessons). The sr-only text places the
  * tier on the ladder. The chip is the card's single level statement; the
  * title already leads with the same word.
+ *
+ * `plain` drops the chip's border and fill and keeps the mark and the name:
+ * the group card's top row and the five-levels strip (owner-approved design,
+ * 2026-11-17), where the tag sits beside a status chip or in a row of five
+ * and a second outline would compete with it.
  */
 export function LevelTag({
   level,
+  plain = false,
   className = "",
 }: {
   /** The group's tier id, or null for any level. */
   level: TierId | null;
+  /** The mark and the name with no chip around them. */
+  plain?: boolean;
   className?: string;
 }) {
+  const shell = plain ? LEVEL_TAG_PLAIN : `${CHIP_BASE} ${CHIP_NEUTRAL}`;
   if (level === null) {
     return (
-      <span className={`${CHIP_BASE} ${CHIP_NEUTRAL} ${className}`.trim()}>
+      <span className={`${shell} ${className}`.trim()}>
         <span className="font-semibold text-white">All levels</span>
       </span>
     );
   }
   const tier = tierById(level);
   return (
-    <span className={`${CHIP_BASE} ${CHIP_NEUTRAL} ${className}`.trim()}>
+    <span className={`${shell} ${className}`.trim()}>
       <TierEmblem tier={tier.id} size={20} decorative className="shrink-0" />
       <span className="font-semibold text-white">{tier.name}</span>
       <span className="sr-only">, tier {tier.id} of {TIER_COUNT}, levels {tier.band}</span>

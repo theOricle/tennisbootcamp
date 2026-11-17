@@ -11,6 +11,7 @@ import {
   programLevelRange,
   programLevelTags,
   programStatus,
+  programWhoWhenLine,
   type ProgramFit,
   type ProgramStatus,
 } from "@/lib/programCatalog";
@@ -35,10 +36,15 @@ import { LevelTag } from "@/components/tiers";
 // (aria-hidden); the photo keeps its real alt text, so a reader hears who is
 // on court and then the title.
 //
-// Rendered by the homepage grid and the dashboard's "Suggested for you" row,
-// so both stay identical. From md to lg the card lies on its side (photo
-// left, body right) so a tablet never shows a 2 + 1 orphan; at lg the
-// three-column grid stacks it again.
+// Rendered by the dashboard's "Suggested for you" row. From md to lg the card
+// lies on its side (photo left, body right) so a tablet never shows a 2 + 1
+// orphan; at lg the three-column grid stacks it again.
+//
+// The home page shows the same card in its compact variant (owner-approved
+// design, 2026-11-17): the photograph, the title, one line of who and when,
+// the session price, and "See groups". The rows, the description and the
+// levels block stay on the spec sheet; on the home page the levels are the
+// strip under the cards. One component, two densities, the same one link.
 
 export type ProgramCardProps = {
   program: Program;
@@ -48,12 +54,16 @@ export type ProgramCardProps = {
   fit?: ProgramFit;
   /** The title's heading level; h3 under a section heading, h2 when the page's H1 names the list. */
   headingLevel?: 2 | 3;
+  /** "spec": the labelled rows (dashboard). "compact": the home page's short card. */
+  variant?: "spec" | "compact";
 };
 
 export const CHIP_BASE = "inline-flex min-h-6 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium";
 export const CHIP_NEUTRAL = `${CHIP_BASE} border border-white/15 bg-white/5 text-white/85`;
 const CHIP_NEXT = `${CHIP_BASE} bg-[#B4E655]/10 text-[#B4E655]`;
 export const CHIP_COMING_SOON = `${CHIP_BASE} border border-dashed border-white/25 bg-[#061427] text-white/85`;
+/** The warn chip (design-system.md): a real warning computed from data, "2 spots left". */
+export const CHIP_WARN = `${CHIP_BASE} border border-yellow-400/30 bg-yellow-400/10 text-yellow-200`;
 
 export const EYEBROW_CLASS = "text-xs font-semibold uppercase tracking-[0.12em] text-[#B4E655]";
 export const LABEL_CLASS = "text-xs font-semibold uppercase tracking-[0.12em] text-white/60";
@@ -65,11 +75,20 @@ export const ROW_CLASS = "grid grid-cols-[4.5rem_1fr] gap-x-3";
  * brightens on hover and when the stretched link has visible focus (the
  * ring sits on the article because the link's box is the title alone).
  */
-export const CARD_SHELL =
-  "group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] " +
+const CARD_STATES =
   "motion-safe:transition-colors motion-safe:duration-150 hover:border-white/25 " +
   "has-[a:focus-visible]:border-white/25 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-[#B4E655]/50 " +
   "has-[a:focus-visible]:ring-offset-2 has-[a:focus-visible]:ring-offset-[#061427]";
+
+export const CARD_SHELL =
+  "group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] " +
+  CARD_STATES;
+
+/** The compact card: the photo beside the words on phones (a 116px column), on top from md. */
+const COMPACT_SHELL =
+  "group relative grid h-full grid-cols-[116px_minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 " +
+  "bg-white/[0.03] md:flex md:flex-col " +
+  CARD_STATES;
 
 /** The title link, stretched over the card. The focus ring is drawn by the article. */
 export const STRETCHED_LINK =
@@ -77,6 +96,8 @@ export const STRETCHED_LINK =
 
 /** The photo's responsive widths: full width on phones, half on a tablet, a third of the container at lg. */
 const PHOTO_SIZES = "(min-width: 1024px) 352px, (min-width: 768px) 40vw, 100vw";
+/** The compact card's photo: a third of the container from md, the 116px column on phones. */
+const COMPACT_PHOTO_SIZES = "(min-width: 768px) 352px, 116px";
 
 export function StatusChip({ status }: { status: ProgramStatus }) {
   if (status.kind === "next-cohort") {
@@ -88,6 +109,9 @@ export function StatusChip({ status }: { status: ProgramStatus }) {
     );
   }
   if (status.kind === "coming-soon") return <span className={CHIP_COMING_SOON}>{status.label}</span>;
+  // A group down to its last spots: the one warning a card may carry, the
+  // count computed from the seats (voice.md rule 4), never invented.
+  if (status.kind === "low") return <span className={CHIP_WARN}>{status.label}</span>;
   // The joining flow (owner, 2026-10-12): an open group carries a solid lime
   // dot, a by-approval group a hollow ring, so the two read apart at a glance
   // without a second colour. The words carry the meaning; the dots are decoration.
@@ -235,7 +259,51 @@ function GroupLines({ groups }: { groups: ProgramGroup[] }) {
   );
 }
 
-export function ProgramCard({ program: p, nextCohort, fit = null, headingLevel = 3 }: ProgramCardProps) {
+/**
+ * The compact card (home): photo, title, who and when, the session price,
+ * and the decorative "See groups" line. The whole card is the title's one
+ * link, to the program's page.
+ */
+function CompactProgramCard({ program: p, headingLevel = 3 }: Pick<ProgramCardProps, "program" | "headingLevel">) {
+  const Title = headingLevel === 2 ? "h2" : "h3";
+  const groups = groupsForProgram(p.slug);
+  // A program with fixed classes lists its groups on its page; one booked
+  // by arrangement (private lessons) has details instead.
+  const hasGroups = groups.some((g) => g.day !== null);
+  // The session price ("Rates on request" for private lessons): the first
+  // part of the price line, built from the constants in src/content/programs.ts.
+  const price = p.priceSummary?.split(" · ")[0];
+
+  return (
+    <article className={COMPACT_SHELL}>
+      <div className="relative min-h-[116px] bg-[#061427] md:aspect-[16/10] md:min-h-0">
+        {p.photo && (
+          <Image
+            src={p.photo.src}
+            alt={p.photo.alt}
+            width={p.photo.width}
+            height={p.photo.height}
+            sizes={COMPACT_PHOTO_SIZES}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
+      </div>
+      <div className="flex min-w-0 flex-col justify-center px-4 py-3.5 md:px-[22px] md:pb-[22px] md:pt-5">
+        <Title className="text-lg font-semibold tracking-tight text-white md:text-xl">
+          <Link href={p.ctaHref} className={STRETCHED_LINK}>
+            {p.title}
+          </Link>
+        </Title>
+        <p className="mt-0.5 text-sm text-white/70">{programWhoWhenLine(groups)}</p>
+        {price && <p className="text-sm tabular-nums text-white/90">{price}</p>}
+        <CtaLine text={hasGroups ? "See groups" : "See details"} className="mt-2" />
+      </div>
+    </article>
+  );
+}
+
+export function ProgramCard({ program: p, nextCohort, fit = null, headingLevel = 3, variant = "spec" }: ProgramCardProps) {
+  if (variant === "compact") return <CompactProgramCard program={p} headingLevel={headingLevel} />;
   const Title = headingLevel === 2 ? "h2" : "h3";
   const status = programStatus(p, nextCohort);
   const range = programLevelRange(p);
@@ -345,21 +413,34 @@ export function nextCohortFor(publicCohorts: Cohort[], programId: string): Cohor
 
 export type ProgramCardListProps = {
   programs: Program[];
-  /** Already fetched by the page or the grid; this list never reads the database. */
-  publicCohorts: Cohort[];
+  /** Already fetched by the page; this list never reads the database. The compact cards show no cohort. */
+  publicCohorts?: Cohort[];
   /** Dashboard only: which ranked player each program fits, by program id. */
   fits?: Record<string, ProgramFit>;
   headingLevel?: 2 | 3;
+  /** "compact" on the home page; the dashboard keeps the spec sheet. */
+  variant?: "spec" | "compact";
 };
 
 /**
- * The list the grid and the dashboard both render: a real list of cards,
- * each stretched to its row's height, three across from lg. Sync and
- * database-free, so a server page can call it with cohorts it already holds.
+ * The list the home page and the dashboard both render: a real list of
+ * cards, each stretched to its row's height. Spec sheets sit three across
+ * from lg; the compact cards three across from md, where they are short
+ * enough to. Sync and database-free, so a server page can call it with
+ * cohorts it already holds.
  */
-export function ProgramCardList({ programs, publicCohorts, fits, headingLevel }: ProgramCardListProps) {
+export function ProgramCardList({
+  programs,
+  publicCohorts = [],
+  fits,
+  headingLevel,
+  variant = "spec",
+}: ProgramCardListProps) {
   return (
-    <ul role="list" className="grid gap-4 lg:grid-cols-3">
+    <ul
+      role="list"
+      className={variant === "compact" ? "grid gap-3 md:grid-cols-3 md:gap-5" : "grid gap-4 lg:grid-cols-3"}
+    >
       {programs.map((p) => (
         <li key={p.id} className="flex [&>*]:w-full">
           <ProgramCard
@@ -367,6 +448,7 @@ export function ProgramCardList({ programs, publicCohorts, fits, headingLevel }:
             nextCohort={nextCohortFor(publicCohorts, p.id)}
             fit={fits?.[p.id] ?? null}
             headingLevel={headingLevel}
+            variant={variant}
           />
         </li>
       ))}

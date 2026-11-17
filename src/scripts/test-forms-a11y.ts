@@ -150,7 +150,8 @@ check("Back and Next stick to the bottom on phones with the safe area", intake.i
 check("the answers survive a refresh (sessionStorage draft)", intake.includes("sessionStorage.setItem(DRAFT_KEY") && intake.includes("writeDraft(null)"));
 check("a restored draft waits out the bot timer instead of being dropped", intake.includes("if (restoredDraft.current) await waitForFillTime()"));
 const navbar = read("src/components/layout/Navbar.tsx");
-check("the header shows no quiz CTA inside the quiz", navbar.includes("inQuiz ? null :") && navbar.includes("{!inQuiz && ("));
+// The header's button is the main one now (backlog #69); inside the quiz it still carries none, in the bar or the phone menu.
+check("the header shows no main button inside the quiz", (navbar.match(/\{!inQuiz && \(/g) ?? []).length === 2 && !navbar.includes("QUIZ_CTA_LABEL"));
 const enroll = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
 check("enroll focuses the step heading", enroll.includes("useFocusOnChange(headingRef, step)"));
 check("enroll's Continue is never disabled for gaps", !enroll.includes("disabled={!canContinue()"));

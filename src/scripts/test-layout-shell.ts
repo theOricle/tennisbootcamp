@@ -4,23 +4,31 @@
 // hierarchy and hero"): one Container rule (H2), the Kids' Camp notify form
 // (H8), header and footer navigation (M11, L5, L6, L21), the CTA weights and
 // placement (M12, M13), the hero size and motion (M14, M15), the Card and
-// Heading primitives (L1) and the header band fade (L2). The mobile quiz bar
-// rules are tested as pure functions; the rest are source checks, since the
-// repo has no DOM test runner. Horizontal overflow is checked in a browser by
-// `npm run check:overflow` (src/scripts/check-overflow.ts). Exits non-zero on
-// any failure.
+// Heading primitives (L1) and the header band fade (L2), as rebuilt for the
+// simpler site (backlog #69, owner 2026-11-16 and 2026-11-17): the main
+// button is "Join a group", the quiz is its side line, the top menu is
+// Programs and About, and the footer opens with the one newsletter line.
+// The phone bar's rules are tested as pure functions; the rest are source
+// checks, since the repo has no DOM test runner. Horizontal overflow is
+// checked in a browser by `npm run check:overflow`
+// (src/scripts/check-overflow.ts). Exits non-zero on any failure.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  QUIZ_BAR_HIDDEN_PREFIXES,
-  QUIZ_BAR_MIN_SCROLL,
-  QUIZ_CTA_ATTR,
+  GROUPS_ANCHOR,
+  JOIN_BAR_HIDDEN_PREFIXES,
+  JOIN_BAR_MIN_SCROLL,
+  JOIN_CTA_HREF,
+  JOIN_CTA_LABEL,
+  MAIN_CTA_ATTR,
   QUIZ_CTA_LABEL,
-  quizBarAllowedOn,
-  quizBarVisible,
-} from "../lib/quizBar";
-import { FOOTER_GROUPS, NAV_LINKS, site } from "../content/site";
+  QUIZ_SIDE_LEAD,
+  QUIZ_TAKEN_LEAD,
+  joinBarAllowedOn,
+  joinBarVisible,
+} from "../lib/mainAction";
+import { FOOTER_GROUPS, NAV_LINKS, NEWSLETTER_ANCHOR, site } from "../content/site";
 import { CONTAINER_CLASS, SECTION_RHYTHM_CLASS } from "../components/layout/Container";
 import { CARD_CLASS } from "../components/ui/Card";
 import { HEADING_CLASS } from "../components/ui/Heading";
@@ -43,34 +51,51 @@ const at = (hay: string, needle: string) => {
   return i === -1 ? Infinity : i;
 };
 
-// ── Mobile quiz bar rules (M13) ─────────────────────────────────────────────
-console.log("Mobile quiz bar (M13)");
-check("label is the locked primary CTA", QUIZ_CTA_LABEL === "Take the 2-minute quiz");
-check("in-page CTA marker", QUIZ_CTA_ATTR === "data-quiz-cta");
-for (const path of ["/intake", "/intake/", "/login", "/auth/forgot-password", "/auth/callback", "/assessment/book", "/dashboard", "/admin/cohorts/123", "/enroll/abc", "/profile", "/set-password"]) {
-  check(`hidden on ${path}`, !quizBarAllowedOn(path));
-}
-for (const path of ["/", "/programs", "/programs/youth-programs", "/about", "/assessment", "/legal/privacy", "/intake-guide", "/administration"]) {
-  check(`allowed on ${path}`, quizBarAllowedOn(path));
-}
-check("query strings do not defeat the route rule", !quizBarAllowedOn("/intake?program=bootcamps"));
-for (const required of ["/intake", "/login", "/auth", "/assessment/book"]) {
-  check(`audit route ${required} is in the hidden list`, (QUIZ_BAR_HIDDEN_PREFIXES as readonly string[]).includes(required));
-}
-const base = { allowed: true, signedIn: false, scrollY: QUIZ_BAR_MIN_SCROLL + 400, ctaInView: false };
-check("shows once the page's quiz CTA has scrolled out", quizBarVisible(base));
-check("hidden while an in-page quiz CTA is on screen", !quizBarVisible({ ...base, ctaInView: true }));
-check("hidden at the top of the page", !quizBarVisible({ ...base, scrollY: 0 }));
-check("hidden for a signed-in visitor", !quizBarVisible({ ...base, signedIn: true }));
-check("hidden on a disallowed route", !quizBarVisible({ ...base, allowed: false }));
+// ── The main action (owner, 2026-11-16) ─────────────────────────────────────
+console.log("The main action: Join a group, the quiz as a side line");
+check("the main button reads Join a group and goes to /programs", JOIN_CTA_LABEL === "Join a group" && JOIN_CTA_HREF === "/programs");
+check("the quiz link's label is unchanged", QUIZ_CTA_LABEL === "Take the 2-minute quiz");
+check("the side line asks, then links: Not sure which group?", QUIZ_SIDE_LEAD === "Not sure which group?");
+check("a quiz-taker's side line says their answers are in", QUIZ_TAKEN_LEAD === "Your quiz answers are in.");
+const mainAction = read("src/components/ui/MainAction.tsx");
+check("one component: the lime button with the main label, marked for the bar", mainAction.includes('variant="primary"') && mainAction.includes("{JOIN_CTA_LABEL}") && mainAction.includes("data-main-cta") && mainAction.includes("href = JOIN_CTA_HREF"));
+check("then the side line: the lead, and the quiz link with its locked label", mainAction.includes("{QUIZ_SIDE_LEAD} {link}") && mainAction.includes("{QUIZ_CTA_LABEL}") && mainAction.includes('track="quiz"'));
+check("the side line keeps the quiz-taken behaviour: QuizSwap, the answers-are-in line, the quiz-aware link", mainAction.includes("<QuizSwap") && mainAction.includes("{QUIZ_TAKEN_LEAD} {link}") && !mainAction.includes("quizAware={false}"));
+check("the main button never wraps", mainAction.includes('className="whitespace-nowrap" data-main-cta'));
+check("the quiz is never a lime button in the main action", (mainAction.match(/variant="primary"/g) ?? []).length === 1);
 
-const bar = read("src/components/layout/MobileQuizBar.tsx");
+// ── Phone bar rules (M13) ───────────────────────────────────────────────────
+console.log("Phone bar (M13): it follows the main button");
+check("in-page main button marker", MAIN_CTA_ATTR === "data-main-cta");
+for (const path of ["/intake", "/intake/", "/login", "/auth/forgot-password", "/auth/callback", "/assessment/book", "/dashboard", "/admin/cohorts/123", "/enroll/abc", "/profile", "/set-password"]) {
+  check(`hidden on ${path}`, !joinBarAllowedOn(path));
+}
+// Never on /programs or below it: the bar would point at the page the visitor is on.
+for (const path of ["/programs", "/programs/", "/programs/youth-programs", "/programs/private-lessons", "/programs?age=14&level=intermediate"]) {
+  check(`hidden on ${path}`, !joinBarAllowedOn(path));
+}
+for (const path of ["/", "/about", "/locations", "/assessment", "/legal/privacy", "/intake-guide", "/administration", "/programs-guide"]) {
+  check(`allowed on ${path}`, joinBarAllowedOn(path));
+}
+check("query strings do not defeat the route rule", !joinBarAllowedOn("/intake?program=bootcamps"));
+for (const required of ["/programs", "/intake", "/login", "/auth", "/assessment/book"]) {
+  check(`route ${required} is in the hidden list`, (JOIN_BAR_HIDDEN_PREFIXES as readonly string[]).includes(required));
+}
+const base = { allowed: true, signedIn: false, scrollY: JOIN_BAR_MIN_SCROLL + 400, ctaInView: false };
+check("shows once the page's main button has scrolled out", joinBarVisible(base));
+check("hidden while an in-page main button is on screen", !joinBarVisible({ ...base, ctaInView: true }));
+check("hidden at the top of the page", !joinBarVisible({ ...base, scrollY: 0 }));
+check("hidden for a signed-in visitor", !joinBarVisible({ ...base, signedIn: true }));
+check("hidden on a disallowed route", !joinBarVisible({ ...base, allowed: false }));
+
+const bar = read("src/components/layout/MobileJoinBar.tsx");
 check("bar is phones only", bar.includes("md:hidden"));
-check("bar uses the route rule and the visibility rule", bar.includes("quizBarAllowedOn(") && bar.includes("quizBarVisible("));
-check("bar watches in-page CTAs with an IntersectionObserver", bar.includes("IntersectionObserver") && bar.includes("QUIZ_CTA_ATTR"));
+check("bar uses the route rule and the visibility rule", bar.includes("joinBarAllowedOn(") && bar.includes("joinBarVisible("));
+check("bar watches in-page main buttons with an IntersectionObserver", bar.includes("IntersectionObserver") && bar.includes("MAIN_CTA_ATTR"));
 check("bar is inert while hidden", bar.includes("inert={!show}"));
 check("bar respects the safe area", bar.includes("safe-area-inset-bottom"));
-check("root layout mounts the bar", read("src/app/layout.tsx").includes("<MobileQuizBar />"));
+check("bar carries the main button: Join a group, to /programs", bar.includes('<Button variant="primary" href={JOIN_CTA_HREF} className="w-full">') && bar.includes("{JOIN_CTA_LABEL}") && !bar.includes("QUIZ_CTA_LABEL"));
+check("root layout mounts the bar", read("src/app/layout.tsx").includes("<MobileJoinBar />"));
 
 // ── One Container rule (H2) ─────────────────────────────────────────────────
 console.log("One Container rule (H2)");
@@ -79,12 +104,16 @@ check("one vertical rhythm", SECTION_RHYTHM_CLASS === "py-12 md:py-16");
 check("PageStack uses the Container and the rhythm", /<Container[^>]*SECTION_RHYTHM_CLASS/.test(read("src/components/layout/PageStack.tsx")));
 const SECTIONS = [
   "src/components/sections/ProgramsGrid.tsx",
-  "src/components/sections/Coaches.tsx",
+  "src/components/sections/ProgramCard.tsx",
+  "src/components/sections/ProgramGroupCard.tsx",
+  "src/components/sections/LevelsStrip.tsx",
+  "src/components/sections/HowJoiningWorks.tsx",
+  "src/components/sections/WhereAndWho.tsx",
+  "src/components/sections/GoodToKnow.tsx",
+  "src/components/sections/JoinClosing.tsx",
   "src/components/sections/EventsList.tsx",
   "src/components/sections/EmailCapture.tsx",
   "src/components/sections/ProgramInterestForm.tsx",
-  "src/components/sections/QuizBand.tsx",
-  "src/components/sections/TierBand.tsx",
 ];
 for (const file of SECTIONS) {
   const src = read(file);
@@ -92,31 +121,41 @@ for (const file of SECTIONS) {
   check(`${file.split("/").pop()} sets no gutter or page width`, offenders.length === 0, offenders.join(", "));
 }
 
+// The home page's class section is a full-bleed band: it paints its hairlines
+// edge to edge and puts the one Container inside.
+const classBand = read("src/components/sections/BootcampClass.tsx");
+check("the class band puts the Container inside, and sets no gutter or page width of its own", classBand.includes("<Container>") && !/(^|[\s"'`])(mx-auto|max-w-6xl|px-6|-mx-)/.test(classBand));
+
 const programsPage = read("src/app/programs/page.tsx");
-check("/programs catalog sits in the page Container", /<PageStack>[\s\S]*<ProgramCatalog/.test(programsPage));
+const catalog = read("src/components/sections/ProgramCatalog.tsx");
+check("/programs is the catalog, then Good to know in the page Container", /<ProgramCatalog[\s\S]*<Container[^>]*>\s*<GoodToKnow/.test(programsPage));
 check("/programs has no second 'Programs' heading and no grid of its own", !programsPage.includes("<ProgramsGrid") && !programsPage.includes('title="Our Programs"'));
 check("/programs does not link to itself", !programsPage.includes('href="/programs"'));
-check("/programs puts the newsletter after the catalog", at(programsPage, "<ProgramCatalog") < at(programsPage, "<EmailCapture"));
-check("/programs header band uses the Container", /tb-gradient[\s\S]*<Container/.test(programsPage));
-const catalog = read("src/components/sections/ProgramCatalog.tsx");
+check("/programs renders no newsletter form of its own: the footer's line is the one", !programsPage.includes("<EmailCapture"));
+check("/programs header band uses the Container (the catalog draws it, with the filters inside)", /tb-gradient[\s\S]*<Container/.test(catalog));
+check("the groups sit in the one Container, under the anchor the main button scrolls to", catalog.includes("<Container id={GROUPS_ANCHOR}") && GROUPS_ANCHOR === "groups");
 check("the catalog sets no gutter or page width of its own", !/(^|[\s"'`])(mx-auto|max-w-6xl|px-6|-mx-)/.test(catalog));
+check("/programs: no lime button in the band (the main button is the header's)", !programsPage.includes('variant="primary"') && !catalog.includes('variant="primary"') && !catalog.includes('buttonClass("primary")'));
 
 const home = read("src/app/page.tsx");
-// Owner, 2026-10-13: "people want to see the programs first, not the tier list".
+// Owner, 2026-11-17: the class section comes straight after the hero; then
+// the programs, first in the page's Container (owner, 2026-10-13: "people
+// want to see the programs first").
 check(
-  "home: the programs come straight after the hero and the trust bar, first in the page stack",
+  "home: the class section comes straight after the hero, then the programs, first in the Container",
   // Only JSX comments may sit between them; a comment never runs past its own "*/".
-  /<Hero \/>\s*<TrustBar \/>\s*(\{\/\*(?:(?!\*\/)[\s\S])*\*\/\}\s*)*<PageStack>\s*<ProgramsGrid/.test(home)
+  /<Hero \/>\s*(\{\/\*(?:(?!\*\/)[\s\S])*\*\/\}\s*)*<BootcampClass \/>\s*(\{\/\*(?:(?!\*\/)[\s\S])*\*\/\}\s*)*<Container[^>]*>\s*<ProgramsGrid/.test(home)
 );
-check("home: the tier band never sits between the hero and the programs", at(home, "<ProgramsGrid") < at(home, "<TierBand />") && at(home, "<LocationSection />") < at(home, "<TierBand />"));
-check("home: programs come before the newsletter (M12)", at(home, "<ProgramsGrid") < at(home, "<EmailCapture"));
-check("home: events come before the newsletter (M12)", at(home, "<EventsList") < at(home, "<EmailCapture"));
-check("home: closes on the quiz band (M13)", at(home, "<Coaches") < at(home, "<QuizBand"));
+check("home: programs, how joining works, where and who, events, the closing, in that order", at(home, "<ProgramsGrid") < at(home, "<HowJoiningWorks") && at(home, "<HowJoiningWorks") < at(home, "<WhereAndWho") && at(home, "<WhereAndWho") < at(home, "<EventsList") && at(home, "<EventsList") < at(home, "<JoinClosing"));
+check("home: closes on the main action (M13)", /<JoinClosing source="home-closing" \/>\s*<\/Container>\s*<\/main>/.test(home));
+check("home: no newsletter form of its own: the footer's line is the one (M12)", !home.includes("<EmailCapture"));
+check("home: what left the page stays off it", ["<TrustBar", "<TierBand", "<LocationSection", "<Coaches", "<QuizBand"].every((tag) => !home.includes(tag)));
 check("home: no nested gutter section", !home.includes('className="mx-auto max-w-6xl px-6"'));
 
 const grid = read("src/components/sections/ProgramsGrid.tsx");
-check("grid header link is the locked secondary label", grid.includes("Browse Programs →") && !grid.includes("View all"));
-check("grid header link is a 44px target", grid.includes("min-h-[44px]"));
+check("home programs: the heading, then one line that reads the class and cohort lengths from the constants", grid.includes(">Our Programs</Heading>") && grid.includes("Group bootcamps run one {SESSION_MINUTES}-minute class a week, in {COHORT_LENGTH_ADJ} cohorts."));
+check("home programs: the compact cards, then the five levels as a strip under them", grid.includes('<ProgramCardList programs={programs} variant="compact" />') && at(grid, "<ProgramCardList") < at(grid, "<LevelsStrip"));
+check("home programs: no Browse Programs link and no quiz line (the main action carries both)", !grid.includes("Browse Programs") && !grid.includes("QUIZ_CTA_LABEL") && !grid.includes("getPublicCohorts"));
 
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("detail: one Container, no max-w-5xl edge", !detail.includes("max-w-5xl") && detail.includes("<Container"));
@@ -147,28 +186,32 @@ check("newsletter button is the outline secondary", capture.includes('buttonClas
 check("newsletter takes a source prop and sends it", /source\s*:\s*string/.test(capture) && capture.includes("JSON.stringify({ email, source,"));
 check("newsletter field id is per form", capture.includes("useId()") && !capture.includes('id="email-capture"'));
 check("newsletter button never wraps", capture.includes("shrink-0 whitespace-nowrap"));
-check("every EmailCapture call names its source", ["src/app/page.tsx", "src/app/programs/page.tsx", "src/app/programs/[slug]/page.tsx", "src/app/events/page.tsx", "src/app/video-lessons/page.tsx"].every((f) => !read(f).includes("<EmailCapture />")));
+check("every EmailCapture call names its source", ["src/components/layout/Footer.tsx", "src/app/programs/[slug]/page.tsx", "src/app/events/page.tsx", "src/app/video-lessons/page.tsx"].every((f) => read(f).includes("<EmailCapture") && !read(f).includes("<EmailCapture />") && /<EmailCapture[^>]*source=/.test(read(f))));
 check("detail: Book Your Assessment is an outline pill", /<(?:Tracked)?Button\s+variant="secondary"\s+href="\/assessment\/book"[^>]*>\s*Book Your Assessment\s*<\/(?:Tracked)?Button>/.test(detail));
 check("detail: no 'Or Book Your Assessment' grey link", !detail.includes("Or Book Your Assessment"));
 // QA 2026-10-10: /assessment hand-rolled two lime pills, the quiz CTA's style.
 const assessmentPage = read("src/app/assessment/page.tsx");
 check("/assessment: both Book Your Assessment buttons are outline pills", (assessmentPage.match(/<(?:Tracked)?Button\s+variant="secondary"\s+href="\/assessment\/book"[^>]*>\s*Book Your Assessment\s*<\/(?:Tracked)?Button>/g) ?? []).length === 2);
-check("detail: closes on the quiz band (M13)", detail.includes("<QuizBand href={quizHref}"));
-check("detail: timetable quiz CTA is marked for the bar", /<(?:Tracked)?Button\s+variant="primary"\s+href=\{quizHref\}[^>]*data-quiz-cta/.test(detail));
+check("detail: closes on the main action (M13), to this page's group list and this program's quiz", detail.includes('<JoinClosing className="mt-12" source="program-closing" quizHref={quizHref} href={groupListHref} />'));
+check("detail: the panel's lime button is Join a group, to the page's own group list, marked for the bar", /<Button variant="primary" href=\{groupListHref\}[^>]*data-main-cta>\s*\{JOIN_CTA_LABEL\}/.test(detail) && detail.includes("const groupListHref = scheduledGroups.length > 0 ? `#${GROUPS_ANCHOR}` : undefined;") && detail.includes("<h2 id={GROUPS_ANCHOR}"));
+check("detail: the quiz side line sits under it, for this program", /\{JOIN_CTA_LABEL\}\s*<\/Button>\s*<QuizSideLine source="program-detail" quizHref=\{quizHref\}/.test(detail));
+check("detail: a program booked by arrangement asks about lessons, where the lime button always led", /<TrackedButton\s+variant="primary"\s+href=\{quizHref\}\s+track="quiz"\s+source="program-detail"\s+quizAware=\{false\}[^>]*data-main-cta\s*>\s*Ask about lessons/.test(detail));
+check("detail: no lime quiz button", !detail.includes("data-quiz-cta") && !/variant="primary"[^>]*>\s*Take the 2-minute quiz/.test(detail));
 const button = read("src/components/ui/Button.tsx");
 check("one primary hover (brightness-110)", button.includes('primary: "bg-[#B4E655] text-[#061427] hover:brightness-110"'));
 check("buttons are 44px or taller", button.includes("min-h-[44px]"));
 const notFound = read("src/app/not-found.tsx");
-check("404: the quiz is the lime primary", /<(?:Tracked)?Button\s+variant="primary"\s+href="\/intake"/.test(notFound));
-check("404: the quiz label never wraps", notFound.includes("whitespace-nowrap"));
+check("404: the main action is the lime primary, the quiz its side line", notFound.includes('<MainAction source="not-found"') && !/variant="primary"/.test(notFound) && !notFound.includes('href="/intake"'));
 check("404: links sit in a nav", notFound.includes('<nav aria-label="Helpful links"'));
-const band = read("src/components/sections/QuizBand.tsx");
-check("quiz band: one lime primary with the locked label", band.includes('variant="primary"') && band.includes("{QUIZ_CTA_LABEL}") && band.includes("data-quiz-cta"));
+const closing = read("src/components/sections/JoinClosing.tsx");
+check("the closing: one line, then the main action", closing.includes(">Groups are open to join.</Heading>") && closing.includes("<MainAction source={source} quizHref={quizHref} href={href} />") && !closing.includes("bg-[#B4E655]"));
+check("the locations page closes on it too", read("src/app/locations/page.tsx").includes('<JoinClosing source="locations-closing" />'));
 
 // ── M11, L5, L6, L21: navigation and footer ─────────────────────────────────
 console.log("Navigation and footer (M11, L5, L6, L21)");
 const navHrefs = NAV_LINKS.map((l) => l.href);
-check("header links: Programs, About, Assessment", ["/programs", "/about", "/assessment"].every((h) => navHrefs.includes(h)));
+// Owner, 2026-11-16: the top menu is Programs and About; Locations and Assessment live in the footer.
+check("header links: Programs and About, and nothing else", NAV_LINKS.map((l) => `${l.label}:${l.href}`).join("|") === "Programs:/programs|About:/about");
 check("no Events or Video Lessons in the nav (D24)", !navHrefs.some((h) => h === "/events" || h === "/video-lessons"));
 const navbar = read("src/components/layout/Navbar.tsx");
 check("header renders NAV_LINKS", navbar.includes("NAV_LINKS"));
@@ -186,13 +229,23 @@ check("page scroll locks while the drawer is open", navbar.includes('html.style.
 check("the lock is on the root only, never on body", !navbar.includes("document.body.style.overflow"));
 check("header is solid navy from the top, no blur", navbar.includes("bg-[#061427]") && !navbar.includes("backdrop-blur"));
 check("current page is marked", navbar.includes("aria-current={current}"));
-check("header quiz CTA uses the locked label", navbar.includes("{QUIZ_CTA_LABEL}"));
+check("header and phone menu carry the main button, for everyone, never a quiz button", (navbar.match(/\{JOIN_CTA_LABEL\}/g) ?? []).length === 2 && !navbar.includes("QUIZ_CTA_LABEL") && !navbar.includes('track="quiz"'));
+check("on /programs the main button scrolls to the group list instead of reloading the page", navbar.includes("const joinHref = pathname === JOIN_CTA_HREF ? `#${GROUPS_ANCHOR}` : JOIN_CTA_HREF;") && (navbar.match(/href=\{joinHref\}/g) ?? []).length === 2);
+check("inside the quiz the header carries no main button", (navbar.match(/\{!inQuiz && \(/g) ?? []).length === 2);
+check("Sign in, or Dashboard and Sign out when signed in, as before", navbar.includes('href="/login"') && navbar.includes('href="/dashboard"') && (navbar.match(/Sign out\s*<\/button>/g) ?? []).length === 2);
+check("the menu button gives way where the text links show: md signed out, lg signed in", navbar.includes('const SHOW_WIDE = signedIn ? "lg:flex" : "md:flex";') && navbar.includes('const HIDE_WIDE = signedIn ? "lg:hidden" : "md:hidden";'));
 
 const footer = read("src/components/layout/Footer.tsx");
 const footerHrefs = FOOTER_GROUPS.flatMap((g) => g.links.map((l) => l.href));
-for (const href of ["/programs", "/assessment", "/about", "/legal/refund-policy", "/legal/waiver", "/legal/privacy"]) {
+for (const href of ["/programs", "/locations", "/about", "/assessment", "/legal/refund-policy", "/legal/waiver", "/legal/privacy"]) {
   check(`footer links ${href}`, footerHrefs.includes(href));
 }
+check("footer Site column: Programs, Locations, About, Assessment", FOOTER_GROUPS[0].heading === "Site" && FOOTER_GROUPS[0].links.map((l) => l.label).join("|") === "Programs|Locations|About|Assessment");
+check("footer columns: Site, then Policies, then Contact", FOOTER_GROUPS.map((g) => g.heading).join("|") === "Site|Policies" && at(footer, "FOOTER_GROUPS.map") < at(footer, "Contact"));
+// The one newsletter line, on every page, with an id a "Notify me" button points at.
+check("footer opens with the newsletter line: its own source, an id to link to", NEWSLETTER_ANCHOR === "notify" && footer.includes("id={NEWSLETTER_ANCHOR}") && footer.includes('<EmailCapture variant="line" source="footer_email_capture" />') && at(footer, "<EmailCapture") < at(footer, "FOOTER_GROUPS.map"));
+check("never two newsletter forms on a page: a page's own form is marked, and the footer line hides for it", footer.includes("[body:has([data-page-newsletter])_&]:hidden") && /<section aria-labelledby=\{titleId\} data-page-newsletter>/.test(capture) && (capture.match(/data-page-newsletter>/g) ?? []).length === 1);
+check("the line says what the band says, and keeps the form's behaviour and bot check", capture.includes("Be first to know when a new cohort opens.") && (capture.match(/\{bot\.field\}/g) ?? []).length === 1 && (capture.match(/fetch\("\/api\/newsletter"/g) ?? []).length === 1);
 check("footer links sit in a labelled nav", footer.includes('<nav aria-label="Footer"'));
 check("footer email is a mailto link", footer.includes("href={`mailto:${site.email}`}"));
 check("footer rows are 44px", footer.includes("min-h-[44px]"));
@@ -216,10 +269,14 @@ check("declared size matches the PNG", hero.includes(`width={${pngW}}`) && hero.
 check("bounce is motion-safe", hero.includes("motion-safe:animate-bounce") && !/(^|[\s"'`])animate-(bounce|ping)/.test(hero));
 check("watermark is decorative and desktop only", /aria-hidden="true"\s+className="[^"]*hidden[^"]*md:block[^"]*"\s*>\s*TENNIS BOOTCAMP/.test(hero));
 check("phones get a top-down scrim", hero.includes("bg-gradient-to-b") && hero.includes("md:bg-gradient-to-r"));
-check("secondary hero button has a navy fill", hero.includes('className="bg-[#061427]/80"'));
-check("assessment note is white/65", hero.includes("text-white/65") && !hero.includes("text-white/50\">"));
 check("hero primary uses the shared hover", !hero.includes("hover:bg-[#c8ee76]"));
-check("hero quiz CTA is marked for the bar", hero.includes("data-quiz-cta"));
+check("hero: the tag reads Group bootcamps · Toronto", hero.includes("{HERO_TAG}") && read("src/content/bootcamp.ts").includes('export const HERO_TAG = "Group bootcamps · Toronto";'));
+check("hero: the main action under the paragraph (its button is marked for the bar)", hero.includes('<MainAction source="hero"'));
+check("hero: the headline and the paragraph are unchanged (locked)", hero.includes('Where Athletes <span className="text-[#B4E655]">Evolve!</span>') && hero.includes("Structured {COHORT_LENGTH_ADJ} cohorts. A system that makes progress inevitable. Built for athletes who want to compete."));
+// Owner, 2026-11-17: no price, no group size and no promise in the hero.
+check("hero: shows no price (no dollar sign, no price constant)", !hero.includes("$") && !hero.includes("SESSION_PRICE") && !hero.includes("COHORT_TOTAL") && !hero.includes("GROUP_MAX_PLAYERS"));
+check("hero: no Browse Programs button and no note under the buttons", !hero.includes("Browse Programs") && !hero.includes("QuizSwap") && !hero.includes("assessment"));
+check("hero: the layers stay: the wave, the glow, the scrim, the wordmark, the arrow", hero.includes("<CourtBackground />") && hero.includes("tb-gradient opacity-60") && hero.includes("TENNIS BOOTCAMP") && hero.includes('d="M19 9l-7 7-7-7"'));
 check("the wave loads after load and idle", hero.includes("requestIdleCallback"));
 const wave = read("src/components/ui/CourtBackground.tsx");
 check("wave honours prefers-reduced-motion", wave.includes("(prefers-reduced-motion: reduce)"));

@@ -1,142 +1,91 @@
 import type { ReactNode } from "react";
 import {
-  APPROVAL_LINE,
-  ASSESSMENT_CERTAINTY_LINE,
+  COHORT_LENGTH,
+  COHORT_TOTAL_LABEL,
   RIGHT_GROUP_PROMISE,
+  SESSION_PRICE_LABEL,
 } from "@/content/programs";
-import { QUIZ_CTA_LABEL } from "@/lib/quizBar";
-import { TrackedLink } from "@/components/ui/TrackedButton";
-import { QuizSwap } from "@/components/quiz/QuizSwap";
-import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
-import { FOCUS_RING } from "@/components/ui/focus";
+import { Heading } from "@/components/ui/Heading";
+import { PayCardIcon, PickGroupIcon, PointPlayIcon } from "@/components/ui/icons";
 
-// How joining works (joining flow, owner 2026-10-12): three steps on /programs
-// and on each program page with fixed classes. Groups are open to join for
-// anyone whose age and level fit; the coach confirms the level on court in
-// week one and moves the player, or refunds them in full when no group fits.
-// The $20 assessment is offered once, as optional; High Performance is by
-// approval. A real ordered list (role="list" keeps its semantics where the
-// list style is removed); the big numerals are decoration, so a screen
-// reader hears "1 of 3", not "1, 01". Server-rendered, no state; the two
-// links are the only interactive elements, and neither is the page's
-// primary: the lime quiz button stays the header's.
+// How joining works (joining flow, owner 2026-10-12; "pick a group, then
+// pay", owner-approved design 2026-11-17): three steps on the home page.
+// Pick a group by age and level, pay for the cohort, and start on court,
+// where the coach confirms the level in week one and moves the player, or
+// refunds them in full when no group fits. The price comes from the
+// constants in src/content/programs.ts, and the promise is the one constant
+// every surface shares (one promise, one wording).
+//
+// A real sequence, so it is drawn as one: an ordered list (role="list" keeps
+// its semantics where the list style is removed), each step an icon in a
+// ring, a hairline joining the rings. The icons and the line are
+// decoration. Server-rendered, no state and no link: the main action sits
+// in the hero and in the closing. The optional assessment, High Performance
+// by approval and the policies are "Good to know" on /programs
+// (src/components/sections/GoodToKnow.tsx).
 
-const INLINE_LINK = `rounded font-semibold text-[#B4E655] underline underline-offset-2 hover:no-underline ${FOCUS_RING}`;
+type Step = { title: string; body: string; icon: ReactNode };
 
-export type HowJoiningWorksProps = {
-  /** The quiz link; a program page passes `/intake?program={slug}`. */
-  quizHref?: string;
-  /** Analytics source for both links, e.g. "programs-joining". */
-  source: string;
-  /** Add the High Performance line (pages that list that group). */
-  showApproval?: boolean;
-  className?: string;
-};
+const STEP_GLYPH = "h-[22px] w-[22px]";
 
-type Step = { title: string; body: ReactNode };
+/** The three steps, in order. Exported so `npm test` reads the same words the page prints. */
+export const JOINING_STEPS: readonly Step[] = [
+  {
+    title: "Pick a group",
+    body: "By age and level.",
+    icon: <PickGroupIcon className={STEP_GLYPH} />,
+  },
+  {
+    title: "Pay online",
+    body: `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. Card or e-transfer.`,
+    icon: <PayCardIcon className={STEP_GLYPH} />,
+  },
+  {
+    title: "Start on court",
+    body: `Your coach confirms your level in week one. ${RIGHT_GROUP_PROMISE}`,
+    icon: <PointPlayIcon className={STEP_GLYPH} strokeWidth={1.7} />,
+  },
+];
 
-export function HowJoiningWorks({
-  quizHref = "/intake",
-  source,
-  showApproval = false,
-  className = "",
-}: HowJoiningWorksProps) {
-  const steps: Step[] = [
-    {
-      title: "Pick a group that fits your age and level",
-      body: (
-        // A quiz-taker is not asked again (owner, 2026-10-12): the step
-        // points them at their groups, or their dashboard when signed in.
-        <QuizSwap
-          guest={
-            <>
-              Each group lists its ages and level band. Not sure which fits?{" "}
-              <TrackedLink href={quizHref} track="quiz" source={source} className={INLINE_LINK}>
-                {QUIZ_CTA_LABEL}
-              </TrackedLink>{" "}
-              and our coaches place you.
-            </>
-          }
-          taken={
-            <>
-              Each group lists its ages and level band. You&apos;ve taken the quiz, so our
-              coaches place you from your answers.{" "}
-              <TrackedLink href={quizHref} track="quiz" source={source} className={INLINE_LINK}>
-                {QUIZ_CTA_LABEL}
-              </TrackedLink>
-            </>
-          }
-        />
-      ),
-    },
-    {
-      title: "Reserve your spot",
-      body: "The 2-minute quiz is how you ask for a spot. We email you an invitation with the group's dates and price, and hold your spot while you enroll.",
-    },
-    {
-      title: "Your coach confirms your level",
-      body: `On court, in week one. ${RIGHT_GROUP_PROMISE}`,
-    },
-  ];
-
+export function HowJoiningWorks({ className = "" }: { className?: string }) {
+  const last = JOINING_STEPS.length - 1;
   return (
     <section
       id="how-joining-works"
       aria-labelledby="how-joining-works-heading"
-      className={`scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.03] p-5 md:p-8 ${className}`.trim()}
+      className={`scroll-mt-24 ${className}`.trim()}
     >
-      <h2
-        id="how-joining-works-heading"
-        className="text-xl font-semibold tracking-tight text-white md:text-2xl"
-      >
-        How joining works
-      </h2>
+      <Heading id="how-joining-works-heading">How joining works</Heading>
 
-      <ol role="list" className="mt-5 grid gap-5 md:mt-6 md:grid-cols-3 md:gap-8">
-        {steps.map((step, i) => (
+      <ol role="list" className="mt-5 grid md:mt-7 md:grid-cols-3 md:gap-x-10">
+        {JOINING_STEPS.map((step, i) => (
           <li
             key={step.title}
-            className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-3 border-t border-white/10 pt-4 md:block"
+            className="relative grid grid-cols-[44px_minmax(0,1fr)] gap-x-3.5 pb-[22px] last:pb-0 md:block md:pb-0"
           >
+            {/* The line to the next step: down the left on phones, across
+                the top from md. */}
+            {i < last && (
+              <span
+                aria-hidden="true"
+                className="absolute bottom-1.5 left-[21.5px] top-[50px] w-px bg-white/[0.18] md:bottom-auto md:left-[58px] md:right-[-26px] md:top-[22px] md:h-px md:w-auto"
+              />
+            )}
             <span
               aria-hidden="true"
-              className="text-2xl font-semibold leading-none tabular-nums tracking-tight text-[#B4E655] md:text-3xl"
+              className="grid h-11 w-11 place-items-center rounded-full border border-[#B4E655]/40 bg-[#B4E655]/[0.08] text-[#B4E655]"
             >
-              {String(i + 1).padStart(2, "0")}
+              {step.icon}
             </span>
-            <div className="min-w-0 md:mt-4">
-              <h3 className="text-base font-semibold leading-snug text-white">{step.title}</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-white/70">{step.body}</p>
+            <div className="min-w-0">
+              <h3 className="pt-0.5 text-[17px] font-semibold leading-snug text-white md:mt-3.5 md:pt-0 md:text-lg">
+                {step.title}
+              </h3>
+              <p className="mt-[3px] max-w-[30rem] text-pretty text-[15px] text-white/75">{step.body}</p>
             </div>
           </li>
         ))}
       </ol>
-
-      <div className="mt-6 space-y-3 border-t border-white/10 pt-5">
-        {showApproval && (
-          <p className="max-w-3xl text-sm leading-relaxed text-white/70">
-            <span className="font-semibold text-white">The High Performance Youth Bootcamp is by approval.</span>{" "}
-            {APPROVAL_LINE}
-          </p>
-        )}
-        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-8">
-          <p className="max-w-3xl text-sm leading-relaxed text-white/70">
-            <span className="font-semibold text-white">Want certainty first?</span>{" "}
-            {ASSESSMENT_CERTAINTY_LINE}
-          </p>
-          <TrackedLink
-            href="/assessment/book"
-            track="assessment"
-            source={source}
-            className={`${TEXT_LINK_LIME} shrink-0 self-start whitespace-nowrap md:self-auto`}
-          >
-            Book Your Assessment
-            <span aria-hidden="true" className="ml-1.5">
-              →
-            </span>
-          </TrackedLink>
-        </div>
-      </div>
     </section>
   );
 }
