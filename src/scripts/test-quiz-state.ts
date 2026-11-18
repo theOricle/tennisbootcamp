@@ -44,6 +44,7 @@ import {
   quizView,
   readQuizFlagFromCookies,
   retakeQuizHref,
+  type QuizView,
 } from "../lib/quizStatus";
 import {
   ACCOUNT_EMAIL_NOT_OFFERED,
@@ -411,11 +412,45 @@ check("ViewerSwap: members first, everyone else the guest's words, and no quiz r
 check("404 and About are quiz-aware", read("src/app/not-found.tsx").includes('<MainAction source="not-found"') && read("src/app/about/page.tsx").includes('<JoinClosing source="about-closing" />') && read("src/components/sections/JoinClosing.tsx").includes("<MainAction source={source}") && !read("src/app/about/page.tsx").includes('href="/intake"'));
 check("/assessment and the booking page swap their sentences for a signed-in taker", read("src/app/assessment/page.tsx").includes("You&apos;ve taken the quiz, so our coaches place you from your answers either") && read("src/app/assessment/book/page.tsx").includes("You&apos;ve taken the quiz, so our coaches already place you"));
 const login = read("src/app/login/page.tsx");
-// Backlog #71 leaves sign-in untouched. The page's taker line ("Took the quiz
-// already? …") was shown to a signed-out browser that had sent the quiz;
-// signed out, every visitor now reads its guest line ("New here? Take the
-// 2-minute quiz →"). The file and both lines are as they were.
-check("login: untouched; both lines still in place, and signed out it shows the guest's", login.includes("<QuizSwap") && login.includes("New here?") && login.includes("Took the quiz already? An account was created for your email.") && login.includes('href="/auth/forgot-password"') && quizView({ signedIn: false, account: null }).state === "new");
+// Re-pinned in the fix round of backlog #71 (owner, 2026-11-18). It read
+// "login: untouched; both lines still in place, and signed out it shows the
+// guest's": the hint "Took the quiz already? An account was created for your
+// email. …" showed only to a signed-out browser that had sent the quiz, and
+// after #71 to nobody signed out, so a person whose account the quiz created
+// lost the one line saying it exists. Signed out, every visitor now reads it,
+// flag or no flag, under "New here? Take the 2-minute quiz →"; signed in, the
+// account decides, as it did through QuizSwap. Sign-in itself is untouched.
+{
+  const quizLine = /\{showQuizLine && \(\s*<p[^>]*>\s*New here\?\{" "\}\s*<Link href="\/intake" className=\{linkClass\}>\s*Take the 2-minute quiz →/;
+  const accountHint = /\{showAccountHint && \(\s*<p[^>]*>\s*Took the quiz already\? An account was created for your email\. Never set a\s+password\?\{" "\}\s*<Link href="\/auth\/forgot-password" className=\{linkClass\}>\s*Send yourself a link →/;
+  check(
+    "login: both lines, words unchanged, each behind its own rule from the one quiz view; New here? first, the hint under it",
+    login.includes("const quiz = useQuizStatus();") &&
+      login.includes('const showQuizLine = quiz.state !== "taken";') &&
+      login.includes('const showAccountHint = !quiz.signedIn || quiz.state === "taken";') &&
+      quizLine.test(login) &&
+      accountHint.test(login) &&
+      at(login, "{showQuizLine && (") < at(login, "{showAccountHint && (")
+  );
+  check("login: the page reads no flag (no cookie, no stored value)", !/tb_quiz|QUIZ_FLAG_COOKIE|QuizFlag|localStorage|document\.cookie/.test(login));
+  // The two rules pinned above, over every view the hook returns.
+  const lines = (v: QuizView) => [v.state !== "taken" ? "quiz" : "", !v.signedIn || v.state === "taken" ? "hint" : ""].filter(Boolean).join("+");
+  const devices = [decodeQuizFlag("v1.1.adult.beginner"), { playerCount: 2, ageBand: null, tierSlug: null }, null, undefined];
+  check(
+    "login, signed out, with or without the flag: New here? and the hint, both",
+    lines(quizView({ signedIn: false, account: null })) === "quiz+hint" &&
+      devices.every((device) =>
+        // @ts-expect-error quizView has no device input since backlog #71: the flag decides nothing.
+        lines(quizView({ signedIn: false, account: null, device })) === "quiz+hint"
+      )
+  );
+  check(
+    "login, signed in, as before: the hint alone with quiz answers on file; New here? alone with none, and while the account is read",
+    lines(quizView({ signedIn: true, account: status })) === "hint" &&
+      lines(quizView({ signedIn: true, account: { taken: false, playerCount: 1, matchedHref: "/programs" } })) === "quiz" &&
+      lines(quizView({ signedIn: true, account: null })) === "quiz"
+  );
+}
 check("enroll gates are quiz-aware", (read("src/app/enroll/[cohortId]/page.tsx").match(/track="quiz"/g) ?? []).length >= 3);
 const dashView = read("src/app/dashboard/DashboardView.tsx");
 check("dashboard: a taker keeps Add another player and Retake the quiz; an account that never took it is offered it", dashView.includes('href="/intake?add=1"') && dashView.includes('href="/intake?retake=1"') && dashView.includes("Not placed yet? Take the 2-minute quiz") && read("src/app/dashboard/page.tsx").includes("quizTaken={accountQuizStatus(players).taken}"));

@@ -9,7 +9,7 @@ import { PasswordToggleIcon } from "@/components/ui/PasswordToggleIcon";
 import { FieldError, INPUT_CLASS, LABEL_CLASS, LiveStatus, fieldA11y } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { TEXT_LINK_CLASS } from "@/components/ui/TextLink";
-import { QuizSwap } from "@/components/quiz/QuizSwap";
+import { useQuizStatus } from "@/lib/useQuizStatus";
 import { FIELD_MESSAGES, emailError } from "@/lib/formValidation";
 import {
   AFTER_LOGIN_DEFAULT,
@@ -53,6 +53,16 @@ function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: stri
   // Checked when Sign in is pressed (and the email when it loses focus); the
   // button stays enabled (audit M19).
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+  // The lines under Sign in. A quiz-taker already has an account for their
+  // email (the quiz creates one), so they are told how to get in, not sent
+  // round again (owner, 2026-10-12). Signed out, a browser cannot tell who is
+  // at it (owner, 2026-11-18), so every visitor reads both: the quiz for
+  // someone new, then the hint for someone who took it. Signed in, the
+  // account decides, as before: the hint with quiz answers on file, the quiz
+  // line otherwise and while the account is read.
+  const quiz = useQuizStatus();
+  const showQuizLine = quiz.state !== "taken";
+  const showAccountHint = !quiz.signedIn || quiz.state === "taken";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -197,28 +207,23 @@ function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: stri
             {loading ? "Signing in…" : "Sign in"}
           </button>
 
-          {/* A quiz-taker already has an account for their email (the quiz
-              creates one), so they are told how to get in, not sent round
-              again (owner, 2026-10-12). */}
-          <QuizSwap
-            guest={
-              <p className="text-center text-sm text-white/70">
-                New here?{" "}
-                <Link href="/intake" className={linkClass}>
-                  Take the 2-minute quiz →
-                </Link>
-              </p>
-            }
-            taken={
-              <p className="text-center text-sm text-white/70">
-                Took the quiz already? An account was created for your email. Never set a
-                password?{" "}
-                <Link href="/auth/forgot-password" className={linkClass}>
-                  Send yourself a link →
-                </Link>
-              </p>
-            }
-          />
+          {showQuizLine && (
+            <p className="text-center text-sm text-white/70">
+              New here?{" "}
+              <Link href="/intake" className={linkClass}>
+                Take the 2-minute quiz →
+              </Link>
+            </p>
+          )}
+          {showAccountHint && (
+            <p className="text-center text-sm text-white/70">
+              Took the quiz already? An account was created for your email. Never set a
+              password?{" "}
+              <Link href="/auth/forgot-password" className={linkClass}>
+                Send yourself a link →
+              </Link>
+            </p>
+          )}
         </form>
       </div>
     </main>
