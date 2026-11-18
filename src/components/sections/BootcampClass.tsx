@@ -26,7 +26,8 @@ import {
 // heading of its own and no group-size line (About states the size once, in
 // its list), and it sets no gutter or page width; the page's Container does
 // (audit H2). Its scale is the page's, not a landing band's: the two names
-// are the size of a page title, the blocks share the cards' radius.
+// sit under the page title (28px, 32px from md, against the h1's 30px and
+// 36px), the blocks share the cards' radius.
 
 const TILE_GLYPH = "h-7 w-7";
 const TILE_GLYPHS: Record<ClassTile["icon"], ReactNode> = {
@@ -70,7 +71,7 @@ export function BootcampClass({ className = "" }: { className?: string }) {
             )}
             <div className={part.tone === "lime" ? BLOCK_LIME : BLOCK_COURT}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <h3 className="text-[32px] font-bold leading-none tracking-[-0.03em] md:text-4xl lg:text-[40px]">
+                <h3 className="text-[28px] font-bold leading-none tracking-[-0.03em] md:text-[32px]">
                   {part.name}
                 </h3>
                 {part.tag && (

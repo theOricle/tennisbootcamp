@@ -92,7 +92,7 @@ Every pair below is an actual string from the codebase; the "after" is the shipp
 | 27 | Group bootcamps in Toronto for juniors, teens and adults: tennis and fitness in every class. $35 a session in six-week cohorts. (site meta) | Group bootcamps in Toronto for juniors, teens and adults: tennis and fitness in every class, in six-week cohorts. | No price on the home page, so none in the line a search result shows for it; and the per-session figure is shown nowhere a visitor browses. |
 | 28 | $35 a session, then $210 for six weeks under it (a group card's price) | $210, then "for six weeks" under it | The whole price only (owner, 2026-11-17). A visitor reads what a bootcamp costs as a whole; the per-session figure waits for the sign-up step of one bootcamp. |
 | 29 | Group bootcamps run one 60-minute class a week, in six-week cohorts. (home, under "Our Programs") | (removed; nothing replaces it) | Owner, 2026-11-17: "It is not necessarily one hour per week." No general claim about how long a class is or how many there are a week; each group shows its own day and time. |
-| 30 | One 60-minute class a week, over "Tennis and fitness in the same class, every week." (About) | Tennis and fitness in the same class, over "Both parts, every class." | The item keeps what it was for, both parts in the one class, and drops the class length and the classes a week. |
+| 30 | One 60-minute class a week, over "Tennis and fitness in the same class, every week." (About) | (removed; nothing replaces it) | The class length and the classes a week went (owner, 2026-11-17). Both parts in the one class is said by About's opening paragraph and drawn by the graphic under the list, so a list item said it a third time. |
 
 ## Price (owner, 2026-11-17)
 

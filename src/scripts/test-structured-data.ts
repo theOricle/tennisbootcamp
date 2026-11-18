@@ -4,8 +4,9 @@
 // JSON-LD carry their required fields, every absolute URL starts with
 // SITE_URL, the Offer price is the whole price of one cohort (SESSION_PRICE ×
 // COHORT_WEEKS; owner, 2026-11-17: never a per-session figure), no class
-// length or workload is stated (owner, 2026-11-17: no general claim about how
-// long a class is), and no invented data (ratings, reviews, street address)
+// length, workload or weekly schedule is stated (owner, 2026-11-17: no general
+// claim about how long a class is or how many there are a week), and no
+// invented data (ratings, reviews, street address)
 // appears. Since 2026-10-12
 // (owner: "Right now we are only at Newtonbrook Tennis Club in North York")
 // the club is named: a Place in the Organization's areaServed and on each
@@ -175,12 +176,19 @@ for (const program of listedPrograms) {
   // dropped rather than state a length. Three checks that pinned them, and
   // the one that tied the class length to the schedule copy, became these.
   check("no courseWorkload: the markup states no total class time", instance !== undefined && !("courseWorkload" in instance));
-  const schedule = instance?.courseSchedule as JsonLdObject | undefined;
-  check("courseSchedule states no class length: no duration", schedule !== undefined && !("duration" in schedule));
   check("no duration of any kind anywhere in the Course", !allKeys(course).some((key) => /duration|workload|timeRequired/i.test(key)) && !/"PT?\d+[HM]/.test(JSON.stringify(course)));
-  check("courseSchedule is the cohort's length and nothing else: weekly, COHORT_WEEKS times", schedule?.["@type"] === "Schedule" && Object.keys(schedule).sort().join("|") === "@type|repeatCount|repeatFrequency");
-  check("courseSchedule repeats Weekly", schedule?.repeatFrequency === "Weekly");
-  check("courseSchedule repeatCount is COHORT_WEEKS", schedule?.repeatCount === COHORT_WEEKS);
+  // Re-pinned for backlog #70, fix round (owner, 2026-11-17: no general claim
+  // about how many classes there are a week, structured data included). The
+  // instance carried a Schedule repeating "Weekly", COHORT_WEEKS times; the
+  // three checks that pinned it became these. The instance, its place and
+  // the Offer stay.
+  check("no courseSchedule: the CourseInstance states no rhythm", instance !== undefined && !("courseSchedule" in instance));
+  check(
+    "no repeat frequency, no duration and no workload anywhere in the Course",
+    !allKeys(course).some((key) => /schedule|repeat|frequency|byDay|duration|workload|timeRequired/i.test(key)) &&
+      !/"(Weekly|Daily|Monthly|P\d+[DWM]|PT\d+[HM])"/.test(JSON.stringify(course)),
+    allKeys(course).filter((key) => /schedule|repeat|frequency|byDay|duration|workload|timeRequired/i.test(key)).join(", ")
+  );
   check("the schedule copy states no class length and no classes a week",
     !/\d+ minutes|minute|hour|once a week|a week\b/i.test(program.schedule ?? ""), program.schedule);
   const instructor = instance?.instructor as JsonLdObject | undefined;

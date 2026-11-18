@@ -234,6 +234,13 @@ const classSection = render(createElement(BootcampClass));
 // in every class.") as a home section. On About it sits under that page's
 // "How a cohort works" h2, so it has no heading of its own, and no band.
 check("the graphic: Tennis and Fitness as h3s, and no heading or landmark of its own", at(classSection, ">Tennis</h3>") > 0 && at(classSection, ">Tennis</h3>") < at(classSection, ">Fitness</h3>") && !classSection.includes("<h2") && !classSection.includes("<section") && !classSection.includes(CLASS_HEADING));
+// Backlog #70, fix round: the two names never out-shout About's h1 (30px,
+// 36px from md): 28px, 32px from md, and no lg step.
+check(
+  "the graphic's names sit under the page title: 28px, 32px from md, no lg step",
+  count(classSection, 'class="text-[28px] font-bold leading-none tracking-[-0.03em] md:text-[32px]"') === 2 &&
+    !/<h3[^>]*(lg:text-|md:text-4xl|text-\[(3[6-9]|4\d)px\])/.test(classSection)
+);
 check("real lists: four things under each part, two lines under both", count(classSection, '<ul role="list"') === 3 && count(classSection, "<li") === 10);
 check("every word is text", [...CLASS_PARTS.flatMap((part) => part.trains.map((t) => t.label)), "Built for tennis", ...CLASS_RUNS.map((run) => run.text)].every((word) => classSection.includes(`${word}</`)));
 check("the rotate glyph between the blocks, and every icon, is decoration", count(classSection, "<svg") === 11 && count(classSection, '<svg aria-hidden="true" focusable="false"') === 11 && classSection.includes('<div aria-hidden="true" class="grid h-12 place-items-center'));
@@ -411,19 +418,30 @@ check(
     at(aboutPage, ">Fitness</h3>") < at(aboutPage, ">What makes this different</h2>")
 );
 check("About: the graphic brings no second page title: one h1, and the graphic's names are h3s under the section's h2", count(aboutPage, "<h1") === 1 && !aboutPage.includes(`>${CLASS_HEADING}</h2>`) && !aboutText.includes(CLASS_HEADING));
-// Re-pinned for backlog #70: the item read "One …-minute class a week" over
-// "Tennis and fitness in the same class, every week." It keeps what it was
-// for, both parts in the one class, and states no class length and no
-// classes a week.
+// Re-pinned for backlog #70, fix round: the list item "Tennis and fitness in
+// the same class" / "Both parts, every class." (which had replaced "One
+// …-minute class a week") left the list. The opening paragraph says it and
+// the graphic right under the list draws it, so a list item said it a third
+// time. The list keeps two items: the one group, and the group size.
+const cohortListLabels = [...aboutPage.matchAll(/<p class="font-semibold text-white">([^<]*)<\/p>/g)].map((m) => m[1]);
 check(
-  "About: the class item says both parts are in the one class, every class",
-  aboutPage.includes(">Tennis and fitness in the same class</p>") &&
-    aboutPage.includes(">Both parts, every class.</p>") &&
-    aboutSrc.includes("label: `${tennis.name} and ${fitness.name.toLowerCase()} in the same class`") &&
-    aboutSrc.includes('detail: "Both parts, every class."')
+  "About: the cohort list is two items, the same group for the whole cohort and the group size",
+  cohortListLabels.length === 2 &&
+    cohortListLabels[0] === `The same group for all ${COHORT_LENGTH}` &&
+    cohortListLabels[1] === `Up to ${numberInWords(GROUP_MAX_PLAYERS)} players a group`,
+  cohortListLabels.join(" | ")
+);
+check(
+  "About: tennis and fitness in the one class is said in the opening paragraph and drawn in the graphic, and is not a list item",
+  aboutPage.includes(`Every group is a bootcamp: ${CLASS_IDEA}.`) &&
+    count(aboutPage, ">Tennis</h3>") === 1 &&
+    count(aboutPage, ">Fitness</h3>") === 1 &&
+    cohortListLabels.every((label) => !/tennis|fitness/i.test(label)) &&
+    !aboutPage.includes("in the same class") &&
+    !aboutPage.includes("Both parts, every class.") &&
+    !aboutSrc.includes("CLASS_PARTS")
 );
 check("About: no general class length and no classes a week anywhere on the page", !/\d+-minute class|\bminutes\b|\ba week\b|every week|once a week/i.test(aboutText) && !aboutSrc.includes("SESSION_MINUTES"), aboutText.match(/\d+-minute class|\bminutes\b|\ba week\b|every week|once a week/i)?.[0]);
-check("About: the new item is no longer than the one it replaced", "Tennis and fitness in the same class".length + "Both parts, every class.".length <= "One 60-minute class a week".length + "Tennis and fitness in the same class, every week.".length);
 check(
   "About: the group size is stated once on the page, in the list, in words from GROUP_MAX_PLAYERS, with its one line of why; the graphic carries no size",
   aboutPage.includes(`>Up to ${numberInWords(GROUP_MAX_PLAYERS)} players a group</p>`) &&

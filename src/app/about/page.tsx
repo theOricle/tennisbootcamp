@@ -6,7 +6,7 @@ import { JoinClosing } from "@/components/sections/JoinClosing";
 import { Heading } from "@/components/ui/Heading";
 import { TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
-import { CLASS_IDEA, CLASS_PARTS } from "@/content/bootcamp";
+import { CLASS_IDEA } from "@/content/bootcamp";
 import { coaches } from "@/content/coaches";
 import { ABOUT_DESCRIPTION } from "@/content/site";
 import { TIER_COUNT_WORD, TIER_LADDER_SPAN } from "@/lib/tiers";
@@ -23,9 +23,6 @@ export const metadata: Metadata = {
   description: ABOUT_DESCRIPTION,
   alternates: { canonical: "/about" },
 };
-
-// The two parts of every class, named once in src/content/bootcamp.ts.
-const [tennis, fitness] = CLASS_PARTS;
 
 /**
  * One sentence of the title: it stays whole when its line can hold it, and
@@ -77,16 +74,14 @@ export default function AboutPage() {
           </p>
 
           {/* What a cohort is, from the same constants as every program page
-              (audit H3; owner, 2026-11-16 and 2026-11-17): both parts in the
-              one class, one fixed group, and the public group size with its
-              one line of why. The size is said here and nowhere else on the
-              page. No class length and no classes a week. */}
+              (audit H3; owner, 2026-11-16 and 2026-11-17): one fixed group,
+              and the public group size with its one line of why. The size is
+              said here and nowhere else on the page. Tennis and fitness in
+              the one class is said by the hero and drawn by the graphic
+              below, so it is not a list item too. No class length and no
+              classes a week. */}
           <ul className="space-y-4">
             {[
-              {
-                label: `${tennis.name} and ${fitness.name.toLowerCase()} in the same class`,
-                detail: "Both parts, every class.",
-              },
               {
                 label: `The same group for all ${COHORT_LENGTH}`,
                 detail: "The players you start with are the players you finish with.",

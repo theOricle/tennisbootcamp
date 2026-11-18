@@ -228,21 +228,29 @@ check("no retired string under src", hits.length === 0, `found:\n      ${hits.jo
 // class is or how many there are a week: each group has its own day and time.
 //
 // The scan reads every file a visitor's pages are built from: src/app,
-// src/components and src/content (what they render: code and strings, with
-// comments blanked). Outside it by owner rule: the enroll flow, the admin
-// and the legal pages (src/app/enroll, src/app/admin, src/app/legal); and
-// src/app/api, which renders no page. Emails (src/lib/email*) are outside
-// the three folders.
+// src/components, src/content and src/lib (what they render: code and
+// strings, with comments blanked). Outside it by owner rule: the enroll
+// flow, the admin and the legal pages (src/app/enroll, src/app/admin,
+// src/app/legal); src/app/api, which renders no page; and, in src/lib, the
+// emails (src/lib/email*) and the files only the admin reads.
 console.log("No per-session price and no general class length where a visitor browses");
 {
-  const SCANNED = ["app", "components", "content"].map((dir) => join(ROOT, "src", dir));
+  const SCANNED = ["app", "components", "content", "lib"].map((dir) => join(ROOT, "src", dir));
   const OUTSIDE = ["enroll", "admin", "legal", "api"].map((dir) => join(ROOT, "src", "app", dir) + sep);
+  // Backlog #70, fix round: src/lib is scanned too, since the pages render
+  // strings built there (the program catalog, the group seats, the main
+  // action, the share cards, the structured data). Left out by name: the
+  // emails (src/lib/email*: they are not a page, and the enroll step's
+  // messages may carry the per-session terms), and the three files only the
+  // admin reads (adminAuth, adminLabels, availabilityMatrix).
+  const LIB_OUTSIDE = new Set(["email.ts", "emailBodies.ts", "emailResult.ts", "adminAuth.ts", "adminLabels.ts", "availabilityMatrix.ts"].map((name) => join(ROOT, "src", "lib", name)));
   const SETTINGS = join(ROOT, "src", "content", "programs.ts");
   const browsed: string[] = [];
   for (const dir of SCANNED) walk(dir, browsed);
-  const inScope = browsed.filter((file) => !OUTSIDE.some((prefix) => file.startsWith(prefix)));
-  check("the scan covers the pages, the components and the content", inScope.length > 80 && inScope.some((f) => f.endsWith(join("app", "page.tsx"))) && inScope.some((f) => f.endsWith("ProgramGroupCard.tsx")) && inScope.includes(SETTINGS), `${inScope.length} files`);
+  const inScope = browsed.filter((file) => !OUTSIDE.some((prefix) => file.startsWith(prefix)) && !LIB_OUTSIDE.has(file));
+  check("the scan covers the pages, the components, the content and src/lib", inScope.length > 80 && inScope.some((f) => f.endsWith(join("app", "page.tsx"))) && inScope.some((f) => f.endsWith("ProgramGroupCard.tsx")) && inScope.includes(SETTINGS) && inScope.includes(join(ROOT, "src", "lib", "programCatalog.ts")) && inScope.includes(join(ROOT, "src", "lib", "structuredData.ts")), `${inScope.length} files`);
   check("…and leaves out the enroll flow, the admin and the legal pages", !inScope.some((f) => OUTSIDE.some((prefix) => f.startsWith(prefix))) && browsed.some((f) => f.startsWith(OUTSIDE[0])) && browsed.some((f) => f.startsWith(OUTSIDE[2])));
+  check("…and, in src/lib, only the emails and the admin-only files, each by name", [...LIB_OUTSIDE].every((file) => browsed.includes(file)) && inScope.filter((f) => f.startsWith(join(ROOT, "src", "lib") + sep)).length > 40 && !inScope.some((f) => /[\\/]lib[\\/]email/.test(f)));
 
   // "a session" as a price: an amount, or a price constant, in front of it;
   // "per session" and "each session" as a price; or the per-session constant
