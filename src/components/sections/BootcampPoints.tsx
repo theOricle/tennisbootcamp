@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { BOOTCAMP_POINTS, BOOTCAMP_POINTS_LABEL } from "@/content/bootcamp";
 import { Container } from "@/components/layout/Container";
-import { PlayersIcon, PointPlayIcon, RotateIcon } from "@/components/ui/icons";
+import { PointPlayIcon, RotateIcon, StairsIcon } from "@/components/ui/icons";
 
 // What a bootcamp is, in three points (owner, 2026-11-17): a thin band
 // straight under the home page's hero, in place of the large Tennis and
@@ -23,7 +23,7 @@ const POINT_STROKE = 1.8;
 const POINT_GLYPHS: Record<(typeof BOOTCAMP_POINTS)[number]["icon"], ReactNode> = {
   rotate: <RotateIcon className={POINT_GLYPH} strokeWidth={POINT_STROKE} />,
   play: <PointPlayIcon className={POINT_GLYPH} strokeWidth={POINT_STROKE} />,
-  players: <PlayersIcon className={POINT_GLYPH} strokeWidth={POINT_STROKE} />,
+  stairs: <StairsIcon className={POINT_GLYPH} strokeWidth={POINT_STROKE} />,
 };
 
 export function BootcampPoints() {

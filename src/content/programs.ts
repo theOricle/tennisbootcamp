@@ -143,9 +143,8 @@ export const PLACEMENT_LINE =
 // Every group is a group bootcamp: tennis and fitness built for tennis in
 // every class. The two bootcamp programs say it in their description, their
 // long description, their search line and their list. The words are typed
-// here, not read from src/content/bootcamp.ts, because that file reads the
-// cohort length from this one and the two cannot import each other;
-// test-joining-flow pins every line below to it, word for word.
+// here, and test-joining-flow pins every line below to
+// src/content/bootcamp.ts, word for word.
 
 /** How a class runs, in one sentence: the bootcamp programs' long descriptions open with it. */
 export const CLASS_LINE =
@@ -153,9 +152,10 @@ export const CLASS_LINE =
 
 /**
  * What a bootcamp includes, on both bootcamp programs' lists: one group for
- * the whole cohort (the home band's third point, word for word), the group
- * size, the two parts and what each trains, and how a class ends. No class
- * length and no classes a week (owner, 2026-11-17).
+ * the whole cohort (said here and on About; the home band's third point
+ * hints at the levels instead, owner 2026-11-18), the group size, the two
+ * parts and what each trains, and how a class ends. No class length and no
+ * classes a week (owner, 2026-11-17).
  */
 const CLASS_INCLUDES = [
   `One group for all ${COHORT_LENGTH}`,

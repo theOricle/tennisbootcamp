@@ -8,7 +8,8 @@ import { accountQuizStatus } from "@/lib/quizStatus";
 // cookie says someone is signed in. The rule is accountQuizStatus
 // (src/lib/quizStatus.ts) over the account's own players, read with the
 // holder's session under RLS. A guest, or an unconfigured Supabase, reads as
-// signed out; the device flag then decides in the browser. Never writes.
+// signed out, and a signed-out visitor reads as new (owner, 2026-11-18).
+// Never writes.
 
 export const dynamic = "force-dynamic";
 

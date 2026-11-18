@@ -3,9 +3,12 @@
 // Pins audit item M (owner, 2026-10-12: "quiz-taken state + player choice at
 // enrollment — cover all contingencies"):
 //   1. one quiz-taken rule (src/lib/quizStatus.ts): the account's own data
-//      when signed in, a first-party cookie plus a localStorage mirror when
-//      signed out, set by /api/intake only on a submission it wrote; every
-//      quiz prompt becomes the taker's next step, with a small retake link;
+//      when signed in; signed out, every visitor reads as new (owner,
+//      2026-11-18: a browser cannot tell who is at it), so the device flag
+//      /api/intake still writes (a first-party cookie plus a localStorage
+//      mirror) decides nothing; every quiz prompt becomes a signed-in taker's
+//      next step, and a group card's "Ask to join" takes them to their
+//      dashboard;
 //   2. who an enrollment is for (src/lib/enrollPlayers.ts): seats per
 //      player, a player already in the cohort shown disabled, ages checked
 //      and blocked with the right group offered, levels noted and never a
@@ -32,7 +35,6 @@ import {
   SEE_GROUPS_LABEL,
   accountQuizStatus,
   decodeQuizFlag,
-  deviceQuizStatus,
   encodeQuizFlag,
   matchedGroupsHref,
   playerTookQuiz,
@@ -138,23 +140,43 @@ check("a bare row (before 0009, never asked) is not taken", !playerTookQuiz({ le
   check("an empty account reads as new", !accountQuizStatus([]).taken);
 }
 
-console.log("Signed out: the device flag");
-check("no flag is new", !deviceQuizStatus(null).taken);
-check("one player links to their groups at the club", deviceQuizStatus({ playerCount: 1, ageBand: "teen", tierSlug: "intermediate" }).matchedHref === `/programs?location=${location.id}&age=teen&level=intermediate`);
-check("a household links to the whole catalog at the club", deviceQuizStatus({ playerCount: 2, ageBand: "teen", tierSlug: "intermediate" }).matchedHref === `/programs?location=${location.id}`);
+// Backlog #71 (owner, 2026-11-18): the three checks of deviceQuizStatus (no
+// flag is new; one player links to their groups; a household links to the
+// whole catalog) left with the function. It turned the device flag into
+// "taken", and nothing may do that now: a browser cannot tell who is at it.
+// What replaces them is pinned under "Signed out: every visitor is new".
+console.log("Matched links (a signed-in taker's catalog link)");
 check("matched links always name the location (item N)", matchedGroupsHref(null, null) === `/programs?location=${location.id}` && location.id === "newtonbrook");
 
-console.log("The next step that replaces a quiz prompt");
+console.log("Signed out: every visitor is new (owner, 2026-11-18)");
+{
+  // A flag as /api/intake writes it for one adult beginner: before backlog
+  // #71 it made a signed-out browser read as a quiz-taker.
+  const adultFlag = decodeQuizFlag("v1.1.adult.beginner");
+  const flags = [adultFlag, { playerCount: 2, ageBand: null, tierSlug: null }, { playerCount: 1, ageBand: "junior" as const, tierSlug: "novice" }, null, undefined];
+  check("v1.1.adult.beginner is a real flag, so the check below is not passing on a value that decodes to nothing", JSON.stringify(adultFlag) === JSON.stringify({ playerCount: 1, ageBand: "adult", tierSlug: "beginner" }));
+  check(
+    "signed out, the quiz view is new whatever the flag holds: quizView takes no device input",
+    flags.every((device) =>
+      // @ts-expect-error quizView has no device input since backlog #71: the flag decides nothing.
+      quizView({ signedIn: false, account: null, device }).state === "new"
+    )
+  );
+  check("signed out, even an account status in memory makes no taker: nothing answers for a signed-out visitor", quizView({ signedIn: false, account: { taken: true, playerCount: 1, matchedHref: "/programs" } }).state === "new");
+  check("the server render is new too (signed out until the browser says otherwise): the visitor's quiz, never a flash", quizView({ signedIn: false, account: null }).state === "new");
+  const statusSrc = read("src/lib/quizStatus.ts");
+  const viewSrc = statusSrc.slice(at(statusSrc, "export function quizView("));
+  check("quizView reads no flag: its body names no device, cookie or stored value", viewSrc.length > 0 && !/device|cookie|localStorage|QuizFlag/i.test(viewSrc.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "")) && !statusSrc.includes("export function deviceQuizStatus"));
+}
+
+console.log("Signed in: the account decides (unchanged)");
 const status = { taken: true, playerCount: 1, matchedHref: "/programs?location=newtonbrook&age=adult" };
-check("signed out: See your groups, to the matched catalog", JSON.stringify(quizNextStep(status, false)) === JSON.stringify({ href: "/programs?location=newtonbrook&age=adult", label: SEE_GROUPS_LABEL }));
+check("signed out: See your groups, to the matched catalog (the step itself; no signed-out view reaches it now)", JSON.stringify(quizNextStep(status, false)) === JSON.stringify({ href: "/programs?location=newtonbrook&age=adult", label: SEE_GROUPS_LABEL }));
 check("signed in: Open your dashboard", JSON.stringify(quizNextStep(status, true)) === JSON.stringify({ href: "/dashboard", label: OPEN_DASHBOARD_LABEL }));
 check("the labels are verb-first and one name per thing", SEE_GROUPS_LABEL === "See your groups" && OPEN_DASHBOARD_LABEL === "Open your dashboard" && RETAKE_QUIZ_LABEL === "Retake the quiz" && ADD_PLAYER_LABEL === "Add another player");
-check("the server render is unknown: the visitor's quiz, never a flash", quizView({ signedIn: false, account: null, device: undefined }).state === "unknown");
-check("signed out with no flag is new", quizView({ signedIn: false, account: null, device: null }).state === "new");
-check("signed out with a flag is taken, to the matched groups", (() => { const v = quizView({ signedIn: false, account: null, device: { playerCount: 1, ageBand: "adult", tierSlug: null } }); return v.state === "taken" && v.next.href === `/programs?location=${location.id}&age=adult` && v.next.label === SEE_GROUPS_LABEL; })());
-check("signed in while the account read is in flight is unknown", quizView({ signedIn: true, account: null, device: { playerCount: 1, ageBand: "adult", tierSlug: null } }).state === "unknown");
-check("signed in, the account decides and a family device's flag is ignored", quizView({ signedIn: true, account: { taken: false, playerCount: 1, matchedHref: "/programs" }, device: { playerCount: 1, ageBand: "adult", tierSlug: null } }).state === "new");
-check("signed in and taken goes to the dashboard", (() => { const v = quizView({ signedIn: true, account: status, device: null }); return v.state === "taken" && v.next.href === "/dashboard"; })());
+check("signed in while the account read is in flight is unknown", quizView({ signedIn: true, account: null }).state === "unknown");
+check("signed in, the account decides: an account that never took it is new", quizView({ signedIn: true, account: { taken: false, playerCount: 1, matchedHref: "/programs" } }).state === "new");
+check("signed in and taken goes to the dashboard", (() => { const v = quizView({ signedIn: true, account: status }); return v.state === "taken" && v.signedIn && v.next.href === "/dashboard" && v.next.label === OPEN_DASHBOARD_LABEL; })());
 
 console.log("Retake the quiz opens the first step, not the already-taken panel");
 check("the retake link adds ?retake=1 to the quiz link", retakeQuizHref() === "/intake?retake=1" && retakeQuizHref("/intake") === "/intake?retake=1");
@@ -290,18 +312,30 @@ check("the swapped click is tagged -taken for analytics", tracked.includes("`${s
 // surfaces that carried the small "Retake the quiz" link, left the pages, and
 // the RetakeQuizLink component went with them. The label and the link that
 // opens the first step stay on the quiz's own already-taken panel and on the
-// dashboard (both pinned below). quizAware={false} now keeps a group card's
-// button, and "Ask about lessons", reading their own words for a taker.
-check("quizAware={false} keeps a link's own words: a group card's button, and Ask about lessons", read("src/components/sections/ProgramGroupCard.tsx").includes("quizAware={false}") && /quizAware=\{false\}[\s\S]{0,120}Ask about lessons/.test(read("src/app/programs/[slug]/page.tsx")));
+// dashboard (both pinned below). quizAware={false} keeps "Ask about lessons"
+// reading its own words and opening the quiz for a taker. Backlog #71 (owner,
+// 2026-11-18): a group card's button keeps its own words too, but where it
+// goes follows a signed-in taker to the dashboard (quizAware="href").
+{
+  const cardFile = read("src/components/sections/ProgramGroupCard.tsx");
+  const arrangedSrc = cardFile.slice(at(cardFile, "export function ArrangedGroupRow"));
+  check("quizAware={false} keeps Ask about lessons on the quiz, on the program page and on the private lessons row", /quizAware=\{false\}[\s\S]{0,120}Ask about lessons/.test(read("src/app/programs/[slug]/page.tsx")) && arrangedSrc.includes("quizAware={false}") && !arrangedSrc.includes('quizAware="href"'));
+}
+check("quizAware=\"href\": the link keeps its own words, and only where it goes follows the taker", tracked.includes('quizAware?: boolean | "href";') && tracked.includes('{swap && quizAware !== "href" ? quiz.next.label : children}') && tracked.includes("href={swap ? quiz.next.href : href}"));
 check("no surface is left holding a Retake link component nobody renders", !read("src/components/quiz/QuizSwap.tsx").includes("RetakeQuizLink") && retakeQuizHref("/intake") === "/intake?retake=1");
 {
   const ssr = render(createElement(TrackedButton, { href: "/intake", track: "quiz", source: "test", variant: "primary" }, QUIZ_CTA_LABEL));
   check("the server render is the visitor's quiz: href and label", ssr.includes('href="/intake"') && ssr.includes(QUIZ_CTA_LABEL) && !ssr.includes(SEE_GROUPS_LABEL));
 }
 const hook = read("src/lib/useQuizStatus.ts");
-check("the hook reads the flag with useSyncExternalStore and an unknown server snapshot", hook.includes("useSyncExternalStore(subscribe, rawDeviceFlag, serverSnapshot)") && hook.includes("return undefined;"));
+// Re-pinned for backlog #71: the hook read the flag (cookie, then the
+// localStorage mirror) with useSyncExternalStore and fed it to quizView.
+// It reads neither now; signed out is new whatever the browser holds.
+check("the hook reads no device flag: no cookie read, no stored value, no store subscription", !hook.includes("useSyncExternalStore") && !hook.includes("localStorage.getItem") && !hook.includes("document.cookie.split") && !hook.includes("decodeQuizFlag") && hook.includes("return quizView({ signedIn, account: signedIn ? account : null });"));
 check("the hook reads the account once per page, only when signed in, and never statically imports the SDK", hook.includes('fetch("/api/quiz-status"') && hook.includes("if (!signedIn) return;") && !/^import[^\n]*from "@\/lib\/supabase\/browser";/m.test(hook));
-check("rememberQuizTaken mirrors the route's cookie and wakes every island", hook.includes("export function rememberQuizTaken") && hook.includes("readQuizFlagFromCookies(") && hook.includes("localStorage.setItem(QUIZ_FLAG_COOKIE") && hook.includes("notify();"));
+// The writes stay (owner, 2026-11-18: listed in the pull request for a later
+// item): the hook's mirror into localStorage, and the route's cookie below.
+check("rememberQuizTaken still mirrors the route's cookie (a write nothing reads) and wakes every island", hook.includes("export function rememberQuizTaken") && hook.includes("readQuizFlagFromCookies(") && hook.includes("localStorage.setItem(QUIZ_FLAG_COOKIE") && hook.includes("notify();"));
 const statusRoute = read("src/app/api/quiz-status/route.ts");
 check("/api/quiz-status reads the account's players under the session and applies the one rule", statusRoute.includes("listParticipantsForAccount(user.id, supabase)") && statusRoute.includes("accountQuizStatus(players)") && statusRoute.includes("no-store"));
 
@@ -313,7 +347,16 @@ check("the cookie is set after the Sheet append, on the real response", at(intak
 check("the Sheet contract is untouched", intakeRoute.includes("buildIntakeRow(") && intakeRoute.includes("INTAKE_APPEND_RANGE_ALL") && read("src/lib/intakeRow.ts") === read("src/lib/intakeRow.ts"));
 const intakePage = read("src/app/intake/page.tsx");
 check("the quiz mirrors the flag after the route answered ok", at(intakePage, "rememberQuizTaken();") > at(intakePage, 'if (!res.ok) throw new Error("Submission failed");'));
-check("the already-taken panel: see your groups (the quiz-aware button), add another player, retake", intakePage.includes("function AlreadyTakenPanel") && intakePage.includes("You&apos;ve already taken the quiz.") && intakePage.includes("{ADD_PLAYER_LABEL}") && intakePage.includes("{RETAKE_QUIZ_LABEL}") && /<TrackedButton variant="primary" href="\/intake" track="quiz" source="intake-taken">/.test(intakePage));
+// Re-pinned for backlog #71: the panel's quiz-aware button read "See your
+// groups" for a signed-out browser that had sent the quiz. Only a signed-in
+// taker sees the panel now, so it reads "Open your dashboard".
+check("the already-taken panel: open your dashboard (the quiz-aware button), add another player, retake", intakePage.includes("function AlreadyTakenPanel") && intakePage.includes("You&apos;ve already taken the quiz.") && intakePage.includes("{ADD_PLAYER_LABEL}") && intakePage.includes("{RETAKE_QUIZ_LABEL}") && /<TrackedButton variant="primary" href="\/intake" track="quiz" source="intake-taken">/.test(intakePage));
+check(
+  "/intake: the panel needs a taken view, which only a signed-in account is, so signed out the quiz opens on its first step, with or without ?program=",
+  /quiz\.state === "taken" &&\s+!skipTakenPanel/.test(intakePage) &&
+    quizView({ signedIn: false, account: null }).state !== "taken" &&
+    !/programParam[^\n]*skipTakenPanel|skipTakenPanel[^\n]*programParam/.test(intakePage)
+);
 check("the panel never hides a half-finished quiz (a step passed, a player named or a time picked), and ?add=1 / ?retake=1 skip it", intakePage.includes("!draftInProgress.current") && intakePage.includes("draft.stepIndex > 0 ||") && intakePage.includes("draft.form.household.guests.some((g) => g.name.trim().length > 0)") && intakePage.includes('searchParams.has("add")') && intakePage.includes('searchParams.has("retake")'));
 check("an untouched draft (every visit writes one) does not hide the panel", !intakePage.includes("!restoredDraft.current &&"));
 check("Add another player opens on a child's block", intakePage.includes('guests: [emptyGuest("child")]'));
@@ -345,17 +388,34 @@ check("the lead-ins", QUIZ_SIDE_LEAD === "Not sure which group?" && QUIZ_TAKEN_L
 }
 check("the home page's programs carry no quiz line of their own", !read("src/components/sections/ProgramsGrid.tsx").includes("QuizSwap") && !read("src/components/sections/ProgramsGrid.tsx").includes("quiz"));
 const catalogSrc = read("src/components/sections/ProgramCatalog.tsx");
-check("the catalog's empty state is quiz-aware: the quiz for a visitor, their answers for a taker", catalogSrc.includes('<TrackedLink href="/intake" track="quiz" source="programs-empty"') && catalogSrc.includes("taken={<>Your quiz answers are in, and our coaches place you from them.</>}"));
+check("the catalog's empty state is quiz-aware: the quiz for every signed-out visitor, their answers for a signed-in taker", catalogSrc.includes('<TrackedLink href="/intake" track="quiz" source="programs-empty"') && catalogSrc.includes("taken={<>Your quiz answers are in, and our coaches place you from them.</>}"));
 check("/programs: the quiz prompt in the band is the side line", catalogSrc.includes('<QuizSideLine source="programs-filters"') && !read("src/app/programs/page.tsx").includes("data-quiz-cta"));
-check("a group card always reads its own action: its link opts out of the taker's swap", read("src/components/sections/ProgramGroupCard.tsx").includes("<TrackedLink") && read("src/components/sections/ProgramGroupCard.tsx").includes("quizAware={false}"));
+// Re-pinned for backlog #71: the card opted out of the swap entirely
+// (quizAware={false}), so a signed-in taker's "Join" opened the quiz's
+// already-taken panel. It keeps its words and follows them to the dashboard.
+{
+  const cardFile = read("src/components/sections/ProgramGroupCard.tsx");
+  const cardSrc = cardFile.slice(at(cardFile, "export function ProgramGroupCard("), at(cardFile, "export function ArrangedGroupRow"));
+  check("a group card always reads its own action, and a signed-in taker's goes to the dashboard: its link keeps its words (quizAware=\"href\")", cardFile.includes("<TrackedLink") && cardSrc.includes('quizAware="href"') && !cardSrc.includes("quizAware={false}"));
+}
+// Re-pinned for backlog #71: the program pages had two sentences for a
+// signed-out browser that had sent the quiz ("You've taken the quiz, so
+// you're on our list already." and "You've taken the quiz: our coaches place
+// you in a group by level and schedule, …"). A signed-out visitor is a
+// guest now, so both left the page with ViewerSwap's taken node.
 const detail = read("src/app/programs/[slug]/page.tsx");
-check("program pages: the sentences swap for a signed-out taker, the panel for a member", detail.includes("taken={<>You&apos;ve taken the quiz, so you&apos;re on our list already.</>}") && detail.includes("You&apos;ve taken the quiz: our coaches place you in a group by level"));
-check("ViewerSwap takes a taken node, members first", read("src/components/programs/ProgramViewer.tsx").includes('if (viewer.state === "member") return <>{member}</>;') && read("src/components/programs/ProgramViewer.tsx").includes('taken !== undefined && quiz.state === "taken" && !quiz.signedIn'));
+const viewerSrc = read("src/components/programs/ProgramViewer.tsx");
+check("program pages: no sentence for a signed-out quiz-taker; a member keeps their own lines", !detail.includes("You&apos;ve taken the quiz") && !/\btaken=\{/.test(detail) && detail.includes("member={<>You&apos;re on our list already.</>}") && detail.includes("You&apos;re on our list: our coaches place you in a group by level"));
+check("ViewerSwap: members first, everyone else the guest's words, and no quiz read", viewerSrc.includes('if (viewer.state === "member") return <>{member}</>;') && !viewerSrc.includes("taken?: ReactNode") && !viewerSrc.includes("useQuizStatus"));
 // About closes on the main action too (backlog #69, pass 2): JoinClosing puts the quiz-aware side line after the lime button.
 check("404 and About are quiz-aware", read("src/app/not-found.tsx").includes('<MainAction source="not-found"') && read("src/app/about/page.tsx").includes('<JoinClosing source="about-closing" />') && read("src/components/sections/JoinClosing.tsx").includes("<MainAction source={source}") && !read("src/app/about/page.tsx").includes('href="/intake"'));
-check("/assessment and the booking page swap their sentences", read("src/app/assessment/page.tsx").includes("You&apos;ve taken the quiz, so our coaches place you from your answers either") && read("src/app/assessment/book/page.tsx").includes("You&apos;ve taken the quiz, so our coaches already place you"));
+check("/assessment and the booking page swap their sentences for a signed-in taker", read("src/app/assessment/page.tsx").includes("You&apos;ve taken the quiz, so our coaches place you from your answers either") && read("src/app/assessment/book/page.tsx").includes("You&apos;ve taken the quiz, so our coaches already place you"));
 const login = read("src/app/login/page.tsx");
-check("login: a taker is told an account exists and how to get in", login.includes("<QuizSwap") && login.includes("Took the quiz already? An account was created for your email.") && login.includes('href="/auth/forgot-password"'));
+// Backlog #71 leaves sign-in untouched. The page's taker line ("Took the quiz
+// already? …") was shown to a signed-out browser that had sent the quiz;
+// signed out, every visitor now reads its guest line ("New here? Take the
+// 2-minute quiz →"). The file and both lines are as they were.
+check("login: untouched; both lines still in place, and signed out it shows the guest's", login.includes("<QuizSwap") && login.includes("New here?") && login.includes("Took the quiz already? An account was created for your email.") && login.includes('href="/auth/forgot-password"') && quizView({ signedIn: false, account: null }).state === "new");
 check("enroll gates are quiz-aware", (read("src/app/enroll/[cohortId]/page.tsx").match(/track="quiz"/g) ?? []).length >= 3);
 const dashView = read("src/app/dashboard/DashboardView.tsx");
 check("dashboard: a taker keeps Add another player and Retake the quiz; an account that never took it is offered it", dashView.includes('href="/intake?add=1"') && dashView.includes('href="/intake?retake=1"') && dashView.includes("Not placed yet? Take the 2-minute quiz") && read("src/app/dashboard/page.tsx").includes("quizTaken={accountQuizStatus(players).taken}"));

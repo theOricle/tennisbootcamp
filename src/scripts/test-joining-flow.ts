@@ -20,7 +20,12 @@
 // a bootcamp is (the band under the home page's hero), the Tennis and
 // Fitness graphic on About, a rendered home page with no price on it, and
 // the rule that no page states a general class length or a number of classes
-// a week. Checks that read source text normalise line endings (`read`).
+// a week.
+//
+// Since backlog #71 (owner, 2026-11-18) the third point hints at the levels
+// and moving up ("Five levels to climb", the count from the tier setting),
+// and every group's button reads "Ask to join" until that group can take
+// payment. Checks that read source text normalise line endings (`read`).
 // Exits non-zero on any failure. Never spells the cohort length or total.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -33,7 +38,6 @@ import {
   ASSESSMENT_CERTAINTY_LINE,
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
-  COHORT_WEEKS_WORD,
   GROUP_MAX_PLAYERS,
   PLACEMENT_LINE,
   RIGHT_GROUP_PROMISE,
@@ -59,6 +63,8 @@ import "./stub-static-images";
 import HomePage from "../app/page";
 import { COOLING_OFF_DAYS } from "../content/policies";
 import { groupStatus } from "../lib/programCatalog";
+import { TIER_COUNT, TIER_COUNT_WORD } from "../lib/tiers";
+import { PointPlayIcon, StairsIcon } from "../components/ui/icons";
 import { nextStepFor } from "../lib/dashboardState";
 import { BootcampClass } from "../components/sections/BootcampClass";
 import { BootcampPoints } from "../components/sections/BootcampPoints";
@@ -140,8 +146,12 @@ const openCard = cardFor(group("adult-newer"));
 check("no scheduled card carries the promise or a Week 1 row", scheduled.every((g) => !cardFor(g).includes(RIGHT_GROUP_PROMISE_SHORT) && !cardFor(g).includes(RIGHT_GROUP_PROMISE) && !cardFor(g).includes("Week 1")));
 check("no card carries a Join row or the approval line", scheduled.every((g) => !cardFor(g).includes(APPROVAL_LINE) && !cardFor(g).includes(APPROVAL_ASK_LINE) && !cardFor(g).includes("<dt")));
 check("High Performance: the By approval chip and an outline Ask to join, named for the group", hpCard.includes("By approval") && />Ask to join<span class="sr-only"> the High Performance Youth Bootcamp<\/span><\/a>/.test(hpCard) && !/<a [^>]*bg-\[#B4E655\]/.test(hpCard));
-check("an open group: the Open to join chip and a lime Join, named for the group", openCard.includes("Open to join") && /<a [^>]*bg-\[#B4E655\][^>]*>Join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>/.test(openCard));
-check("still one link per card: Join and Ask to join open the quiz for the program, which is how a spot is asked for today", count(hpCard, "<a ") === 1 && count(openCard, "<a ") === 1 && hpCard.includes('href="/intake?program=youth-programs"') && openCard.includes('href="/intake?program=bootcamps"'));
+// Re-pinned for backlog #71 (owner, 2026-11-18): the open group's lime button read "Join".
+check("an open group: the Open to join chip and a lime Ask to join, named for the group", openCard.includes("Open to join") && /<a [^>]*bg-\[#B4E655\][^>]*>Ask to join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>/.test(openCard) && !openCard.includes(">Join<"));
+check("still one link per card: Ask to join opens the quiz for the program, which is how a spot is asked for today", count(hpCard, "<a ") === 1 && count(openCard, "<a ") === 1 && hpCard.includes('href="/intake?program=youth-programs"') && openCard.includes('href="/intake?program=bootcamps"'));
+// The line beside the High Performance row describes its button; every
+// group's button reads the same words now, and the line keeps its promise.
+check("Good to know still says what asking is, beside the by-approval group: the quiz, then our coaches' approval", APPROVAL_ASK_LINE.startsWith("Ask to join: it is the 2-minute quiz") && hpCard.includes(">Ask to join<") && openCard.includes(">Ask to join<"));
 check("no assessment pitch on a card (design-system.md)", !hpCard.includes("Book Your Assessment") && !openCard.includes("Book Your Assessment"));
 
 // ── How joining works (home) ────────────────────────────────────────────────
@@ -228,7 +238,10 @@ check("how a class runs: it rotates between the two all class, and finishes with
 // still the one setting, read by About and by the program entries below.
 check("how a class runs is two lines: the group size is not one of them", CLASS_RUNS.length === 2 && GROUP_MAX_PLAYERS === 8);
 const bootcampSrc = read("src/content/bootcamp.ts");
-check("the class words carry no group size and type no number: the cohort length comes from src/content/programs.ts", !/players a group|GROUP_MAX_PLAYERS|Up to/.test(bootcampSrc) && bootcampSrc.includes('import { COHORT_LENGTH } from "@/content/programs";') && [CLASS_HEADING, ...CLASS_RUNS.map((run) => run.text), ...CLASS_PARTS.flatMap((part) => [part.name, part.tag ?? "", ...part.trains.map((tile) => tile.label)])].every((words) => !/\d/.test(words)));
+// Re-pinned for backlog #71: the words read the cohort length from
+// src/content/programs.ts for the third point. That point is the levels now,
+// so they read the tier count from src/lib/tiers.ts, and nothing else.
+check("the class words carry no group size and type no number: the level count comes from src/lib/tiers.ts", !/players a group|GROUP_MAX_PLAYERS|Up to/.test(bootcampSrc) && bootcampSrc.includes('import { TIER_COUNT_WORD } from "@/lib/tiers";') && !bootcampSrc.includes("COHORT_LENGTH") && [CLASS_HEADING, ...CLASS_RUNS.map((run) => run.text), ...CLASS_PARTS.flatMap((part) => [part.name, part.tag ?? "", ...part.trains.map((tile) => tile.label)])].every((words) => !/\d/.test(words)));
 const classSection = render(createElement(BootcampClass));
 // Re-pinned for backlog #70: the graphic had its own h2 ("Tennis and fitness
 // in every class.") as a home section. On About it sits under that page's
@@ -253,18 +266,70 @@ check("the icons are drawn here: inline SVG in the text colour, no icon font and
 // one phrase with a bold lead.
 console.log("The three points: what a bootcamp is (home, under the hero)");
 const pointWords = BOOTCAMP_POINTS.map((point) => `${point.lead} ${point.rest}`);
-check("three points, in order: tennis and fitness, point play, one group", BOOTCAMP_POINTS.length === 3 && BOOTCAMP_POINTS.map((point) => point.lead).join("|") === "Tennis and fitness|Point play|One group");
-check("their words: in every class; to finish every class; for all (the cohort length)", BOOTCAMP_POINTS[0].rest === "in every class" && BOOTCAMP_POINTS[1].rest === "to finish every class" && BOOTCAMP_POINTS[2].rest === `for all ${COHORT_LENGTH}`);
+// Re-pinned for backlog #71 (owner, 2026-11-18): the third point was "One
+// group for all (the cohort length)". It hints at the levels and moving up.
+const LEVEL_COUNT_WORD = `${TIER_COUNT_WORD.charAt(0).toUpperCase()}${TIER_COUNT_WORD.slice(1)}`;
+check("three points, in order: tennis and fitness, point play, the levels", BOOTCAMP_POINTS.length === 3 && BOOTCAMP_POINTS.map((point) => point.lead).join("|") === `Tennis and fitness|Point play|${LEVEL_COUNT_WORD} levels`);
+check("their words: in every class; to finish every class; to climb", BOOTCAMP_POINTS[0].rest === "in every class" && BOOTCAMP_POINTS[1].rest === "to finish every class" && BOOTCAMP_POINTS[2].rest === "to climb");
+check("today that reads Five levels to climb", pointWords[2] === "Five levels to climb" && TIER_COUNT === 5);
 check("the first point is the class idea, word for word", `${pointWords[0]}.` === CLASS_HEADING && pointWords[0].toLowerCase() === CLASS_IDEA);
-check("the third point reads the cohort length from the setting, in words, and types no number", BOOTCAMP_POINTS[2].rest.endsWith(` ${COHORT_WEEKS_WORD} weeks`) === (COHORT_LENGTH === `${COHORT_WEEKS_WORD} weeks`) && bootcampSrc.includes("rest: `for all ${COHORT_LENGTH}`") && !/\d/.test(pointWords.join(" ")));
-check("their icons: the two arrows, the court with a ball, the two people", BOOTCAMP_POINTS.map((point) => point.icon).join("|") === "rotate|play|players");
+check(
+  "the third point reads the level count from the setting (TIER_COUNT_WORD), capitalised, and types no number",
+  TIER_COUNT_WORD === ["zero", "one", "two", "three", "four", "five", "six", "seven"][TIER_COUNT] &&
+    bootcampSrc.includes("TIER_COUNT_WORD.charAt(0).toUpperCase()") &&
+    bootcampSrc.includes("lead: `${LEVEL_COUNT} levels`") &&
+    !/\b(five|Five|5)\b/.test(bootcampSrc.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "")) &&
+    !/\d/.test(pointWords.join(" "))
+);
+check("climb is the ladder's own word, on the levels page the band's word points to", read("src/app/assessment/page.tsx").includes("The ladder you&apos;re climbing"));
+check("their icons: the two arrows, the court with a ball, the stairs", BOOTCAMP_POINTS.map((point) => point.icon).join("|") === "rotate|play|stairs");
 check("no price, no group size, no class length and no classes a week in the points", pointWords.every((words) => !/\$|price|session|players|up to|minute|hour|a week|once|twice/i.test(words)));
 const band = render(createElement(BootcampPoints));
 const bandText = band.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 check("a labelled band on hairlines, with no heading: its name is for assistive tech", band.startsWith(`<section aria-label="${BOOTCAMP_POINTS_LABEL}" class="border-y border-white/10">`) && BOOTCAMP_POINTS_LABEL === "What a bootcamp is" && !/<h[1-6]/.test(band));
-check("a real list of three items, in the points' order", count(band, '<ul role="list"') === 1 && count(band, "<li") === 3 && at(band, ">Tennis and fitness</b>") > 0 && at(band, ">Tennis and fitness</b>") < at(band, ">Point play</b>") && at(band, ">Point play</b>") < at(band, ">One group</b>"));
+check("a real list of three items, in the points' order", count(band, '<ul role="list"') === 1 && count(band, "<li") === 3 && at(band, ">Tennis and fitness</b>") > 0 && at(band, ">Tennis and fitness</b>") < at(band, ">Point play</b>") && at(band, ">Point play</b>") < at(band, ">Five levels</b>"));
 check("each point is a bold lead and the rest of its phrase, as text", BOOTCAMP_POINTS.every((point) => band.includes(`>${point.lead}</b>`) && band.replace(/<!-- -->/g, "").includes(`</b> ${point.rest}</span>`)) && bandText === pointWords.join(" "), bandText);
 check("three icons, lime and decoration, and nothing else drawn", count(band, "<svg") === 3 && count(band, '<svg aria-hidden="true" focusable="false"') === 3 && count(band, "text-[#B4E655]") === 3);
+// Backlog #71: the stairs joined the band. The three read as one set: the
+// same 24-unit grid, the band's stroke, the same box, and the stairs as wide
+// as the court and the arrows (3 to 21), centred on the box like them.
+check("the three icons are one set: one grid, the band's 1.8 stroke, one box (24px, 32px from md)", count(band, 'viewBox="0 0 24 24"') === 3 && count(band, 'stroke-width="1.8"') === 3 && count(band, 'class="h-6 w-6 shrink-0 text-[#B4E655] md:h-8 md:w-8"') === 3);
+{
+  const stairs = render(createElement(StairsIcon, { strokeWidth: 1.8 }));
+  const d = stairs.match(/ d="([^"]+)"/)?.[1] ?? "";
+  const tokens = d.match(/[A-Za-z]|-?\d*\.?\d+/g) ?? [];
+  let cmd = "";
+  let x = 0;
+  let y = 0;
+  const xs: number[] = [];
+  const ys: number[] = [];
+  let risers = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (/[A-Za-z]/.test(t)) {
+      cmd = t;
+      if (cmd === "v") risers++;
+      continue;
+    }
+    const n = Number(t);
+    if (cmd === "M") {
+      x = n;
+      y = Number(tokens[++i]);
+    } else if (cmd === "h") x += n;
+    else if (cmd === "H") x = n;
+    else if (cmd === "v") y += n;
+    else if (cmd === "V") y = n;
+    xs.push(x);
+    ys.push(y);
+  }
+  const court = render(createElement(PointPlayIcon, {}));
+  const round = (n: number) => Math.round(n * 100) / 100;
+  check(
+    "the stairs: five treads rising to the right, 3 to 21 like the court's 18 units, centred on the box, one path",
+    count(stairs, "<path") === 1 && /^[MhvH\d.\s-]+$/.test(d) && risers === 4 && round(Math.min(...xs)) === 3 && round(Math.max(...xs)) === 21 && round((Math.min(...ys) + Math.max(...ys)) / 2) === 12 && ys[0] === Math.max(...ys) && court.includes('x="3"') && court.includes('width="18"'),
+    d
+  );
+}
 check("no link, no button, no price and no group size in the band", count(band, "<a ") === 0 && count(band, "<button") === 0 && !band.includes("$") && !/players|price|session/i.test(bandText));
 check("on a phone three rows of one line; from md three columns with a hairline between, the lead on its own line", band.includes("md:grid-cols-3") && band.includes("md:border-l md:border-white/10") && band.includes("md:first:border-l-0") && band.includes('<span class="min-w-0 md:grid">'));
 const homeSrc = read("src/app/page.tsx");
@@ -287,11 +352,13 @@ check("the Tennis and Fitness graphic is not on the home page", !homePage.includ
 check("the line under Our Programs is gone, and nothing replaced it: the cards follow the heading", /<h2 id="programs-grid-title"[^>]*>Our Programs<\/h2><div class="mt-\[18px\] md:mt-6"><ul role="list"/.test(homePage));
 check("no general class length and no classes a week on the home page", !/\d+-minute class|minutes? a week|class a week|classes a week|once a week/i.test(homeText), homeText.match(/\d+-minute class|minutes? a week|class a week|classes a week|once a week/i)?.[0]);
 check("the home cards keep title, who and when, and the link: three cards, each one link, no price line", ["Ages 7–17 · Saturdays", "16 and up · Sundays", "Any age · By arrangement"].every((line) => homePage.includes(`>${line}</p>`)) && count(homePage, ">See groups") === 2 && count(homePage, ">See details") === 1);
+// Backlog #71 (owner, 2026-11-18): the same group for the whole cohort left
+// the home page only; the program pages' lists and About keep it (below).
+check("the home page reads Five levels to climb and no longer One group for the whole cohort", homeText.includes("Five levels to climb") && !/One group for all/i.test(homeText) && !homeText.includes(`for all ${COHORT_LENGTH}`));
 
 // ── The bootcamp words on the other pages (backlog #69, pass 2) ─────────────
-// The program entries cannot import src/content/bootcamp.ts (it reads the
-// cohort length from src/content/programs.ts), so their lines are typed
-// there and pinned here to the class words, word for word.
+// The program entries type their lines in src/content/programs.ts; they are
+// pinned here to the class words, word for word.
 console.log("The bootcamp words on the program entries and About");
 const [tennis, fitness] = CLASS_PARTS;
 check("the idea inside a sentence is the heading's own words", CLASS_IDEA === "tennis and fitness in every class" && `${CLASS_IDEA.charAt(0).toUpperCase()}${CLASS_IDEA.slice(1)}.` === CLASS_HEADING);
@@ -323,13 +390,15 @@ for (const p of [youth, adults]) {
   check(`${p.id}: the search line says group bootcamps, tennis and fitness in every class`, (p.metaDescription ?? "").includes(CLASS_IDEA) && /group bootcamps/.test(p.metaDescription ?? ""), p.metaDescription);
   const list = p.includes ?? [];
   // Re-pinned for backlog #70: the first line was "One …-minute class a week
-  // for (the cohort length)". It keeps the cohort length, in the third
-  // point's words; the group size is the same line, read from the setting.
+  // for (the cohort length)". It keeps the cohort length; the group size is
+  // the same line, read from the setting. Re-pinned for backlog #71: the
+  // first line was also the home band's third point, word for word; the band
+  // hints at the levels now, and the line stays here unchanged (owner,
+  // 2026-11-18), so the "same as the band" half of the check went.
   check(
     `${p.id}: what's included is one group for the cohort, the group size, the two parts and how a class ends, then one line of its own`,
     list.length === 6 &&
       list[0] === `One group for all ${COHORT_LENGTH}` &&
-      list[0] === pointWords[2] &&
       list[1] === `Up to ${GROUP_MAX_PLAYERS} players a group` &&
       list[2] === TENNIS_LINE &&
       list[3] === FITNESS_LINE &&
@@ -589,6 +658,17 @@ check("the brief names the three points, word for word and in order, and where t
 check("the brief's class-length rule: no general class length, no classes a week; a group's own day and time stays", /- \*\*Never\*\* state a general class length or how many classes there are a week/.test(bootcampWords) && /own day and time/.test(bootcampWords));
 check("the brief's price rule: the whole price only, the per-session figure only on the sign-up step of one bootcamp, none on the home page", voice.includes("## Price (owner, 2026-11-17)") && /whole price only/i.test(voice) && /per-session figure[^\n]*only on the sign-up step of one bootcamp/.test(voice) && /No price of any kind on the home page/.test(voice));
 check("the joining-flow section names the three steps and Good to know", voice.includes('"Pick a group"') && voice.includes('"Pay online"') && voice.includes('"Start on court"') && voice.includes("Good to know"));
+// Backlog #71 (owner, 2026-11-18): the card buttons, where they lead, and a before → after row for each changed string.
+const joiningFlowBrief = voice.slice(voice.indexOf("## Joining flow"), voice.indexOf("## Locations"));
+check(
+  "the brief's card buttons: Ask to join on every group until it can take payment; the quiz signed out, the dashboard for a signed-in taker",
+  joiningFlowBrief.includes("**The card buttons and where they lead** (owner, 2026-11-18)") &&
+    joiningFlowBrief.includes('every group\'s button reads "Ask to join" until that group can take payment') &&
+    joiningFlowBrief.includes("`/intake?program={slug}`") &&
+    joiningFlowBrief.includes("it goes to the dashboard") &&
+    !/a group's Join button|"Join", "Ask to join" and "Notify me"/.test(voice)
+);
+check("the brief's before → after rows for the three changed strings: the third point, the card button, the signed-out greeting", [`| 31 | One group for all ${COHORT_LENGTH}`, "| 32 | Join (a group card's lime button", "| 33 | Your quiz answers are in."].every((row) => voice.includes(row)));
 
 const pkg = JSON.parse(read("package.json")) as { scripts: { test: string } };
 // Later items append their scripts after this one (audit N), so it is pinned as run, not as last.

@@ -364,12 +364,12 @@ const OUTLINE_BUTTON = `inline-flex min-h-[48px] items-center justify-center rou
 const SECONDARY_BUTTON = `inline-flex min-h-[44px] items-center justify-center rounded-full border border-white/25 px-6 py-3 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white ${FOCUS_RING}`;
 
 /**
- * The quiz-taker's panel (owner, 2026-10-12): someone this device, or this
- * account, already took the quiz for is told so instead of being asked
- * again — with their next step, "Add another player" (the wizard opens on a
- * child's block) and "Retake the quiz" (the wizard as it is; a retake still
- * writes an ordinary Sheet row, the /api/intake contract unchanged). The
- * links `?add=1` and `?retake=1` skip this panel.
+ * The quiz-taker's panel (owner, 2026-10-12): a signed-in account that
+ * already took the quiz is told so instead of being asked again — with its
+ * next step, "Add another player" (the wizard opens on a child's block) and
+ * "Retake the quiz" (the wizard as it is; a retake still writes an ordinary
+ * Sheet row, the /api/intake contract unchanged). Signed out, nobody sees it
+ * (owner, 2026-11-18). The links `?add=1` and `?retake=1` skip this panel.
  */
 function AlreadyTakenPanel({
   playerCount,
@@ -382,7 +382,7 @@ function AlreadyTakenPanel({
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   useFocusOnMount(headingRef);
-  // A household reads by its count; the device flag knows no names.
+  // A household reads by its count.
   const whom = playerCount > 1 ? `your ${playerCount} players` : "you";
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -406,7 +406,7 @@ function AlreadyTakenPanel({
             There is nothing else you need to do unless something changed.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            {/* Reads "See your groups", or "Open your dashboard" when signed in. */}
+            {/* Reads "Open your dashboard": only a signed-in taker sees the panel. */}
             <TrackedButton variant="primary" href="/intake" track="quiz" source="intake-taken">
               Take the 2-minute quiz
             </TrackedButton>
@@ -779,8 +779,9 @@ function IntakePageInner() {
   const addMode = searchParams.has("add");
   const skipTakenPanel = addMode || searchParams.has("retake");
 
-  // A quiz-taker on this device or account (owner, 2026-10-12) sees the
-  // panel instead of the first step, unless they chose to add or retake.
+  // A signed-in quiz-taker (owner, 2026-10-12) sees the panel instead of the
+  // first step, unless they chose to add or retake. Signed out, every visitor
+  // opens the first step, with or without ?program= (owner, 2026-11-18).
   const quiz = useQuizStatus();
   const [panelDismissed, setPanelDismissed] = useState(false);
 

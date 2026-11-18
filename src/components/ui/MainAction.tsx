@@ -43,11 +43,12 @@ export const PADDED_INLINE_LINK =
 const SIDE_LINE_LINK = `${LIME_LINK_TEXT} ${PADDED_INLINE_LINK}`;
 
 /**
- * The quiz as a side line. A visitor who has taken the quiz is not asked
- * again (owner, 2026-10-12): the line says their answers are in, and the
- * link is their next step ("See your groups", or "Open your dashboard" when
- * signed in; TrackedLink swaps it once the browser knows). The server render
- * is the new visitor's line, so a static page never flashes the wrong words.
+ * The quiz as a side line. A signed-in account with quiz answers on file is
+ * not asked again (owner, 2026-10-12): the line says their answers are in,
+ * and the link is their next step, "Open your dashboard" (TrackedLink swaps
+ * it once the account has answered). Signed out, every visitor reads the new
+ * visitor's line (owner, 2026-11-18): a browser cannot tell who is at it.
+ * The server render is that line too, so a static page never flashes.
  */
 export function QuizSideLine({
   source,

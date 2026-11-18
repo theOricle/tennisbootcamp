@@ -54,7 +54,7 @@ import { groupSummaryLine, groupsFor, matchGroupsLabel, recommendPrograms, recom
 import { TIERS, tierById } from "../lib/tiers";
 import { ArrangedGroupRow, ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { ProgramCatalogView, type CatalogProgram } from "../components/sections/ProgramCatalog";
-import { LOW_SEATS_THRESHOLD, groupAction, groupStatus, groupWhenParts, groupWhoLabel, priceParts, programHeadingLine } from "../lib/programCatalog";
+import { ASK_TO_JOIN_LABEL, LOW_SEATS_THRESHOLD, groupAction, groupStatus, groupWhenParts, groupWhoLabel, priceParts, programHeadingLine } from "../lib/programCatalog";
 import { groupSeatsFromSnapshot, readGroupSeats } from "../lib/groupSeats";
 import nextConfig from "../../next.config";
 import sitemap from "../app/sitemap";
@@ -178,7 +178,8 @@ check("no photo, no plate on a group card", !hpCard.includes("<img") && !hpCard.
 const h4Card = render(createElement(ProgramGroupCard, { group: g("high-performance"), program: youth, headingLevel: 4 }));
 check("headingLevel 4 renders the title as an h4", h4Card.includes(">High Performance Youth Bootcamp</h4>") && !h4Card.includes("<h3") && !h4Card.includes("<h2"));
 const adultCard = render(createElement(ProgramGroupCard, { group: g("adult-newer"), program: listedPrograms[1] }));
-check("an adult group: 16 and up, Sundays, the Open to join chip, a lime Join named for the group", adultCard.includes("16 and up</li>") && adultCard.includes(">Sundays 4:00–5:00 pm</span>") && adultCard.includes("Open to join</span>") && adultCard.includes(">Beginner Adult Bootcamp</h3>") && /<a [^>]*href="\/intake\?program=bootcamps"[^>]*bg-\[#B4E655\][^>]*>Join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>|<a [^>]*bg-\[#B4E655\][^>]*href="\/intake\?program=bootcamps"[^>]*>Join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>/.test(adultCard));
+// Re-pinned for backlog #71 (owner, 2026-11-18): the lime button read "Join".
+check("an adult group: 16 and up, Sundays, the Open to join chip, a lime Ask to join named for the group", adultCard.includes("16 and up</li>") && adultCard.includes(">Sundays 4:00–5:00 pm</span>") && adultCard.includes("Open to join</span>") && adultCard.includes(">Beginner Adult Bootcamp</h3>") && /<a [^>]*href="\/intake\?program=bootcamps"[^>]*bg-\[#B4E655\][^>]*>Ask to join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>|<a [^>]*bg-\[#B4E655\][^>]*href="\/intake\?program=bootcamps"[^>]*>Ask to join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>/.test(adultCard));
 const cohort: Cohort = {
   id: "hp-fall", programId: "youth-programs", locationId: "", label: "Fall HP", startDate: "2026-10-18", endDate: "2026-11-22", weeks: 6,
   sessions: [{ day: "Sat", start: "14:00", end: "15:00" }], capacityMin: 4, capacityMax: 8, priceCents: 0, currency: "CAD", status: "open", levelMin: 3, levelMax: 5.5,
@@ -203,12 +204,14 @@ check("invite only keeps its chip", groupStatus({ ...open, status: "invite-only"
 check("a failed or missing read means Open to join, never an error", groupStatus(open, Number.NaN)?.kind === "open" && groupStatus(open, Number.POSITIVE_INFINITY)?.kind === "open");
 check("a group with no fixed class shows no chip", groupStatus(g("private-lessons")) === null && groupStatus(g("private-lessons"), 0) === null);
 const act = (group: ProgramGroup, seats?: number | null) => groupAction(group, groupStatus(group, seats));
-check("open and last spots: a lime Join", act(open).kind === "join" && act(open).label === "Join" && act(open, 2).kind === "join" && act(open, 2).label === "Join");
+// Re-pinned for backlog #71 (owner, 2026-11-18): the lime button read "Join"
+// though nothing behind it takes payment yet. It asks, like High Performance's.
+check("open and last spots: the lime button, reading Ask to join", act(open).kind === "join" && act(open).label === "Ask to join" && act(open, 2).kind === "join" && act(open, 2).label === "Ask to join" && ASK_TO_JOIN_LABEL === "Ask to join");
 check("full: Notify me", act(open, 0).kind === "notify" && act(open, 0).label === "Notify me");
 check("by approval and invite only: Ask to join", act(hp).kind === "ask" && act(hp).label === "Ask to join" && act({ ...open, status: "invite-only" }).label === "Ask to join");
 check("each button is named for its group", act(open).nameSuffix === " the Beginner Junior Bootcamp" && act(hp).nameSuffix === " the High Performance Youth Bootcamp" && act(open, 0).nameSuffix === " when the Beginner Junior Bootcamp has a spot");
 const lowCard = render(createElement(ProgramGroupCard, { group: open, program: youth, seatsLeft: 2 }));
-check("last spots: the warn chip, computed from the seats, and a lime Join", lowCard.includes("border-yellow-400/30 bg-yellow-400/10 text-yellow-200") && lowCard.includes(">2 spots left</span>") && />Join<span class="sr-only"> the Beginner Junior Bootcamp<\/span><\/a>/.test(lowCard) && /<a [^>]*bg-\[#B4E655\]/.test(lowCard) && !lowCard.includes("Open to join"));
+check("last spots: the warn chip, computed from the seats, and a lime Ask to join", lowCard.includes("border-yellow-400/30 bg-yellow-400/10 text-yellow-200") && lowCard.includes(">2 spots left</span>") && />Ask to join<span class="sr-only"> the Beginner Junior Bootcamp<\/span><\/a>/.test(lowCard) && /<a [^>]*bg-\[#B4E655\]/.test(lowCard) && !lowCard.includes("Open to join"));
 const fullCard = render(createElement(ProgramGroupCard, { group: open, program: youth, seatsLeft: 0 }));
 check("full: the neutral chip, and an outline Notify me to the footer's newsletter line", fullCard.includes(">Full</span>") && !fullCard.includes("yellow") && /<a [^>]*href="#notify"[^>]*>Notify me<span class="sr-only"> when the Beginner Junior Bootcamp has a spot<\/span><\/a>/.test(fullCard) && !/<a [^>]*bg-\[#B4E655\]/.test(fullCard) && count(fullCard, "<a ") === 1 && !fullCard.includes("/intake"));
 const fullOwnForm = render(createElement(ProgramGroupCard, { group: open, program: youth, seatsLeft: 0, notifyHref: "#cohorts" }));
@@ -216,9 +219,40 @@ check("…or to the page's own form where the page has one", fullOwnForm.include
 const inviteCard = render(createElement(ProgramGroupCard, { group: { ...open, status: "invite-only" }, program: youth }));
 check("invite only: its chip, and an outline Ask to join", inviteCard.includes(">Invite only</span>") && />Ask to join<span class="sr-only"> the Beginner Junior Bootcamp<\/span><\/a>/.test(inviteCard) && !/<a [^>]*bg-\[#B4E655\]/.test(inviteCard));
 const cardSrc = read("src/components/sections/ProgramGroupCard.tsx");
-check("Join and Ask to join open the quiz for the program, with the card's tracking source", cardSrc.includes("href={`/intake?program=${programSlug}`}") && cardSrc.includes('track="quiz"') && cardSrc.includes("source={source}"));
-check("a card always reads its own action: it opts out of the quiz-taken swap", cardSrc.includes("quizAware={false}"));
+check("Ask to join opens the quiz for the program, with the card's tracking source", cardSrc.includes("href={`/intake?program=${programSlug}`}") && cardSrc.includes('track="quiz"') && cardSrc.includes("source={source}"));
+// Re-pinned for backlog #71: the card opted out of the quiz-taken swap
+// (quizAware={false}), so a signed-in taker's button opened the quiz's
+// already-taken panel ("Retake the quiz"). It keeps its words, and only
+// where it goes follows a signed-in taker: to the dashboard.
+{
+  const cardOnly = cardSrc.slice(cardSrc.indexOf("export function ProgramGroupCard("), cardSrc.indexOf("export function ArrangedGroupRow"));
+  const rowOnly = cardSrc.slice(cardSrc.indexOf("export function ArrangedGroupRow"));
+  check("a card always reads its own action, and a signed-in taker's goes to the dashboard (quizAware=\"href\")", cardSrc.includes("quizAware={quizAware}") && cardOnly.includes('quizAware="href"') && !cardOnly.includes("quizAware={false}"));
+  check("the private lessons row keeps Ask about lessons on the quiz for everyone (quizAware={false})", rowOnly.includes("quizAware={false}") && !rowOnly.includes('quizAware="href"'));
+}
 check("the lime and the outline button share one height, so sibling feet line up", cardSrc.includes('const shape = "h-[46px] whitespace-nowrap";'));
+
+// Backlog #71 (owner, 2026-11-18): every group's button reads "Ask to join"
+// until that group can take payment, and nothing here takes payment, so no
+// public button reads "Join" without payment behind it.
+console.log("Ask to join on every group, and no payment behind any button");
+{
+  const PAYMENT = /\/enroll|checkout|stripe|\/pay\b|etransfer/i;
+  const states: [string, number | null][] = [["open", null], ["last spots", 2], ["full", 0]];
+  const scheduledGroups = programGroups.filter((x) => x.day !== null);
+  const cards = scheduledGroups.flatMap((group) => {
+    const program = listedPrograms.find((p) => p.slug === group.programSlug)!;
+    const variants = [group, { ...group, status: "invite-only" as const }];
+    return variants.flatMap((v) => states.map(([state, seats]) => ({ id: `${v.id} ${v.status ?? ""} ${state}`, html: render(createElement(ProgramGroupCard, { group: v, program, seatsLeft: seats })) })));
+  });
+  const button = (html: string) => html.match(/<a [^>]*>[\s\S]*?<\/a>/)?.[0] ?? "";
+  const asks = cards.filter((c) => !/>Full</.test(c.html));
+  check("every group that takes players reads Ask to join, named for its group, in every state", asks.length > 0 && asks.every((c) => /^<a [^>]*>Ask to join<span class="sr-only"> the [^<]+ Bootcamp<\/span><\/a>$/.test(button(c.html))), asks.find((c) => !/>Ask to join</.test(button(c.html)))?.id);
+  check("…and opens the quiz for its program, at the first step: no retake, no add, no payment", asks.every((c) => /href="\/intake\?program=(youth-programs|bootcamps)"/.test(button(c.html)) && !PAYMENT.test(button(c.html)) && !/retake|add=1/.test(button(c.html))));
+  check("a full group reads Notify me, to the newsletter line, never a payment", cards.filter((c) => />Full</.test(c.html)).every((c) => /href="#notify"/.test(button(c.html)) && />Notify me</.test(button(c.html))));
+  check("no group card reads Join, in any state", cards.length === scheduledGroups.length * 2 * states.length && cards.every((c) => !/>Join</.test(c.html)));
+  check("open groups keep the lime button, the High Performance Youth Bootcamp the outline", scheduledGroups.filter((x) => x.joining === "open").every((x) => /<a [^>]*bg-\[#B4E655\][^>]*>Ask to join</.test(render(createElement(ProgramGroupCard, { group: x, program: listedPrograms.find((p) => p.slug === x.programSlug)! })))) && !/<a [^>]*bg-\[#B4E655\]/.test(render(createElement(ProgramGroupCard, { group: g("high-performance"), program: youth }))));
+}
 
 console.log("Seats: one read, the enroll page's count, display only");
 {
@@ -279,13 +313,21 @@ check("no photo and no description in the list (both stay on the program's page)
 check("the quiz is a side line under the dropdowns, never a lime button", /Not sure which group\? <a [^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a>/.test(all) && at(all, "</fieldset>") < at(all, "Not sure which group?") && at(all, "Not sure which group?") < at(all, 'id="groups"'));
 check("the groups sit under the anchor the main button scrolls to", /<div class="[^"]*scroll-mt-24" id="groups">/.test(all));
 check("private lessons is one row with Ask about lessons", all.includes(`>By arrangement · ${PRIVATE_LESSONS_PRICE}</p>`) && all.includes(">Ask about lessons</a>"));
+// Backlog #71: the whole catalog, as /programs shows it before a filter.
+check(
+  "/programs: every group card reads Ask to join and private lessons Ask about lessons; nothing reads Join, and no link leads to a payment",
+  count(all, ">Ask to join<span") === programGroups.filter((x) => x.day !== null).length &&
+    count(all, ">Ask about lessons</a>") === 1 &&
+    !/>Join</.test(all) &&
+    !/href="[^"]*(\/enroll|checkout|stripe)[^"]*"/i.test(all)
+);
 const withSeats = view(EMPTY_QUERY, programGroups, { "youth-7-10": 2, "adult-intermediate": 0 });
 check("the catalog passes each group its seats", withSeats.includes(">2 spots left</span>") && count(withSeats, ">Full</span>") === 1 && count(withSeats, ">Notify me<") === 1 && count(withSeats, "Open to join</span>") === 3);
 const teens = view(parseCatalogQuery(params("age=14&level=novice")));
 check("a filtered view keeps only the matching groups and sections", count(teens, "<article") === 2 && teens.includes("2 groups for age 14 at Novice") && !teens.includes('id="catalog-bootcamps"') && teens.includes('<option value="14" selected="">') && !teens.includes("Closest fit"));
 const nearest = view(parseCatalogQuery(params("age=14&level=intermediate")));
 check("Closest fit: the exact match (private lessons), then the nearest-level group with the week-one line", count(nearest, "<article") === 2 && nearest.includes("1 group for age 14 at Intermediate") && nearest.includes(">Closest fit</h2>") && nearest.includes("The nearest levels to Intermediate for age 14.") && !nearest.includes("tagged") && nearest.includes("on court in week one") && nearest.includes("we move you to it at the same price") && at(nearest, 'id="catalog-private-lessons"') < at(nearest, ">Closest fit</h2>") && at(nearest, ">Closest fit</h2>") < at(nearest, 'id="youth-11-15"'));
-check("Closest fit cards are the same card, named by their level-led titles", nearest.includes(">Novice Youth Bootcamp</h3>") && />Join<span class="sr-only"> the Novice Youth Bootcamp<\/span><\/a>/.test(nearest) && !nearest.includes("No group matches"));
+check("Closest fit cards are the same card, named by their level-led titles", nearest.includes(">Novice Youth Bootcamp</h3>") && />Ask to join<span class="sr-only"> the Novice Youth Bootcamp<\/span><\/a>/.test(nearest) && !nearest.includes("No group matches"));
 const none = view(parseCatalogQuery(params("age=5&level=high-performance")), programGroups.filter((x) => x.id !== "private-lessons"));
 check("nothing matches and nothing is near: a dashed box that says what is true and what happens next", none.includes("border-dashed") && /No group matches that age and level\. <a [^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a> and our coaches place you\./.test(none) && none.includes(">Clear filters</button>") && count(none, "<article") === 0 && !none.includes("Closest fit"));
 const noneButPrivate = view(parseCatalogQuery(params("age=5&level=high-performance")));
