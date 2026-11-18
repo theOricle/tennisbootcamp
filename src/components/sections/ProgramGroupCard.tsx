@@ -7,6 +7,7 @@ import {
   groupStatus,
   groupWhenParts,
   groupWhoLabel,
+  priceParts,
   type GroupAction,
 } from "@/lib/programCatalog";
 import { locationById } from "@/content/locations";
@@ -26,8 +27,9 @@ import { StatusChip } from "./ProgramCard";
 // each with a small icon and no label: who (the ages), when (the class time,
 // and the day it starts once a public cohort exists), where (the club's
 // name). Then, on a hairline pinned to the bottom so sibling cards line up,
-// the price once (the session price over the cohort total, both from the
-// constants in src/content/programs.ts) and one button.
+// the price once (the whole price of the bootcamp: the cohort total in
+// bold over the cohort length, both from the constants in
+// src/content/programs.ts; never a per-session figure) and one button.
 //
 // No rules on the card: the week-one promise, High Performance by approval
 // and the optional assessment are said once on the page, under "Good to
@@ -107,17 +109,17 @@ function GroupButton({
   );
 }
 
-/** The price, once: the session price in white, the cohort total under it. "Rates on request" is one line. */
+/**
+ * The price, once: the whole price of the bootcamp (owner, 2026-11-17), the
+ * amount in bold over what it buys (the cohort length). A price with no
+ * amount ("Rates on request") is one line.
+ */
 function GroupPrice({ text }: { text: string }) {
-  const [lead, ...rest] = text.split(" · ");
+  const [lead, rest] = priceParts(text);
   return (
-    <p className="min-w-0 text-sm tabular-nums">
-      <span className="block font-medium text-white">{lead}</span>
-      {rest.map((part) => (
-        <span key={part} className="block text-[13px] text-white/60">
-          {part}
-        </span>
-      ))}
+    <p className="min-w-0 tabular-nums">
+      <span className="block text-lg font-semibold leading-tight tracking-[-0.01em] text-white">{lead}</span>
+      {rest && <span className="block text-[13px] text-white/60">{rest}</span>}
     </p>
   );
 }

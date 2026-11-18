@@ -6,8 +6,11 @@
 // placement (M12, M13), the hero size and motion (M14, M15), the Card and
 // Heading primitives (L1) and the header band fade (L2), as rebuilt for the
 // simpler site (backlog #69, owner 2026-11-16 and 2026-11-17): the main
-// button is "Join a group", the quiz is its side line, the top menu is
-// Programs and About, and the footer opens with the one newsletter line.
+// button is "Join a bootcamp" (backlog #70; it was "Join a group"), the quiz
+// is its side line, the top menu is Programs and About, and the footer opens
+// with the one newsletter line. Since backlog #70 the home page's band under
+// the hero is three points about what a bootcamp is, and the page shows no
+// price.
 // The phone bar's rules are tested as pure functions; the rest are source
 // checks, since the repo has no DOM test runner. Horizontal overflow is
 // checked in a browser by `npm run check:overflow`
@@ -61,8 +64,28 @@ const at = (hay: string, needle: string) => {
 };
 
 // ── The main action (owner, 2026-11-16) ─────────────────────────────────────
-console.log("The main action: Join a group, the quiz as a side line");
-check("the main button reads Join a group and goes to /programs", JOIN_CTA_LABEL === "Join a group" && JOIN_CTA_HREF === "/programs");
+console.log("The main action: Join a bootcamp, the quiz as a side line");
+check("the main button reads Join a bootcamp and goes to /programs", JOIN_CTA_LABEL === "Join a bootcamp" && JOIN_CTA_HREF === "/programs");
+// Owner, 2026-11-17: the label changed, so nothing may still type the old one (or the new one) beside the setting.
+{
+  const typed = [
+    "src/components/layout/Navbar.tsx",
+    "src/components/layout/MobileJoinBar.tsx",
+    "src/components/ui/MainAction.tsx",
+    "src/components/sections/Hero.tsx",
+    "src/components/sections/JoinClosing.tsx",
+    "src/app/not-found.tsx",
+    "src/app/programs/[slug]/page.tsx",
+    "src/app/about/page.tsx",
+    "src/app/locations/page.tsx",
+    "src/app/page.tsx",
+  ].filter((file) => {
+    // Comments may name the label; markup and strings may not.
+    const code = read(file).replace(/\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, "");
+    return /Join a (group|bootcamp)/.test(code);
+  });
+  check("every surface reads the label from the one setting: none types it", typed.length === 0, typed.join(", "));
+}
 check("the quiz link's label is unchanged", QUIZ_CTA_LABEL === "Take the 2-minute quiz");
 check("the side line asks, then links: Not sure which group?", QUIZ_SIDE_LEAD === "Not sure which group?");
 check("a quiz-taker's side line says their answers are in", QUIZ_TAKEN_LEAD === "Your quiz answers are in.");
@@ -127,7 +150,7 @@ check("bar uses the route rule and the visibility rule", bar.includes("joinBarAl
 check("bar watches in-page main buttons with an IntersectionObserver", bar.includes("IntersectionObserver") && bar.includes("MAIN_CTA_ATTR"));
 check("bar is inert while hidden", bar.includes("inert={!show}"));
 check("bar respects the safe area", bar.includes("safe-area-inset-bottom"));
-check("bar carries the main button: Join a group, to /programs", bar.includes('<Button variant="primary" href={JOIN_CTA_HREF} className="w-full">') && bar.includes("{JOIN_CTA_LABEL}") && !bar.includes("QUIZ_CTA_LABEL"));
+check("bar carries the main button, read from the setting, to /programs", bar.includes('<Button variant="primary" href={JOIN_CTA_HREF} className="w-full">') && bar.includes("{JOIN_CTA_LABEL}") && !bar.includes("QUIZ_CTA_LABEL"));
 check("root layout mounts the bar", read("src/app/layout.tsx").includes("<MobileJoinBar />"));
 
 // ── One Container rule (H2) ─────────────────────────────────────────────────
@@ -144,6 +167,7 @@ const SECTIONS = [
   "src/components/sections/WhereAndWho.tsx",
   "src/components/sections/GoodToKnow.tsx",
   "src/components/sections/JoinClosing.tsx",
+  "src/components/sections/BootcampClass.tsx",
   "src/components/sections/EventsList.tsx",
   "src/components/sections/EmailCapture.tsx",
   "src/components/sections/ProgramInterestForm.tsx",
@@ -154,10 +178,14 @@ for (const file of SECTIONS) {
   check(`${file.split("/").pop()} sets no gutter or page width`, offenders.length === 0, offenders.join(", "));
 }
 
-// The home page's class section is a full-bleed band: it paints its hairlines
-// edge to edge and puts the one Container inside.
-const classBand = read("src/components/sections/BootcampClass.tsx");
-check("the class band puts the Container inside, and sets no gutter or page width of its own", classBand.includes("<Container>") && !/(^|[\s"'`])(mx-auto|max-w-6xl|px-6|-mx-)/.test(classBand));
+// The home page's band of three points (backlog #70) is full-bleed: it
+// paints its hairlines edge to edge and puts the one Container inside.
+const pointsBand = read("src/components/sections/BootcampPoints.tsx");
+check("the points band puts the Container inside, and sets no gutter or page width of its own", pointsBand.includes("<Container>") && pointsBand.includes('className="border-y border-white/10"') && !/(^|[\s"'`])(mx-auto|max-w-6xl|px-6|-mx-)/.test(pointsBand));
+// The Tennis and Fitness graphic moved to About (backlog #70), into that
+// page's section: it is no band any more, so it holds no Container.
+const classGraphic = read("src/components/sections/BootcampClass.tsx");
+check("the Tennis and Fitness graphic sits in its page's Container: none of its own, no gutter, no page width, no band hairlines", !classGraphic.includes("<Container") && !classGraphic.includes("border-y") && !/(^|[\s"'`])(mx-auto|max-w-6xl|px-6|-mx-)/.test(classGraphic));
 
 const programsPage = read("src/app/programs/page.tsx");
 const catalog = read("src/components/sections/ProgramCatalog.tsx");
@@ -173,14 +201,16 @@ check("the catalog sets no gutter or page width of its own", !/(^|[\s"'`])(mx-au
 check("/programs: no lime button in the band (the main button is the header's)", !programsPage.includes('variant="primary"') && !catalog.includes('variant="primary"') && !catalog.includes('buttonClass("primary")'));
 
 const home = read("src/app/page.tsx");
-// Owner, 2026-11-17: the class section comes straight after the hero; then
-// the programs, first in the page's Container (owner, 2026-10-13: "people
-// want to see the programs first").
+// Owner, 2026-11-17 (backlog #70): the band of three points comes straight
+// after the hero, between it and the programs; then the programs, first in
+// the page's Container (owner, 2026-10-13: "people want to see the programs
+// first"). The band is the hero's sibling, never inside it.
 check(
-  "home: the class section comes straight after the hero, then the programs, first in the Container",
+  "home: the three points come straight after the hero, then the programs, first in the Container",
   // Only JSX comments may sit between them; a comment never runs past its own "*/".
-  /<Hero \/>\s*(\{\/\*(?:(?!\*\/)[\s\S])*\*\/\}\s*)*<BootcampClass \/>\s*(\{\/\*(?:(?!\*\/)[\s\S])*\*\/\}\s*)*<Container[^>]*>\s*<ProgramsGrid/.test(home)
+  /<Hero \/>\s*(\{\/\*(?:(?!\*\/)[\s\S])*\*\/\}\s*)*<BootcampPoints \/>\s*(\{\/\*(?:(?!\*\/)[\s\S])*\*\/\}\s*)*<Container[^>]*>\s*<ProgramsGrid/.test(home)
 );
+check("home: the Tennis and Fitness graphic left the page (it is on About), and the hero does not hold the band", !home.includes("BootcampClass") && !read("src/components/sections/Hero.tsx").includes("BootcampPoints"));
 check("home: programs, how joining works, where and who, events, the closing, in that order", at(home, "<ProgramsGrid") < at(home, "<HowJoiningWorks") && at(home, "<HowJoiningWorks") < at(home, "<WhereAndWho") && at(home, "<WhereAndWho") < at(home, "<EventsList") && at(home, "<EventsList") < at(home, "<JoinClosing"));
 check("home: closes on the main action (M13)", /<JoinClosing source="home-closing" \/>\s*<\/Container>\s*<\/main>/.test(home));
 check("home: no newsletter form of its own: the footer's line is the one (M12)", !home.includes("<EmailCapture"));
@@ -188,7 +218,8 @@ check("home: what left the page stays off it", ["<TrustBar", "<TierBand", "<Loca
 check("home: no nested gutter section", !home.includes('className="mx-auto max-w-6xl px-6"'));
 
 const grid = read("src/components/sections/ProgramsGrid.tsx");
-check("home programs: the heading, then one line that reads the class and cohort lengths from the constants", grid.includes(">Our Programs</Heading>") && grid.includes("Group bootcamps run one {SESSION_MINUTES}-minute class a week, in {COHORT_LENGTH_ADJ} cohorts."));
+// Backlog #70 (owner, 2026-11-17): the line under the heading ("Group bootcamps run one … class a week, in … cohorts.") went, and nothing replaced it.
+check("home programs: the heading, then the cards straight under it: no line between, no class length, no classes a week", /<Heading id="programs-grid-title">Our Programs<\/Heading>\s*<div className="mt-\[18px\] md:mt-6">\s*<ProgramCardList/.test(grid) && !grid.includes("<p") && !/SESSION_MINUTES|COHORT_LENGTH|a week|minute/.test(grid));
 check("home programs: the compact cards, then the five levels as a strip under them", grid.includes('<ProgramCardList programs={programs} variant="compact" />') && at(grid, "<ProgramCardList") < at(grid, "<LevelsStrip"));
 check("home programs: no Browse Programs link and no quiz line (the main action carries both)", !grid.includes("Browse Programs") && !grid.includes("QUIZ_CTA_LABEL") && !grid.includes("getPublicCohorts"));
 
@@ -228,7 +259,7 @@ check("detail: no 'Or Book Your Assessment' grey link", !detail.includes("Or Boo
 const assessmentPage = read("src/app/assessment/page.tsx");
 check("/assessment: both Book Your Assessment buttons are outline pills", (assessmentPage.match(/<(?:Tracked)?Button\s+variant="secondary"\s+href="\/assessment\/book"[^>]*>\s*Book Your Assessment\s*<\/(?:Tracked)?Button>/g) ?? []).length === 2);
 check("detail: closes on the main action (M13), to this page's group list and this program's quiz", detail.includes('<JoinClosing className="mt-12" source="program-closing" quizHref={quizHref} href={groupListHref} />'));
-check("detail: the panel's lime button is Join a group, to the page's own group list, marked for the bar", /<Button variant="primary" href=\{groupListHref\}[^>]*data-main-cta>\s*\{JOIN_CTA_LABEL\}/.test(detail) && detail.includes("const groupListHref = scheduledGroups.length > 0 ? `#${GROUPS_ANCHOR}` : undefined;") && detail.includes("<h2 id={GROUPS_ANCHOR}"));
+check("detail: the panel's lime button is the main button, to the page's own group list, marked for the bar", /<Button variant="primary" href=\{groupListHref\}[^>]*data-main-cta>\s*\{JOIN_CTA_LABEL\}/.test(detail) && detail.includes("const groupListHref = scheduledGroups.length > 0 ? `#${GROUPS_ANCHOR}` : undefined;") && detail.includes("<h2 id={GROUPS_ANCHOR}"));
 check("detail: the quiz side line sits under it, for this program", /\{JOIN_CTA_LABEL\}\s*<\/Button>\s*<QuizSideLine source="program-detail" quizHref=\{quizHref\}/.test(detail));
 check("detail: a program booked by arrangement asks about lessons, where the lime button always led", /<TrackedButton\s+variant="primary"\s+href=\{quizHref\}\s+track="quiz"\s+source="program-detail"\s+quizAware=\{false\}[^>]*data-main-cta\s*>\s*Ask about lessons/.test(detail));
 check("detail: no lime quiz button", !detail.includes("data-quiz-cta") && !/variant="primary"[^>]*>\s*Take the 2-minute quiz/.test(detail));

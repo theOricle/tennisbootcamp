@@ -2,7 +2,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { CONTACT_EMAIL, SESSION_PRICE_LABEL, groupsForProgram, programs } from "@/content/programs";
+import { CONTACT_EMAIL, groupsForProgram, programs } from "@/content/programs";
 import type { Program } from "@/types/program";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { GoodToKnow } from "@/components/sections/GoodToKnow";
@@ -47,16 +47,18 @@ import { ProgramViewerPanel, ViewerSwap } from "@/components/programs/ProgramVie
 /**
  * The phone summary under the H1 (audit M13): which day and what it costs,
  * so the decision facts sit above the fold; who it is for, and the tier
- * span, are the chip row under the description (L8). Weekend classes only;
- * a program with no fixed class states its terms in the panel. Each fact is
- * joined with no-break spaces, so a line wraps only between facts.
+ * span, are the chip row under the description (L8). The cost is the whole
+ * price of one bootcamp, the program's own price line (owner, 2026-11-17:
+ * never a per-session figure). Weekend classes only; a program with no
+ * fixed class states its terms in the panel. Each fact is joined with
+ * no-break spaces, so a line wraps only between facts.
  */
 const NBSP = " ";
 
 function summaryFacts(program: Program): string[] {
   const days = [...new Set((program.timetable ?? []).map((slot) => `${slot.day}s`))];
   if (program.comingSoon || days.length === 0) return [];
-  return [days.join(" and "), `${SESSION_PRICE_LABEL} a session`];
+  return [days.join(" and "), ...(program.priceSummary ? [program.priceSummary] : [])];
 }
 
 // Incremental static regeneration (audit M39): the page is served from the
@@ -111,7 +113,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // No public Enroll button yet (backlog #20): a public enroll flow would ask
   // for an e-transfer before the written agreement is delivered (backlog #2b).
   const quizHref = `/intake?program=${program.slug}`;
-  // Null for a program with no stated session price: no Course markup.
+  // Null for a program with no stated price: no Course markup.
   const courseLd = courseJsonLd(program);
   const summary = summaryFacts(program);
   // The numeric span the program's groups together cover (the viewer panel's
@@ -242,7 +244,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   Next cohort starts {formatStartDate(nextOpenCohort.startDate)}
                 </p>
               )}
-              {/* The main button (owner, 2026-11-16): "Join a group", to this
+              {/* The main button (owner, 2026-11-16; "Join a bootcamp"), to this
                   page's own group list, with the quiz as a side line under
                   it, for this program. A program booked by arrangement has
                   no group to join: its lime button asks about lessons, and

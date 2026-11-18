@@ -151,6 +151,18 @@ export function formatSlotWhen(slot: TimetableSlot): string {
   return `${slot.day.slice(0, 3)} ${slot.time}`;
 }
 
+/**
+ * A one-line price as the amount and what it buys, for a card that stacks
+ * the two: PRICE_SUMMARY, the cohort total then "for" and the cohort length,
+ * is the total and the rest. A price with no leading amount ("Rates on
+ * request") is one part. The words come from the price constants in
+ * src/content/programs.ts; nothing is typed here.
+ */
+export function priceParts(text: string): [string] | [string, string] {
+  const match = /^(\$\d[\d,.]*)\s+(.+)$/.exec(text);
+  return match ? [match[1], match[2]] : [text];
+}
+
 /** "Saturdays 12:00–1:00 pm", or "By arrangement" for a group with no fixed class. */
 export function formatGroupWhen(g: ProgramGroup): string {
   if (!g.day || !g.start || !g.end) return "By arrangement";

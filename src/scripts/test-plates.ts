@@ -106,7 +106,8 @@ for (const p of listedPrograms) {
 }
 const listedPlates = listedPrograms.map((p) => p.plate).filter((id) => id !== "court");
 check("listed programs never share a plate", new Set(listedPlates).size === listedPlates.length);
-check("PRICE_SUMMARY is one line from the constants", /^\$\d+ a session · \$\d+ for \w+ weeks?$/.test(PRICE_SUMMARY), PRICE_SUMMARY);
+// Re-pinned for backlog #70 (owner, 2026-11-17): the whole price only; it read "(session price) a session · (total) for (length)".
+check("PRICE_SUMMARY is one line from the constants, the whole price", /^\$\d+ for \w+ weeks?$/.test(PRICE_SUMMARY) && !/session/i.test(PRICE_SUMMARY), PRICE_SUMMARY);
 
 // Owner lineup 2026-10-13 (one level tag per group): the spans are the union
 // of the groups' tier bands, pinned here so a drift shows.

@@ -54,7 +54,7 @@ import { groupSummaryLine, groupsFor, matchGroupsLabel, recommendPrograms, recom
 import { TIERS, tierById } from "../lib/tiers";
 import { ArrangedGroupRow, ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { ProgramCatalogView, type CatalogProgram } from "../components/sections/ProgramCatalog";
-import { LOW_SEATS_THRESHOLD, groupAction, groupStatus, groupWhenParts, groupWhoLabel, programHeadingLine } from "../lib/programCatalog";
+import { LOW_SEATS_THRESHOLD, groupAction, groupStatus, groupWhenParts, groupWhoLabel, priceParts, programHeadingLine } from "../lib/programCatalog";
 import { groupSeatsFromSnapshot, readGroupSeats } from "../lib/groupSeats";
 import nextConfig from "../../next.config";
 import sitemap from "../app/sitemap";
@@ -155,7 +155,8 @@ console.log("ProgramGroupCard markup");
 const render = (el: React.ReactElement) => renderToStaticMarkup(el);
 const youth = listedPrograms.find((p) => p.slug === "youth-programs")!;
 const privateProgram = listedPrograms.find((p) => p.slug === "private-lessons")!;
-const [SESSION_LINE, COHORT_LINE] = PRICE_SUMMARY.split(" · ");
+// Backlog #70 (owner, 2026-11-17): the card shows the whole price, the cohort total over the cohort length.
+const [TOTAL_LINE, LENGTH_LINE] = priceParts(PRICE_SUMMARY);
 const hpCard = render(createElement(ProgramGroupCard, { group: g("high-performance"), program: youth }));
 check("one interactive element per card: its button, a link named for the group", count(hpCard, "<a ") === 1 && count(hpCard, "<button") === 0 && count(hpCard, "<input") === 0 && count(hpCard, "<select") === 0 && /<a [^>]*href="\/intake\?program=youth-programs"[^>]*>Ask to join<span class="sr-only"> the High Performance Youth Bootcamp<\/span><\/a>/.test(hpCard), hpCard.match(/<a [^>]*>[\s\S]*?<\/a>/)?.[0]);
 check("the article carries the id anchor and its scroll margin, and the card itself is no longer a link", hpCard.includes('<article id="high-performance"') && hpCard.includes("scroll-mt-24") && !hpCard.includes("after:absolute after:inset-0"));
@@ -165,9 +166,11 @@ check("the status chip reads By approval, with the hollow ring (joining flow)", 
 check("three plain lines, each with an icon and no label: who, when, where", count(hpCard, "<li") === 3 && count(hpCard, "<svg") >= 3 && hpCard.includes("Ages 12–17</li>") && hpCard.includes(">Saturdays 2:00–3:00 pm</span>") && hpCard.includes("Newtonbrook Tennis Club</li>") && !hpCard.includes("<dt") && !hpCard.includes("<dl") && at(hpCard, "Ages 12–17</li>") < at(hpCard, ">Saturdays 2:00–3:00 pm</span>") && at(hpCard, ">Saturdays 2:00–3:00 pm</span>") < at(hpCard, "Newtonbrook Tennis Club</li>"));
 check("the helpers behind the lines", groupWhoLabel(g("youth-7-10")) === "Ages 7–10" && groupWhoLabel(g("adult-newer")) === "16 and up" && groupWhoLabel(g("private-lessons")) === "Any age" && groupWhenParts(g("youth-7-10")).join("|") === "Saturdays 12:00–1:00 pm");
 check("one level tag: the mark and the name with no chip around them, no span, no band, no rail", hpCard.includes(">High Performance</span>") && hpCard.includes(", tier 5 of 5, levels 5.0–7.0") && /<span class="inline-flex items-center gap-1\.5 text-\[13px\] text-white"><svg/.test(hpCard) && !hpCard.includes("–<") && !hpCard.includes('aria-label="Built for') && !hpCard.includes('role="meter"') && !hpCard.includes("3.0–5.5"));
-check("the price once, stacked: the session price over the cohort total", count(hpCard, SESSION_LINE) === 1 && count(hpCard, COHORT_LINE) === 1 && at(hpCard, `>${SESSION_LINE}</span>`) > 0 && at(hpCard, `>${SESSION_LINE}</span>`) < at(hpCard, `>${COHORT_LINE}</span>`));
-check("the price reads the price constants, and the card types none", PRICE_SUMMARY === `${SESSION_PRICE_LABEL} a session · ${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}` && hpCard.includes(`>${SESSION_PRICE_LABEL} a session</span>`) && hpCard.includes(`>${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}</span>`) && !/\$\d/.test(read("src/components/sections/ProgramGroupCard.tsx")));
-check("the price sits in the foot, after the lines and before the button, on a hairline pinned to the bottom", at(hpCard, "Newtonbrook Tennis Club</li>") < at(hpCard, `>${SESSION_LINE}</span>`) && at(hpCard, `>${COHORT_LINE}</span>`) < at(hpCard, "<a ") && hpCard.includes('<div class="mt-auto flex') && hpCard.includes("border-t border-white/10") && hpCard.includes("flex h-full"));
+// Re-pinned for backlog #70: it was the session price over the cohort total.
+check("the price once, stacked: the cohort total in bold over the cohort length", !!LENGTH_LINE && count(hpCard, TOTAL_LINE) === 1 && count(hpCard, LENGTH_LINE) === 1 && at(hpCard, `>${TOTAL_LINE}</span>`) > 0 && at(hpCard, `>${TOTAL_LINE}</span>`) < at(hpCard, `>${LENGTH_LINE}</span>`) && new RegExp(`<span class="block text-lg font-semibold[^"]*text-white">\\${TOTAL_LINE}</span><span class="block text-\\[13px\\] text-white/60">${LENGTH_LINE}</span>`).test(hpCard));
+check("the price reads the price constants, and the card types none", PRICE_SUMMARY === `${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}` && hpCard.includes(`>${COHORT_TOTAL_LABEL}</span>`) && hpCard.includes(`>for ${COHORT_LENGTH}</span>`) && !/\$\d/.test(read("src/components/sections/ProgramGroupCard.tsx")));
+check("no per-session figure on a group card, in any state", programGroups.filter((group) => group.day !== null).every((group) => { const html = render(createElement(ProgramGroupCard, { group, program: listedPrograms.find((p) => p.slug === group.programSlug)! })); return !/a session|per session/i.test(html) && !html.includes(SESSION_PRICE_LABEL) && count(html, "$") === 1; }));
+check("the price sits in the foot, after the lines and before the button, on a hairline pinned to the bottom", at(hpCard, "Newtonbrook Tennis Club</li>") < at(hpCard, `>${TOTAL_LINE}</span>`) && at(hpCard, `>${LENGTH_LINE}</span>`) < at(hpCard, "<a ") && hpCard.includes('<div class="mt-auto flex') && hpCard.includes("border-t border-white/10") && hpCard.includes("flex h-full"));
 // What left the card (owner-approved design, 2026-11-17): the competitive
 // note, the Join and Week 1 rows and the Next row. The note stays in the data.
 check("no note and no rules on the card", !hpCard.includes("The competitive track") && !hpCard.includes("Week 1") && !hpCard.includes("No assessment needed") && !hpCard.includes("Take the 2-minute quiz"));

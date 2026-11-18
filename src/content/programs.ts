@@ -22,12 +22,9 @@ export const SESSION_PRICE: number = 35;
  * the merge day in the same PR.
  */
 export const COHORT_WEEKS: number = 6;
-/**
- * Length of one weekend class, in minutes. Matches the "60-minute" copy below
- * (test-structured-data pins it to each schedule line); used for structured
- * data durations.
- */
-export const SESSION_MINUTES: number = 60;
+// No setting for how long a class is or how many there are a week (owner,
+// 2026-11-17): the site makes no general claim about either. Each group
+// carries its own day, start and end in the lineup below.
 /**
  * The public "up to N players a group" line (owner, 2026-11-16). It is what
  * the site promises a visitor; each group's own minimum and capacity stay
@@ -62,18 +59,28 @@ export const COHORT_WEEKS_WORD = numberInWords(COHORT_WEEKS);
 export const COHORT_LENGTH = `${COHORT_WEEKS_WORD} week${COHORT_WEEKS === 1 ? "" : "s"}`;
 /** "six-week" (adjective: "six-week cohorts") */
 export const COHORT_LENGTH_ADJ = `${COHORT_WEEKS_WORD}-week`;
-/** "$35" */
+/**
+ * "$35": the per-session figure. Shown nowhere a visitor browses (owner,
+ * 2026-11-17: the whole price only); it stays for the Program Policies and
+ * for the sign-up step of one bootcamp, which is a later item.
+ */
 export const SESSION_PRICE_LABEL = formatDollars(SESSION_PRICE);
 /** "$210" */
 export const COHORT_TOTAL_LABEL = formatDollars(COHORT_TOTAL);
 /** "$105" */
 export const INSTALMENT_LABEL = formatDollars(INSTALMENT_AMOUNT);
 
-const PRICE_LINE =
-  `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. If you took the $20 assessment, that $20 comes off the price.`;
+/**
+ * "$210 for six weeks": the price a visitor reads, the whole price of one
+ * bootcamp (owner, 2026-11-17), on the group cards, the program pages, the
+ * dashboard's program cards and the quiz's match card. Never a per-session
+ * figure. Cards show it stacked (priceParts, src/lib/programCatalog.ts).
+ */
+export const PRICE_SUMMARY = `${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}`;
 
-/** "$35 a session · $210 for six weeks" — the one-line price on program and group cards. */
-export const PRICE_SUMMARY = `${SESSION_PRICE_LABEL} a session · ${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}`;
+/** The program page's price sentence: the whole price, then the $20 mechanic in full (voice.md rule 2). */
+const PRICE_LINE =
+  `${PRICE_SUMMARY}. If you took the $20 assessment, that $20 comes off the price.`;
 
 /** Private lessons carry no public rate (owner, 2026-10-12). */
 export const PRIVATE_LESSONS_PRICE = "Rates on request";
@@ -137,19 +144,21 @@ export const PLACEMENT_LINE =
 // every class. The two bootcamp programs say it in their description, their
 // long description, their search line and their list. The words are typed
 // here, not read from src/content/bootcamp.ts, because that file reads the
-// group size from this one and the two cannot import each other;
+// cohort length from this one and the two cannot import each other;
 // test-joining-flow pins every line below to it, word for word.
 
-/** How a class runs, in one sentence: the bootcamp programs' long descriptions open with it, and About says it. */
+/** How a class runs, in one sentence: the bootcamp programs' long descriptions open with it. */
 export const CLASS_LINE =
   "In every class, players rotate between tennis drills and fitness drills built for tennis, then finish with point play.";
 
 /**
- * What a class includes, on both bootcamp programs' lists: the length, the
- * group size, the two parts and what each trains, and how it ends.
+ * What a bootcamp includes, on both bootcamp programs' lists: one group for
+ * the whole cohort (the home band's third point, word for word), the group
+ * size, the two parts and what each trains, and how a class ends. No class
+ * length and no classes a week (owner, 2026-11-17).
  */
 const CLASS_INCLUDES = [
-  `One ${SESSION_MINUTES}-minute class a week for ${COHORT_LENGTH}`,
+  `One group for all ${COHORT_LENGTH}`,
   `Up to ${GROUP_MAX_PLAYERS} players a group`,
   "Tennis: technique, footwork, tactics and focus",
   "Fitness built for tennis: power, speed, stamina and mobility",
@@ -330,9 +339,13 @@ function startsFor(slug: string): string {
   return `${starts.slice(0, -1).join(", ")} and ${starts[starts.length - 1]}`;
 }
 
-/** "Once a week · 60 minutes · six-week cohorts · Saturdays 12:00, 1:00 and 2:00" */
+/**
+ * "Six-week cohorts · Saturdays 12:00, 1:00 and 2:00": the cohort length,
+ * then the groups' own day and starts. No class length and no classes a week.
+ */
 function scheduleFor(slug: string, day: string): string {
-  return `Once a week · ${SESSION_MINUTES} minutes · ${COHORT_LENGTH_ADJ} cohorts · ${day}s ${startsFor(slug)}`;
+  const cohorts = `${COHORT_LENGTH_ADJ} cohorts`;
+  return `${cohorts.charAt(0).toUpperCase()}${cohorts.slice(1)} · ${day}s ${startsFor(slug)}`;
 }
 
 export const programs: Program[] = [
@@ -344,11 +357,11 @@ export const programs: Program[] = [
     title: "Youth Bootcamps",
     description: "Tennis and fitness in every class: three Saturday groups for ages 7–17.",
     metaDescription:
-      `Saturday group bootcamps in Toronto for ages 7–17: tennis and fitness in every class, three groups by age and level. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
+      `Saturday group bootcamps in Toronto for ages 7–17: tennis and fitness in every class, three groups by age and level. ${PRICE_SUMMARY}.`,
     longDescription:
       `${CLASS_LINE} ` +
-      `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one ${SESSION_MINUTES}-minute class every Saturday. ` +
-      "Three groups run back to back: the Beginner Junior Bootcamp (ages 7–10) at 12:00, the Novice Youth Bootcamp (ages 11–15) at 1:00, and the High Performance Youth Bootcamp at 2:00 for players 12–17 who compete, or are training to. " +
+      `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}. ` +
+      "Three groups run back to back on Saturdays: the Beginner Junior Bootcamp (ages 7–10) at 12:00, the Novice Youth Bootcamp (ages 11–15) at 1:00, and the High Performance Youth Bootcamp at 2:00 for players 12–17 who compete, or are training to. " +
       PLACEMENT_LINE,
     type: "Group bootcamp",
     comingSoon: false,
@@ -385,11 +398,11 @@ export const programs: Program[] = [
     title: "Adult Bootcamps",
     description: "Tennis and fitness in every class: three Sunday levels for adults and players 16 and up.",
     metaDescription:
-      `Sunday group bootcamps for adults in Toronto, 16 and up: tennis and fitness in every class, three levels back to back. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`,
+      `Sunday group bootcamps for adults in Toronto, 16 and up: tennis and fitness in every class, three levels back to back. ${PRICE_SUMMARY}.`,
     longDescription:
       `${CLASS_LINE} ` +
-      `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}, one ${SESSION_MINUTES}-minute class every Sunday. ` +
-      "Three levels run back to back: Beginner at 4:00, Intermediate at 5:00, Advanced at 6:00. Players 16 and up are welcome. " +
+      `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}. ` +
+      "Three levels run back to back on Sundays: Beginner at 4:00, Intermediate at 5:00, Advanced at 6:00. Players 16 and up are welcome. " +
       PLACEMENT_LINE,
     type: "Group bootcamp",
     comingSoon: false,

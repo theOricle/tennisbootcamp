@@ -10,7 +10,7 @@ import type { TrainingLocation } from "@/types/location";
 import { site } from "@/content/site";
 import { coaches } from "@/content/coaches";
 import { locations } from "@/content/locations";
-import { COHORT_WEEKS, SESSION_MINUTES, SESSION_PRICE } from "@/content/programs";
+import { COHORT_TOTAL } from "@/content/programs";
 import { locationsForProgram } from "@/lib/locationCatalog";
 import { SITE_URL } from "@/lib/siteUrl";
 
@@ -64,20 +64,18 @@ export function organizationJsonLd(): JsonLdObject {
   };
 }
 
-/** Minutes as an ISO 8601 duration: 60 is "PT1H", 360 is "PT6H", 90 is "PT90M". */
-export function isoDuration(minutes: number): string {
-  return minutes % 60 === 0 ? `PT${minutes / 60}H` : `PT${minutes}M`;
-}
-
 /**
  * Course for one /programs/[slug] page, or null when the program has no
- * stated session price (coming soon, or no weekend timetable): Course markup
- * needs an Offer, and we don't invent one.
+ * stated price (coming soon, or no weekend timetable): Course markup needs
+ * an Offer, and we don't invent one.
  *
- * The Offer is the price per session, CAD, for a COHORT_WEEKS-session cohort.
- * The CourseInstance runs weekly, COHORT_WEEKS times, SESSION_MINUTES each, at
- * the club its groups train at (a Place, no street address). A program at
- * several clubs gets one CourseInstance per club.
+ * The Offer is the whole price of one cohort, CAD (owner, 2026-11-17: the
+ * whole price only, never a per-session figure). The CourseInstance is held
+ * at the club its groups train at (a Place, no street address). It carries
+ * no schedule: no repeat frequency, no class length and no workload, since
+ * the site makes no general claim about how long a class is or how many
+ * there are a week (owner, 2026-11-17). A program at several clubs gets one
+ * CourseInstance per club.
  */
 export function courseJsonLd(program: Program): JsonLdObject | null {
   if (program.comingSoon || !program.timetable?.length) return null;
@@ -87,13 +85,6 @@ export function courseJsonLd(program: Program): JsonLdObject | null {
     "@type": "CourseInstance",
     courseMode: "onsite",
     ...(program.schedule ? { description: program.schedule } : {}),
-    courseWorkload: isoDuration(SESSION_MINUTES * COHORT_WEEKS),
-    courseSchedule: {
-      "@type": "Schedule",
-      duration: isoDuration(SESSION_MINUTES),
-      repeatFrequency: "Weekly",
-      repeatCount: COHORT_WEEKS,
-    },
     ...(leadCoach ? { instructor: coachPerson() } : {}),
   };
   const places = locationsForProgram(program.slug);
@@ -117,15 +108,8 @@ export function courseJsonLd(program: Program): JsonLdObject | null {
     offers: {
       "@type": "Offer",
       category: "Paid",
-      price: SESSION_PRICE,
+      price: COHORT_TOTAL,
       priceCurrency: "CAD",
-      priceSpecification: {
-        "@type": "UnitPriceSpecification",
-        price: SESSION_PRICE,
-        priceCurrency: "CAD",
-        referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitText: "session" },
-      },
-      eligibleQuantity: { "@type": "QuantitativeValue", value: COHORT_WEEKS, unitText: "sessions" },
       ...(program.priceLine ? { description: program.priceLine } : {}),
       url,
     },

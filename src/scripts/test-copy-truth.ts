@@ -9,17 +9,26 @@
 //
 // Since the simpler site (backlog #69, owner 2026-11-16) the page
 // descriptions say what we run: group bootcamps in Toronto, tennis and
-// fitness in every class, at the price from the constants; and the old way
-// of saying it ("weekend group class", "six per court") is on the retired
-// list below.
+// fitness in every class; and the old way of saying it ("weekend group
+// class", "six per court") is on the retired list below.
+//
+// Since backlog #70 (owner, 2026-11-17): the site description and the
+// Programs description carry no price (the home page has none), a program
+// page's line carries the whole price and never a per-session figure, and no
+// file a visitor's pages are built from states a per-session price or a
+// general class length ("60-minute", "Once a week"). The enroll flow, the
+// admin and the legal pages are outside that rule and outside the scan.
 //
 // This file is skipped by its own scan, so it may spell the retired strings.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import {
+  COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
+  COHORT_TOTAL_LABEL,
   GROUP_MAX_PLAYERS,
+  PRICE_SUMMARY,
   SESSION_PRICE_LABEL,
   listedPrograms,
   numberInWords,
@@ -71,7 +80,10 @@ console.log("Site description (M1, M10; backlog #69)");
 check("site description is 155 characters at most", SITE_DESCRIPTION.length <= 155, String(SITE_DESCRIPTION.length));
 check("site description names group bootcamps, in Toronto", SITE_DESCRIPTION.startsWith("Group bootcamps in Toronto"), SITE_DESCRIPTION);
 check("site description says what a class is: tennis and fitness in every class", CLASS_IDEA === "tennis and fitness in every class" && SITE_DESCRIPTION.includes(CLASS_IDEA), SITE_DESCRIPTION);
-check("site description states the price and the cohort length from the constants", SITE_DESCRIPTION.includes(`${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts`), SITE_DESCRIPTION);
+// Re-pinned for backlog #70 (owner, 2026-11-17: no price on the home page). It read "… a session in …-week cohorts."
+check("site description carries no price: no dollar sign, no per-session figure, no total", !SITE_DESCRIPTION.includes("$") && !/session|price|rates/i.test(SITE_DESCRIPTION) && !SITE_DESCRIPTION.includes(SESSION_PRICE_LABEL) && !SITE_DESCRIPTION.includes(COHORT_TOTAL_LABEL), SITE_DESCRIPTION);
+check("site description states the cohort length from the constant", SITE_DESCRIPTION.endsWith(`${CLASS_IDEA}, in ${COHORT_LENGTH_ADJ} cohorts.`), SITE_DESCRIPTION);
+check("site description states no class length and no classes a week", !/minute|hour|a week|weekly/i.test(SITE_DESCRIPTION), SITE_DESCRIPTION);
 check("site description ends on a full sentence", /[.]$/.test(SITE_DESCRIPTION), SITE_DESCRIPTION);
 check("site description no longer makes the quiz or the assessment the way in", !/quiz|assessment/i.test(SITE_DESCRIPTION), SITE_DESCRIPTION);
 check("root layout uses it", read("src/app/layout.tsx").includes("description: SITE_DESCRIPTION"));
@@ -94,14 +106,22 @@ for (const [path, d] of DESCRIPTIONS) {
   check(`${path}: ends on a full sentence`, /[.]$/.test(d), d);
   check(`${path}: no banned claim and no separate fitness session`, !/experience|actually|journey|unlock|limited spots|circuit|strength-and-conditioning|fitness session/i.test(d), d);
 }
-check("/programs: the price from the constants, then private lessons", PROGRAMS_DESCRIPTION.includes(`${SESSION_PRICE_LABEL} a session`) && PROGRAMS_DESCRIPTION.endsWith("Private lessons by arrangement."), PROGRAMS_DESCRIPTION);
+// Re-pinned for backlog #70: it carried "… a session" between the days and private lessons.
+check("/programs: the two days, no price, then private lessons", PROGRAMS_DESCRIPTION.includes("youth on Saturdays, adults on Sundays. ") && !PROGRAMS_DESCRIPTION.includes("$") && !/session|price/i.test(PROGRAMS_DESCRIPTION) && PROGRAMS_DESCRIPTION.endsWith("Private lessons by arrangement."), PROGRAMS_DESCRIPTION);
+check("/about: no price", !ABOUT_DESCRIPTION.includes("$") && !/session|price/i.test(ABOUT_DESCRIPTION), ABOUT_DESCRIPTION);
 check("/about: the cohort length and the group size from the constants, in words", ABOUT_DESCRIPTION.includes(`${COHORT_LENGTH_ADJ} cohorts of up to ${numberInWords(GROUP_MAX_PLAYERS)} players`), ABOUT_DESCRIPTION);
 const typedDescriptions = siteSrc.slice(siteSrc.indexOf("export const SITE_DESCRIPTION"), siteSrc.indexOf("export const site:"));
-check("the three descriptions type no price, length or group size", typedDescriptions.length > 200 && !/\$\d|\b(six|eight|[68])\b/i.test(typedDescriptions), typedDescriptions.match(/\$\d|\b(six|eight|[68])\b/i)?.[0]);
+check("the three descriptions type no price, length or group size, and read no price constant", typedDescriptions.length > 200 && !/\$\d|\b(six|eight|[68])\b/i.test(typedDescriptions) && !/SESSION_PRICE|COHORT_TOTAL|PRICE_SUMMARY/.test(siteSrc), typedDescriptions.match(/\$\d|\b(six|eight|[68])\b/i)?.[0]);
 check("/programs uses its description", read("src/app/programs/page.tsx").includes("description: PROGRAMS_DESCRIPTION"));
 check("/about uses its description", read("src/app/about/page.tsx").includes("description: ABOUT_DESCRIPTION"));
 for (const p of bootcampPrograms) {
-  check(`${p.id}: the search line ends on the price and the cohort length from the constants`, (p.metaDescription ?? "").endsWith(`${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`), p.metaDescription);
+  // Re-pinned for backlog #70: the line ended "… a session in …-week cohorts."; it ends on the whole price now.
+  check(`${p.id}: the search line ends on the whole price, the cohort total for the cohort length, from the constants`, (p.metaDescription ?? "").endsWith(` ${PRICE_SUMMARY}.`) && PRICE_SUMMARY === `${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}`, p.metaDescription);
+  check(`${p.id}: the search line carries no per-session figure, no class length and no classes a week`, !/session|minute|hour|a week|weekly/i.test(p.metaDescription ?? "") && !(p.metaDescription ?? "").includes(SESSION_PRICE_LABEL), p.metaDescription);
+}
+{
+  const privateLine = listedPrograms.find((p) => p.slug === "private-lessons")?.metaDescription ?? "";
+  check("private lessons: the search line still reads Rates on request, and no number", privateLine.includes("Rates on request") && !privateLine.includes("$"), privateLine);
 }
 // The share card: a page with no subtitle of its own reads the hero's tag.
 const ogSrc = read("src/lib/og-image.tsx");
@@ -200,6 +220,96 @@ for (const file of files) {
     });
 }
 check("no retired string under src", hits.length === 0, `found:\n      ${hits.join("\n      ")}`);
+
+// ── Backlog #70 (owner, 2026-11-17): the whole price only, and no general ───
+// class length. Wherever a visitor browses, a price is what a bootcamp costs
+// as a whole; the per-session figure is shown nowhere (it returns on the
+// sign-up step of one bootcamp, a later item). And no page states how long a
+// class is or how many there are a week: each group has its own day and time.
+//
+// The scan reads every file a visitor's pages are built from: src/app,
+// src/components, src/content and src/lib (what they render: code and
+// strings, with comments blanked). Outside it by owner rule: the enroll
+// flow, the admin and the legal pages (src/app/enroll, src/app/admin,
+// src/app/legal); src/app/api, which renders no page; and, in src/lib, the
+// emails (src/lib/email*) and the files only the admin reads.
+console.log("No per-session price and no general class length where a visitor browses");
+{
+  const SCANNED = ["app", "components", "content", "lib"].map((dir) => join(ROOT, "src", dir));
+  const OUTSIDE = ["enroll", "admin", "legal", "api"].map((dir) => join(ROOT, "src", "app", dir) + sep);
+  // Backlog #70, fix round: src/lib is scanned too, since the pages render
+  // strings built there (the program catalog, the group seats, the main
+  // action, the share cards, the structured data). Left out by name: the
+  // emails (src/lib/email*: they are not a page, and the enroll step's
+  // messages may carry the per-session terms), and the three files only the
+  // admin reads (adminAuth, adminLabels, availabilityMatrix).
+  const LIB_OUTSIDE = new Set(["email.ts", "emailBodies.ts", "emailResult.ts", "adminAuth.ts", "adminLabels.ts", "availabilityMatrix.ts"].map((name) => join(ROOT, "src", "lib", name)));
+  const SETTINGS = join(ROOT, "src", "content", "programs.ts");
+  const browsed: string[] = [];
+  for (const dir of SCANNED) walk(dir, browsed);
+  const inScope = browsed.filter((file) => !OUTSIDE.some((prefix) => file.startsWith(prefix)) && !LIB_OUTSIDE.has(file));
+  check("the scan covers the pages, the components, the content and src/lib", inScope.length > 80 && inScope.some((f) => f.endsWith(join("app", "page.tsx"))) && inScope.some((f) => f.endsWith("ProgramGroupCard.tsx")) && inScope.includes(SETTINGS) && inScope.includes(join(ROOT, "src", "lib", "programCatalog.ts")) && inScope.includes(join(ROOT, "src", "lib", "structuredData.ts")), `${inScope.length} files`);
+  check("…and leaves out the enroll flow, the admin and the legal pages", !inScope.some((f) => OUTSIDE.some((prefix) => f.startsWith(prefix))) && browsed.some((f) => f.startsWith(OUTSIDE[0])) && browsed.some((f) => f.startsWith(OUTSIDE[2])));
+  check("…and, in src/lib, only the emails and the admin-only files, each by name", [...LIB_OUTSIDE].every((file) => browsed.includes(file)) && inScope.filter((f) => f.startsWith(join(ROOT, "src", "lib") + sep)).length > 40 && !inScope.some((f) => /[\\/]lib[\\/]email/.test(f)));
+
+  // "a session" as a price: an amount, or a price constant, in front of it;
+  // "per session" and "each session" as a price; or the per-session constant
+  // read at all.
+  const SESSION_PRICE_WORDS = /(\$\d[\d.,]*|_LABEL\}|\bprice\b[^.\n]{0,20})\s*(a|per|each|\/)\s*session\b|\bper[- ]session\b|\bSESSION_PRICE(_LABEL)?\b/i;
+  // A general class length or a number of classes a week. A group's own time
+  // range ("12:00–1:00 pm") and the 20-minute assessment are neither.
+  const CLASS_LENGTH_WORDS = /\b\d+[- ]minute (class|session|lesson)|\bSESSION_MINUTES\b|\bonce a week\b|\btwice a week\b|\b(class|classes|session|sessions|lesson|lessons) (a|per|each|every) week\b|\bminutes · /i;
+  check(
+    "the scan catches what left the pages, and lets what stays through",
+    ["$35 a session", "${SESSION_PRICE_LABEL} a session", "$35 per session", "the per-session figure", "SESSION_PRICE_LABEL"].every((old) => SESSION_PRICE_WORDS.test(old)) &&
+      ["one 60-minute class a week", "Once a week · 60 minutes", "One ${SESSION_MINUTES}-minute class a week", "one 60-minute class every Saturday", "two classes a week"].every((old) => CLASS_LENGTH_WORDS.test(old)) &&
+      ["Corrections from the coach every session", "feedback from your coach every session", "Saturdays 12:00–1:00 pm", "20 minutes on court for $20", "The 2-minute quiz", "confirmed on court in week one", "a session cookie"].every((kept) => !SESSION_PRICE_WORDS.test(kept) && !CLASS_LENGTH_WORDS.test(kept))
+  );
+
+  // What a file renders is its code and its strings: comments are blanked,
+  // line for line, so a comment may name what left and a hit keeps its line.
+  const withoutComments = (text: string) =>
+    text
+      .replace(/\{?\/\*[\s\S]*?\*\/\}?/g, (comment) => comment.replace(/[^\n]/g, ""))
+      .replace(/(^|\s)\/\/[^\n]*/g, "$1");
+  check("comments are blanked and code is kept, on the same lines", withoutComments("a /* $35 a session */ b\n// once a week\nc // x\nd").split("\n").join("|") === "a  b||c |d" && withoutComments('"https://example.com/a" b').includes("https://example.com/a"));
+  // The retired Group Lessons entry keeps its old words, so the cohort and
+  // enrollment rows built under it still resolve; it is unlisted and no page
+  // renders it. Its one line is the scan's one exception.
+  const RETIRED_ENTRY_LINE = "Each 90-minute session is capped at 6 players per court";
+  const retired = programs.find((p) => p.id === "group-lessons");
+  check("the one exception is the retired, unlisted Group Lessons entry", retired?.unlisted === true && retired.longDescription.startsWith(RETIRED_ENTRY_LINE) && !listedPrograms.some((p) => p.id === "group-lessons"));
+
+  const priceHits: string[] = [];
+  const lengthHits: string[] = [];
+  for (const file of inScope) {
+    const where = relative(ROOT, file).split(sep).join("/");
+    withoutComments(readFileSync(file, "utf8").replace(/\r\n/g, "\n"))
+      .split("\n")
+      .forEach((line, i) => {
+        // The settings file defines the per-session amount, the one source
+        // of every total: the constant itself stays.
+        const definition = file === SETTINGS && /^export const SESSION_PRICE(_LABEL)?\b|^export const COHORT_TOTAL = SESSION_PRICE \* COHORT_WEEKS;/.test(line);
+        if (SESSION_PRICE_WORDS.test(line) && !definition) priceHits.push(`${where}:${i + 1} ${line.trim().slice(0, 80)}`);
+        if (CLASS_LENGTH_WORDS.test(line) && !(file === SETTINGS && line.includes(RETIRED_ENTRY_LINE))) lengthHits.push(`${where}:${i + 1} ${line.trim().slice(0, 80)}`);
+      });
+  }
+  check("no file a visitor's pages are built from states a per-session price", priceHits.length === 0, `found:\n      ${priceHits.join("\n      ")}`);
+  check("no file a visitor's pages are built from states a general class length or classes a week", lengthHits.length === 0, `found:\n      ${lengthHits.join("\n      ")}`);
+
+  // The settings file keeps the amount, as the one source of every total.
+  const settings = readFileSync(SETTINGS, "utf8").split(/\r?\n/);
+  const labelLines = settings.filter((line) => line.includes("SESSION_PRICE_LABEL"));
+  check("the per-session label is defined in the settings and read by nothing else there", labelLines.length === 1 && labelLines[0].startsWith("export const SESSION_PRICE_LABEL = formatDollars(SESSION_PRICE);"), labelLines.join(" | "));
+  check("the price a visitor reads is the cohort total for the cohort length, with no per-session part", PRICE_SUMMARY === `${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}` && !PRICE_SUMMARY.includes(SESSION_PRICE_LABEL) && !/session/i.test(PRICE_SUMMARY), PRICE_SUMMARY);
+  check("no setting for a class length is left to state", !settings.some((line) => /export const \w*MINUTES\b/.test(line)));
+
+  // The share cards and the structured data state no per-session price either.
+  const og = [read("src/lib/og-image.tsx"), read("src/app/opengraph-image.tsx"), read("src/app/programs/opengraph-image.tsx"), read("src/app/programs/[slug]/opengraph-image.tsx"), read("src/app/about/opengraph-image.tsx")].join("\n");
+  check("the share cards carry no price at all", !/SESSION_PRICE|COHORT_TOTAL|PRICE_SUMMARY|\$\d/.test(og));
+  const ld = read("src/lib/structuredData.ts");
+  check("the structured data reads the cohort total and never the per-session amount, a class length or a workload", ld.includes("price: COHORT_TOTAL,") && !/SESSION_PRICE|SESSION_MINUTES|courseWorkload|isoDuration|duration:|UnitPriceSpecification|unitText/.test(ld));
+}
 
 if (failed > 0) {
   console.log(`\n${failed} check(s) failed.`);

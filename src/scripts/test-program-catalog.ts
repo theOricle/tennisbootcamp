@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  COHORT_LENGTH,
   COHORT_TOTAL_LABEL,
   PRICE_SUMMARY,
   PRIVATE_LESSONS_PRICE,
@@ -43,6 +44,7 @@ import {
   groupLevelRange,
   groupStatus,
   nextCohortForGroup,
+  priceParts,
   programAgeLabel,
   programEyebrow,
   programFitsAge,
@@ -138,7 +140,16 @@ check("Private Lessons: no timetable, by arrangement, rates on request", !privat
 check("Private Lessons: any age, all levels", programAgeLabel(groupsForProgram("private-lessons")) === "Any age" && formatTierSpan(privateLessons.levelMin, privateLessons.levelMax) === "All levels");
 check("High Performance and Kids' Summer Camp are off the listing", !listedPrograms.some((p) => p.id === "high-performance" || p.id === "kids-summer-camp"));
 check("High Performance stays resolvable by id for old rows", byId["high-performance"]?.unlisted === true && byId["high-performance"].title === "High Performance");
-check("PRICE_SUMMARY is one line from the constants", /^\$\d+ a session · \$\d+ for \w+ weeks?$/.test(PRICE_SUMMARY), PRICE_SUMMARY);
+// Re-pinned for backlog #70 (owner, 2026-11-17: the whole price only). It read "(the session price) a session · (the total) for (the length)".
+check("PRICE_SUMMARY is one line from the constants: the cohort total for the cohort length, the whole price", PRICE_SUMMARY === `${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}` && /^\$\d+ for \w+ weeks?$/.test(PRICE_SUMMARY), PRICE_SUMMARY);
+check("…with no per-session figure in it", !/session/i.test(PRICE_SUMMARY) && !PRICE_SUMMARY.includes(SESSION_PRICE_LABEL) && !PRICE_SUMMARY.includes("·"), PRICE_SUMMARY);
+check("a price splits into the amount and what it buys; a price with no amount stays whole", priceParts(PRICE_SUMMARY).join("|") === `${COHORT_TOTAL_LABEL}|for ${COHORT_LENGTH}` && priceParts(PRIVATE_LESSONS_PRICE).join("|") === PRIVATE_LESSONS_PRICE && priceParts("$52.50 for one week").join("|") === "$52.50|for one week" && priceParts("From $40").length === 1);
+for (const p of listedPrograms) {
+  check(`${p.id}: the price sentence on its page carries no per-session figure`, !/a session|per session/i.test(p.priceLine ?? "") && !(p.priceLine ?? "").includes(SESSION_PRICE_LABEL), p.priceLine);
+}
+for (const p of listedPrograms.filter((program) => program.timetable?.length)) {
+  check(`${p.id}: the price sentence is the whole price, then the $20 mechanic in full`, p.priceLine === `${PRICE_SUMMARY}. If you took the $20 assessment, that $20 comes off the price.`, p.priceLine);
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 console.log("Helpers");
@@ -273,9 +284,11 @@ check("a real spec list with Ages, When and Price", card.includes("<dl") && /<dt
 check("Ages reads the groups' range", /<dt[^>]*>Ages<\/dt><dd[^>]*>7–17<\/dd>/.test(card));
 check("When lists one line per group with its start and name", groupsForProgram("youth-programs").every((g) => card.includes(formatGroupStart(g)) && card.includes(`>${g.name}<`)));
 check("no Next row without a cohort", !/<dt[^>]*>Next<\/dt>/.test(card));
-const [priceLead, ...priceRest] = PRICE_SUMMARY.split(" · ");
+// Re-pinned for backlog #70: the dashboard's card stacked the session price over the total; it stacks the total over the cohort length now.
+const [priceLead, priceRest] = priceParts(PRICE_SUMMARY);
 const priceDd = card.match(/<dt[^>]*>Price<\/dt><dd[^>]*>([\s\S]*?)<\/dd>/)?.[1] ?? "";
-check("the price is stacked: lead in white, total in white/60, no middot", priceDd.includes(`font-semibold text-white">${priceLead}<`) && priceRest.every((part) => priceDd.includes(`text-white/60">${part}<`)) && !priceDd.includes("·"), priceDd);
+check("the price is stacked: the cohort total in white, the cohort length in white/60, no middot", priceLead === COHORT_TOTAL_LABEL && priceRest === `for ${COHORT_LENGTH}` && priceDd.includes(`font-semibold text-white">${priceLead}<`) && priceDd.includes(`text-white/60">${priceRest}<`) && !priceDd.includes("·"), priceDd);
+check("the dashboard's card shows the whole price and no per-session figure", !/a session|per session/i.test(card) && !card.includes(SESSION_PRICE_LABEL));
 check("the Levels block shows one tag per group level, in ladder order: Beginner, Novice, High Performance", JSON.stringify(programLevelTags(groupsForProgram("youth-programs"))) === "[1,2,5]" && at(card, ">Beginner</span>") < at(card, ">Novice</span>") && at(card, ">Novice</span>") < at(card, ">High Performance</span>") && card.includes(">Levels</p>"));
 check("no span text, no band, no rail on the card", !card.includes(formatTierSpan(youth.levelMin, youth.levelMax) + "<") && !card.includes("1.0–7.0") && !card.includes('aria-label="Built for') && !card.includes('role="meter"'));
 check("the level note is under the tags", card.includes(youth.levelNote!) && at(card, youth.levelNote!) > at(card, ">High Performance</span>"));
@@ -321,9 +334,12 @@ const compactPrivate = render(createElement(ProgramCard, { program: privateLesso
 check("one link, the title, stretched over the card, to the program's page", count(compact, "<a ") === 1 && /<h3[^>]*><a [^>]*href="\/programs\/youth-programs"[^>]*>Youth Bootcamps<\/a><\/h3>/.test(compact) && compact.includes("after:absolute after:inset-0"));
 check("the photo with its real alt text", compact.includes("<img") && compact.includes(`alt="${youth.photo!.alt}"`));
 check("one line of who and when, derived from the groups", compact.includes(">Ages 7–17 · Saturdays</p>") && programWhoWhenLine(groupsForProgram("youth-programs")) === "Ages 7–17 · Saturdays" && programWhoWhenLine(groupsForProgram("bootcamps")) === "16 and up · Sundays" && programWhoWhenLine(groupsForProgram("private-lessons")) === "Any age · By arrangement");
-check("the session price, read from the price constants; the card types none", compact.includes(`>${SESSION_PRICE_LABEL} a session</p>`) && PRICE_SUMMARY.startsWith(`${SESSION_PRICE_LABEL} a session · `) && !compact.includes(COHORT_TOTAL_LABEL) && !/\$\d/.test(read("src/components/sections/ProgramCard.tsx")));
+// Re-pinned for backlog #70 (owner, 2026-11-17: no price on the home page). The card showed the session price under who and when.
+check("no price on the home card: no dollar sign, no per-session figure, no total; and the card file types none", !compact.includes("$") && !/a session|per session/i.test(compact) && !compact.includes(SESSION_PRICE_LABEL) && !compact.includes(COHORT_TOTAL_LABEL) && !/\$\d/.test(read("src/components/sections/ProgramCard.tsx")));
+check("the home card: the title, then who and when, then the link line, and nothing between", /<\/h3><p class="[^"]*">Ages 7–17 · Saturdays<\/p><span aria-hidden="true"[^>]*>See groups/.test(compact));
 check("See groups for a program with groups", compact.includes(">See groups") && !compact.includes("View Program"));
-check("private lessons: any age, by arrangement, rates on request, See details", compactPrivate.includes(">Any age · By arrangement</p>") && compactPrivate.includes(`>${PRIVATE_LESSONS_PRICE}</p>`) && compactPrivate.includes(">See details") && /<a [^>]*href="\/programs\/private-lessons"/.test(compactPrivate));
+// Re-pinned for backlog #70: "Rates on request" left the home card with the other prices; it stays on /programs and on the program's page.
+check("private lessons: any age, by arrangement, See details, and no price line (Rates on request is on its page)", compactPrivate.includes(">Any age · By arrangement</p>") && !compactPrivate.includes(PRIVATE_LESSONS_PRICE) && compactPrivate.includes(">See details") && /<a [^>]*href="\/programs\/private-lessons"/.test(compactPrivate));
 check("no description, no labelled rows, no levels block, no chip", !compact.includes(youth.description) && !compact.includes("<dl") && !compact.includes(">Levels</p>") && !compact.includes("Groups forming") && !compact.includes("uppercase"));
 check("the photo sits left on phones and on top from md", compact.includes("grid-cols-[116px_minmax(0,1fr)]") && compact.includes("md:flex md:flex-col") && compact.includes("md:aspect-[16/10]"));
 check("headingLevel still sets the title's rank", render(createElement(ProgramCard, { program: youth, variant: "compact", headingLevel: 2 })).includes("<h2") && !compact.includes("<h2"));

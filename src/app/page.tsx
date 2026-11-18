@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { JsonLd } from "@/components/JsonLd";
 import { organizationJsonLd } from "@/lib/structuredData";
 import { Hero } from "@/components/sections/Hero";
-import { BootcampClass } from "@/components/sections/BootcampClass";
+import { BootcampPoints } from "@/components/sections/BootcampPoints";
 import { ProgramsGrid } from "@/components/sections/ProgramsGrid";
 import { HowJoiningWorks } from "@/components/sections/HowJoiningWorks";
 import { WhereAndWho } from "@/components/sections/WhereAndWho";
@@ -36,17 +36,21 @@ export default function HomePage() {
       <JsonLd data={organizationJsonLd()} />
       <Hero />
 
-      {/* What every class is, straight under the hero (owner, 2026-11-17):
-          tennis and fitness, how a class runs, how many players a group
-          takes. A full-bleed band; it carries its own Container. */}
-      <BootcampClass />
+      {/* What a bootcamp is, in three points, straight under the hero
+          (owner, 2026-11-17): tennis and fitness in every class, point play
+          to finish, one group for the whole cohort. A thin full-bleed band;
+          it carries its own Container. The Tennis and Fitness graphic that
+          stood here is on About. */}
+      <BootcampPoints />
 
       {/* One Container, one rhythm (audit H2). The three programs as compact
           photo cards with the five levels as a strip under them (owner,
           2026-10-13: "people want to see the programs first"); how joining
           works, three steps; where we train and who coaches, two plain
           columns; then the closing, on the main action (audit M13). The
-          newsletter is the line at the top of the footer, on every page. */}
+          newsletter is the line at the top of the footer, on every page.
+          No price anywhere on this page (owner, 2026-11-17): a bootcamp's
+          price is on its group card and its program page. */}
       <Container className="space-y-10 pb-24 pt-10 md:space-y-[72px] md:pb-20 md:pt-14">
         <ProgramsGrid programs={listedPrograms} />
         <HowJoiningWorks />
