@@ -320,7 +320,7 @@ check("Add another player opens on a child's block", intakePage.includes('guests
 
 console.log("Every quiz prompt becomes the taker's next step");
 // Since the simpler site (backlog #69, owner 2026-11-16) the lime button is
-// "Join a group" for everyone, and the quiz is a side line. The side line is
+// the main button ("Join a bootcamp") for everyone, and the quiz is a side line. The side line is
 // the quiz prompt now: it keeps the taker's behaviour (their answers are in,
 // and the link is their next step), and nothing else on the chrome asks.
 const navbar = read("src/components/layout/Navbar.tsx");
@@ -338,7 +338,7 @@ check("the lead-ins", QUIZ_SIDE_LEAD === "Not sure which group?" && QUIZ_TAKEN_L
   const forProgram = render(createElement(QuizSideLine, { source: "test", quizHref: "/intake?program=bootcamps" }));
   check("on a program page the side line carries the program", forProgram.includes('href="/intake?program=bootcamps"'));
   const action = render(createElement(MainAction, { source: "test" }));
-  check("the main action's server render: Join a group to /programs, then the side line", new RegExp(`<a [^>]*href="/programs"[^>]*>${JOIN_CTA_LABEL}</a>`).test(action) && action.indexOf(JOIN_CTA_LABEL) < action.indexOf("Not sure which group?") && action.includes(QUIZ_CTA_LABEL));
+  check("the main action's server render: the main button to /programs, then the side line", new RegExp(`<a [^>]*href="/programs"[^>]*>${JOIN_CTA_LABEL}</a>`).test(action) && action.indexOf(JOIN_CTA_LABEL) < action.indexOf("Not sure which group?") && action.includes(QUIZ_CTA_LABEL));
   check("the main button is the same for everyone: it is no quiz prompt, so nothing swaps it", !/<TrackedButton[^>]*>\s*\{JOIN_CTA_LABEL\}/.test(mainAction) && /<Button variant="primary" href=\{href\}[^>]*data-main-cta>\s*\{JOIN_CTA_LABEL\}/.test(mainAction));
   const steps = render(createElement(HowJoiningWorks));
   check("how joining works carries no quiz prompt", !steps.includes("quiz") && !steps.includes("<a "));

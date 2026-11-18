@@ -10,7 +10,7 @@ import {
   QUIZ_TAKEN_LEAD,
 } from "@/lib/mainAction";
 
-// The main action (owner, 2026-11-16): the lime "Join a group" button, then
+// The main action (owner, 2026-11-16): the lime "Join a bootcamp" button, then
 // the quiz as a side line, "Not sure which group? Take the 2-minute quiz".
 // One component, so the hero, the closing, the 404 and the pages that end on
 // it always say the same two things in the same order.

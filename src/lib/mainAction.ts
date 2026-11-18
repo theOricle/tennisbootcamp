@@ -4,8 +4,13 @@
 // src/components/layout/MobileJoinBar.tsx; the rules are pinned by
 // src/scripts/test-layout-shell.ts.
 
-/** The main button: the lime one on every public page. Groups are open to join. */
-export const JOIN_CTA_LABEL = "Join a group";
+/**
+ * The main button: the lime one on every public page. Groups are open to
+ * join, and every group is a bootcamp (owner, 2026-11-17: "Join a bootcamp").
+ * The header, the phone menu, the phone bar, the hero, every closing, the
+ * program-page panel and the 404 read this one label.
+ */
+export const JOIN_CTA_LABEL = "Join a bootcamp";
 
 /** Where the main button goes: the groups, on the programs page. */
 export const JOIN_CTA_HREF = "/programs";
@@ -34,7 +39,7 @@ export const MAIN_CTA_ATTR = "data-main-cta";
 /**
  * The areas that are not public: the dashboard, the profile, enrolling and
  * the admin. A visitor there is past choosing a group (on the enroll page
- * the page's own lime button is the next step, and "Join a group" beside it
+ * the page's own lime button is the next step, and the main button beside it
  * would lead away from paying), so the main button shows nowhere on them:
  * not in the header, not in the phone menu, not in the bar. A display rule
  * on the path only; who may open these pages is decided elsewhere.

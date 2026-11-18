@@ -1,10 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  COHORT_LENGTH,
-  COHORT_TOTAL_LABEL,
-  RIGHT_GROUP_PROMISE,
-  SESSION_PRICE_LABEL,
-} from "@/content/programs";
+import { RIGHT_GROUP_PROMISE } from "@/content/programs";
 import { Heading } from "@/components/ui/Heading";
 import { PayCardIcon, PickGroupIcon, PointPlayIcon } from "@/components/ui/icons";
 
@@ -12,9 +7,10 @@ import { PayCardIcon, PickGroupIcon, PointPlayIcon } from "@/components/ui/icons
 // pay", owner-approved design 2026-11-17): three steps on the home page.
 // Pick a group by age and level, pay for the cohort, and start on court,
 // where the coach confirms the level in week one and moves the player, or
-// refunds them in full when no group fits. The price comes from the
-// constants in src/content/programs.ts, and the promise is the one constant
-// every surface shares (one promise, one wording).
+// refunds them in full when no group fits. No amount in the steps (owner,
+// 2026-11-17: no price on the home page; a bootcamp's price is on its group
+// card), and the promise is the one constant every surface shares (one
+// promise, one wording).
 //
 // A real sequence, so it is drawn as one: an ordered list (role="list" keeps
 // its semantics where the list style is removed), each step an icon in a
@@ -37,9 +33,9 @@ export const JOINING_STEPS: readonly Step[] = [
   },
   {
     title: "Pay online",
-    // E-transfer only: card payment is not live. The design's "Card or
-    // e-transfer." returns when it is, with join-and-pay.
-    body: `${SESSION_PRICE_LABEL} a session, ${COHORT_TOTAL_LABEL} for the ${COHORT_LENGTH}. By e-transfer.`,
+    // How it is paid, and no amount. E-transfer only: card payment is not
+    // live. "Card or e-transfer." returns when it is, with join-and-pay.
+    body: "By e-transfer.",
     icon: <PayCardIcon className={STEP_GLYPH} />,
   },
   {

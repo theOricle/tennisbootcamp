@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { COHORT_LENGTH, SESSION_MINUTES, listedPrograms, programGroups } from "@/content/programs";
+import { COHORT_LENGTH_ADJ, listedPrograms, programGroups } from "@/content/programs";
 import { PROGRAMS_DESCRIPTION } from "@/content/site";
 import type { Cohort } from "@/types/cohort";
 import { getPublicCohorts } from "@/lib/cohortsDb";
@@ -23,9 +23,6 @@ export const metadata: Metadata = {
   description: PROGRAMS_DESCRIPTION,
   alternates: { canonical: "/programs" },
 };
-
-/** The cohort length in words, capitalised to open a sentence. */
-const COHORT_LENGTH_SENTENCE = COHORT_LENGTH.charAt(0).toUpperCase() + COHORT_LENGTH.slice(1);
 
 export default async function ProgramsPage() {
   const publicCohorts = await getPublicCohorts();
@@ -57,9 +54,12 @@ export default async function ProgramsPage() {
         header={
           <>
             <Heading as="h1">Our Programs</Heading>
+            {/* What every group is and how long a cohort runs (the length
+                from the setting). No class length and no classes a week
+                (owner, 2026-11-17): each group card carries its own time. */}
             <p className="mt-2.5 max-w-[40rem] text-pretty text-base text-white/75">
-              Every group is a bootcamp: tennis and fitness in every class. {COHORT_LENGTH_SENTENCE}, one{" "}
-              {SESSION_MINUTES}-minute class a week. Pick your group and join.
+              Every group is a bootcamp: tennis and fitness in every class, in {COHORT_LENGTH_ADJ} cohorts.
+              Pick your group and join.
             </p>
           </>
         }

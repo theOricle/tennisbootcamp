@@ -42,7 +42,7 @@ import { TIER_FRAME, TIER_PIP, FIELD_TINT } from "../lib/tierStyle";
 import { EMBLEM_SHAPES, TIER_IDS, emblemLabel } from "../components/tiers/emblemGeometry";
 import { TierLine } from "../components/tiers/TierLine";
 import { LevelTag, TierChip } from "../components/tiers";
-import { bootcampTitle, groupById, groupsForProgram, listedPrograms, programGroups } from "../content/programs";
+import { COHORT_TOTAL_LABEL, bootcampTitle, groupById, groupsForProgram, listedPrograms, programGroups } from "../content/programs";
 import { ABOUT_DESCRIPTION } from "../content/site";
 import { groupLevelRange, groupTier, programLevelTags, slotLevelRange } from "../lib/programCatalog";
 import {
@@ -243,7 +243,7 @@ async function main() {
   // eyebrow and no labelled rows; the one level tag opens the card, and the
   // day is a plain line under the title.
   check("group card: the level-led title, no eyebrow, no day there", card.includes(">Intermediate Adult Bootcamp</h3>") && listedPrograms[1].type === "Group bootcamp" && !card.includes(listedPrograms[1].type) && !/<p class="[^"]*">Sundays<\/p>/.test(card));
-  check("group card: the one level tag first, then the title, who, when (the day as a plain line), where, the price", at(card, ">Intermediate</span>") > 0 && at(card, ", tier 3 of 5, levels 3.0–3.5") < at(card, "<h3") && at(card, "<h3") < at(card, "16 and up</li>") && at(card, "16 and up</li>") < at(card, ">Sundays 5:00–6:00 pm</span>") && at(card, ">Sundays 5:00–6:00 pm</span>") < at(card, "Newtonbrook Tennis Club</li>") && at(card, "Newtonbrook Tennis Club</li>") < at(card, " a session</span>") && count(card, ", tier 3 of 5") === 1);
+  check("group card: the one level tag first, then the title, who, when (the day as a plain line), where, the price", at(card, ">Intermediate</span>") > 0 && at(card, ", tier 3 of 5, levels 3.0–3.5") < at(card, "<h3") && at(card, "<h3") < at(card, "16 and up</li>") && at(card, "16 and up</li>") < at(card, ">Sundays 5:00–6:00 pm</span>") && at(card, ">Sundays 5:00–6:00 pm</span>") < at(card, "Newtonbrook Tennis Club</li>") && at(card, "Newtonbrook Tennis Club</li>") < at(card, `>${COHORT_TOTAL_LABEL}</span>`) && count(card, ", tier 3 of 5") === 1);
   check("group card: no range, no visible band, no rail, one link", !card.includes(" – ") && !/text-white\/60">3\.0–3\.5</.test(card) && !card.includes('aria-label="Built for') && !card.includes('role="meter"') && count(card, "<a ") === 1);
   const hp = render(createElement(ProgramGroupCard, { group: g("high-performance"), program: youth }));
   check("the High Performance card: the bootcamp title, the High Performance tag with the gold mark, By approval, Ask to join", hp.includes(">High Performance Youth Bootcamp</h3>") && hp.includes("#E3C46F") && hp.includes(", tier 5 of 5, levels 5.0–7.0") && hp.includes("By approval") && hp.includes(">Ask to join<") && !hp.includes("The competitive track"));

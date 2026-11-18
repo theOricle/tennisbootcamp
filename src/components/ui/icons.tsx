@@ -12,6 +12,9 @@ type IconProps = {
   className?: string;
 };
 
+/** An icon whose line weight a surface may set (the home band draws its three at 1.8). */
+type WeightedIconProps = IconProps & { strokeWidth?: number };
+
 function Icon({
   className = "h-5 w-5",
   strokeWidth = 2,
@@ -37,9 +40,9 @@ function Icon({
 // ── The class: tennis and fitness ───────────────────────────────────────────
 
 /** Two arrows chasing each other: the class rotates. Shape from the Lucide icon set ("refresh-cw"), ISC licence. */
-export function RotateIcon({ className }: IconProps) {
+export function RotateIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
   return (
-    <Icon className={className}>
+    <Icon className={className} strokeWidth={strokeWidth}>
       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
       <path d="M21 3v5h-5" />
       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
@@ -48,10 +51,10 @@ export function RotateIcon({ className }: IconProps) {
   );
 }
 
-/** Two people: how many players a group takes. Shape from the Lucide icon set ("users"), ISC licence. */
-export function PlayersIcon({ className }: IconProps) {
+/** Two people: a group of players. Shape from the Lucide icon set ("users"), ISC licence. */
+export function PlayersIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
   return (
-    <Icon className={className}>
+    <Icon className={className} strokeWidth={strokeWidth}>
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
       <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
@@ -149,7 +152,7 @@ export function MobilityIcon({ className }: IconProps) {
 }
 
 /** A court with a ball in play: point play, and the first day on court. */
-export function PointPlayIcon({ className, strokeWidth = 2 }: IconProps & { strokeWidth?: number }) {
+export function PointPlayIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
   return (
     <Icon className={className} strokeWidth={strokeWidth}>
       <rect x="3" y="5.5" width="18" height="13" rx="1.2" />

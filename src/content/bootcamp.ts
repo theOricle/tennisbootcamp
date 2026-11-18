@@ -1,12 +1,13 @@
-import { GROUP_MAX_PLAYERS } from "@/content/programs";
+import { COHORT_LENGTH } from "@/content/programs";
 
 // The bootcamp words (owner, 2026-11-16 and 2026-11-17): every group is a
 // group bootcamp, tennis and fitness built for tennis in every class. A
 // class rotates between tennis drills and fitness drills all class and
 // finishes with point play. The two parts are named Tennis and Fitness.
-// Never a minute split, never a share of the class, and never another
-// sport's name for the fitness part (ops/briefs/voice.md, "Bootcamp
-// words"); `npm test` (test-joining-flow.ts) pins the words and the nevers.
+// Never a minute split, never a share of the class, never a general class
+// length or a number of classes a week, and never another sport's name for
+// the fitness part (ops/briefs/voice.md, "Bootcamp words"); `npm test`
+// (test-joining-flow.ts) pins the words and the nevers.
 
 /** What a part of the class trains: the word under each tile, and the tile's glyph. */
 export type ClassTile = {
@@ -24,7 +25,7 @@ export type ClassPart = {
   trains: readonly ClassTile[];
 };
 
-/** The home section's heading. */
+/** The idea as a sentence of its own: the first of the three points says it, and so do the bootcamp programs' card lines. */
 export const CLASS_HEADING = "Tennis and fitness in every class.";
 
 /**
@@ -66,14 +67,30 @@ export function trainsInWords(part: ClassPart): string {
 }
 
 /**
- * How a class runs, and how many it takes: the three lines under the blocks.
- * The group size reads the one public number in src/content/programs.ts.
+ * How a class runs: the two lines under the Tennis and Fitness blocks (the
+ * About page). The group size is not one of them: About states it once, in
+ * its list, and the program pages in theirs.
  */
-export const CLASS_RUNS: readonly { text: string; icon: "rotate" | "play" | "players" }[] = [
+export const CLASS_RUNS: readonly { text: string; icon: "rotate" | "play" }[] = [
   { text: "Rotate between the two all class", icon: "rotate" },
   { text: "Finish with point play", icon: "play" },
-  { text: `Up to ${GROUP_MAX_PLAYERS} players a group`, icon: "players" },
 ];
+
+/**
+ * What a bootcamp is, in three points (owner, 2026-11-17): the thin band
+ * straight under the home page's hero. Each is a bold lead and the rest of
+ * its phrase. The cohort length reads the one setting in
+ * src/content/programs.ts, in words. No price, no group size, no class
+ * length and no classes a week: `npm test` (test-joining-flow.ts) pins it.
+ */
+export const BOOTCAMP_POINTS: readonly { lead: string; rest: string; icon: "rotate" | "play" | "players" }[] = [
+  { lead: "Tennis and fitness", rest: "in every class", icon: "rotate" },
+  { lead: "Point play", rest: "to finish every class", icon: "play" },
+  { lead: "One group", rest: `for all ${COHORT_LENGTH}`, icon: "players" },
+];
+
+/** The band's name for assistive tech; it has no visible heading. */
+export const BOOTCAMP_POINTS_LABEL = "What a bootcamp is";
 
 /** The hero's tag: what we run, and where. */
 export const HERO_TAG = "Group bootcamps · Toronto";

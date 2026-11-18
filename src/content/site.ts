@@ -1,29 +1,26 @@
 import type { SiteConfig } from "@/types/site";
 import { CLASS_IDEA } from "@/content/bootcamp";
-import {
-  COHORT_LENGTH_ADJ,
-  GROUP_MAX_PLAYERS,
-  SESSION_PRICE_LABEL,
-  numberInWords,
-} from "@/content/programs";
+import { COHORT_LENGTH_ADJ, GROUP_MAX_PLAYERS, numberInWords } from "@/content/programs";
 
 // The hand-written search-result lines that say what a class is (owner,
 // 2026-11-16: every group is a group bootcamp). Each is 155 characters at
-// most, names Toronto and reads the class idea and the price from their one
-// source; `npm test` (test-copy-truth.ts) pins all three. A program page's
-// own line is its `metaDescription` in src/content/programs.ts.
+// most, names Toronto and reads the class idea and the cohort length from
+// their one source; `npm test` (test-copy-truth.ts) pins all three. None
+// carries a price (owner, 2026-11-17: no price on the home page, and the
+// whole price only elsewhere); a program page's own line, its
+// `metaDescription` in src/content/programs.ts, carries the whole price.
 
 /**
  * The site-wide meta description: the home page uses it, and so does every
  * page without its own (the 404 included). What we run, for whom, what a
- * class is and what it costs (audit M1, M10; backlog #69).
+ * class is and how long a cohort runs (audit M1, M10; backlog #69, #70).
  */
 export const SITE_DESCRIPTION =
-  `Group bootcamps in Toronto for juniors, teens and adults: ${CLASS_IDEA}. ${SESSION_PRICE_LABEL} a session in ${COHORT_LENGTH_ADJ} cohorts.`;
+  `Group bootcamps in Toronto for juniors, teens and adults: ${CLASS_IDEA}, in ${COHORT_LENGTH_ADJ} cohorts.`;
 
-/** /programs: the two bootcamp programs by day, the price, then private lessons. */
+/** /programs: the two bootcamp programs by day, then private lessons. */
 export const PROGRAMS_DESCRIPTION =
-  `Group bootcamps in Toronto, ${CLASS_IDEA}: youth on Saturdays, adults on Sundays, ${SESSION_PRICE_LABEL} a session. Private lessons by arrangement.`;
+  `Group bootcamps in Toronto, ${CLASS_IDEA}: youth on Saturdays, adults on Sundays. Private lessons by arrangement.`;
 
 /** /about: what we run, the cohort and the public group size. */
 export const ABOUT_DESCRIPTION =

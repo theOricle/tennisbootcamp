@@ -1,21 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Container } from "@/components/layout/Container";
+import { BootcampClass } from "@/components/sections/BootcampClass";
 import { JoinClosing } from "@/components/sections/JoinClosing";
 import { Heading } from "@/components/ui/Heading";
 import { TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
-import { CLASS_IDEA, CLASS_PARTS, trainsInWords } from "@/content/bootcamp";
+import { CLASS_IDEA, CLASS_PARTS } from "@/content/bootcamp";
 import { coaches } from "@/content/coaches";
 import { ABOUT_DESCRIPTION } from "@/content/site";
 import { TIER_COUNT_WORD, TIER_LADDER_SPAN } from "@/lib/tiers";
 import {
-  CLASS_LINE,
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
   COHORT_WEEKS_WORD,
   GROUP_MAX_PLAYERS,
-  SESSION_MINUTES,
   numberInWords,
 } from "@/content/programs";
 
@@ -70,30 +69,23 @@ export default function AboutPage() {
         </div>
 
         <div className="mt-8 grid gap-8 md:grid-cols-2">
-          <div className="space-y-4 text-white/70">
-            <p>
-              Each training block runs {COHORT_LENGTH}. You commit to the full cohort —
-              not individual sessions — because progress in tennis compounds. Week
-              one builds the foundation that week {COHORT_WEEKS_WORD} builds on. Drop-in attendance
-              breaks that chain.
-            </p>
-            {/* How a class runs, in the sentence the bootcamp programs open
-                with, then what each part trains, from the class words. */}
-            <p>
-              {CLASS_LINE} {tennis.name} trains {trainsInWords(tennis)}. {fitness.name} trains{" "}
-              {trainsInWords(fitness)}.
-            </p>
-          </div>
+          <p className="text-white/70">
+            Each training block runs {COHORT_LENGTH}. You commit to the full cohort —
+            not individual sessions — because progress in tennis compounds. Week
+            one builds the foundation that week {COHORT_WEEKS_WORD} builds on. Drop-in attendance
+            breaks that chain.
+          </p>
 
           {/* What a cohort is, from the same constants as every program page
-              and the home page's class section (audit H3; owner, 2026-11-16):
-              one class a week with both parts in it, one fixed group, and the
-              public group size with its one line of why. */}
+              (audit H3; owner, 2026-11-16 and 2026-11-17): both parts in the
+              one class, one fixed group, and the public group size with its
+              one line of why. The size is said here and nowhere else on the
+              page. No class length and no classes a week. */}
           <ul className="space-y-4">
             {[
               {
-                label: `One ${SESSION_MINUTES}-minute class a week`,
-                detail: `${tennis.name} and ${fitness.name.toLowerCase()} in the same class, every week.`,
+                label: `${tennis.name} and ${fitness.name.toLowerCase()} in the same class`,
+                detail: "Both parts, every class.",
               },
               {
                 label: `The same group for all ${COHORT_LENGTH}`,
@@ -114,6 +106,13 @@ export default function AboutPage() {
             ))}
           </ul>
         </div>
+
+        {/* The Tennis and Fitness graphic (owner, 2026-11-17: it moved here
+            from under the home page's hero). It stands in for the paragraph
+            that said how a class runs and what each part trains: the two
+            blocks, what each trains, and how a class runs under them. Shown
+            once, across the section's column. */}
+        <BootcampClass className="mt-10 md:mt-12" />
       </Container>
 
       {/* ── What makes this different ─────────────────────────────────────── */}
@@ -200,7 +199,7 @@ export default function AboutPage() {
       </section>
 
       {/* ── Closing CTA: the main action (owner, 2026-11-16) ─────────────────
-          The lime "Join a group" and the quiz as a side line, the same
+          The lime main button and the quiz as a side line, the same
           closing as the home page and the program pages. A quiz-taker's side
           line reads their next step (owner, 2026-10-12). */}
       <div className="border-t border-white/10">

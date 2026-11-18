@@ -2,15 +2,18 @@
 //
 // Pins backlog #7: the home page Organization and the /programs/[slug] Course
 // JSON-LD carry their required fields, every absolute URL starts with
-// SITE_URL, the Offer price follows SESSION_PRICE and COHORT_WEEKS, and no
-// invented data (ratings, reviews, street address) appears. Since 2026-10-12
+// SITE_URL, the Offer price is the whole price of one cohort (SESSION_PRICE ×
+// COHORT_WEEKS; owner, 2026-11-17: never a per-session figure), no class
+// length or workload is stated (owner, 2026-11-17: no general claim about how
+// long a class is), and no invented data (ratings, reviews, street address)
+// appears. Since 2026-10-12
 // (owner: "Right now we are only at Newtonbrook Tennis Club in North York")
 // the club is named: a Place in the Organization's areaServed and on each
 // CourseInstance, with a PostalAddress of locality, province and country
 // only. "location" and "address" are allowed in that shape and no other.
 // Exits non-zero on any failure.
 
-import { COHORT_WEEKS, SESSION_MINUTES, SESSION_PRICE, listedPrograms } from "../content/programs";
+import { COHORT_TOTAL, COHORT_WEEKS, SESSION_PRICE, listedPrograms } from "../content/programs";
 import { locations } from "../content/locations";
 import { locationsForProgram } from "../lib/locationCatalog";
 import { coaches } from "../content/coaches";
@@ -19,7 +22,6 @@ import { SITE_URL } from "../lib/siteUrl";
 import {
   ORGANIZATION_ID,
   courseJsonLd,
-  isoDuration,
   organizationJsonLd,
   placeJsonLd,
   serializeJsonLd,
@@ -138,11 +140,10 @@ noInventedData("Organization", org);
 // The lead coach is the first in src/content/coaches.ts; "Head Coach" is retired.
 const leadCoach = coaches[0];
 check("no coach is titled Head Coach", coaches.every((c) => c.role !== "Head Coach"));
-const ISO_DURATION = /^P(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?)?$/;
-
-console.log("ISO 8601 durations");
-check("60 minutes is PT1H", isoDuration(60) === "PT1H");
-check("90 minutes is PT90M", isoDuration(90) === "PT90M");
+// Removed for backlog #70: the two "ISO 8601 durations" checks pinned
+// isoDuration(), which wrote a class length and a workload into the markup.
+// Both fields are gone (the site states no general class length), and the
+// helper with them.
 
 for (const program of listedPrograms) {
   console.log(`Course (/programs/${program.slug})`);
@@ -168,16 +169,20 @@ for (const program of listedPrograms) {
   check("CourseInstance is present", instance?.["@type"] === "CourseInstance");
   check("courseMode is onsite", instance?.courseMode === "onsite");
   check("schedule text is the CourseInstance description", instance?.description === program.schedule);
-  check("courseWorkload is an ISO 8601 duration",
-    typeof instance?.courseWorkload === "string" && ISO_DURATION.test(instance.courseWorkload as string));
-  check("courseWorkload is SESSION_MINUTES × COHORT_WEEKS",
-    instance?.courseWorkload === isoDuration(SESSION_MINUTES * COHORT_WEEKS));
+  // Re-pinned for backlog #70 (owner, 2026-11-17: no general claim about how
+  // long a class is). The instance carried courseWorkload (the class length
+  // × the weeks) and a Schedule duration (one class); both fields are
+  // dropped rather than state a length. Three checks that pinned them, and
+  // the one that tied the class length to the schedule copy, became these.
+  check("no courseWorkload: the markup states no total class time", instance !== undefined && !("courseWorkload" in instance));
   const schedule = instance?.courseSchedule as JsonLdObject | undefined;
-  check("courseSchedule duration is one session", schedule?.duration === isoDuration(SESSION_MINUTES));
+  check("courseSchedule states no class length: no duration", schedule !== undefined && !("duration" in schedule));
+  check("no duration of any kind anywhere in the Course", !allKeys(course).some((key) => /duration|workload|timeRequired/i.test(key)) && !/"PT?\d+[HM]/.test(JSON.stringify(course)));
+  check("courseSchedule is the cohort's length and nothing else: weekly, COHORT_WEEKS times", schedule?.["@type"] === "Schedule" && Object.keys(schedule).sort().join("|") === "@type|repeatCount|repeatFrequency");
   check("courseSchedule repeats Weekly", schedule?.repeatFrequency === "Weekly");
   check("courseSchedule repeatCount is COHORT_WEEKS", schedule?.repeatCount === COHORT_WEEKS);
-  check("SESSION_MINUTES matches the schedule copy",
-    (program.schedule ?? "").includes(`${SESSION_MINUTES} minutes`), program.schedule);
+  check("the schedule copy states no class length and no classes a week",
+    !/\d+ minutes|minute|hour|once a week|a week\b/i.test(program.schedule ?? ""), program.schedule);
   const instructor = instance?.instructor as JsonLdObject | undefined;
   check("instructor is the lead coach (Person) with the coach title",
     instructor?.["@type"] === "Person" && instructor?.name === leadCoach.name && instructor?.jobTitle === leadCoach.role);
@@ -187,15 +192,15 @@ for (const program of listedPrograms) {
   const offer = course.offers as JsonLdObject | undefined;
   check("Offer is present", offer?.["@type"] === "Offer");
   check("category is Paid", offer?.category === "Paid");
-  check("price is SESSION_PRICE", offer?.price === SESSION_PRICE);
+  // Re-pinned for backlog #70 (owner, 2026-11-17: the whole price only).
+  // The Offer stated the price per session, with a unit-price specification
+  // ("per session") and an eligible quantity of sessions; it states the
+  // cohort total now, and the three per-session checks became these.
+  check("price is the cohort total, SESSION_PRICE × COHORT_WEEKS", offer?.price === COHORT_TOTAL && COHORT_TOTAL === SESSION_PRICE * COHORT_WEEKS);
   check("currency is CAD", offer?.priceCurrency === "CAD");
-  const spec = offer?.priceSpecification as JsonLdObject | undefined;
-  check("unit price is SESSION_PRICE per session",
-    spec?.price === SESSION_PRICE &&
-    (spec?.referenceQuantity as JsonLdObject)?.unitText === "session");
-  check("eligible quantity is COHORT_WEEKS sessions",
-    (offer?.eligibleQuantity as JsonLdObject)?.value === COHORT_WEEKS);
-  check("offer description is the page's price line", offer?.description === program.priceLine);
+  check("no per-session price: no unit-price specification and no quantity of sessions", offer !== undefined && !("priceSpecification" in offer) && !("eligibleQuantity" in offer) && !allKeys(course).includes("referenceQuantity"));
+  check("the per-session amount appears nowhere in the Course, as a number or in words", !JSON.stringify(course).includes(`:${SESSION_PRICE},`) && !JSON.stringify(course).includes(`:${SESSION_PRICE}}`) && !/a session|per session|"session"|"sessions"/i.test(JSON.stringify(course)));
+  check("offer description is the page's price line, the whole price", offer?.description === program.priceLine && (program.priceLine ?? "").startsWith(`$${COHORT_TOTAL} for `));
   noInventedData("Course", course);
 }
 

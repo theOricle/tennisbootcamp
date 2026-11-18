@@ -6,6 +6,7 @@ import { formatCohortSchedule } from "@/lib/cohorts";
 import { groupsForProgram } from "@/content/programs";
 import {
   formatGroupStart,
+  priceParts,
   programAgeLabel,
   programEyebrow,
   programLevelRange,
@@ -42,9 +43,10 @@ import { LevelTag } from "@/components/tiers";
 //
 // The home page shows the same card in its compact variant (owner-approved
 // design, 2026-11-17): the photograph, the title, one line of who and when,
-// the session price, and "See groups". The rows, the description and the
-// levels block stay on the spec sheet; on the home page the levels are the
-// strip under the cards. One component, two densities, the same one link.
+// and "See groups". No price: the home page shows none (owner, 2026-11-17).
+// The rows, the description and the levels block stay on the spec sheet; on
+// the home page the levels are the strip under the cards. One component,
+// two densities, the same one link.
 
 export type ProgramCardProps = {
   program: Program;
@@ -146,22 +148,18 @@ export function CtaLine({ text, className = "" }: { text: string; className?: st
 }
 
 /**
- * The price (PRICE_SUMMARY: the session price, then the cohort total) stacked:
- * the per-session figure leading in white, the total on its own line in
- * white/60. Stacked on purpose, with no separator, so a narrow Price column
- * never wraps to a stray "· $…" line (the audit L8 pattern). "Rates on
+ * The price (PRICE_SUMMARY: the whole price of one bootcamp) stacked: the
+ * amount leading in white, what it buys (the cohort length) on its own
+ * line in white/60. Stacked on purpose, with no separator, so a narrow
+ * Price column never wraps mid-phrase (the audit L8 pattern). "Rates on
  * request" is a single part.
  */
 export function PriceSummary({ text }: { text: string }) {
-  const [lead, ...rest] = text.split(" · ");
+  const [lead, rest] = priceParts(text);
   return (
     <span className="block">
       <span className="block font-semibold text-white">{lead}</span>
-      {rest.map((part) => (
-        <span key={part} className="block text-white/60">
-          {part}
-        </span>
-      ))}
+      {rest && <span className="block text-white/60">{rest}</span>}
     </span>
   );
 }
@@ -260,9 +258,9 @@ function GroupLines({ groups }: { groups: ProgramGroup[] }) {
 }
 
 /**
- * The compact card (home): photo, title, who and when, the session price,
- * and the decorative "See groups" line. The whole card is the title's one
- * link, to the program's page.
+ * The compact card (home): photo, title, who and when, and the decorative
+ * "See groups" line. No price. The whole card is the title's one link, to
+ * the program's page.
  */
 function CompactProgramCard({ program: p, headingLevel = 3 }: Pick<ProgramCardProps, "program" | "headingLevel">) {
   const Title = headingLevel === 2 ? "h2" : "h3";
@@ -270,9 +268,6 @@ function CompactProgramCard({ program: p, headingLevel = 3 }: Pick<ProgramCardPr
   // A program with fixed classes lists its groups on its page; one booked
   // by arrangement (private lessons) has details instead.
   const hasGroups = groups.some((g) => g.day !== null);
-  // The session price ("Rates on request" for private lessons): the first
-  // part of the price line, built from the constants in src/content/programs.ts.
-  const price = p.priceSummary?.split(" · ")[0];
 
   return (
     <article className={COMPACT_SHELL}>
@@ -295,7 +290,6 @@ function CompactProgramCard({ program: p, headingLevel = 3 }: Pick<ProgramCardPr
           </Link>
         </Title>
         <p className="mt-0.5 text-sm text-white/70">{programWhoWhenLine(groups)}</p>
-        {price && <p className="text-sm tabular-nums text-white/90">{price}</p>}
         <CtaLine text={hasGroups ? "See groups" : "See details"} className="mt-2" />
       </div>
     </article>

@@ -14,7 +14,7 @@ import { useAuthState } from "@/lib/useAuthState";
 
 /**
  * Phones only (audit M13): a sticky bottom bar with the one main button,
- * "Join a group", to the groups (owner, 2026-11-16). It slides in once the
+ * "Join a bootcamp", to the groups (owner, 2026-11-16 and 2026-11-17). It slides in once the
  * page's own main button (the hero's, on home) has scrolled out, slides away
  * while any in-page main button is on screen, and never shows on the
  * programs pages (where every group has its own button), the quiz, sign-in,

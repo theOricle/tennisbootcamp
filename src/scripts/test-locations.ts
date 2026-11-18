@@ -31,7 +31,8 @@ import {
   locations,
   mapsSearchUrl,
 } from "../content/locations";
-import { listedPrograms, programGroups } from "../content/programs";
+import { COHORT_TOTAL_LABEL, listedPrograms, programGroups } from "../content/programs";
+import { JOIN_CTA_LABEL } from "../lib/mainAction";
 import {
   cohortWhereLine,
   groupsAtLocation,
@@ -167,7 +168,8 @@ const youth = listedPrograms[0];
 const card = render(createElement(ProgramGroupCard, { group: programGroups[0], program: youth }));
 check("the where line: the club's name, a plain line with a pin and no label", card.includes(`${NAME}</li>`) && !card.includes(">Where<") && !card.includes("<dt"));
 check("the area left the card (it is on the page, beside the club's name)", !card.includes("North York"));
-check("where sits after when and before the price", at(card, "Saturdays 12:00–1:00 pm") > 0 && at(card, "Saturdays 12:00–1:00 pm") < at(card, `${NAME}</li>`) && at(card, `${NAME}</li>`) < at(card, " a session"));
+// Re-pinned for backlog #70: the price is the cohort total now, not "… a session".
+check("where sits after when and before the price", at(card, "Saturdays 12:00–1:00 pm") > 0 && at(card, "Saturdays 12:00–1:00 pm") < at(card, `${NAME}</li>`) && at(card, `>${COHORT_TOTAL_LABEL}</span>`) > 0 && at(card, `${NAME}</li>`) < at(card, `>${COHORT_TOTAL_LABEL}</span>`));
 check("the card keeps one link (no map link on a card)", (card.match(/<a /g) ?? []).length === 1 && !card.includes("google.com/maps"));
 check("every group card shows the club", programGroups.filter((g) => g.day !== null).every((g) => render(createElement(ProgramGroupCard, { group: g, program: listedPrograms.find((p) => p.slug === g.programSlug)! })).includes(`${NAME}</li>`)));
 const line = render(createElement(LocationLine, { location: club!, mapLink: true }));
@@ -194,7 +196,7 @@ check("the intro names the club plainly", page.includes(`We train at one club ri
 check("a card per club with its h2, area and map link", page.includes(`>${NAME}</h2>`) && page.includes(`>${AREA}</p>`) && page.includes(MAPS.replace(/&/g, "&amp;")));
 check("what runs there, every group with its time", programGroups.every((g) => page.includes(`>${g.name}</span>`)) && page.includes("Saturdays 12:00–1:00 pm") && page.includes("By arrangement"));
 check("each program links to its page", listedPrograms.every((p) => page.includes(`href="/programs/${p.slug}"`)));
-check("Browse Programs to the catalog, the club line neutral, and the main action to close", page.includes(">Browse Programs<") && page.includes('href="/programs"') && page.includes(membershipNote()) && page.includes(">Groups are open to join.</h2>") && page.includes(">Join a group</a>") && page.includes("Not sure which group?") && page.includes("Take the 2-minute quiz"));
+check("Browse Programs to the catalog, the club line neutral, and the main action to close", page.includes(">Browse Programs<") && page.includes('href="/programs"') && page.includes(membershipNote()) && page.includes(">Groups are open to join.</h2>") && page.includes(`>${JOIN_CTA_LABEL}</a>`) && JOIN_CTA_LABEL === "Join a bootcamp" && !page.includes("Join a group") && page.includes("Not sure which group?") && page.includes("Take the 2-minute quiz"));
 const locationsSrc = read("src/app/locations/page.tsx");
 check("its metadata: a canonical and a description under 155 characters", locationsSrc.includes('alternates: { canonical: "/locations" }') && /LOCATIONS_META_DESCRIPTION =/.test(locationsSrc));
 check("no street address, hours or courts on the page", !/\b(St|Ave|Rd|Blvd)\b\.?\s|\bhours\b|\bcourts\b/i.test(page.replace(/<[^>]+>/g, " ")));

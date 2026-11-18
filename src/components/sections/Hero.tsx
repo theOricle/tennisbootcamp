@@ -54,9 +54,10 @@ const FEATHER =
 
 // The hero says who we are and offers the main action, and nothing else
 // (owner, 2026-11-17): no price, no group size and no promise here. The
-// price is on every program and group card and in the joining steps; the
-// group size is a line under the class section; the week-one promise is in
-// the joining steps and under "Good to know" on /programs.
+// home page shows no price at all; a bootcamp's price is on its group card
+// and its program page. The group size is on About and the program pages;
+// the week-one promise is in the joining steps and under "Good to know" on
+// /programs.
 export function Hero() {
   const waveReady = useWaveWhenIdle();
 
@@ -103,7 +104,7 @@ export function Hero() {
             Structured {COHORT_LENGTH_ADJ} cohorts. A system that makes progress inevitable. Built for athletes who want to compete.
           </p>
 
-          {/* The main action (owner, 2026-11-16): "Join a group", then the
+          {/* The main action (owner, 2026-11-16): "Join a bootcamp", then the
               quiz as a side line. A quiz-taker's side line reads their next
               step instead; the server render is the new visitor's. */}
           <MainAction source="hero" className="mt-6 md:mt-8" />
