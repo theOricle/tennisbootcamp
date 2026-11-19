@@ -36,17 +36,19 @@ import { StatusChip } from "./ProgramCard";
 // know". No photo: the program's photograph identifies the program.
 //
 // One interactive element, the button, named for its group for assistive
-// tech ("Join the Beginner Junior Bootcamp"), so seven cards on /programs
-// are seven distinct actions. Four states (groupStatus and groupAction,
-// src/lib/programCatalog.ts): open, a lime "Join"; down to its last spots,
-// the warn chip and a lime "Join"; full, an outline "Notify me"; by approval
-// (and invite only), an outline "Ask to join".
+// tech ("Ask to join the Beginner Junior Bootcamp"), so seven cards on
+// /programs are seven distinct actions. Four states (groupStatus and
+// groupAction, src/lib/programCatalog.ts): open, a lime "Ask to join"; down
+// to its last spots, the warn chip and a lime "Ask to join"; full, an
+// outline "Notify me"; by approval (and invite only), an outline "Ask to
+// join".
 //
-// Until join-and-pay is built, "Join" and "Ask to join" open what the card's
-// link always opened: the quiz for this program, which is how a spot is
-// asked for today. The button always reads its own action: it opts out of
-// the quiz-taken swap (`quizAware={false}`), which would relabel it "See
-// your groups". "Notify me" goes to the newsletter line in the footer.
+// "Ask to join" until the group can take payment (owner, 2026-11-18): it
+// opens the quiz for this program at its first step, which is how a spot is
+// asked for today. The words never change; where it goes follows the
+// quiz-taker (`quizAware="href"`): a signed-in account with quiz answers on
+// file goes to its dashboard, never back to the quiz. "Notify me" goes to
+// the newsletter line in the footer.
 
 const FACT_GLYPH = "mt-[3px] h-[15px] w-[15px] shrink-0 opacity-65";
 
@@ -74,11 +76,19 @@ function GroupButton({
   programSlug,
   source,
   notifyHref,
+  quizAware,
 }: {
   action: GroupAction;
   programSlug: string;
   source: string;
   notifyHref: string;
+  /**
+   * "href" on a group card: "Ask to join" keeps its words, and a signed-in
+   * account with quiz answers on file goes to its dashboard instead of the
+   * quiz. false on the private lessons row: "Ask about lessons" always opens
+   * the quiz for the program, as it always has.
+   */
+  quizAware: "href" | false;
 }) {
   const label = (
     <>
@@ -101,7 +111,7 @@ function GroupButton({
       href={`/intake?program=${programSlug}`}
       track="quiz"
       source={source}
-      quizAware={false}
+      quizAware={quizAware}
       className={`${buttonClass(action.kind === "join" ? "primary" : "secondary")} ${shape}`}
     >
       {label}
@@ -185,7 +195,13 @@ export function ProgramGroupCard({
           narrow three-across cards of a tablet the button takes its own row. */}
       <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3.5 md:flex-col md:items-stretch lg:flex-row lg:items-center">
         <GroupPrice text={g.price} />
-        <GroupButton action={action} programSlug={program.slug} source={source} notifyHref={notifyHref} />
+        <GroupButton
+          action={action}
+          programSlug={program.slug}
+          source={source}
+          notifyHref={notifyHref}
+          quizAware="href"
+        />
       </div>
     </article>
   );
@@ -215,7 +231,13 @@ export function ArrangedGroupRow({
           {formatGroupWhen(g)} · {g.price}
         </p>
       </div>
-      <GroupButton action={action} programSlug={program.slug} source={source} notifyHref={`#${NEWSLETTER_ANCHOR}`} />
+      <GroupButton
+        action={action}
+        programSlug={program.slug}
+        source={source}
+        notifyHref={`#${NEWSLETTER_ANCHOR}`}
+        quizAware={false}
+      />
     </article>
   );
 }

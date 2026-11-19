@@ -1,4 +1,4 @@
-import { COHORT_LENGTH } from "@/content/programs";
+import { TIER_COUNT_WORD } from "@/lib/tiers";
 
 // The bootcamp words (owner, 2026-11-16 and 2026-11-17): every group is a
 // group bootcamp, tennis and fitness built for tennis in every class. A
@@ -76,17 +76,24 @@ export const CLASS_RUNS: readonly { text: string; icon: "rotate" | "play" }[] = 
   { text: "Finish with point play", icon: "play" },
 ];
 
+/** "Five": the tier count from src/lib/tiers.ts, in words, capitalised to open the third point. */
+const LEVEL_COUNT = `${TIER_COUNT_WORD.charAt(0).toUpperCase()}${TIER_COUNT_WORD.slice(1)}`;
+
 /**
  * What a bootcamp is, in three points (owner, 2026-11-17): the thin band
  * straight under the home page's hero. Each is a bold lead and the rest of
- * its phrase. The cohort length reads the one setting in
- * src/content/programs.ts, in words. No price, no group size, no class
- * length and no classes a week: `npm test` (test-joining-flow.ts) pins it.
+ * its phrase. The third hints at the levels and moving up (owner,
+ * 2026-11-18): the count reads the tier count, never typed, and "climb" is
+ * the ladder's own word on /assessment ("The ladder you're climbing"); it
+ * promises no timing. It replaced the same group for the whole cohort, which
+ * the cards and the sign-up already show and which the program pages' lists
+ * and About still say. No price, no group size, no class length and no
+ * classes a week: `npm test` (test-joining-flow.ts) pins it.
  */
-export const BOOTCAMP_POINTS: readonly { lead: string; rest: string; icon: "rotate" | "play" | "players" }[] = [
+export const BOOTCAMP_POINTS: readonly { lead: string; rest: string; icon: "rotate" | "play" | "stairs" }[] = [
   { lead: "Tennis and fitness", rest: "in every class", icon: "rotate" },
   { lead: "Point play", rest: "to finish every class", icon: "play" },
-  { lead: "One group", rest: `for all ${COHORT_LENGTH}`, icon: "players" },
+  { lead: `${LEVEL_COUNT} levels`, rest: "to climb", icon: "stairs" },
 ];
 
 /** The band's name for assistive tech; it has no visible heading. */

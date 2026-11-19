@@ -51,14 +51,16 @@ export function RotateIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
   );
 }
 
-/** Two people: a group of players. Shape from the Lucide icon set ("users"), ISC licence. */
-export function PlayersIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
+/**
+ * A flight of five steps rising to the right: the levels to climb (owner,
+ * 2026-11-18). Drawn here, on the grid the band's other two use: 18 units
+ * wide like both, its ink centred on the box like theirs, so the three read
+ * as one set. One step per level, Beginner at the foot.
+ */
+export function StairsIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
   return (
     <Icon className={className} strokeWidth={strokeWidth}>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      <path d="M3 19.5h3.6v-3.75h3.6v-3.75h3.6v-3.75h3.6v-3.75H21" />
     </Icon>
   );
 }

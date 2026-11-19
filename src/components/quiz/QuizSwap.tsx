@@ -5,10 +5,11 @@ import { useQuizStatus } from "@/lib/useQuizStatus";
 
 /**
  * A sentence that changes once the visitor has taken the quiz (owner,
- * 2026-10-12). `guest` renders for a new visitor, on the server, and until
- * the browser knows; `taken` for a quiz-taker who is signed out; `member`
- * (or `taken` when absent) for a signed-in quiz-taker. A server page can
- * pass the three as JSX; the quiz-aware links inside them (TrackedLink with
+ * 2026-10-12). `guest` renders for every visitor who is signed out (a
+ * browser cannot tell who is at it, owner 2026-11-18), on the server, and
+ * until the account has answered; `member`, or `taken` when it is absent,
+ * for a signed-in account with quiz answers on file. A server page can pass
+ * them as JSX; the quiz-aware links inside them (TrackedLink with
  * track="quiz") already point at the taker's next step.
  */
 export function QuizSwap({

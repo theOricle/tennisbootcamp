@@ -1,7 +1,7 @@
 // Has this person taken the 2-minute quiz? (owner, 2026-10-12: "once someone
 // has taken the quiz, the site stops prompting them to take it").
 //
-// One rule, two sources:
+// One rule, one source:
 //   • Signed in: the account's own data, read through src/lib/players.ts —
 //     any player on the account with a quiz answer on file (a self-estimate
 //     or an age band from migration 0009), a week of availability the quiz
@@ -9,11 +9,15 @@
 //     Before 0009 runs the answer columns are null and the other two still
 //     decide. A shared family device signed in as someone else reads that
 //     account, never the device.
-//   • Signed out: a first-party, functional cookie plus a localStorage
-//     mirror, set by /api/intake on a submission it accepted and wrote (never
-//     on a bot drop or a failed submit). Cleared cookies with no account to
-//     fall back on read as "new", which is the honest answer for a device we
-//     cannot recognise.
+//   • Signed out: every visitor reads as new (owner, 2026-11-18). A browser
+//     cannot tell who is at it, so a browser that once sent the quiz is never
+//     greeted as a quiz-taker.
+//
+// The device flag (a first-party cookie plus a localStorage mirror, the
+// helpers below) is still written: /api/intake sets the cookie on a
+// submission it wrote, and the quiz page mirrors it (rememberQuizTaken in
+// src/lib/useQuizStatus.ts). Nothing reads it to decide anything; a later
+// item removes the writes.
 //
 // Pure and client-safe: the hook (src/lib/useQuizStatus.ts), the route
 // (src/app/api/quiz-status/route.ts) and src/scripts/test-quiz-state.ts all
@@ -179,7 +183,7 @@ export function playerTookQuiz(p: QuizEvidencePlayer): boolean {
 
 export type QuizStatus = {
   taken: boolean;
-  /** Players the account (or the device flag) knows about. */
+  /** Players the account knows about. */
   playerCount: number;
   /** Where "See your groups" lands: the catalog filtered to the player, or the whole catalog. */
   matchedHref: string;
@@ -202,18 +206,6 @@ export function accountQuizStatus(players: readonly QuizEvidencePlayer[]): QuizS
   const tierSlug =
     takers.length === 1 && first?.self_level ? catalogTierFor(ageBand, first.self_level)?.slug ?? null : null;
   return { taken: true, playerCount: players.length, matchedHref: matchedGroupsHref(ageBand, tierSlug) };
-}
-
-// ─── Signed out: the device flag ─────────────────────────────────────────────
-
-/** The status a device flag describes; a missing flag is "new". */
-export function deviceQuizStatus(flag: QuizFlag | null): QuizStatus {
-  if (!flag) return { taken: false, playerCount: 0, matchedHref: matchedGroupsHref(null, null) };
-  // A household's first player carries the band; two or more players with
-  // one band would still share it, so the link is only narrowed for one.
-  const age = flag.playerCount === 1 ? flag.ageBand : null;
-  const tier = flag.playerCount === 1 ? flag.tierSlug : null;
-  return { taken: true, playerCount: flag.playerCount, matchedHref: matchedGroupsHref(age, tier) };
 }
 
 // ─── Where a quiz-taker goes next ────────────────────────────────────────────
@@ -246,34 +238,28 @@ export function quizNextStep(status: QuizStatus, signedIn: boolean): QuizNextSte
   return { href: status.matchedHref, label: SEE_GROUPS_LABEL };
 }
 
-/** The quiz-taker's state as the chrome needs it, from whichever source answered. */
+/** The quiz-taker's state as the chrome needs it. Only a signed-in account is ever "taken". */
 export type QuizView =
   | { state: "unknown"; signedIn: boolean }
   | { state: "new"; signedIn: boolean }
   | ({ state: "taken"; signedIn: boolean; next: QuizNextStep } & QuizStatus);
 
 /**
- * Fold the sources into one view. Signed in, only the account answers (a
- * device flag left by someone else in the family is ignored); signed out,
- * the device flag. `null` for a source means it has not answered yet.
+ * The one view. Signed in, the account answers: "unknown" while its read is
+ * in flight, then "taken" (with the dashboard as the next step) or "new".
+ * Signed out, every visitor is "new" (owner, 2026-11-18), on the server and
+ * in the browser alike, so a static page renders the new visitor's words and
+ * nothing flashes; no cookie or stored value is consulted.
  */
 export function quizView(input: {
   signedIn: boolean;
   /** The account's status, null while the read is in flight or when signed out. */
   account: QuizStatus | null;
-  /** The device flag, null before the browser has been asked (the server render). */
-  device: QuizFlag | null | undefined;
 }): QuizView {
   const { signedIn } = input;
-  if (signedIn) {
-    if (!input.account) return { state: "unknown", signedIn };
-    return input.account.taken
-      ? { state: "taken", signedIn, ...input.account, next: quizNextStep(input.account, true) }
-      : { state: "new", signedIn };
-  }
-  if (input.device === undefined) return { state: "unknown", signedIn };
-  const status = deviceQuizStatus(input.device);
-  return status.taken
-    ? { state: "taken", signedIn, ...status, next: quizNextStep(status, false) }
+  if (!signedIn) return { state: "new", signedIn };
+  if (!input.account) return { state: "unknown", signedIn };
+  return input.account.taken
+    ? { state: "taken", signedIn, ...input.account, next: quizNextStep(input.account, true) }
     : { state: "new", signedIn };
 }

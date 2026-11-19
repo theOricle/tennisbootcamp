@@ -74,16 +74,30 @@ export function groupStatus(g: ProgramGroup, seatsLeft?: number | null): Program
   return { kind: "open", label: "Open to join" };
 }
 
-/** What a group card's one button does. */
+/**
+ * What a group card's one button does: "join" is the lime button of a group
+ * that is open or down to its last spots; "ask" the outline of a by-approval
+ * or invite-only group, or of a group with no fixed class; "notify" the
+ * outline of a full one.
+ */
 export type GroupActionKind = "join" | "ask" | "notify";
 
 export type GroupAction = {
   kind: GroupActionKind;
-  /** The button's words: "Join", "Ask to join", "Notify me", "Ask about lessons". */
+  /** The button's words: "Ask to join", "Notify me", "Ask about lessons". */
   label: string;
   /** The rest of its accessible name, after the label: " the Beginner Junior Bootcamp". */
   nameSuffix: string;
 };
+
+/**
+ * The words on a group's button until that group can take payment (owner,
+ * 2026-11-18). The button opens the 2-minute quiz, which is how a spot is
+ * asked for today, so it never reads "Join" without payment behind it.
+ * Join-and-pay is a later item: nothing takes payment yet, so today every
+ * group reads it, open or by approval.
+ */
+export const ASK_TO_JOIN_LABEL = "Ask to join";
 
 /** "the Beginner Junior Bootcamp" · "the One-to-one coaching group". */
 function groupNamed(name: string): string {
@@ -92,20 +106,21 @@ function groupNamed(name: string): string {
 
 /**
  * A group card's one action, from its status (owner-approved design,
- * 2026-11-17): a lime "Join" for a group that is open or down to its last
- * spots, an outline "Notify me" for a full one, an outline "Ask to join" for
- * a by-approval or invite-only one, and "Ask about lessons" for a group with
- * no fixed class. Each is named for its group for assistive tech ("Join the
- * Beginner Junior Bootcamp").
+ * 2026-11-17; the words, owner 2026-11-18): "Ask to join" on a lime button
+ * for a group that is open or down to its last spots, and on an outline one
+ * for a by-approval or invite-only group; an outline "Notify me" for a full
+ * one; and "Ask about lessons" for a group with no fixed class. Each is named
+ * for its group for assistive tech ("Ask to join the Beginner Junior
+ * Bootcamp").
  */
 export function groupAction(g: Pick<ProgramGroup, "name">, status: ProgramStatus | null): GroupAction {
   const named = groupNamed(g.name);
   if (status === null) return { kind: "ask", label: "Ask about lessons", nameSuffix: "" };
   if (status.kind === "full") return { kind: "notify", label: "Notify me", nameSuffix: ` when ${named} has a spot` };
   if (status.kind === "approval" || status.kind === "invite-only") {
-    return { kind: "ask", label: "Ask to join", nameSuffix: ` ${named}` };
+    return { kind: "ask", label: ASK_TO_JOIN_LABEL, nameSuffix: ` ${named}` };
   }
-  return { kind: "join", label: "Join", nameSuffix: ` ${named}` };
+  return { kind: "join", label: ASK_TO_JOIN_LABEL, nameSuffix: ` ${named}` };
 }
 
 /** What the eyebrow reads: the bands, the timetable's days, else the schedule line or the type. */
