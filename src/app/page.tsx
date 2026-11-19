@@ -37,10 +37,10 @@ export default function HomePage() {
       <Hero />
 
       {/* What a bootcamp is, in three points, straight under the hero
-          (owner, 2026-11-17): tennis and fitness in every class, point play
-          to finish, one group for the whole cohort. A thin full-bleed band;
-          it carries its own Container. The Tennis and Fitness graphic that
-          stood here is on About. */}
+          (owner, 2026-11-17; the words, owner 2026-11-19): Tennis and what
+          it trains, Fitness and what it trains, the levels to climb. A thin
+          full-bleed band; it carries its own Container. The Tennis and
+          Fitness graphic that stood here is on About. */}
       <BootcampPoints />
 
       {/* One Container, one rhythm (audit H2). The three programs as compact

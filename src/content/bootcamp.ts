@@ -4,6 +4,8 @@ import { TIER_COUNT_WORD } from "@/lib/tiers";
 // group bootcamp, tennis and fitness built for tennis in every class. A
 // class rotates between tennis drills and fitness drills all class and
 // finishes with point play. The two parts are named Tennis and Fitness.
+// Fitness is hard fitness work built for tennis, for power, stamina,
+// stability and cardio, on top of the tennis training (owner, 2026-11-19).
 // Never a minute split, never a share of the class, never a general class
 // length or a number of classes a week, and never another sport's name for
 // the fitness part (ops/briefs/voice.md, "Bootcamp words"); `npm test`
@@ -12,7 +14,7 @@ import { TIER_COUNT_WORD } from "@/lib/tiers";
 /** What a part of the class trains: the word under each tile, and the tile's glyph. */
 export type ClassTile = {
   label: string;
-  icon: "technique" | "footwork" | "tactics" | "focus" | "power" | "speed" | "stamina" | "mobility";
+  icon: "technique" | "footwork" | "tactics" | "focus" | "power" | "stamina" | "stability" | "cardio";
 };
 
 export type ClassPart = {
@@ -25,7 +27,11 @@ export type ClassPart = {
   trains: readonly ClassTile[];
 };
 
-/** The idea as a sentence of its own: the first of the three points says it, and so do the bootcamp programs' card lines. */
+/**
+ * The idea as a sentence of its own: the bootcamp programs' card lines open
+ * with it. The home band said it word for word until 2026-11-19; it names
+ * the two parts now, each with what it trains (BOOTCAMP_POINTS, below).
+ */
 export const CLASS_HEADING = "Tennis and fitness in every class.";
 
 /**
@@ -35,7 +41,11 @@ export const CLASS_HEADING = "Tennis and fitness in every class.";
  */
 export const CLASS_IDEA = `${CLASS_HEADING.charAt(0).toLowerCase()}${CLASS_HEADING.slice(1, -1)}`;
 
-/** The two parts of every class, in the order they are shown. */
+/**
+ * The two parts of every class, in the order they are shown. Fitness trains
+ * power, stamina, stability and cardio (owner, 2026-11-19; they replaced
+ * power, speed, stamina and mobility).
+ */
 export const CLASS_PARTS: readonly ClassPart[] = [
   {
     name: "Tennis",
@@ -53,9 +63,9 @@ export const CLASS_PARTS: readonly ClassPart[] = [
     tone: "court",
     trains: [
       { label: "Power", icon: "power" },
-      { label: "Speed", icon: "speed" },
       { label: "Stamina", icon: "stamina" },
-      { label: "Mobility", icon: "mobility" },
+      { label: "Stability", icon: "stability" },
+      { label: "Cardio", icon: "cardio" },
     ],
   },
 ];
@@ -82,17 +92,23 @@ const LEVEL_COUNT = `${TIER_COUNT_WORD.charAt(0).toUpperCase()}${TIER_COUNT_WORD
 /**
  * What a bootcamp is, in three points (owner, 2026-11-17): the thin band
  * straight under the home page's hero. Each is a bold lead and the rest of
- * its phrase. The third hints at the levels and moving up (owner,
- * 2026-11-18): the count reads the tier count, never typed, and "climb" is
- * the ladder's own word on /assessment ("The ladder you're climbing"); it
- * promises no timing. It replaced the same group for the whole cohort, which
- * the cards and the sign-up already show and which the program pages' lists
- * and About still say. No price, no group size, no class length and no
- * classes a week: `npm test` (test-joining-flow.ts) pins it.
+ * its phrase. The first two name the two parts of every class, each with
+ * what it trains (owner, 2026-11-19): Tennis, by three of its four tiles,
+ * with the racket; Fitness, by two of its four, with the bolt. Only Tennis's
+ * is a list, so two lists never sit side by side. They replaced "Tennis and
+ * fitness in every class" and "Point play to finish every class", which left
+ * the band only: About ("Rotate between the two all class", "Finish with
+ * point play") and the program pages (CLASS_LINE and their lists) still say
+ * both. The third hints at the levels and moving up (owner, 2026-11-18): the
+ * count reads the tier count, never typed, and "climb" is the ladder's own
+ * word on /assessment ("The ladder you're climbing"); it promises no timing.
+ * It replaced the same group for the whole cohort, which the program pages'
+ * lists and About still say. No price, no group size, no class length and
+ * no classes a week: `npm test` (test-joining-flow.ts) pins it.
  */
-export const BOOTCAMP_POINTS: readonly { lead: string; rest: string; icon: "rotate" | "play" | "stairs" }[] = [
-  { lead: "Tennis and fitness", rest: "in every class", icon: "rotate" },
-  { lead: "Point play", rest: "to finish every class", icon: "play" },
+export const BOOTCAMP_POINTS: readonly { lead: string; rest: string; icon: "technique" | "power" | "stairs" }[] = [
+  { lead: "Tennis", rest: "technique, tactics and focus", icon: "technique" },
+  { lead: "Fitness", rest: "for power and stamina", icon: "power" },
   { lead: `${LEVEL_COUNT} levels`, rest: "to climb", icon: "stairs" },
 ];
 

@@ -161,7 +161,7 @@ const CLASS_INCLUDES = [
   `One group for all ${COHORT_LENGTH}`,
   `Up to ${GROUP_MAX_PLAYERS} players a group`,
   "Tennis: technique, footwork, tactics and focus",
-  "Fitness built for tennis: power, speed, stamina and mobility",
+  "Fitness built for tennis: power, stamina, stability and cardio",
   "Point play to finish every class",
 ];
 

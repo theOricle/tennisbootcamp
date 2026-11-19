@@ -1,13 +1,13 @@
 import { Fragment, type ReactNode } from "react";
 import { CLASS_PARTS, CLASS_RUNS, type ClassTile } from "@/content/bootcamp";
 import {
+  CardioIcon,
   FocusIcon,
   FootworkIcon,
-  MobilityIcon,
   PointPlayIcon,
   PowerIcon,
   RotateIcon,
-  SpeedIcon,
+  StabilityIcon,
   StaminaIcon,
   TacticsIcon,
   TechniqueIcon,
@@ -36,9 +36,9 @@ const TILE_GLYPHS: Record<ClassTile["icon"], ReactNode> = {
   tactics: <TacticsIcon className={TILE_GLYPH} />,
   focus: <FocusIcon className={TILE_GLYPH} />,
   power: <PowerIcon className={TILE_GLYPH} />,
-  speed: <SpeedIcon className={TILE_GLYPH} />,
   stamina: <StaminaIcon className={TILE_GLYPH} />,
-  mobility: <MobilityIcon className={TILE_GLYPH} />,
+  stability: <StabilityIcon className={TILE_GLYPH} />,
+  cardio: <CardioIcon className={TILE_GLYPH} />,
 };
 
 const RUN_GLYPH = "h-[22px] w-[22px] shrink-0 text-[#B4E655]";

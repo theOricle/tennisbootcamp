@@ -15,6 +15,9 @@ type IconProps = {
 /** An icon whose line weight a surface may set (the home band draws its three at 1.8). */
 type WeightedIconProps = IconProps & { strokeWidth?: number };
 
+/** A line weight in proportion to the icon's own, to two decimals (1.8 × 1.5 reads 2.7, not 2.7000000000000002). */
+const inProportion = (strokeWidth: number, factor: number) => Math.round(strokeWidth * factor * 100) / 100;
+
 function Icon({
   className = "h-5 w-5",
   strokeWidth = 2,
@@ -53,9 +56,9 @@ export function RotateIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
 
 /**
  * A flight of five steps rising to the right: the levels to climb (owner,
- * 2026-11-18). Drawn here, on the grid the band's other two use: 18 units
- * wide like both, its ink centred on the box like theirs, so the three read
- * as one set. One step per level, Beginner at the foot.
+ * 2026-11-18). Drawn here, on the 24-unit grid the band's other two use: 18
+ * units wide (3 to 21), its ink centred on the box. One step per level,
+ * Beginner at the foot.
  */
 export function StairsIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
   return (
@@ -65,15 +68,24 @@ export function StairsIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
   );
 }
 
-/** A racket: technique. */
-export function TechniqueIcon({ className }: IconProps) {
+/**
+ * A racket: technique, and Tennis on the home band. The strings are half the
+ * frame's weight and the handle one and a half times it, so the racket keeps
+ * its proportions at the band's 1.8 (strings 0.9, handle 2.7) as at the
+ * site's 2 (1 and 3, About's tiles).
+ */
+export function TechniqueIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
   return (
-    <Icon className={className}>
+    <Icon className={className} strokeWidth={strokeWidth}>
       <g transform="rotate(-38 12 12)">
         <ellipse cx="12" cy="7.9" rx="4.7" ry="5.9" />
-        <path d="M10.3 2.6v10.6M13.7 2.6v10.6M7.6 6h8.8M7.6 9.6h8.8" strokeWidth={1} opacity={0.7} />
+        <path
+          d="M10.3 2.6v10.6M13.7 2.6v10.6M7.6 6h8.8M7.6 9.6h8.8"
+          strokeWidth={inProportion(strokeWidth, 0.5)}
+          opacity={0.7}
+        />
         <path d="M12 13.8v2.6" />
-        <path d="M12 16.6v5.6" strokeWidth={3} />
+        <path d="M12 16.6v5.6" strokeWidth={inProportion(strokeWidth, 1.5)} />
       </g>
     </Icon>
   );
@@ -112,43 +124,62 @@ export function FocusIcon({ className }: IconProps) {
   );
 }
 
-/** A bolt: power. */
-export function PowerIcon({ className }: IconProps) {
+// The four Fitness tiles (owner, 2026-11-19: power, stamina, stability and
+// cardio) are one set: the 24-unit grid, the site's line weight, round caps,
+// and each a different shape from the other three and from the Tennis
+// tiles. The three drawn for it (Stamina, Stability, Cardio) are 18 to 19
+// units wide with their ink centred on the box; the bolt keeps its shape.
+
+/** A bolt: power, and Fitness on the home band. */
+export function PowerIcon({ className, strokeWidth = 2 }: WeightedIconProps) {
   return (
-    <Icon className={className}>
+    <Icon className={className} strokeWidth={strokeWidth}>
       <path d="M13.2 2.8 5.6 13.4h5.2l-1 7.8 8.6-11.4h-5.6z" />
     </Icon>
   );
 }
 
-/** A stopwatch with its hand moving: speed. */
-export function SpeedIcon({ className }: IconProps) {
-  return (
-    <Icon className={className}>
-      <circle cx="12" cy="13.6" r="7.4" />
-      <path d="M12 13.6 15.2 10.2" />
-      <path d="M9.8 3h4.4M12 3v3.2" />
-    </Icon>
-  );
-}
-
-/** A pulse line: stamina. */
+/**
+ * A charged battery, three bars full: stamina, the energy that lasts a long
+ * match. Drawn here; the terminal and the body together are centred on the
+ * box. Not a pulse line: the heart with its pulse is Cardio's.
+ */
 export function StaminaIcon({ className }: IconProps) {
   return (
     <Icon className={className}>
-      <path d="M2.5 12.5h3.6l2.3-6 3.8 12 2.7-8.2 1.5 2.2h5.1" />
+      <rect x="2.4" y="6.5" width="16.4" height="11" rx="2.4" />
+      <path d="M21.6 10.4v3.2M6.5 10v4M10.6 10v4M14.7 10v4" />
     </Icon>
   );
 }
 
-/** An arc with both ends turning: mobility. */
-export function MobilityIcon({ className }: IconProps) {
+/**
+ * Two equal weights level on a beam over its pivot, on the ground: stability,
+ * balance held. Drawn here: the beam 18 units wide (3 to 21), the ink centred
+ * on the box.
+ */
+export function StabilityIcon({ className }: IconProps) {
   return (
     <Icon className={className}>
-      <path d="M4 17a8 8 0 0 1 16 0" />
-      <path d="M1.6 13.6 4 17.2l3.7-2.1" />
-      <path d="M22.4 13.6 20 17.2l-3.7-2.1" />
-      <circle cx="12" cy="17" r="1.2" fill="currentColor" stroke="none" />
+      <rect x="4" y="5.5" width="5" height="5" rx="1" />
+      <rect x="15" y="5.5" width="5" height="5" rx="1" />
+      <path d="M3 10.5h18" />
+      <path d="M12 10.5 8.2 18.5h7.6z" />
+      <path d="M5 18.5h14" />
+    </Icon>
+  );
+}
+
+/**
+ * A heart with a pulse through it: cardio. Shape from the Lucide icon set
+ * ("heart-pulse"), ISC licence, scaled to 18 units wide (3 to 21) about the
+ * centre so it sits with the other three; the line weight stays the site's.
+ */
+export function CardioIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M18.3 13.8c1.34-1.31 2.7-2.89 2.7-4.95A4.95 4.95 0 0 0 16.05 3.9c-1.58 0-2.7.45-4.05 1.8-1.35-1.35-2.47-1.8-4.05-1.8A4.95 4.95 0 0 0 3 8.85c0 2.07 1.35 3.65 2.7 4.95l6.3 6.3Z" />
+      <path d="M4.1 12h5.65l.45-.9 1.8 4.05 1.8-6.3 1.35 3.15h4.74" />
     </Icon>
   );
 }
