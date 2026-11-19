@@ -25,8 +25,16 @@
 // Since backlog #71 (owner, 2026-11-18) the third point hints at the levels
 // and moving up ("Five levels to climb", the count from the tier setting),
 // and every group's button reads "Ask to join" until that group can take
-// payment. Checks that read source text normalise line endings (`read`).
-// Exits non-zero on any failure. Never spells the cohort length or total.
+// payment.
+//
+// Since backlog #74 (owner, 2026-11-19) the band's first two points name
+// the two parts, each with what it trains ("Tennis technique, tactics and
+// focus", "Fitness for power and stamina"; the racket and the bolt), and
+// Fitness trains power, stamina, stability and cardio: About's tiles, the
+// program pages' lists and the brief. "Tennis and fitness in every class"
+// and "Point play to finish every class" left the home band only.
+// Checks that read source text normalise line endings (`read`). Exits
+// non-zero on any failure. Never spells the cohort length or total.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -64,7 +72,18 @@ import HomePage from "../app/page";
 import { COOLING_OFF_DAYS } from "../content/policies";
 import { groupStatus } from "../lib/programCatalog";
 import { TIER_COUNT, TIER_COUNT_WORD } from "../lib/tiers";
-import { PointPlayIcon, StairsIcon } from "../components/ui/icons";
+import {
+  CardioIcon,
+  FocusIcon,
+  FootworkIcon,
+  PointPlayIcon,
+  PowerIcon,
+  StabilityIcon,
+  StairsIcon,
+  StaminaIcon,
+  TacticsIcon,
+  TechniqueIcon,
+} from "../components/ui/icons";
 import { nextStepFor } from "../lib/dashboardState";
 import { BootcampClass } from "../components/sections/BootcampClass";
 import { BootcampPoints } from "../components/sections/BootcampPoints";
@@ -229,7 +248,17 @@ console.log("The bootcamp words: tennis and fitness in every class");
 check("the heading", CLASS_HEADING === "Tennis and fitness in every class.");
 check("the two parts are named Tennis and Fitness, in that order", CLASS_PARTS.map((part) => part.name).join("|") === "Tennis|Fitness");
 check("Tennis trains Technique, Footwork, Tactics, Focus", CLASS_PARTS[0].trains.map((t) => t.label).join("|") === "Technique|Footwork|Tactics|Focus" && CLASS_PARTS[0].tone === "lime" && CLASS_PARTS[0].tag === undefined);
-check("Fitness, Built for tennis, trains Power, Speed, Stamina, Mobility", CLASS_PARTS[1].trains.map((t) => t.label).join("|") === "Power|Speed|Stamina|Mobility" && CLASS_PARTS[1].tone === "court" && CLASS_PARTS[1].tag === "Built for tennis");
+// Re-pinned for backlog #74 (owner, 2026-11-19: hard fitness work built for
+// tennis, for power, stamina, stability and cardio): Fitness trained Power,
+// Speed, Stamina and Mobility.
+check(
+  "Fitness, Built for tennis, trains Power, Stamina, Stability, Cardio, each with its own glyph",
+  CLASS_PARTS[1].trains.map((t) => t.label).join("|") === "Power|Stamina|Stability|Cardio" &&
+    CLASS_PARTS[1].trains.map((t) => t.icon).join("|") === "power|stamina|stability|cardio" &&
+    CLASS_PARTS[1].tone === "court" &&
+    CLASS_PARTS[1].tag === "Built for tennis"
+);
+check("no Fitness tile is Speed or Mobility any more", CLASS_PARTS.every((part) => part.trains.every((t) => !/speed|mobility/i.test(`${t.label} ${t.icon}`))));
 check("ten words in all: the two names and the eight things they train", new Set([...CLASS_PARTS.map((part) => part.name), ...CLASS_PARTS.flatMap((part) => part.trains.map((t) => t.label))]).size === 10);
 check("how a class runs: it rotates between the two all class, and finishes with point play", CLASS_RUNS[0].text === "Rotate between the two all class" && CLASS_RUNS[1].text === "Finish with point play");
 // Re-pinned for backlog #70: the graphic's third line was the group size
@@ -259,6 +288,61 @@ check("every word is text", [...CLASS_PARTS.flatMap((part) => part.trains.map((t
 check("the rotate glyph between the blocks, and every icon, is decoration", count(classSection, "<svg") === 11 && count(classSection, '<svg aria-hidden="true" focusable="false"') === 11 && classSection.includes('<div aria-hidden="true" class="grid h-12 place-items-center'));
 check("the graphic states no group size, no price, no class length and no classes a week", !/players a group|\$|minute|a week/i.test(classSection.replace(/<[^>]+>/g, " ")));
 check("the icons are drawn here: inline SVG in the text colour, no icon font and no package", (() => { const icons = read("src/components/ui/icons.tsx"); return icons.includes('stroke="currentColor"') && icons.includes('aria-hidden="true"') && icons.includes('focusable="false"') && !/^import .* from "(?!react")/m.test(icons); })());
+// Backlog #74 (owner, 2026-11-19): Stability and Cardio are new glyphs and
+// Stamina is redrawn, so the four Fitness tiles read as one set and each is
+// its own shape. Cardio takes the heart with a pulse, so Stamina is no
+// longer a pulse line: a charged battery, the energy that lasts.
+{
+  const icons = read("src/components/ui/icons.tsx");
+  const inner = (svg: string) => svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
+  const tennisGlyphs = [TechniqueIcon, FootworkIcon, TacticsIcon, FocusIcon].map((icon) => render(createElement(icon, {})));
+  const fitnessGlyphs = [PowerIcon, StaminaIcon, StabilityIcon, CardioIcon].map((icon) => render(createElement(icon, {})));
+  const [, stamina, stability, cardio] = fitnessGlyphs.map(inner);
+  check(
+    "the four Fitness glyphs are one set: the 24-unit grid, the site's line weight of 2, round caps and joins, decoration",
+    fitnessGlyphs.every(
+      (svg) =>
+        svg.startsWith('<svg aria-hidden="true" focusable="false"') &&
+        svg.includes('viewBox="0 0 24 24"') &&
+        svg.includes('stroke-width="2"') &&
+        svg.includes('stroke-linecap="round"') &&
+        svg.includes('stroke-linejoin="round"')
+    )
+  );
+  check("…in one weight: no Fitness glyph sets a line weight of its own inside", fitnessGlyphs.every((svg) => !inner(svg).includes("stroke-width")));
+  check("eight different drawings: no tile shares its glyph with another, Tennis or Fitness", new Set([...tennisGlyphs, ...fitnessGlyphs].map(inner)).size === 8);
+  check(
+    "Cardio is a heart with a pulse through it; Stamina is a battery of three bars, and the old pulse line is gone",
+    count(cardio, "<path") === 2 &&
+      /Z"/.test(cardio) &&
+      /^<rect [^>]*><\/rect><path d="(M[\d.]+ [\d.]+v[\d.]+){4}"><\/path>$/.test(stamina) &&
+      !icons.includes("M2.5 12.5h3.6l2.3-6 3.8 12 2.7-8.2 1.5 2.2h5.1"),
+    stamina
+  );
+  check(
+    "the new glyphs sit on the box like the stairs: the beam 3 to 21, the battery 2.4 to 21.6, the heart's pulse 4.1 to 19.9",
+    stability.includes('d="M3 10.5h18"') &&
+      stamina.includes('x="2.4"') && stamina.includes('width="16.4"') && stamina.includes("M21.6 10.4v3.2") &&
+      cardio.includes('d="M4.1 12h5.65l.45-.9 1.8 4.05 1.8-6.3 1.35 3.15h4.74"')
+  );
+  check(
+    "Speed and Mobility are gone from the icons, and the shape taken from Lucide says so, with its licence",
+    !icons.includes("SpeedIcon") && !icons.includes("MobilityIcon") && /Lucide icon set\s+(\*\s+)?\("heart-pulse"\), ISC licence/.test(icons)
+  );
+  check(
+    "About draws each Fitness tile with its glyph, in order: Power, Stamina, Stability, Cardio",
+    CLASS_PARTS[1].trains.every((tile, i) => classSection.includes(`${inner(fitnessGlyphs[i])}</svg></span>${tile.label}</li>`)) &&
+      at(classSection, ">Power</li>") > at(classSection, ">Fitness</h3>") &&
+      ["Power", "Stamina", "Stability", "Cardio"].every((label, i, all) => i === 0 || at(classSection, `${all[i - 1]}</li>`) < at(classSection, `${label}</li>`))
+  );
+  check(
+    "About's Tennis tiles are unchanged: the racket at the site's 2 keeps strings at 1 and the handle at 3",
+    CLASS_PARTS[0].trains.every((tile, i) => classSection.includes(`${inner(tennisGlyphs[i])}</svg></span>${tile.label}</li>`)) &&
+      tennisGlyphs[0].includes('stroke-width="2"') &&
+      inner(tennisGlyphs[0]).includes('stroke-width="1" opacity="0.7"') &&
+      inner(tennisGlyphs[0]).includes('<path d="M12 16.6v5.6" stroke-width="3">')
+  );
+}
 
 // ── The three points (backlog #70; owner, 2026-11-17) ───────────────────────
 // What a bootcamp is, in a thin band straight under the home page's hero, in
@@ -269,10 +353,34 @@ const pointWords = BOOTCAMP_POINTS.map((point) => `${point.lead} ${point.rest}`)
 // Re-pinned for backlog #71 (owner, 2026-11-18): the third point was "One
 // group for all (the cohort length)". It hints at the levels and moving up.
 const LEVEL_COUNT_WORD = `${TIER_COUNT_WORD.charAt(0).toUpperCase()}${TIER_COUNT_WORD.slice(1)}`;
-check("three points, in order: tennis and fitness, point play, the levels", BOOTCAMP_POINTS.length === 3 && BOOTCAMP_POINTS.map((point) => point.lead).join("|") === `Tennis and fitness|Point play|${LEVEL_COUNT_WORD} levels`);
-check("their words: in every class; to finish every class; to climb", BOOTCAMP_POINTS[0].rest === "in every class" && BOOTCAMP_POINTS[1].rest === "to finish every class" && BOOTCAMP_POINTS[2].rest === "to climb");
-check("today that reads Five levels to climb", pointWords[2] === "Five levels to climb" && TIER_COUNT === 5);
-check("the first point is the class idea, word for word", `${pointWords[0]}.` === CLASS_HEADING && pointWords[0].toLowerCase() === CLASS_IDEA);
+// Re-pinned for backlog #74 (owner, 2026-11-19): the first two points were
+// "Tennis and fitness in every class" (the two arrows) and "Point play to
+// finish every class" (the court with a ball). They name the two parts now,
+// each with what it trains (the racket, the bolt). Both old lines left the
+// home band only: the program cards' lines, the page descriptions and the
+// quiz's reason lines keep the idea, About and the program pages keep point
+// play (pinned below).
+check("three points, in order: Tennis, Fitness, the levels", BOOTCAMP_POINTS.length === 3 && BOOTCAMP_POINTS.map((point) => point.lead).join("|") === `Tennis|Fitness|${LEVEL_COUNT_WORD} levels`);
+check("their words: technique, tactics and focus; for power and stamina; to climb", BOOTCAMP_POINTS[0].rest === "technique, tactics and focus" && BOOTCAMP_POINTS[1].rest === "for power and stamina" && BOOTCAMP_POINTS[2].rest === "to climb");
+check("today that reads Tennis technique, tactics and focus · Fitness for power and stamina · Five levels to climb", pointWords.join(" · ") === "Tennis technique, tactics and focus · Fitness for power and stamina · Five levels to climb" && TIER_COUNT === 5);
+// Replaces "the first point is the class idea, word for word", removed for
+// backlog #74: the band no longer says the idea in a sentence. CLASS_HEADING
+// and CLASS_IDEA are still pinned where they are used (below).
+const aimsOf = (rest: string) => rest.replace(/^for /, "").split(/, | and /);
+check(
+  "the first two points are the two parts by their own names, in the graphic's order, and each names only what that part trains",
+  BOOTCAMP_POINTS[0].lead === CLASS_PARTS[0].name &&
+    BOOTCAMP_POINTS[1].lead === CLASS_PARTS[1].name &&
+    [0, 1].every((i) => aimsOf(BOOTCAMP_POINTS[i].rest).every((aim) => CLASS_PARTS[i].trains.some((tile) => tile.label.toLowerCase() === aim)))
+);
+check(
+  "one list only: three things after Tennis, two after Fitness, so two lists never sit side by side",
+  aimsOf(BOOTCAMP_POINTS[0].rest).length === 3 && aimsOf(BOOTCAMP_POINTS[1].rest).length === 2 && BOOTCAMP_POINTS.filter((point) => point.rest.includes(",")).length === 1
+);
+check(
+  "the band no longer says tennis and fitness in every class or point play to finish every class",
+  pointWords.every((words) => !words.toLowerCase().includes(CLASS_IDEA) && !/point play|every class/i.test(words))
+);
 check(
   "the third point reads the level count from the setting (TIER_COUNT_WORD), capitalised, and types no number",
   TIER_COUNT_WORD === ["zero", "one", "two", "three", "four", "five", "six", "seven"][TIER_COUNT] &&
@@ -282,18 +390,33 @@ check(
     !/\d/.test(pointWords.join(" "))
 );
 check("climb is the ladder's own word, on the levels page the band's word points to", read("src/app/assessment/page.tsx").includes("The ladder you&apos;re climbing"));
-check("their icons: the two arrows, the court with a ball, the stairs", BOOTCAMP_POINTS.map((point) => point.icon).join("|") === "rotate|play|stairs");
+check("their icons: the racket, the bolt, the stairs", BOOTCAMP_POINTS.map((point) => point.icon).join("|") === "technique|power|stairs");
 check("no price, no group size, no class length and no classes a week in the points", pointWords.every((words) => !/\$|price|session|players|up to|minute|hour|a week|once|twice/i.test(words)));
 const band = render(createElement(BootcampPoints));
 const bandText = band.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 check("a labelled band on hairlines, with no heading: its name is for assistive tech", band.startsWith(`<section aria-label="${BOOTCAMP_POINTS_LABEL}" class="border-y border-white/10">`) && BOOTCAMP_POINTS_LABEL === "What a bootcamp is" && !/<h[1-6]/.test(band));
-check("a real list of three items, in the points' order", count(band, '<ul role="list"') === 1 && count(band, "<li") === 3 && at(band, ">Tennis and fitness</b>") > 0 && at(band, ">Tennis and fitness</b>") < at(band, ">Point play</b>") && at(band, ">Point play</b>") < at(band, ">Five levels</b>"));
+check("a real list of three items, in the points' order", count(band, '<ul role="list"') === 1 && count(band, "<li") === 3 && at(band, ">Tennis</b>") > 0 && at(band, ">Tennis</b>") < at(band, ">Fitness</b>") && at(band, ">Fitness</b>") < at(band, ">Five levels</b>"));
 check("each point is a bold lead and the rest of its phrase, as text", BOOTCAMP_POINTS.every((point) => band.includes(`>${point.lead}</b>`) && band.replace(/<!-- -->/g, "").includes(`</b> ${point.rest}</span>`)) && bandText === pointWords.join(" "), bandText);
 check("three icons, lime and decoration, and nothing else drawn", count(band, "<svg") === 3 && count(band, '<svg aria-hidden="true" focusable="false"') === 3 && count(band, "text-[#B4E655]") === 3);
 // Backlog #71: the stairs joined the band. The three read as one set: the
-// same 24-unit grid, the band's stroke, the same box, and the stairs as wide
-// as the court and the arrows (3 to 21), centred on the box like them.
+// same 24-unit grid, the band's stroke, the same box. The stairs were drawn
+// as wide as the court and the arrows that stood beside them then (3 to
+// 21), centred on the box; backlog #74 put the racket and the bolt beside
+// them, and the stairs keep their shape.
 check("the three icons are one set: one grid, the band's 1.8 stroke, one box (24px, 32px from md)", count(band, 'viewBox="0 0 24 24"') === 3 && count(band, 'stroke-width="1.8"') === 3 && count(band, 'class="h-6 w-6 shrink-0 text-[#B4E655] md:h-8 md:w-8"') === 3);
+// Backlog #74: the racket and the bolt take the band's stroke like the
+// stairs, and the racket's strings and handle follow it in proportion (half
+// and one and a half times the frame), so it reads the same at 24px as on
+// About's tiles. No other line weight in the band, and no float noise.
+check(
+  "the band draws the racket, the bolt and the stairs, the racket's strings at 0.9 and its handle at 2.7 at the band's 1.8",
+  band.includes(render(createElement(TechniqueIcon, { className: "h-6 w-6 shrink-0 text-[#B4E655] md:h-8 md:w-8", strokeWidth: 1.8 }))) &&
+    band.includes(render(createElement(PowerIcon, { className: "h-6 w-6 shrink-0 text-[#B4E655] md:h-8 md:w-8", strokeWidth: 1.8 }))) &&
+    band.includes(render(createElement(StairsIcon, { className: "h-6 w-6 shrink-0 text-[#B4E655] md:h-8 md:w-8", strokeWidth: 1.8 }))) &&
+    band.includes('stroke-width="0.9" opacity="0.7"') &&
+    band.includes('<path d="M12 16.6v5.6" stroke-width="2.7">') &&
+    [...band.matchAll(/stroke-width="([^"]+)"/g)].map((m) => m[1]).sort().join("|") === "0.9|1.8|1.8|1.8|2.7"
+);
 {
   const stairs = render(createElement(StairsIcon, { strokeWidth: 1.8 }));
   const d = stairs.match(/ d="([^"]+)"/)?.[1] ?? "";
@@ -332,6 +455,19 @@ check("the three icons are one set: one grid, the band's 1.8 stroke, one box (24
 }
 check("no link, no button, no price and no group size in the band", count(band, "<a ") === 0 && count(band, "<button") === 0 && !band.includes("$") && !/players|price|session/i.test(bandText));
 check("on a phone three rows of one line; from md three columns with a hairline between, the lead on its own line", band.includes("md:grid-cols-3") && band.includes("md:border-l md:border-white/10") && band.includes("md:first:border-l-0") && band.includes('<span class="min-w-0 md:grid">'));
+// Backlog #74, fix round, 2026-11-19: the new phrases are longer, so the
+// rest steps down where a line is tightest and every phrase stays on one
+// line at every width: 14px below 330px, 15px on a phone, 14px between md
+// and lg (the narrowest columns), 16px from lg.
+{
+  const itemClasses = [...band.matchAll(/<li class="([^"]+)"/g)].map((m) => m[1].split(" "));
+  check(
+    "every phrase stays on one line: the rest at 14px below 330px, 15px from 330px, 14px between md and lg, 16px from lg",
+    itemClasses.length === 3 &&
+      itemClasses.every((c) => ["text-[14px]", "min-[330px]:text-[15px]", "md:text-sm", "lg:text-base"].every((k) => c.includes(k)) && !c.includes("text-[15px]") && !c.includes("md:text-base")),
+    itemClasses.map((c) => c.join(" ")).join(" | ")
+  );
+}
 const homeSrc = read("src/app/page.tsx");
 check(
   "the band sits between the hero and the programs on home, outside the hero",
@@ -347,7 +483,7 @@ const homePage = render(createElement(HomePage));
 const homeText = homePage.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 check("the rendered home page has no dollar sign, in its text, its markup or its structured data", !homePage.includes("$"), homePage.match(/.{0,40}\$.{0,40}/)?.[0]);
 check("…and no price word that needs no dollar sign: no per-session figure, no rates, no free", !/a session|per session|rates on request|\bfree\b|\bCAD\b/i.test(homeText), homeText.match(/a session|per session|rates on request|\bfree\b|\bCAD\b/i)?.[0]);
-check("the render is the real page: the hero, the band, the programs, the steps, the closing", homePage.includes("Where Athletes") && at(homePage, "Where Athletes") < at(homePage, ">Tennis and fitness</b>") && at(homePage, ">Tennis and fitness</b>") < at(homePage, ">Our Programs</h2>") && at(homePage, ">Our Programs</h2>") < at(homePage, ">How joining works</h2>") && at(homePage, ">How joining works</h2>") < at(homePage, ">Groups are open to join.</h2>"));
+check("the render is the real page: the hero, the band, the programs, the steps, the closing", homePage.includes("Where Athletes") && at(homePage, "Where Athletes") < at(homePage, ">Tennis</b>") && at(homePage, ">Tennis</b>") < at(homePage, ">Our Programs</h2>") && at(homePage, ">Our Programs</h2>") < at(homePage, ">How joining works</h2>") && at(homePage, ">How joining works</h2>") < at(homePage, ">Groups are open to join.</h2>"));
 check("the Tennis and Fitness graphic is not on the home page", !homePage.includes(">Tennis</h3>") && !homePage.includes(">Fitness</h3>") && !homeSrc.includes("BootcampClass"));
 check("the line under Our Programs is gone, and nothing replaced it: the cards follow the heading", /<h2 id="programs-grid-title"[^>]*>Our Programs<\/h2><div class="mt-\[18px\] md:mt-6"><ul role="list"/.test(homePage));
 check("no general class length and no classes a week on the home page", !/\d+-minute class|minutes? a week|class a week|classes a week|once a week/i.test(homeText), homeText.match(/\d+-minute class|minutes? a week|class a week|classes a week|once a week/i)?.[0]);
@@ -355,6 +491,17 @@ check("the home cards keep title, who and when, and the link: three cards, each 
 // Backlog #71 (owner, 2026-11-18): the same group for the whole cohort left
 // the home page only; the program pages' lists and About keep it (below).
 check("the home page reads Five levels to climb and no longer One group for the whole cohort", homeText.includes("Five levels to climb") && !/One group for all/i.test(homeText) && !homeText.includes(`for all ${COHORT_LENGTH}`));
+// Backlog #74 (owner, 2026-11-19): the band names Tennis and Fitness, each
+// with what it trains, and the two lines it said before left the home page
+// only. About and the program pages keep both (pinned below).
+check(
+  "the home page reads Tennis technique, tactics and focus and Fitness for power and stamina, and no longer the class idea or point play",
+  homeText.includes("Tennis technique, tactics and focus") &&
+    homeText.includes("Fitness for power and stamina") &&
+    !homeText.toLowerCase().includes(CLASS_IDEA) &&
+    !/point play/i.test(homeText),
+  homeText.match(/.{0,30}(tennis and fitness in every class|point play).{0,30}/i)?.[0]
+);
 
 // ── The bootcamp words on the other pages (backlog #69, pass 2) ─────────────
 // The program entries type their lines in src/content/programs.ts; they are
@@ -362,7 +509,8 @@ check("the home page reads Five levels to climb and no longer One group for the 
 console.log("The bootcamp words on the program entries and About");
 const [tennis, fitness] = CLASS_PARTS;
 check("the idea inside a sentence is the heading's own words", CLASS_IDEA === "tennis and fitness in every class" && `${CLASS_IDEA.charAt(0).toUpperCase()}${CLASS_IDEA.slice(1)}.` === CLASS_HEADING);
-check("what each part trains, in words", trainsInWords(tennis) === "technique, footwork, tactics and focus" && trainsInWords(fitness) === "power, speed, stamina and mobility");
+// Re-pinned for backlog #74: Fitness read "power, speed, stamina and mobility".
+check("what each part trains, in words", trainsInWords(tennis) === "technique, footwork, tactics and focus" && trainsInWords(fitness) === "power, stamina, stability and cardio");
 check(
   "how a class runs, in one sentence: players rotate between tennis drills and fitness drills built for tennis, and finish with point play",
   CLASS_LINE === "In every class, players rotate between tennis drills and fitness drills built for tennis, then finish with point play."
@@ -395,6 +543,11 @@ for (const p of [youth, adults]) {
   // first line was also the home band's third point, word for word; the band
   // hints at the levels now, and the line stays here unchanged (owner,
   // 2026-11-18), so the "same as the band" half of the check went.
+  // Re-pinned for backlog #74: the point-play line was also the home band's
+  // second point, word for word. The band names Fitness now, and the line
+  // stays here unchanged (owner, 2026-11-19), so that "same as the band"
+  // half went too; the line itself is still pinned, word for word. The
+  // Fitness line reads the four new aims, typed out below as well.
   check(
     `${p.id}: what's included is one group for the cohort, the group size, the two parts and how a class ends, then one line of its own`,
     list.length === 6 &&
@@ -402,14 +555,15 @@ for (const p of [youth, adults]) {
       list[1] === `Up to ${GROUP_MAX_PLAYERS} players a group` &&
       list[2] === TENNIS_LINE &&
       list[3] === FITNESS_LINE &&
-      list[4] === "Point play to finish every class" &&
-      list[4] === pointWords[1],
+      list[3] === "Fitness built for tennis: power, stamina, stability and cardio" &&
+      list[4] === "Point play to finish every class",
     list.join(" | ")
   );
   // Re-pinned for backlog #70: the line read "Once a week · … minutes · …-week cohorts · Saturdays 12:00, 1:00 and 2:00".
   check(`${p.id}: the schedule line is the cohort length, then its groups' own day and starts`, p.schedule === `${COHORTS_LEAD} · ${days} ${p === youth ? "12:00, 1:00 and 2:00" : "4:00, 5:00 and 6:00"}`, p.schedule);
   const words = [p.description, p.longDescription, p.metaDescription ?? "", p.schedule ?? "", p.priceLine ?? "", p.priceSummary ?? "", p.levelNote ?? "", ...list].join(" ");
   check(`${p.id}: no share of the class, no circuit, no separate fitness session, nothing said the old way`, !OLD_WAY.test(words), words.match(OLD_WAY)?.[0]);
+  check(`${p.id}: no old fitness aim in any of its words: no speed, no mobility (backlog #74)`, !/\b(speed|mobility)\b/i.test(words), words.match(/.{0,30}\b(speed|mobility)\b.{0,10}/i)?.[0]);
   check(`${p.id}: no general class length and no classes a week in any of its words`, !GENERAL_LENGTH.test(words), words.match(GENERAL_LENGTH)?.[0]);
   check(`${p.id}: no per-session figure in any of its words`, !/\ba session\b|per session/i.test(words), words.match(/.{0,30}(\ba session\b|per session).{0,10}/i)?.[0]);
 }
@@ -566,6 +720,17 @@ check(
   /<a [^>]*class="whitespace-nowrap [^"]*py-\[13px\][^"]*"[^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a>|<a [^>]*href="\/intake"[^>]*class="whitespace-nowrap [^"]*py-\[13px\][^"]*"[^>]*>Take the 2-minute quiz<\/a>/.test(aboutPage)
 );
 check("About: nothing said the old way, on the page or in its description", !OLD_WAY.test(aboutPage.replace(/<[^>]+>/g, " ")), aboutPage.replace(/<[^>]+>/g, " ").match(OLD_WAY)?.[0]);
+// Backlog #74 (owner, 2026-11-19): About keeps both lines that left the home
+// band (how a class rotates, and point play to finish), and its Fitness
+// block reads the four new aims and no old one.
+check(
+  "About: keeps the rotation and point play under the graphic, and reads Power, Stamina, Stability, Cardio with no speed or mobility",
+  aboutPage.includes("Rotate between the two all class</li>") &&
+    aboutPage.includes("Finish with point play</li>") &&
+    ["Power", "Stamina", "Stability", "Cardio"].every((label) => count(aboutPage, `${label}</li>`) === 1) &&
+    !/\b(speed|mobility)\b/i.test(aboutText),
+  aboutText.match(/.{0,30}\b(speed|mobility)\b.{0,10}/i)?.[0]
+);
 
 console.log("The words that never appear");
 {
@@ -669,6 +834,30 @@ check(
     !/a group's Join button|"Join", "Ask to join" and "Notify me"/.test(voice)
 );
 check("the brief's before → after rows for the three changed strings: the third point, the card button, the signed-out greeting", [`| 31 | One group for all ${COHORT_LENGTH}`, "| 32 | Join (a group card's lime button", "| 33 | Your quiz answers are in."].every((row) => voice.includes(row)));
+// Backlog #74 (owner, 2026-11-19): the band's first two points, the Fitness
+// aims and a before → after row for each changed string.
+check(
+  "the brief's definition of the fitness: power, stamina, stability and cardio, on top of the tennis training",
+  bootcampWords.includes("The owner's definition (2026-11-19): the fitness is hard fitness work built for tennis, for power, stamina, stability and cardio, on top of the tennis training.") &&
+    bootcampWords.includes("Fitness trains power, stamina, stability and cardio (owner, 2026-11-19") &&
+    bootcampWords.includes('"Fitness built for tennis: power, stamina, stability and cardio"') &&
+    !bootcampWords.includes("Fitness trains power, speed") &&
+    !bootcampWords.includes('"Fitness built for tennis: power, speed')
+);
+check(
+  "the brief says what left the home band and where it stays: the idea on the cards and in sentences, point play on About and the program pages",
+  bootcampWords.includes('They replaced "Tennis and fitness in every class" and "Point play to finish every class", which left the home page only') &&
+    /two lists side by side read as buzzwords/.test(bootcampWords)
+);
+check(
+  "the brief's before → after rows for the four changed strings: the two points, the Fitness tiles, the list line",
+  [
+    "| 34 | Tennis and fitness in every class (home, the first point under the hero; two arrows as its icon) | Tennis technique, tactics and focus (a racket as its icon) |",
+    "| 35 | Point play to finish every class (home, the second point under the hero; a court with a ball as its icon) | Fitness for power and stamina (a bolt as its icon) |",
+    "| 36 | Power, Speed, Stamina, Mobility (About, the Fitness tiles) | Power, Stamina, Stability, Cardio",
+    "| 37 | Fitness built for tennis: power, speed, stamina and mobility (the bootcamp programs' lists) | Fitness built for tennis: power, stamina, stability and cardio |",
+  ].every((row) => voice.includes(row))
+);
 
 const pkg = JSON.parse(read("package.json")) as { scripts: { test: string } };
 // Later items append their scripts after this one (audit N), so it is pinned as run, not as last.
