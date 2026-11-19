@@ -13,9 +13,9 @@ import { PowerIcon, StairsIcon, TechniqueIcon } from "@/components/ui/icons";
 // between them, the lead on its own line over the rest. The lead is 22px
 // from lg and 20px between md and lg, a step set for an earlier, longer
 // lead and kept so the band keeps its classes and its height. Every phrase
-// keeps to one line on a phone from 330px wide and from about 810px; in the
-// narrowest columns of md, 768 to about 805px, the first point's rest takes
-// two lines, and to about 785px the second's too.
+// stays on one line at every width: the rest is 15px on a phone (14px below
+// 330px), 14px between md and lg, where the columns are narrowest, and 16px
+// from lg.
 //
 // No heading, no price, no group size, no link and no button: the main
 // action sits in the hero above it and the programs follow below. The words
@@ -39,7 +39,7 @@ export function BootcampPoints() {
           {BOOTCAMP_POINTS.map((point) => (
             <li
               key={point.lead}
-              className="flex items-center gap-3 text-[15px] text-white/75 md:gap-4 md:border-l md:border-white/10 md:py-[26px] md:pl-8 md:text-base md:first:border-l-0 md:first:pl-0"
+              className="flex items-center gap-3 text-[14px] min-[330px]:text-[15px] text-white/75 md:gap-4 md:border-l md:border-white/10 md:py-[26px] md:pl-8 md:text-sm lg:text-base md:first:border-l-0 md:first:pl-0"
             >
               {POINT_GLYPHS[point.icon]}
               {/* One line on a phone; from md the lead sits on its own line

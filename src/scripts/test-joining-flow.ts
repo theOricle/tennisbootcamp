@@ -455,6 +455,19 @@ check(
 }
 check("no link, no button, no price and no group size in the band", count(band, "<a ") === 0 && count(band, "<button") === 0 && !band.includes("$") && !/players|price|session/i.test(bandText));
 check("on a phone three rows of one line; from md three columns with a hairline between, the lead on its own line", band.includes("md:grid-cols-3") && band.includes("md:border-l md:border-white/10") && band.includes("md:first:border-l-0") && band.includes('<span class="min-w-0 md:grid">'));
+// Backlog #74, fix round, 2026-11-19: the new phrases are longer, so the
+// rest steps down where a line is tightest and every phrase stays on one
+// line at every width: 14px below 330px, 15px on a phone, 14px between md
+// and lg (the narrowest columns), 16px from lg.
+{
+  const itemClasses = [...band.matchAll(/<li class="([^"]+)"/g)].map((m) => m[1].split(" "));
+  check(
+    "every phrase stays on one line: the rest at 14px below 330px, 15px from 330px, 14px between md and lg, 16px from lg",
+    itemClasses.length === 3 &&
+      itemClasses.every((c) => ["text-[14px]", "min-[330px]:text-[15px]", "md:text-sm", "lg:text-base"].every((k) => c.includes(k)) && !c.includes("text-[15px]") && !c.includes("md:text-base")),
+    itemClasses.map((c) => c.join(" ")).join(" | ")
+  );
+}
 const homeSrc = read("src/app/page.tsx");
 check(
   "the band sits between the hero and the programs on home, outside the hero",
