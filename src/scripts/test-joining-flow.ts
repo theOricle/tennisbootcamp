@@ -26,7 +26,7 @@
 // and moving up ("Five levels to climb", the count from the tier setting),
 // and every group's button reads "Ask to join" until that group can take
 // payment. Since backlog #85 (owner, 2026-11-19 and 2026-11-20) a group can:
-// each open block is a card whose lime "Join" opens its sign-up page, and a
+// each open block is a card whose lime "Enroll" opens its sign-up page, and a
 // group with no open block reads "Dates coming soon" and "Notify me".
 //
 // Since backlog #74 (owner, 2026-11-19) the band's first two points name
@@ -180,14 +180,15 @@ check("no scheduled card carries the promise or a Week 1 row", scheduled.every((
 check("no card carries a Join row or the approval line", scheduled.every((g) => !cardFor(g).includes(APPROVAL_LINE) && !cardFor(g).includes(APPROVAL_ASK_LINE) && !cardFor(g).includes("<dt")));
 check("High Performance: the By approval chip and an outline Ask to join, named for the group", hpCard.includes("By approval") && />Ask to join<span class="sr-only"> the High Performance Youth Bootcamp<\/span><\/a>/.test(hpCard) && !/<a [^>]*bg-\[#B4E655\]/.test(hpCard));
 // Re-pinned for backlog #85 (owner, 2026-11-19): the open block's lime button
-// reads "Join" again, with its sign-up page and payment behind it (backlog
-// #71 had it read "Ask to join" while it opened the quiz).
-check("an open block: the Open to join chip and a lime Join, named for the group", openCard.includes("Open to join") && /<a [^>]*bg-\[#B4E655\][^>]*>Join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>/.test(openCard) && !openCard.includes(">Ask to join<"));
-check("still one link per card: Join and Ask to join open the block's sign-up page, where it is paid for or, by approval, asked for", count(hpCard, "<a ") === 1 && count(openCard, "<a ") === 1 && hpCard.includes('href="/enroll/hp-winter"') && openCard.includes('href="/enroll/adult-beg-winter"') && !hpCard.includes("/intake") && !openCard.includes("/intake"));
+// reads "Enroll" (owner, 2026-11-20; "Join" in the first pictures), with its
+// sign-up page and payment behind it (backlog #71 had it read "Ask to join"
+// while it opened the quiz).
+check("an open block: the Open to join chip and a lime Enroll, named for the group", openCard.includes("Open to join") && /<a [^>]*bg-\[#B4E655\][^>]*>Enroll<span class="sr-only"> in the Beginner Adult Bootcamp<\/span><\/a>/.test(openCard) && !openCard.includes(">Ask to join<"));
+check("still one link per card: Enroll and Ask to join open the block's sign-up page, where it is paid for or, by approval, asked for", count(hpCard, "<a ") === 1 && count(openCard, "<a ") === 1 && hpCard.includes('href="/enroll/hp-winter"') && openCard.includes('href="/enroll/adult-beg-winter"') && !hpCard.includes("/intake") && !openCard.includes("/intake"));
 check("a group with no open block: Dates coming soon and an outline Notify me (owner, 2026-11-20)", datelessCard.includes("Dates coming soon</li>") && /<a [^>]*href="#notify"[^>]*>Notify me<span class="sr-only"> when the Beginner Adult Bootcamp has dates<\/span><\/a>/.test(datelessCard) && !datelessCard.includes("/enroll") && !datelessCard.includes("Open to join"));
 // The line beside the High Performance row describes its button: the block's
 // sign-up page stops a walk-in with its approval step, which is the quiz.
-check("Good to know still says what asking is, beside the by-approval group: the quiz, then our coaches' approval", APPROVAL_ASK_LINE.startsWith("Ask to join: it is the 2-minute quiz") && hpCard.includes(">Ask to join<") && openCard.includes(">Join<"));
+check("Good to know still says what asking is, beside the by-approval group: the quiz, then our coaches' approval", APPROVAL_ASK_LINE.startsWith("Ask to join: it is the 2-minute quiz") && hpCard.includes(">Ask to join<") && openCard.includes(">Enroll<"));
 check("no assessment pitch on a card (design-system.md)", !hpCard.includes("Book Your Assessment") && !openCard.includes("Book Your Assessment"));
 
 // ── How joining works (home) ────────────────────────────────────────────────
@@ -247,8 +248,8 @@ const catalogSrc = read("src/components/sections/ProgramCatalog.tsx");
 check("/programs: Good to know follows the groups, with High Performance where a by-approval group is listed", at(programsPage, "<ProgramCatalog") < at(programsPage, "<GoodToKnow") && programsPage.includes('approvalGroup={programGroups.find((g) => g.joining === "approval")?.name}'));
 check("/programs: the quiz is a side line under the dropdowns, never a lime button", catalogSrc.includes('<QuizSideLine source="programs-filters"') && at(catalogSrc, "<Filters query={query}") < at(catalogSrc, "<QuizSideLine") && !programsPage.includes('variant="primary"'));
 // Backlog #70: the lead lost "one …-minute class a week" and keeps the cohort length, from the constant.
-// Re-pinned for backlog #85 (fix round 3): "Pick your group and join." while a block is open; with none, the line that dates are coming.
-check("/programs: the lead says what every group is and how long a cohort runs, from the constant, with no class length and no classes a week", /Every group is a bootcamp: tennis and fitness in every class, in \{COHORT_LENGTH_ADJ\} cohorts\.\{" "\}\s+\{anyOpen \? "Pick your group and join\." : PROGRAMS_NO_DATES_LINE\}/.test(programsPage) && !/minute|a week|SESSION_MINUTES/.test(programsPage.replace(/\{\/\*[\s\S]*?\*\/\}|\/\/[^\n]*/g, "")));
+// Re-pinned for backlog #85 (fix round 3): "Pick your group and enroll." while a block is open; with none, the line that dates are coming.
+check("/programs: the lead says what every group is and how long a cohort runs, from the constant, with no class length and no classes a week", /Every group is a bootcamp: tennis and fitness in every class, in \{COHORT_LENGTH_ADJ\} cohorts\.\{" "\}\s+\{anyOpen \? "Pick your group and enroll\." : PROGRAMS_NO_DATES_LINE\}/.test(programsPage) && !/minute|a week|SESSION_MINUTES/.test(programsPage.replace(/\{\/\*[\s\S]*?\*\/\}|\/\/[^\n]*/g, "")));
 const detail = read("src/app/programs/[slug]/page.tsx");
 // Re-pinned for backlog #85 (fix round): the section shows with its cards, read from the open blocks and the lineup.
 check("detail: Good to know after the groups, only for a program with fixed classes", /cards\.length > 0 && \(\s*<>\s*<section aria-labelledby=\{GROUPS_ANCHOR\}/.test(detail) && detail.includes('.filter((c) => c.group.status !== "arranged")') && at(detail, "aria-labelledby={GROUPS_ANCHOR}") < at(detail, "<GoodToKnow") && !detail.includes("<HowJoiningWorks"));
@@ -854,9 +855,9 @@ const joiningFlowBrief = voice.slice(voice.indexOf("## Joining flow"), voice.ind
 // "Ask to join" on every group until that group could take payment, the quiz
 // signed out and the dashboard for a signed-in taker (backlog #71).
 check(
-  "the brief's card buttons: Join on an open block, to its sign-up page; Ask to join by approval, to the same page; Dates coming soon and Notify me with no open block",
+  "the brief's card buttons: Enroll on an open block, to its sign-up page; Ask to join by approval, to the same page; Dates coming soon and Notify me with no open block",
   joiningFlowBrief.includes("**The card buttons and where they lead** (owner, 2026-11-19 and 2026-11-20;") &&
-    joiningFlowBrief.includes('An open block\'s lime button reads "Join" and opens its sign-up page (`/enroll/{cohortId}`), signed in or not') &&
+    joiningFlowBrief.includes('An open block\'s lime button reads "Enroll" and opens its sign-up page (`/enroll/{cohortId}`), signed in or not') &&
     joiningFlowBrief.includes('reads "Ask to join" on the outline, to the same page, whose approval step takes over') &&
     joiningFlowBrief.includes('A group with no open block reads "Dates coming soon" where the dates go and an outline "Notify me" (the owner\'s decision, 2026-11-20)') &&
     joiningFlowBrief.includes("**Signed in, never a dead end** (owner, 2026-11-19)") &&

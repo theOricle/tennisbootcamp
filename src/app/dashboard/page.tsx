@@ -234,7 +234,7 @@ async function DashboardContent({
 
   const enrolledCohortIds = [...new Set(rows.map((e) => e.cohort_id).filter(Boolean))];
   // The open blocks (public, inviting or confirmed, not yet started), shown
-  // as the same group cards as /programs, each with "Join" (owner,
+  // as the same group cards as /programs, each with "Enroll" (owner,
   // 2026-11-19): not a block the account is already in, not a by-approval
   // one, and only those whose ages take one of its players (ages only, never
   // the level). Their seats are one sheet read, none while no block is open.

@@ -338,7 +338,7 @@ export function accountOpenCards(
 /**
  * The dashboard's "Suggested for you" beside its groups with dates: a
  * program whose open groups are listed there is left out, since those cards
- * already carry its dates, its price and "Join". Every other suggestion stays.
+ * already carry its dates, its price and "Enroll". Every other suggestion stays.
  */
 export function suggestionsBesideCards<T extends { program: { id: string } }>(
   suggestions: readonly T[],

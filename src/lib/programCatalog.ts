@@ -100,9 +100,9 @@ export type GroupActionKind = "join" | "ask" | "notify";
 
 export type GroupAction = {
   kind: GroupActionKind;
-  /** The button's words: "Join", "Ask to join", "Notify me", "Ask about lessons". */
+  /** The button's words: "Enroll", "Ask to join", "Notify me", "Ask about lessons". */
   label: string;
-  /** The rest of its accessible name, after the label: " the Beginner Junior Bootcamp". */
+  /** The rest of its accessible name, after the label: " in the Beginner Junior Bootcamp" (Enroll), " the …" (Ask to join). */
   nameSuffix: string;
 };
 
@@ -110,9 +110,13 @@ export type GroupAction = {
  * The lime button of an open block (owner, 2026-11-19: "you should be able to
  * sign up and pay for a group not just ask to join"). It opens the block's
  * sign-up page, /enroll/{cohortId}, where the player picks who plays, signs
- * the agreement and pays, signed in or not.
+ * the agreement and pays, signed in or not. It reads "Enroll" (owner,
+ * 2026-11-20: "looks right but maybe enroll instead? your choice"): the word
+ * names that step, it is the site's own word for it ("You're enrolled"), and
+ * it no longer repeats the header's "Join a bootcamp", which only opens the
+ * groups. It read "Join" until then.
  */
-export const JOIN_LABEL = "Join";
+export const ENROLL_LABEL = "Enroll";
 
 /**
  * The outline button of a by-approval block (High Performance) and of an
@@ -131,13 +135,13 @@ function groupNamed(name: string): string {
 
 /**
  * A group card's one action, from its status (owner-approved design,
- * 2026-11-17; join and pay, owner 2026-11-19 and 2026-11-20): "Join" on the
+ * 2026-11-17; join and pay, owner 2026-11-19 and 2026-11-20): "Enroll" on the
  * lime button of a block that is open or down to its last spots; "Ask to
  * join" on the outline of a by-approval or invite-only block; an outline
  * "Notify me" for a full block, and for a planned group with no open block
  * (`dated` false); and "Ask about lessons" for a group with no fixed class.
- * Each is named for its group for assistive tech ("Join the Beginner Adult
- * Bootcamp").
+ * Each is named for its group for assistive tech ("Enroll in the Beginner
+ * Adult Bootcamp", "Ask to join the High Performance Youth Bootcamp").
  */
 export function groupAction(
   g: Pick<ProgramGroup, "name" | "status">,
@@ -151,7 +155,7 @@ export function groupAction(
   if (status?.kind === "approval" || status?.kind === "invite-only") {
     return { kind: "ask", label: ASK_TO_JOIN_LABEL, nameSuffix: ` ${named}` };
   }
-  return { kind: "join", label: JOIN_LABEL, nameSuffix: ` ${named}` };
+  return { kind: "join", label: ENROLL_LABEL, nameSuffix: ` in ${named}` };
 }
 
 /** What the eyebrow reads: the bands, the timetable's days, else the schedule line or the type. */

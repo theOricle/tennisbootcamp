@@ -19,7 +19,7 @@ import { OPEN_GROUPS_HEADING, OpenGroupsList } from "@/components/sections/OpenG
 // No dead end (owner, 2026-11-19: "when I am already signed in it just tell
 // me I already submitted request"). When a group has dates, one line states
 // the two paths, the open blocks follow as the same group cards, each with
-// "Join" to its sign-up page, and the dashboard button steps back to an
+// "Enroll" to its sign-up page, and the dashboard button steps back to an
 // outline beside them. The cards sit on the page, never inside a card of
 // their own. With none listed, the panel keeps its card and one line says
 // which is true: no group has dates yet, or none with dates is open to them.
@@ -31,9 +31,9 @@ import { OPEN_GROUPS_HEADING, OpenGroupsList } from "@/components/sections/OpenG
 /** The wizard card's chrome, as the quiz's result screens draw it: flat on phones (audit L10). */
 const PANEL_CARD = "md:rounded-3xl md:border md:border-white/10 md:bg-white/5 md:p-8";
 
-/** The two paths, when a group has dates: pick one and join now, or our coaches place the player from the quiz. */
+/** The two paths, when a group has dates: pick one and enroll now (its card's button), or our coaches place the player from the quiz. */
 export function twoPathsLine(whom: string): string {
-  return `Pick a group with dates and join now, or our coaches place ${whom} from your quiz answers.`;
+  return `Pick a group with dates and enroll now, or our coaches place ${whom} from your quiz answers.`;
 }
 
 export function AlreadyTakenPanel({
@@ -71,7 +71,7 @@ export function AlreadyTakenPanel({
     <>
       <div className="mt-6 flex flex-wrap gap-3">
         {/* Reads "Open your dashboard": only a signed-in taker sees the
-            panel. An outline beside open blocks, whose "Join" leads. */}
+            panel. An outline beside open blocks, whose "Enroll" leads. */}
         <TrackedButton variant={anyOpen ? "secondary" : "primary"} href="/intake" track="quiz" source="intake-taken">
           Take the 2-minute quiz
         </TrackedButton>

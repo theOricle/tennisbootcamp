@@ -6,7 +6,7 @@ import { ProgramGroupCard } from "./ProgramGroupCard";
 // The open blocks for a signed-in player (owner, 2026-11-19: "when I am
 // already signed in it just tell me I already submitted request"): the quiz's
 // already-taken screen and the dashboard list them as the same group cards,
-// each with "Join" to its sign-up page. A by-approval block is left out
+// each with "Enroll" to its sign-up page. A by-approval block is left out
 // (signedInOpenCards): a quiz-taker has asked already, and its "Ask to join"
 // would lead back to the same list. With none listed, one plain line says
 // which is true, no group has dates yet or none with dates is open to this

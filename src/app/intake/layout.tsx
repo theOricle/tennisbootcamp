@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 // The open blocks, read on the server and rebuilt at most once a minute, as
 // /programs is (audit M39). The quiz is a client page; its already-taken
-// screen lists these as group cards, each with "Join" (owner, 2026-11-19).
+// screen lists these as group cards, each with "Enroll" (owner, 2026-11-19).
 // Public blocks only, with the fields a group card shows. The screen lists
 // the ones whose ages take one of the household's players and never a
 // by-approval one (accountOpenCards); it reads all of them to know whether

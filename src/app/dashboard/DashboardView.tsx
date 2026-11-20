@@ -42,7 +42,7 @@ import { AvailabilityEditor } from "./AvailabilityEditor";
 // tier, players, availability, suggestions.
 //
 // The next-step card is the one primary on the page (audit M32): every other
-// action is an outline button or a text link, the open blocks' "Join" under
+// action is an outline button or a text link, the open blocks' "Enroll" under
 // "Groups with dates" included (the same cards as /programs, drawn quiet).
 // The page speaks to the players
 // who train (audit M26): a parent who registered only a child reads about
@@ -83,7 +83,7 @@ export type DashboardViewProps = {
   /** Open cohorts a player on the account may join by level, not yet enrolled. */
   openForTier: OpenForTier[];
   /**
-   * The open blocks as group cards (owner, 2026-11-19), each with "Join" to
+   * The open blocks as group cards (owner, 2026-11-19), each with "Enroll" to
    * its sign-up page: the same cards as /programs, for this account
    * (accountOpenCards, src/lib/groupBlocks.ts: not a block it is in, not a
    * by-approval one, ages that take one of its players). None reads one
@@ -565,7 +565,7 @@ export function DashboardView(props: DashboardViewProps) {
 
           {/* Groups with dates (owner, 2026-11-19: no dead end when signed
               in): the account's open blocks as the same group cards as
-              /programs, each "Join" an outline to the block's sign-up page,
+              /programs, each "Enroll" an outline to the block's sign-up page,
               since the next step above is the page's one primary. With none
               listed, one line says which is true, no group has dates yet or
               none with dates is open to them, and points to the groups. */}
@@ -778,7 +778,7 @@ export function DashboardView(props: DashboardViewProps) {
           suggest. It never repeats a block (backlog #85): a program whose
           groups with dates are listed above is left out, and the cards carry
           no Next row, since the group cards are where a block's dates,
-          price and "Join" live. */}
+          price and "Enroll" live. */}
       {suggestions.length > 0 && (
         <section aria-labelledby="suggested">
           <SectionHeading

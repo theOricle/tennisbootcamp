@@ -32,7 +32,7 @@ export default async function ProgramsPage() {
   // 2026-11-19; src/lib/groupBlocks.ts).
   const cards = groupCards(programGroups, publicCohorts, seats);
   // With no block open anywhere, every card's button reads "Notify me", so
-  // the lead says dates are coming instead of "Pick your group and join."
+  // the lead says dates are coming instead of "Pick your group and enroll."
   const anyOpen = openBlockCards(cards).length > 0;
   const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({ slug: p.slug, title: p.title }));
 
@@ -55,11 +55,12 @@ export default async function ProgramsPage() {
             {/* What every group is and how long a cohort runs (the length
                 from the setting). No class length and no classes a week
                 (owner, 2026-11-17): each group card carries its own time.
-                Then what to do: join, or, with no block open anywhere, that
+                Then what to do: enroll, as an open block's button says
+                (owner, 2026-11-20), or, with no block open anywhere, that
                 dates are coming and what "Notify me" does. */}
             <p className="mt-2.5 max-w-[40rem] text-pretty text-base text-white/75">
               Every group is a bootcamp: tennis and fitness in every class, in {COHORT_LENGTH_ADJ} cohorts.{" "}
-              {anyOpen ? "Pick your group and join." : PROGRAMS_NO_DATES_LINE}
+              {anyOpen ? "Pick your group and enroll." : PROGRAMS_NO_DATES_LINE}
             </p>
           </>
         }

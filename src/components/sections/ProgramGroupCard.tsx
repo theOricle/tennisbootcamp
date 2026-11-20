@@ -40,11 +40,11 @@ import { StatusChip } from "./ProgramCard";
 // know". No photo: the program's photograph identifies the program.
 //
 // One interactive element, the button, named for its group for assistive
-// tech ("Join the Beginner Adult Bootcamp"), and described by the card's
+// tech ("Enroll in the Beginner Adult Bootcamp"), and described by the card's
 // dates, so two blocks of one group read apart. The states (groupStatus and
-// groupAction, src/lib/programCatalog.ts): an open block, a lime "Join" to
+// groupAction, src/lib/programCatalog.ts): an open block, a lime "Enroll" to
 // its sign-up page (/enroll/{cohortId}), signed in or not; down to its last
-// spots, the warn chip and "Join"; full, an outline "Notify me"; by approval
+// spots, the warn chip and "Enroll"; full, an outline "Notify me"; by approval
 // (and invite only), an outline "Ask to join" to the same sign-up page,
 // where its approval step takes over; a planned group with no open block,
 // "Dates coming soon" and an outline "Notify me". "Notify me" goes to the
@@ -56,7 +56,7 @@ export type ProgramGroupCardProps = {
   group: ProgramGroup;
   /**
    * The open block this card shows (src/lib/groupBlocks.ts): its dates, class
-   * days, price and seats, and the sign-up page "Join" opens. Absent or null
+   * days, price and seats, and the sign-up page "Enroll" opens. Absent or null
    * for a planned group with no open block, which reads "Dates coming soon".
    */
   block?: BlockFacts | null;
@@ -65,7 +65,7 @@ export type ProgramGroupCardProps = {
   /** Where "Notify me" goes: the footer's newsletter line, or a page's own form when it has one. */
   notifyHref?: string;
   /**
-   * Every button an outline, "Join" included: for a screen whose one primary
+   * Every button an outline, "Enroll" included: for a screen whose one primary
    * action is elsewhere (the dashboard, where the next step leads).
    */
   quiet?: boolean;

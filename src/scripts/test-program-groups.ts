@@ -13,7 +13,7 @@
 // three dropdowns, a heading row per program, and one row for private lessons.
 // Since backlog #85 (owner, 2026-11-19 and 2026-11-20) a card shows one open
 // block, with its dates and class days, and its button opens the block's
-// sign-up page ("Join"); a group with no open block reads "Dates coming soon".
+// sign-up page ("Enroll", owner 2026-11-20); a group with no open block reads "Dates coming soon".
 // Exits non-zero on any failure. Never spells the cohort length or total.
 
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -60,7 +60,7 @@ import { groupSummaryLine, groupsFor, matchGroupsLabel, recommendPrograms, recom
 import { TIERS, tierById } from "../lib/tiers";
 import { ArrangedGroupRow, ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { ProgramCatalogView, type CatalogProgram } from "../components/sections/ProgramCatalog";
-import { ASK_TO_JOIN_LABEL, DATES_COMING_SOON, JOIN_LABEL, LOW_SEATS_THRESHOLD, groupAction, groupClassDays, groupStatus, groupWhoLabel, priceParts, programHeadingLine } from "../lib/programCatalog";
+import { ASK_TO_JOIN_LABEL, DATES_COMING_SOON, ENROLL_LABEL, LOW_SEATS_THRESHOLD, groupAction, groupClassDays, groupStatus, groupWhoLabel, priceParts, programHeadingLine } from "../lib/programCatalog";
 import { blockSeatsFromSnapshot, readBlockSeats } from "../lib/groupSeats";
 import { blockFacts, groupCards, type GroupCard } from "../lib/groupBlocks";
 import nextConfig from "../../next.config";
@@ -205,10 +205,10 @@ const h4Card = render(createElement(ProgramGroupCard, { group: g("high-performan
 check("headingLevel 4 renders the title as an h4", h4Card.includes(">High Performance Youth Bootcamp</h4>") && !h4Card.includes("<h3") && !h4Card.includes("<h2"));
 const adultCohort: Cohort = { ...openCohort, id: "adult-beg-winter", programId: "bootcamps", startDate: "2027-01-10", endDate: "2027-02-14", sessions: [{ day: "Sun", start: "16:00", end: "17:00" }] };
 const adultCard = render(createElement(ProgramGroupCard, { group: g("adult-newer"), block: blockFacts(adultCohort) }));
-// Re-pinned for backlog #85 (owner, 2026-11-19): the lime button reads "Join"
+// Re-pinned for backlog #85 (owner, 2026-11-19; "Enroll", owner 2026-11-20): the lime button reads "Enroll"
 // and opens the block's sign-up page, signed in or not. It read "Ask to join"
 // and opened the quiz while nothing behind it took payment (backlog #71).
-check("an adult block: 16 and up, its dates, Sundays, the Open to join chip, a lime Join named for the group, to its sign-up page", adultCard.includes("16 and up</li>") && words(adultCard).includes("Jan 10 – Feb 14 Sundays 4–5pm") && adultCard.includes("Open to join</span>") && adultCard.includes(">Beginner Adult Bootcamp</h3>") && /<a [^>]*href="\/enroll\/adult-beg-winter"[^>]*>Join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>/.test(adultCard) && /<a [^>]*bg-\[#B4E655\][^>]*>Join</.test(adultCard));
+check("an adult block: 16 and up, its dates, Sundays, the Open to join chip, a lime Enroll named for the group, to its sign-up page", adultCard.includes("16 and up</li>") && words(adultCard).includes("Jan 10 – Feb 14 Sundays 4–5pm") && adultCard.includes("Open to join</span>") && adultCard.includes(">Beginner Adult Bootcamp</h3>") && /<a [^>]*href="\/enroll\/adult-beg-winter"[^>]*>Enroll<span class="sr-only"> in the Beginner Adult Bootcamp<\/span><\/a>/.test(adultCard) && /<a [^>]*bg-\[#B4E655\][^>]*>Enroll</.test(adultCard));
 check("the dates line: the first class to the last, each date whole, the dash riding the first", hpCard.includes('id="high-performance-dates"') && /<span class="whitespace-nowrap">Jan 9 –<\/span><span class="whitespace-nowrap">Feb 13<\/span>/.test(hpCard));
 check("the button is described by the dates, so two blocks of one group read apart", /<a [^>]*aria-describedby="high-performance-dates"/.test(hpCard) && /<a [^>]*aria-describedby="adult-newer-dates"/.test(adultCard));
 check("a time range never breaks at its dash", /Saturdays <span class="whitespace-nowrap">2–3pm<\/span>/.test(hpCard));
@@ -229,15 +229,15 @@ check("a group with no fixed class shows no chip", groupStatus(g("private-lesson
 check("no open block: no Open to join and no seat count; Full, Invite only and By approval keep their chip", groupStatus(open, null, false) === null && groupStatus(open, 2, false) === null && groupStatus(open, 0, false) === null && groupStatus(hp, null, false)?.kind === "approval" && groupStatus({ ...open, status: "full" }, null, false)?.kind === "full" && groupStatus({ ...open, status: "invite-only" }, null, false)?.kind === "invite-only");
 const act = (group: ProgramGroup, seats?: number | null) => groupAction(group, groupStatus(group, seats));
 // Re-pinned for backlog #85 (owner, 2026-11-19): an open block's lime button
-// reads "Join", with payment behind it; it read "Ask to join" (backlog #71).
-check("open and last spots: the lime button, reading Join", act(open).kind === "join" && act(open).label === "Join" && act(open, 2).kind === "join" && act(open, 2).label === "Join" && JOIN_LABEL === "Join");
+// reads "Enroll" (owner, 2026-11-20; "Join" until then), with payment behind it; it read "Ask to join" (backlog #71).
+check("open and last spots: the lime button, reading Enroll", act(open).kind === "join" && act(open).label === "Enroll" && act(open, 2).kind === "join" && act(open, 2).label === "Enroll" && ENROLL_LABEL === "Enroll");
 check("full: Notify me", act(open, 0).kind === "notify" && act(open, 0).label === "Notify me");
 check("by approval and invite only: Ask to join", act(hp).kind === "ask" && act(hp).label === "Ask to join" && act({ ...open, status: "invite-only" }).label === "Ask to join" && ASK_TO_JOIN_LABEL === "Ask to join");
 check("no open block: Notify me, whatever the group", groupAction(open, groupStatus(open, null, false), false).kind === "notify" && groupAction(hp, groupStatus(hp, null, false), false).label === "Notify me" && groupAction(open, null, false).nameSuffix === " when the Beginner Junior Bootcamp has dates");
-check("each button is named for its group", act(open).nameSuffix === " the Beginner Junior Bootcamp" && act(hp).nameSuffix === " the High Performance Youth Bootcamp" && act(open, 0).nameSuffix === " when the Beginner Junior Bootcamp has a spot");
+check("each button is named for its group: Enroll in it, Ask to join it", act(open).nameSuffix === " in the Beginner Junior Bootcamp" && act(hp).nameSuffix === " the High Performance Youth Bootcamp" && act(open, 0).nameSuffix === " when the Beginner Junior Bootcamp has a spot");
 check("private lessons keep Ask about lessons", groupAction(g("private-lessons"), null).label === "Ask about lessons" && groupAction(g("private-lessons"), null, false).label === "Ask about lessons");
 const lowCard = render(createElement(ProgramGroupCard, { group: open, block: { ...openBlock, seatsLeft: 2 } }));
-check("last spots: the warn chip, computed from the seats, and a lime Join", lowCard.includes("border-yellow-400/30 bg-yellow-400/10 text-yellow-200") && lowCard.includes(">2 spots left</span>") && />Join<span class="sr-only"> the Beginner Junior Bootcamp<\/span><\/a>/.test(lowCard) && /<a [^>]*bg-\[#B4E655\]/.test(lowCard) && lowCard.includes('href="/enroll/y710-winter"') && !lowCard.includes("Open to join"));
+check("last spots: the warn chip, computed from the seats, and a lime Enroll", lowCard.includes("border-yellow-400/30 bg-yellow-400/10 text-yellow-200") && lowCard.includes(">2 spots left</span>") && />Enroll<span class="sr-only"> in the Beginner Junior Bootcamp<\/span><\/a>/.test(lowCard) && /<a [^>]*bg-\[#B4E655\]/.test(lowCard) && lowCard.includes('href="/enroll/y710-winter"') && !lowCard.includes("Open to join"));
 const fullCard = render(createElement(ProgramGroupCard, { group: open, block: { ...openBlock, seatsLeft: 0 } }));
 check("full: the neutral chip, and an outline Notify me to the footer's newsletter line", fullCard.includes(">Full</span>") && !fullCard.includes("yellow") && /<a [^>]*href="#notify"[^>]*>Notify me<span class="sr-only"> when the Beginner Junior Bootcamp has a spot<\/span><\/a>/.test(fullCard) && !/<a [^>]*bg-\[#B4E655\]/.test(fullCard) && count(fullCard, "<a ") === 1 && !fullCard.includes("/intake") && !fullCard.includes("/enroll"));
 const fullOwnForm = render(createElement(ProgramGroupCard, { group: open, block: { ...openBlock, seatsLeft: 0 }, notifyHref: "#cohorts" }));
@@ -254,13 +254,13 @@ check("…and the High Performance Youth Bootcamp keeps By approval over Dates c
 const cardSrc = read("src/components/sections/ProgramGroupCard.tsx");
 // Re-pinned for backlog #85: the card's button opens the block's sign-up page;
 // only the private lessons row still opens the quiz.
-check("Join and Ask to join open the block's sign-up page; private lessons' Ask about lessons the quiz for the program", cardSrc.includes("`/enroll/${block.cohortId}`") && cardSrc.includes("href={`/intake?program=${program.slug}`}") && cardSrc.includes('track="quiz"') && cardSrc.includes("source={source}"));
+check("Enroll and Ask to join open the block's sign-up page; private lessons' Ask about lessons the quiz for the program", cardSrc.includes("`/enroll/${block.cohortId}`") && cardSrc.includes("href={`/intake?program=${program.slug}`}") && cardSrc.includes('track="quiz"') && cardSrc.includes("source={source}"));
 {
   const cardOnly = cardSrc.slice(cardSrc.indexOf("export function ProgramGroupCard("), cardSrc.indexOf("export function ArrangedGroupRow"));
   const rowOnly = cardSrc.slice(cardSrc.indexOf("export function ArrangedGroupRow"));
   // Re-pinned for backlog #85: the card read quizAware="href" (backlog #71),
   // sending a signed-in taker's "Ask to join" to the dashboard. Its button no
-  // longer opens the quiz, so nothing swaps: Join is Join for everyone.
+  // longer opens the quiz, so nothing swaps: Enroll is Enroll for everyone.
   check("a card's button is a plain link, the same for everyone signed in or not: no quiz swap", !cardOnly.includes("quizAware") && !cardOnly.includes("TrackedLink") && cardSrc.indexOf("function GroupButton(") < cardSrc.indexOf("export function ProgramGroupCard(") && !cardSrc.slice(cardSrc.indexOf("function GroupButton("), cardSrc.indexOf("export function ProgramGroupCard(")).includes("quizAware"));
   check("the private lessons row keeps Ask about lessons on the quiz for everyone (quizAware={false})", rowOnly.includes("quizAware={false}") && !rowOnly.includes('quizAware="href"'));
 }
@@ -271,7 +271,7 @@ check("on a tablet the stacked top row keeps the chip's room, so a card with no 
 // a group not just ask to join". Every open block reads Join, with its
 // sign-up page behind it; it replaced backlog #71's "Ask to join" on every
 // group, which opened the quiz while nothing took payment.
-console.log("Join on every open block, Notify me where there is none");
+console.log("Enroll on every open block, Notify me where there is none");
 {
   const PAYMENT = /\/enroll\//;
   const states: [string, number | null][] = [["open", null], ["last spots", 2], ["full", 0]];
@@ -284,12 +284,12 @@ console.log("Join on every open block, Notify me where there is none");
   const full = cards.filter((c) => />Full</.test(c.html));
   const asks = cards.filter((c) => !/>Full</.test(c.html) && (c.group.joining === "approval" || c.group.status === "invite-only"));
   const joins = cards.filter((c) => !/>Full</.test(c.html) && c.group.joining !== "approval" && c.group.status !== "invite-only");
-  check("every open block that takes walk-ins reads Join on the lime, named for its group, to its sign-up page", joins.length > 0 && joins.every((c) => /^<a [^>]*>Join<span class="sr-only"> the [^<]+ Bootcamp<\/span><\/a>$/.test(button(c.html)) && /bg-\[#B4E655\]/.test(button(c.html)) && /href="\/enroll\/y710-winter"/.test(button(c.html))), joins.find((c) => !/>Join</.test(button(c.html)))?.id);
+  check("every open block that takes walk-ins reads Enroll on the lime, named for its group, to its sign-up page", joins.length > 0 && joins.every((c) => /^<a [^>]*>Enroll<span class="sr-only"> in the [^<]+ Bootcamp<\/span><\/a>$/.test(button(c.html)) && /bg-\[#B4E655\]/.test(button(c.html)) && /href="\/enroll\/y710-winter"/.test(button(c.html))), joins.find((c) => !/>Enroll</.test(button(c.html)))?.id);
   check("a by-approval or invite-only block reads Ask to join on the outline, to the same sign-up page, where its approval step takes over", asks.length > 0 && asks.every((c) => /^<a [^>]*>Ask to join<span class="sr-only"> the [^<]+ Bootcamp<\/span><\/a>$/.test(button(c.html)) && !/bg-\[#B4E655\]/.test(button(c.html)) && PAYMENT.test(button(c.html))));
   check("a full block reads Notify me, to the newsletter line, never the sign-up page", full.length > 0 && full.every((c) => /href="#notify"/.test(button(c.html)) && />Notify me</.test(button(c.html)) && !PAYMENT.test(button(c.html))));
   check("no card's button opens the quiz, a retake or an add", cards.every((c) => !/\/intake|retake|add=1/.test(button(c.html))));
   const planned = scheduledGroups.map((group) => render(createElement(ProgramGroupCard, { group })));
-  check("no open block: every group reads Dates coming soon and an outline Notify me, never Join and never a sign-up page", planned.every((html) => html.includes(DATES_COMING_SOON) && /^<a [^>]*href="#notify"[^>]*>Notify me<span class="sr-only"> when the [^<]+ Bootcamp has dates<\/span><\/a>$/.test(button(html)) && !/>Join</.test(html) && !PAYMENT.test(html)));
+  check("no open block: every group reads Dates coming soon and an outline Notify me, never Enroll and never a sign-up page", planned.every((html) => html.includes(DATES_COMING_SOON) && /^<a [^>]*href="#notify"[^>]*>Notify me<span class="sr-only"> when the [^<]+ Bootcamp has dates<\/span><\/a>$/.test(button(html)) && !/>Enroll</.test(html) && !PAYMENT.test(html)));
 }
 
 console.log("Seats: one read, the enroll page's count, display only");
@@ -358,23 +358,23 @@ check("private lessons is one row with Ask about lessons", all.includes(`>By arr
 // Re-pinned for backlog #85: the whole catalog, as /programs shows it while
 // no block is open (backlog #71 pinned "Ask to join" on every group here).
 check(
-  "/programs with no open block: every group card reads Dates coming soon and Notify me, private lessons Ask about lessons; nothing reads Join, and no link leads to a sign-up page",
+  "/programs with no open block: every group card reads Dates coming soon and Notify me, private lessons Ask about lessons; nothing reads Enroll, and no link leads to a sign-up page",
   count(all, `${DATES_COMING_SOON}</li>`) === programGroups.filter((x) => x.day !== null).length &&
     count(all, ">Notify me<span") === programGroups.filter((x) => x.day !== null).length &&
     count(all, ">Ask about lessons</a>") === 1 &&
-    !/>Join</.test(all) &&
+    !/>Enroll</.test(all) &&
     !/href="[^"]*(\/enroll|checkout|stripe)[^"]*"/i.test(all)
 );
 const seatsCohorts: Cohort[] = [openCohort, { ...openCohort, id: "adult-int-winter", programId: "bootcamps", sessions: [{ day: "Sun", start: "17:00", end: "18:00" }], levelMin: 3, levelMax: 3.5 }];
 const withSeats = view(EMPTY_QUERY, groupCards(programGroups, seatsCohorts, { "y710-winter": 2, "adult-int-winter": 0 }));
-check("the catalog passes each card its block and seats: Join on the lime, Notify me when full, Dates coming soon elsewhere", withSeats.includes(">2 spots left</span>") && count(withSeats, ">Full</span>") === 1 && count(withSeats, ">Join<span") === 1 && withSeats.includes('href="/enroll/y710-winter"') && count(withSeats, ">Notify me<") === programGroups.filter((x) => x.day !== null).length - 1 && count(withSeats, `${DATES_COMING_SOON}</li>`) === programGroups.filter((x) => x.day !== null).length - 2 && count(withSeats, "Open to join</span>") === 0);
+check("the catalog passes each card its block and seats: Enroll on the lime, Notify me when full, Dates coming soon elsewhere", withSeats.includes(">2 spots left</span>") && count(withSeats, ">Full</span>") === 1 && count(withSeats, ">Enroll<span") === 1 && withSeats.includes('href="/enroll/y710-winter"') && count(withSeats, ">Notify me<") === programGroups.filter((x) => x.day !== null).length - 1 && count(withSeats, `${DATES_COMING_SOON}</li>`) === programGroups.filter((x) => x.day !== null).length - 2 && count(withSeats, "Open to join</span>") === 0);
 const teens = view(parseCatalogQuery(params("age=14&level=novice")));
 check("a filtered view keeps only the matching groups and sections", count(teens, "<article") === 2 && teens.includes("2 groups for age 14 at Novice") && !teens.includes('id="catalog-bootcamps"') && teens.includes('<option value="14" selected="">') && !teens.includes("Closest fit"));
 const nearest = view(parseCatalogQuery(params("age=14&level=intermediate")));
 check("Closest fit: the exact match (private lessons), then the nearest-level group with the week-one line", count(nearest, "<article") === 2 && nearest.includes("1 group for age 14 at Intermediate") && nearest.includes(">Closest fit</h2>") && nearest.includes("The nearest levels to Intermediate for age 14.") && !nearest.includes("tagged") && nearest.includes("on court in week one") && nearest.includes("we move you to it at the same price") && at(nearest, 'id="catalog-private-lessons"') < at(nearest, ">Closest fit</h2>") && at(nearest, ">Closest fit</h2>") < at(nearest, 'id="youth-11-15"'));
 check("Closest fit cards are the same card, named by their level-led titles", nearest.includes(">Novice Youth Bootcamp</h3>") && />Notify me<span class="sr-only"> when the Novice Youth Bootcamp has dates<\/span><\/a>/.test(nearest) && !nearest.includes("No group matches"));
 const nearestOpen = view(parseCatalogQuery(params("age=14&level=intermediate")), groupCards(programGroups, [{ ...openCohort, id: "y1115-winter", sessions: [{ day: "Sat", start: "13:00", end: "14:00" }], levelMin: 2, levelMax: 2.5 }]));
-check("…and with an open block, Closest fit shows it with its dates and Join", />Join<span class="sr-only"> the Novice Youth Bootcamp<\/span><\/a>/.test(nearestOpen) && nearestOpen.includes('href="/enroll/y1115-winter"') && words(nearestOpen).includes("Jan 9 – Feb 13 Saturdays 1–2pm"));
+check("…and with an open block, Closest fit shows it with its dates and Enroll", />Enroll<span class="sr-only"> in the Novice Youth Bootcamp<\/span><\/a>/.test(nearestOpen) && nearestOpen.includes('href="/enroll/y1115-winter"') && words(nearestOpen).includes("Jan 9 – Feb 13 Saturdays 1–2pm"));
 const none = view(parseCatalogQuery(params("age=5&level=high-performance")), plannedCards(programGroups.filter((x) => x.id !== "private-lessons")));
 check("nothing matches and nothing is near: a dashed box that says what is true and what happens next", none.includes("border-dashed") && /No group matches that age and level\. <a [^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a> and our coaches place you\./.test(none) && none.includes(">Clear filters</button>") && count(none, "<article") === 0 && !none.includes("Closest fit"));
 const noneButPrivate = view(parseCatalogQuery(params("age=5&level=high-performance")));

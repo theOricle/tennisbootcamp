@@ -16,7 +16,7 @@
 //      class days and times ("Sundays 4–5pm", "Sundays and Wednesdays
 //      4–5pm"), the price and length with the class count, once a week or
 //      twice, so two cards' prices compare at a glance, and the seats;
-//   3. the card's states and its one button: "Join" to the block's sign-up
+//   3. the card's states and its one button: "Enroll" to the block's sign-up
 //      page, "Ask to join" by approval, "Notify me" when full, and "Dates
 //      coming soon" with "Notify me" for a group with no open block (the
 //      owner's decision, 2026-11-20); the dates the strongest of its lines;
@@ -238,8 +238,8 @@ check("only the bootcamp programs' blocks with a class show as cards", isBootcam
     const onPage = approvalGateApplies({ group: page, decision: pub, claimed: null });
     const button = groupAction(card, groupStatus(card));
     check(
-      `${name}: ${byApproval ? "Ask to join, and its approval step on the page and at payment" : "Join, and no approval step anywhere"}`,
-      atPayment === byApproval && onPage === byApproval && button.label === (byApproval ? "Ask to join" : "Join")
+      `${name}: ${byApproval ? "Ask to join, and its approval step on the page and at payment" : "Enroll, and no approval step anywhere"}`,
+      atPayment === byApproval && onPage === byApproval && button.label === (byApproval ? "Ask to join" : "Enroll")
     );
   }
   check("every High Performance block is by approval, wherever its classes sit", samples.filter(([, b]) => blockLevel(b) === 5 && b.programId === "youth-programs").every(([, b]) => approvalRefusal(b, { decision: pub, lookup: null }) !== null));
@@ -285,13 +285,13 @@ console.log("Each card state, rendered");
   const button = (html: string) => html.match(/<a [^>]*>[\s\S]*?<\/a>/)?.[0] ?? "";
 
   const open = card("adult-newer", block({ id: "open" }));
-  check("open: Open to join, and a lime Join to the block's sign-up page", open.includes("Open to join</span>") && lime(button(open)) && /href="\/enroll\/open"/.test(button(open)) && />Join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>$/.test(button(open)));
+  check("open: Open to join, and a lime Enroll to the block's sign-up page, named Enroll in the group", open.includes("Open to join</span>") && lime(button(open)) && /href="\/enroll\/open"/.test(button(open)) && />Enroll<span class="sr-only"> in the Beginner Adult Bootcamp<\/span><\/a>$/.test(button(open)));
   check("open: its four lines read who, the dates, the class days, where", words(open).includes("16 and up Jan 10 – Feb 14 Sundays 4–5pm Newtonbrook Tennis Club"));
   check("the dates are the strongest line, white and medium; who stays a step softer", open.includes('<li id="adult-newer-dates" class="flex items-start gap-2 font-medium text-white">') && open.includes('<li class="flex items-start gap-2 text-white/90">'));
   const twice = card("adult-newer", block({ id: "twice", sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] }));
   check("twice a week: one card, both days on its days line, the class count with the price", words(twice).includes("Sundays and Wednesdays 4–5pm") && count(twice, "<li") === 4 && twice.includes(` classes over ${cohortLengthFor(COHORT_WEEKS)}</span>`));
   const low = card("youth-11-15", youthBlock({ id: "low", levelMin: 2, levelMax: 2.5, sessions: [{ day: "Sat", start: "13:00", end: "14:00" }] }), 2);
-  check("last spots: the warn chip with the count, and Join", low.includes(">2 spots left</span>") && low.includes("text-yellow-200") && lime(button(low)) && />Join</.test(button(low)));
+  check("last spots: the warn chip with the count, and Enroll", low.includes(">2 spots left</span>") && low.includes("text-yellow-200") && lime(button(low)) && />Enroll</.test(button(low)));
   const full = card("adult-intermediate", block({ id: "full", levelMin: 3, levelMax: 3.5 }), 0);
   check("full: Full, and an outline Notify me to the newsletter line, never the sign-up page", full.includes(">Full</span>") && !lime(button(full)) && /href="#notify"/.test(button(full)) && />Notify me<span class="sr-only"> when the Intermediate Adult Bootcamp has a spot<\/span>/.test(button(full)) && !full.includes("/enroll"));
   const hp = card("high-performance", youthBlock({ id: "hp", levelMin: 5, levelMax: 7, sessions: [{ day: "Sat", start: "14:00", end: "15:00" }] }));
@@ -302,7 +302,7 @@ console.log("Each card state, rendered");
   check("every button is named for its group and a dated one is described by its dates", /aria-describedby="adult-newer-dates"/.test(button(open)) && !/aria-describedby/.test(button(dateless)));
   check("one link per card in every state", [open, twice, low, full, hp, dateless].every((html) => count(html, "<a ") === 1));
   const quiet = card("adult-newer", block({ id: "open" }), undefined, true);
-  check("drawn quiet (the dashboard), Join is an outline, the same words to the same page", !lime(button(quiet)) && /href="\/enroll\/open"/.test(button(quiet)) && />Join</.test(button(quiet)));
+  check("drawn quiet (the dashboard), Enroll is an outline, the same words to the same page", !lime(button(quiet)) && /href="\/enroll\/open"/.test(button(quiet)) && />Enroll</.test(button(quiet)));
 }
 
 // ── 4. Signed in, rendered ──────────────────────────────────────────────────
@@ -317,10 +317,10 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   const panel = (cards: readonly GroupCard[], playerCount = 1, players: AgePlayer[] = []) =>
     render(createElement(AlreadyTakenPanel, { playerCount, cards, players, onAdd: () => {}, onRetake: () => {} }));
   const withBlocks = panel(all);
-  check("the quiz panel with open blocks: one line with the two paths, then Groups with dates and the cards", twoPathsLine("you") === "Pick a group with dates and join now, or our coaches place you from your quiz answers." && withBlocks.includes(`>${twoPathsLine("you")}</p>`) && withBlocks.includes(`>${OPEN_GROUPS_HEADING}</h2>`) && count(withBlocks, "<article") === 1 && />Join</.test(linkTo(withBlocks, "/enroll/beg-sun")));
+  check("the quiz panel with open blocks: one line with the two paths, then Groups with dates and the cards", twoPathsLine("you") === "Pick a group with dates and enroll now, or our coaches place you from your quiz answers." && withBlocks.includes(`>${twoPathsLine("you")}</p>`) && withBlocks.includes(`>${OPEN_GROUPS_HEADING}</h2>`) && count(withBlocks, "<article") === 1 && />Enroll</.test(linkTo(withBlocks, "/enroll/beg-sun")));
   check("…never the by-approval block", !withBlocks.includes("High Performance Youth Bootcamp") && !withBlocks.includes("/enroll/hp"));
   check("…no card inside a card: the panel drops its own card while it lists cards", !withBlocks.includes("md:rounded-3xl"));
-  check("…Join leads: the dashboard button is an outline beside it", lime(linkTo(withBlocks, "/enroll/beg-sun")) && linkTo(withBlocks, "/intake") !== "" && !lime(linkTo(withBlocks, "/intake")));
+  check("…Enroll leads: the dashboard button is an outline beside it", lime(linkTo(withBlocks, "/enroll/beg-sun")) && linkTo(withBlocks, "/intake") !== "" && !lime(linkTo(withBlocks, "/intake")));
   check("…and nothing says there is nothing else to do", !/nothing else you need to do/.test(withBlocks));
   check("a household reads by its count", panel(all, 3).includes(`>${twoPathsLine("your 3 players")}</p>`));
   const noBlocks = panel([]);
@@ -342,7 +342,7 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   // The dashboard's list, as the dashboard draws it (quiet: its one primary is the next step).
   const dash = render(createElement(OpenGroupsList, { cards: all, quiet: true }));
   const links = dash.match(/<a [^>]*>/g) ?? [];
-  check("the dashboard's list: the same cards, every button an outline, never the by-approval block", count(dash, "<article") === 1 && links.length > 0 && links.every((a) => !a.includes("bg-[#B4E655]")) && />Join</.test(linkTo(dash, "/enroll/beg-sun")) && !dash.includes("/enroll/hp"));
+  check("the dashboard's list: the same cards, every button an outline, never the by-approval block", count(dash, "<article") === 1 && links.length > 0 && links.every((a) => !a.includes("bg-[#B4E655]")) && />Enroll</.test(linkTo(dash, "/enroll/beg-sun")) && !dash.includes("/enroll/hp"));
   const dashEmpty = render(createElement(OpenGroupsList, { cards: [], quiet: true }));
   check("…with none: the dashed box, the one line and the link to the groups", dashEmpty.includes("border-dashed") && dashEmpty.includes(`>${NO_DATES_LINE}</p>`) && /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(dashEmpty) && !/email|tell you|let you know/i.test(dashEmpty));
   const dashNoFit = render(createElement(OpenGroupsList, { cards: [], quiet: true, blocksOpen: true, whom: "Maya" }));
@@ -435,8 +435,9 @@ console.log("Every heading, count, day list and next-start line reads the cards 
   // "Notify me", so the lead says dates are coming and what the button does,
   // promising what the newsletter line promises and nothing more.
   const programsSrc = read("src/app/programs/page.tsx");
-  check("/programs: with an open block the lead keeps Pick your group and join; with none it says dates are coming", programsSrc.includes("const anyOpen = openBlockCards(cards).length > 0;") && programsSrc.includes('{anyOpen ? "Pick your group and join." : PROGRAMS_NO_DATES_LINE}'));
-  check("…in one plain line: new dates are coming, and Notify me brings an email when they are set", PROGRAMS_NO_DATES_LINE === `New cohort dates are coming. Tap ${NOTIFY_LABEL} and we'll email you when they're set.`);
+  check("/programs: with an open block the lead says Pick your group and enroll, as the card's button does; with none it says dates are coming", programsSrc.includes("const anyOpen = openBlockCards(cards).length > 0;") && programsSrc.includes('{anyOpen ? "Pick your group and enroll." : PROGRAMS_NO_DATES_LINE}'));
+  check("…in one plain line: the next dates are coming, and Notify me brings an email when a new cohort opens", PROGRAMS_NO_DATES_LINE === `The next dates are coming. Choose ${NOTIFY_LABEL} and we'll email you when a new cohort opens.`);
+  check("…in words for any screen, with no tap and no click, and a promise exactly as narrow as the newsletter line it leads to", !/\b(tap|click|press)\b/i.test(PROGRAMS_NO_DATES_LINE) && PROGRAMS_NO_DATES_LINE.endsWith(" when a new cohort opens.") && read("src/components/sections/EmailCapture.tsx").includes("Be first to know when a new cohort opens."));
   check("…naming the cohort, not the block, and promising no spot, no hold and no date", !/\bblock\b|spot|hold|first|guarantee|soon/i.test(PROGRAMS_NO_DATES_LINE));
   // The programs' own words never contradict the cards (fix round 2): no
   // weekday and no count of groups or levels in a description, a search
