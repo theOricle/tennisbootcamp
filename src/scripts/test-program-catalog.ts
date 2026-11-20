@@ -43,7 +43,6 @@ import {
   groupAgeLabel,
   groupLevelRange,
   groupStatus,
-  nextCohortForGroup,
   priceParts,
   programAgeLabel,
   programEyebrow,
@@ -193,7 +192,10 @@ const first = programGroups.find((g) => g.id === "youth-7-10")!;
 check("a Saturday 12:00 youth cohort trains in the 7–10 group", cohortMatchesGroup(cohort, first) && !cohortMatchesGroup(cohort, hp));
 check("a cohort of another program never matches", !cohortMatchesGroup({ ...cohort, programId: "bootcamps" }, first));
 check("an arranged group never matches a cohort", !cohortMatchesGroup({ ...cohort, programId: "private-lessons" }, solo));
-check("nextCohortForGroup picks the earliest", nextCohortForGroup([{ ...cohort, id: "b", startDate: "2026-11-01" }, cohort], first)?.id === "youth-fall-1" && nextCohortForGroup([cohort], hp) === undefined);
+// Backlog #85 (owner, 2026-11-19): a group card no longer shows "its next
+// cohort" found by day and time; every open block is a card of its own,
+// matched to its group by program and level (test-group-blocks.ts). The
+// enroll page still finds a cohort's group by its class, pinned above.
 check("nextCohortFor picks the earliest per program", nextCohortFor([{ ...cohort, id: "b", startDate: "2026-11-01" }, cohort], "youth-programs")?.id === "youth-fall-1");
 
 // ── Fit rules ───────────────────────────────────────────────────────────────
@@ -374,11 +376,13 @@ check("/programs: the five levels as a strip, under the dropdowns and above the 
 check("the strip reads the count and the names from tiers.ts, and links to the ladder", stripSrc.includes("TIER_COUNT_WORD") && stripSrc.includes("TIERS.map") && stripSrc.includes("<LevelTag level={tier.id} plain") && stripSrc.includes('href="/assessment#ladder"') && !/Beginner|Novice|Intermediate|Advanced|Five/.test(stripSrc.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "")));
 check("/programs: the catalog of groups, then Good to know; no quiz band and no newsletter band", programsPage.includes("<ProgramCatalog") && at(programsPage, "<ProgramCatalog") < at(programsPage, "<GoodToKnow") && !programsPage.includes("<QuizBand") && !programsPage.includes("<EmailCapture"));
 check("/programs: no lime button in the header band; the quiz is the side line", !programsPage.includes('variant="primary"') && !programsPage.includes("data-quiz-cta") && catalogSrc.includes('<QuizSideLine source="programs-filters"'));
-check("/programs: the next cohort per group is read once on the server", programsPage.includes("nextCohortForGroup(publicCohorts, g)") && count(programsPage, "getPublicCohorts()") === 1);
+// Re-pinned for backlog #85: one card per open block, built once on the server.
+check("/programs: the open blocks are read once on the server, and every card is built from them", programsPage.includes("groupCards(programGroups, publicCohorts, seats)") && count(programsPage, "getPublicCohorts()") === 1 && programsPage.includes("cards={cards}"));
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("detail: the photo hero with its alt, 16:10, priority", /<Image[\s\S]*?src=\{program\.photo\.src\}[\s\S]*?alt=\{program\.photo\.alt\}[\s\S]*?priority/.test(detail) && detail.includes("aspect-[16/10]") && !detail.includes("ProgramPlate"));
 check("detail: the ages chip and one level tag per group level under the description (L8; owner 2026-10-13)", detail.includes("{agesChipLabel(groups)}") && detail.includes("<LevelTag key={id} level={id} />") && !detail.includes("<TierRangeBadges levelMin={range.min}"));
-check("detail: the groups as cards, with their next cohort and seats", detail.includes("<ProgramGroupCard") && detail.includes('source="program-group"') && detail.includes("nextCohortForGroup(publicCohorts, g)") && detail.includes("seatsLeft={groupSeats[g.id]}"));
+// Re-pinned for backlog #85: a card per open block of the program, with its seats.
+check("detail: the groups as cards, one per open block, with its seats", detail.includes("<ProgramGroupCard") && detail.includes("groupCards(groups, openCohorts, seatCounts)") && detail.includes("block={block}"));
 check("detail: Levels in this program lights the groups' tags on the ladder", detail.includes("Levels in this program") && /<TierLine variant="ladder" orientation="vertical"[^>]*tiers=\{tags\}/.test(detail) && detail.includes("programLevelTags(groups)"));
 // One name for one link (fix round, 2026-11-17): the home page and /programs read "How levels work →" to the same ladder.
 check("detail: the ladder link reads How levels work, like the strip's", /<Link href="\/assessment#ladder" className=\{`mt-2 \$\{TEXT_LINK_LIME\}`\}>\s*How levels work →\s*<\/Link>/.test(detail) && !detail.includes("How tiers work"));

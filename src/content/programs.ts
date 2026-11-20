@@ -55,8 +55,12 @@ export const INSTALMENT_AMOUNT = COHORT_TOTAL / 2;
 
 /** "six" */
 export const COHORT_WEEKS_WORD = numberInWords(COHORT_WEEKS);
+/** A length in weeks, in words: "six weeks", "one week", "13 weeks". */
+export function cohortLengthFor(weeks: number): string {
+  return `${numberInWords(weeks)} week${weeks === 1 ? "" : "s"}`;
+}
 /** "six weeks" */
-export const COHORT_LENGTH = `${COHORT_WEEKS_WORD} week${COHORT_WEEKS === 1 ? "" : "s"}`;
+export const COHORT_LENGTH = cohortLengthFor(COHORT_WEEKS);
 /** "six-week" (adjective: "six-week cohorts") */
 export const COHORT_LENGTH_ADJ = `${COHORT_WEEKS_WORD}-week`;
 /**
@@ -71,12 +75,22 @@ export const COHORT_TOTAL_LABEL = formatDollars(COHORT_TOTAL);
 export const INSTALMENT_LABEL = formatDollars(INSTALMENT_AMOUNT);
 
 /**
+ * A whole price as a visitor reads it: the total, then "for" and the length
+ * ("$210 for six weeks"). The planned groups read it from the constants
+ * (PRICE_SUMMARY); a block the coach opens reads its own total over its own
+ * length (owner, 2026-11-20; src/lib/groupBlocks.ts). Never a per-session figure.
+ */
+export function priceSummaryFor(totalDollars: number, weeks: number): string {
+  return `${formatDollars(totalDollars)} for ${cohortLengthFor(weeks)}`;
+}
+
+/**
  * "$210 for six weeks": the price a visitor reads, the whole price of one
  * bootcamp (owner, 2026-11-17), on the group cards, the program pages, the
  * dashboard's program cards and the quiz's match card. Never a per-session
  * figure. Cards show it stacked (priceParts, src/lib/programCatalog.ts).
  */
-export const PRICE_SUMMARY = `${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}`;
+export const PRICE_SUMMARY = priceSummaryFor(COHORT_TOTAL, COHORT_WEEKS);
 
 /** The program page's price sentence: the whole price, then the $20 mechanic in full (voice.md rule 2). */
 const PRICE_LINE =
@@ -180,6 +194,24 @@ const CLASS_INCLUDES = [
 /** "Intermediate Adult Bootcamp": the level-led title of a bootcamp group. */
 export function bootcampTitle(level: TierId, audience: "Junior" | "Youth" | "Adult"): string {
   return `${tierById(level).name} ${audience} Bootcamp`;
+}
+
+/**
+ * The programs that run group bootcamps, and the audience word their titles
+ * carry. A block the coach opens in one of them shows as a group card; one
+ * that matches no planned group is titled from its own level and this word
+ * ("Intermediate Youth Bootcamp"; "Youth Bootcamp" for a block built for
+ * any level). Private lessons run no blocks of their own.
+ */
+export const BOOTCAMP_AUDIENCE: Readonly<Record<string, "Youth" | "Adult">> = {
+  "youth-programs": "Youth",
+  bootcamps: "Adult",
+};
+
+/** A bootcamp group's title from its program and level, for a block that matches no planned group. */
+export function blockGroupTitle(programSlug: string, level: TierId | null): string {
+  const audience = BOOTCAMP_AUDIENCE[programSlug] ?? "Adult";
+  return level === null ? `${audience} Bootcamp` : bootcampTitle(level, audience);
 }
 
 export const programGroups: ProgramGroup[] = [

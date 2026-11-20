@@ -6,7 +6,12 @@ import type { TierId } from "@/lib/tiers";
 // scheduled group is a group bootcamp (owner, 2026-11-16).
 export type ProgramType = "Group bootcamp" | "One-to-one coaching" | "Group Lessons";
 
-export type ClassDay = "Saturday" | "Sunday";
+/**
+ * A class day. The planned lineup trains on Saturdays and Sundays; a block
+ * the coach builds may run on any day (src/types/cohort.ts SessionSlot), and
+ * its card carries that day (src/lib/groupBlocks.ts).
+ */
+export type ClassDay = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
 
 /**
  * A group's state this season. "forming" is a group taking players (its chip

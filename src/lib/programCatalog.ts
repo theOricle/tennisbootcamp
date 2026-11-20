@@ -1,5 +1,5 @@
 import type { Program, ProgramGroup, TimetableSlot } from "@/types/program";
-import type { Cohort } from "@/types/cohort";
+import type { Cohort, SessionSlot } from "@/types/cohort";
 import { audienceLabel, isAgeBand } from "@/lib/ageBand";
 import { formatStartDate } from "@/lib/cohorts";
 import { levelNumber, levelWithinRange, tierById, LEVEL_MAX, LEVEL_MIN, type Tier, type TierId } from "@/lib/tiers";
@@ -49,25 +49,31 @@ export const LOW_SEATS_THRESHOLD = 3;
 
 /**
  * A group's status chip (joining flow, owner 2026-10-12; seats, owner-approved
- * design 2026-11-17): how a player gets in, in one of four states. "Full"
- * when the group is marked full or its next public cohort has no seat left.
- * "Invite only" keeps its chip. A by-approval group (High Performance) reads
- * "By approval" whatever its seats, since that is the fact a visitor needs
- * first. "{n} spots left" when the next public cohort is down to
- * LOW_SEATS_THRESHOLD or fewer, and "Open to join" otherwise. An arranged
- * group (private lessons) shows no chip.
+ * design 2026-11-17; one card per open block, owner 2026-11-19): how a player
+ * gets in. "Full" when the group is marked full or its block has no seat
+ * left. "Invite only" keeps its chip. A by-approval group (High Performance)
+ * reads "By approval" whatever its seats, since that is the fact a visitor
+ * needs first. "{n} spots left" when the block is down to LOW_SEATS_THRESHOLD
+ * or fewer, and "Open to join" otherwise. An arranged group (private lessons)
+ * shows no chip.
  *
- * `seatsLeft` is the seat count of the group's next public cohort, the one
- * the enroll page reads (src/lib/seatCount.ts through src/lib/groupSeats.ts).
- * Null or absent means it could not be read, or there is no public cohort:
- * the group then reads "Open to join", never an error. Display only.
+ * `seatsLeft` is the seat count of the card's open block, the one the enroll
+ * page reads (src/lib/seatCount.ts through src/lib/groupSeats.ts). Null or
+ * absent means it could not be read: the group then reads "Open to join",
+ * never an error. Display only.
+ *
+ * `dated` is false for a planned group with no open block: it has nothing to
+ * join yet, so it never reads "Open to join" or a seat count. The facts that
+ * stand without dates (Full, Invite only, By approval) keep their chip, and
+ * an open group shows none; its card reads "Dates coming soon".
  */
-export function groupStatus(g: ProgramGroup, seatsLeft?: number | null): ProgramStatus | null {
+export function groupStatus(g: ProgramGroup, seatsLeft?: number | null, dated = true): ProgramStatus | null {
   if (g.status === "arranged") return null;
-  const seats = typeof seatsLeft === "number" && Number.isFinite(seatsLeft) ? seatsLeft : null;
+  const seats = dated && typeof seatsLeft === "number" && Number.isFinite(seatsLeft) ? seatsLeft : null;
   if (g.status === "full" || (seats !== null && seats <= 0)) return { kind: "full", label: "Full" };
   if (g.status === "invite-only") return { kind: "invite-only", label: "Invite only" };
   if (g.joining === "approval") return { kind: "approval", label: "By approval" };
+  if (!dated) return null;
   if (seats !== null && seats <= LOW_SEATS_THRESHOLD) {
     return { kind: "low", label: `${seats} spot${seats === 1 ? "" : "s"} left` };
   }
@@ -75,29 +81,38 @@ export function groupStatus(g: ProgramGroup, seatsLeft?: number | null): Program
 }
 
 /**
- * What a group card's one button does: "join" is the lime button of a group
- * that is open or down to its last spots; "ask" the outline of a by-approval
- * or invite-only group, or of a group with no fixed class; "notify" the
- * outline of a full one.
+ * What a group card's one button does: "join" is the lime button of an open
+ * block or one down to its last spots; "ask" the outline of a by-approval or
+ * invite-only block, or of a group with no fixed class; "notify" the outline
+ * of a full block, or of a planned group with no open block.
  */
 export type GroupActionKind = "join" | "ask" | "notify";
 
 export type GroupAction = {
   kind: GroupActionKind;
-  /** The button's words: "Ask to join", "Notify me", "Ask about lessons". */
+  /** The button's words: "Join", "Ask to join", "Notify me", "Ask about lessons". */
   label: string;
   /** The rest of its accessible name, after the label: " the Beginner Junior Bootcamp". */
   nameSuffix: string;
 };
 
 /**
- * The words on a group's button until that group can take payment (owner,
- * 2026-11-18). The button opens the 2-minute quiz, which is how a spot is
- * asked for today, so it never reads "Join" without payment behind it.
- * Join-and-pay is a later item: nothing takes payment yet, so today every
- * group reads it, open or by approval.
+ * The lime button of an open block (owner, 2026-11-19: "you should be able to
+ * sign up and pay for a group not just ask to join"). It opens the block's
+ * sign-up page, /enroll/{cohortId}, where the player picks who plays, signs
+ * the agreement and pays, signed in or not.
+ */
+export const JOIN_LABEL = "Join";
+
+/**
+ * The outline button of a by-approval block (High Performance) and of an
+ * invite-only one. It opens the same sign-up page, whose approval step takes
+ * over (the quiz, then our coaches' yes).
  */
 export const ASK_TO_JOIN_LABEL = "Ask to join";
+
+/** The outline button of a full block, and of a planned group with no open block. */
+export const NOTIFY_LABEL = "Notify me";
 
 /** "the Beginner Junior Bootcamp" · "the One-to-one coaching group". */
 function groupNamed(name: string): string {
@@ -106,21 +121,27 @@ function groupNamed(name: string): string {
 
 /**
  * A group card's one action, from its status (owner-approved design,
- * 2026-11-17; the words, owner 2026-11-18): "Ask to join" on a lime button
- * for a group that is open or down to its last spots, and on an outline one
- * for a by-approval or invite-only group; an outline "Notify me" for a full
- * one; and "Ask about lessons" for a group with no fixed class. Each is named
- * for its group for assistive tech ("Ask to join the Beginner Junior
+ * 2026-11-17; join and pay, owner 2026-11-19 and 2026-11-20): "Join" on the
+ * lime button of a block that is open or down to its last spots; "Ask to
+ * join" on the outline of a by-approval or invite-only block; an outline
+ * "Notify me" for a full block, and for a planned group with no open block
+ * (`dated` false); and "Ask about lessons" for a group with no fixed class.
+ * Each is named for its group for assistive tech ("Join the Beginner Adult
  * Bootcamp").
  */
-export function groupAction(g: Pick<ProgramGroup, "name">, status: ProgramStatus | null): GroupAction {
+export function groupAction(
+  g: Pick<ProgramGroup, "name" | "status">,
+  status: ProgramStatus | null,
+  dated = true
+): GroupAction {
   const named = groupNamed(g.name);
-  if (status === null) return { kind: "ask", label: "Ask about lessons", nameSuffix: "" };
-  if (status.kind === "full") return { kind: "notify", label: "Notify me", nameSuffix: ` when ${named} has a spot` };
-  if (status.kind === "approval" || status.kind === "invite-only") {
+  if (g.status === "arranged") return { kind: "ask", label: "Ask about lessons", nameSuffix: "" };
+  if (!dated) return { kind: "notify", label: NOTIFY_LABEL, nameSuffix: ` when ${named} has dates` };
+  if (status?.kind === "full") return { kind: "notify", label: NOTIFY_LABEL, nameSuffix: ` when ${named} has a spot` };
+  if (status?.kind === "approval" || status?.kind === "invite-only") {
     return { kind: "ask", label: ASK_TO_JOIN_LABEL, nameSuffix: ` ${named}` };
   }
-  return { kind: "join", label: ASK_TO_JOIN_LABEL, nameSuffix: ` ${named}` };
+  return { kind: "join", label: JOIN_LABEL, nameSuffix: ` ${named}` };
 }
 
 /** What the eyebrow reads: the bands, the timetable's days, else the schedule line or the type. */
@@ -264,11 +285,92 @@ export function programHeadingLine(
   return `${who} · ${level}`;
 }
 
-/** The class time and, when a public cohort exists, the day it starts: "Saturdays 12:00–1:00 pm" and "starts Jan 16". */
-export function groupWhenParts(g: ProgramGroup, nextCohort?: Pick<Cohort, "startDate"> | null): string[] {
-  const when = formatGroupWhen(g);
-  return nextCohort ? [when, `starts ${formatStartDate(nextCohort.startDate)}`] : [when];
+// ─── A group card's dates and class days (owner, 2026-11-20) ────────────────
+// "There should also be a date outlined on the card. For example July 15th -
+// Aug 15th. Keep in mind also that some groups may run twice a week later."
+// The card says when a block runs in the site's short style: the dates from
+// the first class to the last ("Jan 11 – Feb 15"), then the class days and
+// times ("Sundays 4–5pm", "Sundays and Wednesdays 4–5pm").
+
+/** A session's day as the card names it, in the plural: "Sun" → "Sundays". */
+const DAY_PLURAL: Record<SessionSlot["day"], string> = {
+  Mon: "Mondays",
+  Tue: "Tuesdays",
+  Wed: "Wednesdays",
+  Thu: "Thursdays",
+  Fri: "Fridays",
+  Sat: "Saturdays",
+  Sun: "Sundays",
+};
+
+/** "4" · "4:30" · "12": an hour on the twelve-hour clock, the minutes only when there are some. */
+function shortClock(h: number, m: number): string {
+  return m === 0 ? `${h % 12 || 12}` : `${h % 12 || 12}:${String(m).padStart(2, "0")}`;
 }
+
+/**
+ * "4–5pm" · "9–10am" · "11am–12pm" · "4:30–5:30pm": a class's hours, short,
+ * am or pm once when both ends share it. Times arrive as "16:00" or, from
+ * Postgres, "16:00:00".
+ */
+export function formatClassHours(start: string, end: string): string {
+  const [sh, sm] = start.slice(0, 5).split(":").map(Number);
+  const [eh, em] = end.slice(0, 5).split(":").map(Number);
+  if (![sh, sm, eh, em].every(Number.isFinite)) return `${start}–${end}`;
+  const startSuffix = sh >= 12 ? "pm" : "am";
+  const endSuffix = eh >= 12 ? "pm" : "am";
+  return startSuffix === endSuffix
+    ? `${shortClock(sh, sm)}–${shortClock(eh, em)}${endSuffix}`
+    : `${shortClock(sh, sm)}${startSuffix}–${shortClock(eh, em)}${endSuffix}`;
+}
+
+/** "Sundays" · "Sundays and Wednesdays" · "Mondays, Wednesdays and Fridays". */
+function joinDays(days: readonly string[]): string {
+  if (days.length <= 1) return days[0] ?? "";
+  return `${days.slice(0, -1).join(", ")} and ${days[days.length - 1]}`;
+}
+
+/**
+ * The class days and times of a block, short, in the order they first come
+ * in a week of the block: "Sundays 4–5pm"; two days at one time, "Sundays and
+ * Wednesdays 4–5pm"; different times, each day with its own, "Sundays 4–5pm,
+ * Wednesdays 6–7pm". Days that share a time are said once with it.
+ */
+export function formatClassDays(sessions: readonly Pick<SessionSlot, "day" | "start" | "end">[]): string {
+  const byHours = new Map<string, string[]>();
+  for (const s of sessions) {
+    const hours = formatClassHours(s.start, s.end);
+    const days = byHours.get(hours) ?? [];
+    const day = DAY_PLURAL[s.day] ?? s.day;
+    if (!days.includes(day)) days.push(day);
+    byHours.set(hours, days);
+  }
+  return [...byHours].map(([hours, days]) => `${joinDays(days)} ${hours}`).join(", ");
+}
+
+/** A planned group's own class day and time, short: "Saturdays 12–1pm"; "By arrangement" with no fixed class. */
+export function groupClassDays(g: Pick<ProgramGroup, "day" | "start" | "end">): string {
+  if (!g.day || !g.start || !g.end) return "By arrangement";
+  return formatClassDays([{ day: g.day.slice(0, 3) as SessionSlot["day"], start: g.start, end: g.end }]);
+}
+
+/**
+ * "Jan 11 – Feb 15": a block's dates, from its first class to its last, in
+ * the site's short style (the fixed month list in src/lib/cohorts.ts). The
+ * year shows only when the block runs into a new year ("Dec 6, 2026 – Jan
+ * 10, 2027"); a block of one class is its one date.
+ */
+export function formatBlockDates(first: string, last: string): string {
+  if (!last || first === last) return formatStartDate(first);
+  const firstYear = first.slice(0, 4);
+  const lastYear = last.slice(0, 4);
+  return firstYear === lastYear
+    ? `${formatStartDate(first)} – ${formatStartDate(last)}`
+    : `${formatStartDate(first)}, ${firstYear} – ${formatStartDate(last)}, ${lastYear}`;
+}
+
+/** What a card says where a planned group has no open block (owner, 2026-11-20). */
+export const DATES_COMING_SOON = "Dates coming soon";
 
 /** The group's tier (its one level tag), or null for a group built for any level. */
 export function groupTier(g: Pick<ProgramGroup, "level">): Tier | null {
@@ -314,22 +416,18 @@ export function groupsOf(groups: readonly ProgramGroup[], program: Pick<Program,
 }
 
 /**
- * Does a public cohort train in this group? The cohort's program and its
- * first session's day and start must match the group's class. A cohort of
- * a program with no fixed class (private lessons) never matches.
+ * Does a cohort train in this group, by its class? The cohort's program and
+ * its first session's day and start must match the group's class. A cohort
+ * of a program with no fixed class (private lessons) never matches. The
+ * enroll page and the payment routes find a cohort's group this way (its
+ * ages, and the by-approval step); the group cards match a block to its
+ * group by program and level instead (src/lib/groupBlocks.ts).
  */
 export function cohortMatchesGroup(cohort: Pick<Cohort, "programId" | "sessions">, g: ProgramGroup): boolean {
   if (cohort.programId !== g.programSlug || !g.day || !g.start) return false;
   const session = cohort.sessions[0];
   if (!session) return false;
   return session.day === g.day.slice(0, 3) && twelveHourStart(session.start) === twelveHourStart(g.start);
-}
-
-/** The earliest public cohort that trains in this group, if any. */
-export function nextCohortForGroup(publicCohorts: readonly Cohort[], g: ProgramGroup): Cohort | undefined {
-  return publicCohorts
-    .filter((c) => cohortMatchesGroup(c, g))
-    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
 }
 
 /** What a card needs to know about one player on an account. */

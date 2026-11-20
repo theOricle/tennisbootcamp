@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { Program, ProgramGroup } from "@/types/program";
-import type { Cohort } from "@/types/cohort";
+import type { BlockFacts } from "@/lib/groupBlocks";
 import {
+  DATES_COMING_SOON,
   formatGroupWhen,
   groupAction,
+  groupClassDays,
   groupStatus,
-  groupWhenParts,
   groupWhoLabel,
   priceParts,
   type GroupAction,
@@ -15,20 +16,22 @@ import { NEWSLETTER_ANCHOR } from "@/content/site";
 import { buttonClass } from "@/components/ui/Button";
 import { CARD_CLASS } from "@/components/ui/Card";
 import { TrackedLink } from "@/components/ui/TrackedButton";
-import { CalendarIcon, PersonIcon } from "@/components/ui/icons";
+import { CalendarIcon, ClockIcon, PersonIcon } from "@/components/ui/icons";
 import { PinIcon } from "@/components/locations/LocationLine";
 import { LevelTag } from "@/components/tiers";
 import { StatusChip } from "./ProgramCard";
 
 // One group as its own card (owner, 2026-10-12; one level per group and a
 // level-led title, 2026-10-13; the short card, owner-approved design
-// 2026-11-17). Top row: the one level tag and the status chip. Then the
-// level-led title ("Intermediate Adult Bootcamp"). Then three plain lines,
-// each with a small icon and no label: who (the ages), when (the class time,
-// and the day it starts once a public cohort exists), where (the club's
-// name). Then, on a hairline pinned to the bottom so sibling cards line up,
-// the price once (the whole price of the bootcamp: the cohort total in
-// bold over the cohort length, both from the constants in
+// 2026-11-17; one card per open block with its dates, owner 2026-11-19 and
+// 2026-11-20). Top row: the one level tag and the status chip. Then the
+// level-led title ("Intermediate Adult Bootcamp"). Then four plain lines,
+// each with a small icon and no label: who (the ages), the dates (first
+// class to last, "Jan 11 – Feb 15", or "Dates coming soon"), the class days
+// and times ("Sundays 4–5pm", "Sundays and Wednesdays 4–5pm"), where (the
+// club's name). Then, on a hairline pinned to the bottom so sibling cards
+// line up, the price once (the whole price: the block's own total over its
+// own length, or for a group with no open block the constants in
 // src/content/programs.ts; never a per-session figure) and one button.
 //
 // No rules on the card: the week-one promise, High Performance by approval
@@ -36,93 +39,74 @@ import { StatusChip } from "./ProgramCard";
 // know". No photo: the program's photograph identifies the program.
 //
 // One interactive element, the button, named for its group for assistive
-// tech ("Ask to join the Beginner Junior Bootcamp"), so seven cards on
-// /programs are seven distinct actions. Four states (groupStatus and
-// groupAction, src/lib/programCatalog.ts): open, a lime "Ask to join"; down
-// to its last spots, the warn chip and a lime "Ask to join"; full, an
-// outline "Notify me"; by approval (and invite only), an outline "Ask to
-// join".
-//
-// "Ask to join" until the group can take payment (owner, 2026-11-18): it
-// opens the quiz for this program at its first step, which is how a spot is
-// asked for today. The words never change; where it goes follows the
-// quiz-taker (`quizAware="href"`): a signed-in account with quiz answers on
-// file goes to its dashboard, never back to the quiz. "Notify me" goes to
-// the newsletter line in the footer.
+// tech ("Join the Beginner Adult Bootcamp"), and described by the card's
+// dates, so two blocks of one group read apart. The states (groupStatus and
+// groupAction, src/lib/programCatalog.ts): an open block, a lime "Join" to
+// its sign-up page (/enroll/{cohortId}), signed in or not; down to its last
+// spots, the warn chip and "Join"; full, an outline "Notify me"; by approval
+// (and invite only), an outline "Ask to join" to the same sign-up page,
+// where its approval step takes over; a planned group with no open block,
+// "Dates coming soon" and an outline "Notify me". "Notify me" goes to the
+// newsletter line in the footer, or the page's own form.
 
 const FACT_GLYPH = "mt-[3px] h-[15px] w-[15px] shrink-0 opacity-65";
 
 export type ProgramGroupCardProps = {
   group: ProgramGroup;
-  program: Pick<Program, "slug">;
-  /** The earliest public cohort that trains in this group, if any: its start date joins the "when" line. */
-  nextCohort?: Cohort;
   /**
-   * Seats left in that cohort, read once per page (src/lib/groupSeats.ts).
-   * Absent or null reads "Open to join". Display only.
+   * The open block this card shows (src/lib/groupBlocks.ts): its dates, class
+   * days, price and seats, and the sign-up page "Join" opens. Absent or null
+   * for a planned group with no open block, which reads "Dates coming soon".
    */
-  seatsLeft?: number | null;
-  /** The quiz link's analytics source. */
-  source?: string;
+  block?: BlockFacts | null;
   /** The title's level: h3 under a page section's h2 (the default); h4 under an h3. */
   headingLevel?: 2 | 3 | 4;
   /** Where "Notify me" goes: the footer's newsletter line, or a page's own form when it has one. */
   notifyHref?: string;
 };
 
-/** The card's one button. A link in every state, styled as the lime or the outline button. */
-function GroupButton({
-  action,
-  programSlug,
-  source,
-  notifyHref,
-  quizAware,
-}: {
-  action: GroupAction;
-  programSlug: string;
-  source: string;
-  notifyHref: string;
-  /**
-   * "href" on a group card: "Ask to join" keeps its words, and a signed-in
-   * account with quiz answers on file goes to its dashboard instead of the
-   * quiz. false on the private lessons row: "Ask about lessons" always opens
-   * the quiz for the program, as it always has.
-   */
-  quizAware: "href" | false;
-}) {
-  const label = (
+/** The words of a button: the label, and the rest of its accessible name for assistive tech. */
+function ButtonLabel({ action }: { action: GroupAction }) {
+  return (
     <>
       {action.label}
       {action.nameSuffix && <span className="sr-only">{action.nameSuffix}</span>}
     </>
   );
-  // One height for the lime and the outline button (the outline's border
-  // adds 2px to the shared 44px), so the feet of sibling cards line up.
-  const shape = "h-[46px] whitespace-nowrap";
-  if (action.kind === "notify") {
-    return (
-      <Link href={notifyHref} className={`${buttonClass("secondary")} ${shape}`}>
-        {label}
-      </Link>
-    );
-  }
+}
+
+// One height for the lime and the outline button (the outline's border adds
+// 2px to the shared 44px), so the feet of sibling cards line up.
+const BUTTON_SHAPE = "h-[46px] whitespace-nowrap";
+
+/** The card's one button: a link in every state, styled as the lime or the outline button. */
+function GroupButton({
+  action,
+  block,
+  notifyHref,
+  describedBy,
+}: {
+  action: GroupAction;
+  block: BlockFacts | null;
+  notifyHref: string;
+  describedBy?: string;
+}) {
+  const href = action.kind === "notify" || !block ? notifyHref : `/enroll/${block.cohortId}`;
   return (
-    <TrackedLink
-      href={`/intake?program=${programSlug}`}
-      track="quiz"
-      source={source}
-      quizAware={quizAware}
-      className={`${buttonClass(action.kind === "join" ? "primary" : "secondary")} ${shape}`}
+    <Link
+      href={href}
+      aria-describedby={describedBy}
+      className={`${buttonClass(action.kind === "join" ? "primary" : "secondary")} ${BUTTON_SHAPE}`}
     >
-      {label}
-    </TrackedLink>
+      <ButtonLabel action={action} />
+    </Link>
   );
 }
 
 /**
  * The price, once: the whole price of the bootcamp (owner, 2026-11-17), the
- * amount in bold over what it buys (the cohort length). A price with no
- * amount ("Rates on request") is one line.
+ * amount in bold over what it buys (the length). A price with no amount
+ * ("Rates on request") is one line.
  */
 function GroupPrice({ text }: { text: string }) {
   const [lead, rest] = priceParts(text);
@@ -134,20 +118,61 @@ function GroupPrice({ text }: { text: string }) {
   );
 }
 
+/**
+ * "Jan 11 – Feb 15" as its two dates, each kept whole, the dash riding the
+ * first, so a cross-year range never breaks inside a date.
+ */
+function DateRange({ text }: { text: string }) {
+  const dates = text.split(" – ");
+  return (
+    <span className="flex min-w-0 flex-wrap gap-x-1 tabular-nums">
+      {dates.map((date, i) => (
+        <span key={`${i}-${date}`} className="whitespace-nowrap">
+          {date}
+          {i < dates.length - 1 && " –"}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * "Sundays 4–5pm, Wednesdays 6–7pm": each day's part starts a line of its
+ * own when the two do not fit on one, the comma riding the part before it,
+ * and a time range never breaks at its dash ("4–" over "5pm").
+ */
+function ClassDays({ text }: { text: string }) {
+  const parts = text.split(", ");
+  return (
+    <span className="flex min-w-0 flex-wrap gap-x-1 tabular-nums">
+      {parts.map((part, i) => {
+        const at = part.lastIndexOf(" ");
+        return (
+          <span key={`${i}-${part}`}>
+            {at > 0 && `${part.slice(0, at)} `}
+            <span className="whitespace-nowrap">
+              {at > 0 ? part.slice(at + 1) : part}
+              {i < parts.length - 1 && ","}
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export function ProgramGroupCard({
   group: g,
-  program,
-  nextCohort,
-  seatsLeft,
-  source = "group-card",
+  block = null,
   headingLevel = 3,
   notifyHref = `#${NEWSLETTER_ANCHOR}`,
 }: ProgramGroupCardProps) {
   const Title = headingLevel === 2 ? "h2" : headingLevel === 4 ? "h4" : "h3";
-  const status = groupStatus(g, seatsLeft);
-  const action = groupAction(g, status);
+  const dated = block !== null;
+  const status = groupStatus(g, block?.seatsLeft, dated);
+  const action = groupAction(g, status, dated);
   const location = locationById(g.locationId);
-  const when = groupWhenParts(g, nextCohort);
+  const datesId = `${g.id}-dates`;
 
   return (
     <article
@@ -156,32 +181,28 @@ export function ProgramGroupCard({
     >
       {/* The level tag and the status chip share a row; in the narrow
           three-across cards of a tablet they stack, the same way on every
-          card, so sibling titles stay level. */}
-      <div className="flex min-h-[26px] flex-wrap items-center justify-between gap-x-2 gap-y-1.5 md:flex-col md:items-start lg:flex-row lg:items-center">
+          card, so sibling titles stay level. The stacked row keeps the
+          chip's room on a card with no chip (a group with no open block). */}
+      <div className="flex min-h-[26px] flex-wrap items-center justify-between gap-x-2 gap-y-1.5 md:min-h-[52px] md:flex-col md:items-start lg:min-h-[26px] lg:flex-row lg:items-center">
         <LevelTag level={g.level} plain />
         {status && <StatusChip status={status} />}
       </div>
 
       <Title className="mt-2.5 text-lg font-semibold leading-tight tracking-tight text-white">{g.name}</Title>
 
-      {/* Who, when, where: three plain lines. The glyphs are decoration. */}
+      {/* Who, the dates, the class days, where: four plain lines. The glyphs are decoration. */}
       <ul role="list" className="mb-4 mt-2 space-y-1 text-sm text-white/75">
         <li className="flex items-start gap-2 text-white/90">
           <PersonIcon className={FACT_GLYPH} />
           {groupWhoLabel(g)}
         </li>
-        <li className="flex items-start gap-2">
+        <li id={datesId} className={`flex items-start gap-2 ${dated ? "text-white/90" : "text-white/60"}`}>
           <CalendarIcon className={FACT_GLYPH} />
-          {/* The parts wrap whole, and the dot rides with the part before
-              it, so a second line never opens with a separator. */}
-          <span className="flex min-w-0 flex-wrap gap-x-1 tabular-nums">
-            {when.map((part, i) => (
-              <span key={part} className="whitespace-nowrap">
-                {part}
-                {i < when.length - 1 && <span aria-hidden="true"> ·</span>}
-              </span>
-            ))}
-          </span>
+          {block ? <DateRange text={block.dates} /> : DATES_COMING_SOON}
+        </li>
+        <li className="flex items-start gap-2">
+          <ClockIcon className={FACT_GLYPH} />
+          <ClassDays text={block ? block.days : groupClassDays(g)} />
         </li>
         {location && (
           <li className="flex items-start gap-2">
@@ -194,13 +215,12 @@ export function ProgramGroupCard({
       {/* The foot, pinned to the bottom. Price left, button right; in the
           narrow three-across cards of a tablet the button takes its own row. */}
       <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3.5 md:flex-col md:items-stretch lg:flex-row lg:items-center">
-        <GroupPrice text={g.price} />
+        <GroupPrice text={block ? block.price : g.price} />
         <GroupButton
           action={action}
-          programSlug={program.slug}
-          source={source}
+          block={block}
           notifyHref={notifyHref}
-          quizAware="href"
+          describedBy={dated ? datesId : undefined}
         />
       </div>
     </article>
@@ -217,7 +237,13 @@ export function ArrangedGroupRow({
   program,
   source = "group-card",
   headingLevel = 3,
-}: Pick<ProgramGroupCardProps, "group" | "program" | "source" | "headingLevel">) {
+}: {
+  group: ProgramGroup;
+  program: Pick<Program, "slug">;
+  /** The quiz link's analytics source. */
+  source?: string;
+  headingLevel?: 2 | 3 | 4;
+}) {
   const Title = headingLevel === 2 ? "h2" : headingLevel === 4 ? "h4" : "h3";
   const action = groupAction(g, groupStatus(g));
   return (
@@ -231,13 +257,17 @@ export function ArrangedGroupRow({
           {formatGroupWhen(g)} · {g.price}
         </p>
       </div>
-      <GroupButton
-        action={action}
-        programSlug={program.slug}
+      {/* "Ask about lessons" opens the quiz for the program for everyone, a
+          quiz-taker included (quizAware={false}), as it always has. */}
+      <TrackedLink
+        href={`/intake?program=${program.slug}`}
+        track="quiz"
         source={source}
-        notifyHref={`#${NEWSLETTER_ANCHOR}`}
         quizAware={false}
-      />
+        className={`${buttonClass("secondary")} ${BUTTON_SHAPE}`}
+      >
+        <ButtonLabel action={action} />
+      </TrackedLink>
     </article>
   );
 }

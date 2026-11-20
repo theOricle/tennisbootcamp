@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { Suspense, useId, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import type { Cohort } from "@/types/cohort";
 import type { Program, ProgramGroup } from "@/types/program";
+import type { BlockFacts, GroupCard } from "@/lib/groupBlocks";
 import { TIERS } from "@/lib/tiers";
 import {
   AGE_BAND_QUERIES,
@@ -39,8 +39,9 @@ import { ArrangedGroupRow, ProgramGroupCard } from "./ProgramGroupCard";
 // first ("People need to choose location first"), Player's age, Level — the
 // five levels as one strip, and the quiz as a side line. Under the band,
 // every group at the chosen location under its program's heading row: a
-// card per group with a fixed class, one row for a group booked by
-// arrangement (private lessons).
+// card per open block, or per planned group with none ("Dates coming soon";
+// src/lib/groupBlocks.ts, owner 2026-11-19), and one row for a group booked
+// by arrangement (private lessons).
 //
 // The filters are carried in the URL (?location=…&age=14&level=intermediate)
 // so a filtered list can be shared and the quiz result can link to one. The
@@ -57,11 +58,13 @@ export type CatalogProgram = Pick<Program, "slug" | "title">;
 
 export type ProgramCatalogProps = {
   programs: CatalogProgram[];
-  groups: ProgramGroup[];
-  /** The earliest public cohort per group id, already fetched by the page. */
-  nextCohorts: Record<string, Cohort>;
-  /** Seats left in those cohorts, by group id, read once by the page (src/lib/groupSeats.ts). */
-  seats?: Record<string, number>;
+  /**
+   * Every card, in lineup order (groupCards, src/lib/groupBlocks.ts): each
+   * open block with its group, each planned group with no open block, and
+   * the private lessons row. Card ids are unique, so the filters below read
+   * the cards' groups as they read the lineup.
+   */
+  cards: GroupCard[];
   /** The band's title and lead, rendered by the page. */
   header: ReactNode;
   /** The five-levels strip, rendered by the page; it sits under the dropdowns. */
@@ -214,14 +217,12 @@ function ProgramHeading({ program, groups }: { program: CatalogProgram; groups: 
 function ClosestFit({
   groups,
   programs,
-  nextCohorts,
-  seats,
+  blockOf,
   query,
 }: {
   groups: ProgramGroup[];
   programs: CatalogProgram[];
-  nextCohorts: Record<string, Cohort>;
-  seats: Record<string, number>;
+  blockOf: (id: string) => BlockFacts | null;
   query: CatalogQuery;
 }) {
   if (groups.length === 0 || !query.tier) return null;
@@ -237,17 +238,10 @@ function ClosestFit({
       </p>
       <ul role="list" className={GROUP_GRID}>
         {groups.map((g) => {
-          const program = programs.find((p) => p.slug === g.programSlug);
-          if (!program) return null;
+          if (!programs.some((p) => p.slug === g.programSlug)) return null;
           return (
             <li key={g.id} className="flex [&>*]:w-full">
-              <ProgramGroupCard
-                group={g}
-                program={program}
-                nextCohort={nextCohorts[g.id]}
-                seatsLeft={seats[g.id]}
-                source="programs-closest"
-              />
+              <ProgramGroupCard group={g} block={blockOf(g.id)} />
             </li>
           );
         })}
@@ -259,14 +253,15 @@ function ClosestFit({
 /** The catalog as pure markup for a given query; the live wrapper owns the state. */
 export function ProgramCatalogView({
   programs,
-  groups,
-  nextCohorts,
-  seats = {},
+  cards,
   header,
   levels,
   query,
   onChange,
 }: ProgramCatalogProps & { query: CatalogQuery; onChange: (next: CatalogQuery) => void }) {
+  const groups = cards.map((c) => c.group);
+  const blocks = new Map(cards.map((c) => [c.group.id, c.block] as const));
+  const blockOf = (id: string) => blocks.get(id) ?? null;
   const matching = filterGroups(groups, query);
   const sections = programs
     .map((program) => ({
@@ -311,13 +306,7 @@ export function ProgramCatalogView({
                   .map((g) => (
                     <li key={g.id} className="flex [&>*]:w-full">
                       {/* The program's title above is an h2, so each group is an h3 under it. */}
-                      <ProgramGroupCard
-                        group={g}
-                        program={program}
-                        nextCohort={nextCohorts[g.id]}
-                        seatsLeft={seats[g.id]}
-                        source="programs-group"
-                      />
+                      <ProgramGroupCard group={g} block={blockOf(g.id)} />
                     </li>
                   ))}
               </ul>
@@ -332,7 +321,7 @@ export function ProgramCatalogView({
           </section>
         ))}
 
-        <ClosestFit groups={closest} programs={programs} nextCohorts={nextCohorts} seats={seats} query={query} />
+        <ClosestFit groups={closest} programs={programs} blockOf={blockOf} query={query} />
 
         {noClassMatches && (
           // The empty state says what is true and what happens next (voice.md):

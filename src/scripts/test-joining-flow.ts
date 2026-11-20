@@ -25,7 +25,9 @@
 // Since backlog #71 (owner, 2026-11-18) the third point hints at the levels
 // and moving up ("Five levels to climb", the count from the tier setting),
 // and every group's button reads "Ask to join" until that group can take
-// payment.
+// payment. Since backlog #85 (owner, 2026-11-19 and 2026-11-20) a group can:
+// each open block is a card whose lime "Join" opens its sign-up page, and a
+// group with no open block reads "Dates coming soon" and "Notify me".
 //
 // Since backlog #74 (owner, 2026-11-19) the band's first two points name
 // the two parts, each with what it trains ("Tennis technique, tactics and
@@ -46,6 +48,8 @@ import {
   ASSESSMENT_CERTAINTY_LINE,
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
+  COHORT_TOTAL_CENTS,
+  COHORT_WEEKS,
   GROUP_MAX_PLAYERS,
   PLACEMENT_LINE,
   RIGHT_GROUP_PROMISE,
@@ -71,6 +75,8 @@ import "./stub-static-images";
 import HomePage from "../app/page";
 import { COOLING_OFF_DAYS } from "../content/policies";
 import { groupStatus } from "../lib/programCatalog";
+import { blockFacts } from "../lib/groupBlocks";
+import type { Cohort } from "../types/cohort";
 import { TIER_COUNT, TIER_COUNT_WORD } from "../lib/tiers";
 import {
   CardioIcon,
@@ -158,19 +164,30 @@ check("High Performance reads By approval", groupStatus(group("high-performance"
 // rows left it; the promise and how High Performance is joined are said once
 // on the page, under "Good to know". The card keeps its chip and one button.
 console.log("Group cards: no rules on the card, one action");
-const cardFor = (g: (typeof programGroups)[number]) =>
-  render(createElement(ProgramGroupCard, { group: g, program: listedPrograms.find((p) => p.slug === g.programSlug)! }));
-const hpCard = cardFor(group("high-performance"));
-const openCard = cardFor(group("adult-newer"));
+// Backlog #85: a card shows an open block (its dates, class days, price and
+// seats), or, for a group with none, "Dates coming soon". The blocks here
+// are ones a coach could open, at the setting's own price and length.
+const sampleBlock = (id: string, programId: string, day: "Sat" | "Sun", start: string, end: string, levelMin: number, levelMax: number): Cohort => ({
+  id, programId, locationId: "", label: id, startDate: "2027-01-09", endDate: "", weeks: COHORT_WEEKS, sessions: [{ day, start, end }],
+  capacityMin: 4, capacityMax: 8, priceCents: COHORT_TOTAL_CENTS, currency: "CAD", status: "open", levelMin, levelMax,
+});
+const cardFor = (g: (typeof programGroups)[number], block: Cohort | null = null) =>
+  render(createElement(ProgramGroupCard, { group: g, block: block ? blockFacts(block) : null }));
+const hpCard = cardFor(group("high-performance"), sampleBlock("hp-winter", "youth-programs", "Sat", "14:00", "15:00", 5, 7));
+const openCard = cardFor(group("adult-newer"), sampleBlock("adult-beg-winter", "bootcamps", "Sun", "16:00", "17:00", 1, 1.5));
+const datelessCard = cardFor(group("adult-newer"));
 check("no scheduled card carries the promise or a Week 1 row", scheduled.every((g) => !cardFor(g).includes(RIGHT_GROUP_PROMISE_SHORT) && !cardFor(g).includes(RIGHT_GROUP_PROMISE) && !cardFor(g).includes("Week 1")));
 check("no card carries a Join row or the approval line", scheduled.every((g) => !cardFor(g).includes(APPROVAL_LINE) && !cardFor(g).includes(APPROVAL_ASK_LINE) && !cardFor(g).includes("<dt")));
 check("High Performance: the By approval chip and an outline Ask to join, named for the group", hpCard.includes("By approval") && />Ask to join<span class="sr-only"> the High Performance Youth Bootcamp<\/span><\/a>/.test(hpCard) && !/<a [^>]*bg-\[#B4E655\]/.test(hpCard));
-// Re-pinned for backlog #71 (owner, 2026-11-18): the open group's lime button read "Join".
-check("an open group: the Open to join chip and a lime Ask to join, named for the group", openCard.includes("Open to join") && /<a [^>]*bg-\[#B4E655\][^>]*>Ask to join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>/.test(openCard) && !openCard.includes(">Join<"));
-check("still one link per card: Ask to join opens the quiz for the program, which is how a spot is asked for today", count(hpCard, "<a ") === 1 && count(openCard, "<a ") === 1 && hpCard.includes('href="/intake?program=youth-programs"') && openCard.includes('href="/intake?program=bootcamps"'));
-// The line beside the High Performance row describes its button; every
-// group's button reads the same words now, and the line keeps its promise.
-check("Good to know still says what asking is, beside the by-approval group: the quiz, then our coaches' approval", APPROVAL_ASK_LINE.startsWith("Ask to join: it is the 2-minute quiz") && hpCard.includes(">Ask to join<") && openCard.includes(">Ask to join<"));
+// Re-pinned for backlog #85 (owner, 2026-11-19): the open block's lime button
+// reads "Join" again, with its sign-up page and payment behind it (backlog
+// #71 had it read "Ask to join" while it opened the quiz).
+check("an open block: the Open to join chip and a lime Join, named for the group", openCard.includes("Open to join") && /<a [^>]*bg-\[#B4E655\][^>]*>Join<span class="sr-only"> the Beginner Adult Bootcamp<\/span><\/a>/.test(openCard) && !openCard.includes(">Ask to join<"));
+check("still one link per card: Join and Ask to join open the block's sign-up page, where it is paid for or, by approval, asked for", count(hpCard, "<a ") === 1 && count(openCard, "<a ") === 1 && hpCard.includes('href="/enroll/hp-winter"') && openCard.includes('href="/enroll/adult-beg-winter"') && !hpCard.includes("/intake") && !openCard.includes("/intake"));
+check("a group with no open block: Dates coming soon and an outline Notify me (owner, 2026-11-20)", datelessCard.includes("Dates coming soon</li>") && /<a [^>]*href="#notify"[^>]*>Notify me<span class="sr-only"> when the Beginner Adult Bootcamp has dates<\/span><\/a>/.test(datelessCard) && !datelessCard.includes("/enroll") && !datelessCard.includes("Open to join"));
+// The line beside the High Performance row describes its button: the block's
+// sign-up page stops a walk-in with its approval step, which is the quiz.
+check("Good to know still says what asking is, beside the by-approval group: the quiz, then our coaches' approval", APPROVAL_ASK_LINE.startsWith("Ask to join: it is the 2-minute quiz") && hpCard.includes(">Ask to join<") && openCard.includes(">Join<"));
 check("no assessment pitch on a card (design-system.md)", !hpCard.includes("Book Your Assessment") && !openCard.includes("Book Your Assessment"));
 
 // ── How joining works (home) ────────────────────────────────────────────────
@@ -825,14 +842,20 @@ check("the brief's price rule: the whole price only, the per-session figure only
 check("the joining-flow section names the three steps and Good to know", voice.includes('"Pick a group"') && voice.includes('"Pay online"') && voice.includes('"Start on court"') && voice.includes("Good to know"));
 // Backlog #71 (owner, 2026-11-18): the card buttons, where they lead, and a before → after row for each changed string.
 const joiningFlowBrief = voice.slice(voice.indexOf("## Joining flow"), voice.indexOf("## Locations"));
+// Re-pinned for backlog #85 (owner, 2026-11-19 and 2026-11-20): it pinned
+// "Ask to join" on every group until that group could take payment, the quiz
+// signed out and the dashboard for a signed-in taker (backlog #71).
 check(
-  "the brief's card buttons: Ask to join on every group until it can take payment; the quiz signed out, the dashboard for a signed-in taker",
-  joiningFlowBrief.includes("**The card buttons and where they lead** (owner, 2026-11-18)") &&
-    joiningFlowBrief.includes('every group\'s button reads "Ask to join" until that group can take payment') &&
-    joiningFlowBrief.includes("`/intake?program={slug}`") &&
-    joiningFlowBrief.includes("it goes to the dashboard") &&
-    !/a group's Join button|"Join", "Ask to join" and "Notify me"/.test(voice)
+  "the brief's card buttons: Join on an open block, to its sign-up page; Ask to join by approval, to the same page; Dates coming soon and Notify me with no open block",
+  joiningFlowBrief.includes("**The card buttons and where they lead** (owner, 2026-11-19 and 2026-11-20;") &&
+    joiningFlowBrief.includes('An open block\'s lime button reads "Join" and opens its sign-up page (`/enroll/{cohortId}`), signed in or not') &&
+    joiningFlowBrief.includes('reads "Ask to join" on the outline, to the same page, whose approval step takes over') &&
+    joiningFlowBrief.includes('A group with no open block reads "Dates coming soon" where the dates go and an outline "Notify me" (the owner\'s decision, 2026-11-20)') &&
+    joiningFlowBrief.includes("**Signed in, never a dead end** (owner, 2026-11-19)") &&
+    !joiningFlowBrief.includes('every group\'s button reads "Ask to join" until that group can take payment') &&
+    !joiningFlowBrief.includes("`/intake?program={slug}`")
 );
+check("the brief's before → after rows for backlog #85: the button, the dates and days, a group with no open block, the signed-in screen", ["| 38 | Ask to join (an open group's lime button", "| 39 | Saturdays 12:00–1:00 pm, then", "| 40 | Open to join and Ask to join", "| 41 | You've already taken the quiz."].every((row) => voice.includes(row)));
 check("the brief's before → after rows for the three changed strings: the third point, the card button, the signed-out greeting", [`| 31 | One group for all ${COHORT_LENGTH}`, "| 32 | Join (a group card's lime button", "| 33 | Your quiz answers are in."].every((row) => voice.includes(row)));
 // Backlog #74 (owner, 2026-11-19): the band's first two points, the Fitness
 // aims and a before → after row for each changed string.

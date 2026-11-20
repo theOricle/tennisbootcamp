@@ -42,7 +42,8 @@ import { TIER_FRAME, TIER_PIP, FIELD_TINT } from "../lib/tierStyle";
 import { EMBLEM_SHAPES, TIER_IDS, emblemLabel } from "../components/tiers/emblemGeometry";
 import { TierLine } from "../components/tiers/TierLine";
 import { LevelTag, TierChip } from "../components/tiers";
-import { COHORT_TOTAL_LABEL, bootcampTitle, groupById, groupsForProgram, listedPrograms, programGroups } from "../content/programs";
+import { COHORT_TOTAL_CENTS, COHORT_TOTAL_LABEL, COHORT_WEEKS, bootcampTitle, groupById, groupsForProgram, listedPrograms, programGroups } from "../content/programs";
+import { blockFacts } from "../lib/groupBlocks";
 import { ABOUT_DESCRIPTION } from "../content/site";
 import { groupLevelRange, groupTier, programLevelTags, slotLevelRange } from "../lib/programCatalog";
 import {
@@ -222,7 +223,7 @@ async function main() {
   check("age 17 at Beginner: the Beginner Adult Bootcamp matches exactly; no Closest fit, and never High Performance four away", filtered("age=17&level=beginner") === "adult-newer,private-lessons" && closest("age=17&level=beginner") === "" && closest("age=16&level=beginner") === "");
   check("age 16 at Advanced: High Performance is one away, so it still follows the exact adult match", filtered("age=16&level=advanced") === "adult-advanced,private-lessons" && closest("age=16&level=advanced") === "high-performance");
   check("the reach rule never shows a by-approval group more than one tier from the level, at any age", EXACT_AGES.concat([18, 30]).every((age) => TIERS.every((t) => closestGroups(programGroups, parseCatalogQuery(params(`age=${age}&level=${t.slug}`))).every((x) => x.joining !== "approval" || tierDistance(x, t) <= 1))));
-  const teenView = render(createElement(ProgramCatalogView, { programs: listedPrograms.map((p) => ({ slug: p.slug, title: p.title })), groups: programGroups, nextCohorts: {}, header: null, query: parseCatalogQuery(params("age=teen&level=intermediate")), onChange: () => {} }));
+  const teenView = render(createElement(ProgramCatalogView, { programs: listedPrograms.map((p) => ({ slug: p.slug, title: p.title })), cards: programGroups.map((group) => ({ group, block: null })), header: null, query: parseCatalogQuery(params("age=teen&level=intermediate")), onChange: () => {} }));
   check("catalog for a teen at Intermediate: the adult section, then Closest fit with the Novice Youth Bootcamp, and a line that stays true with an exact match above it", teenView.includes('id="catalog-bootcamps"') && teenView.includes('id="adult-intermediate"') && teenView.includes(">Closest fit</h2>") && teenView.includes('id="youth-11-15"') && teenView.includes("The nearest levels to Intermediate for teens (14–17).") && !teenView.includes("No group is") && !teenView.includes("tagged") && at(teenView, 'id="catalog-bootcamps"') < at(teenView, ">Closest fit</h2>"));
 
   console.log("The recommender reaches one tier either way; High Performance first for competitive youth");
@@ -238,14 +239,18 @@ async function main() {
 
   console.log("Cards and pages read tags, never spans");
   const youth = listedPrograms[0];
-  const card = render(createElement(ProgramGroupCard, { group: g("adult-intermediate"), program: listedPrograms[1] }));
+  const card = render(createElement(ProgramGroupCard, { group: g("adult-intermediate") }));
   // The short card (backlog #69, owner-approved design 2026-11-17): no
   // eyebrow and no labelled rows; the one level tag opens the card, and the
   // day is a plain line under the title.
   check("group card: the level-led title, no eyebrow, no day there", card.includes(">Intermediate Adult Bootcamp</h3>") && listedPrograms[1].type === "Group bootcamp" && !card.includes(listedPrograms[1].type) && !/<p class="[^"]*">Sundays<\/p>/.test(card));
-  check("group card: the one level tag first, then the title, who, when (the day as a plain line), where, the price", at(card, ">Intermediate</span>") > 0 && at(card, ", tier 3 of 5, levels 3.0–3.5") < at(card, "<h3") && at(card, "<h3") < at(card, "16 and up</li>") && at(card, "16 and up</li>") < at(card, ">Sundays 5:00–6:00 pm</span>") && at(card, ">Sundays 5:00–6:00 pm</span>") < at(card, "Newtonbrook Tennis Club</li>") && at(card, "Newtonbrook Tennis Club</li>") < at(card, `>${COHORT_TOTAL_LABEL}</span>`) && count(card, ", tier 3 of 5") === 1);
+  // Re-pinned for backlog #85: the dates line ("Dates coming soon" with no
+  // open block) and the class days and times, short ("Sundays 5–6pm").
+  check("group card: the one level tag first, then the title, who, the dates, the class day (a plain line), where, the price", at(card, ">Intermediate</span>") > 0 && at(card, ", tier 3 of 5, levels 3.0–3.5") < at(card, "<h3") && at(card, "<h3") < at(card, "16 and up</li>") && at(card, "16 and up</li>") < at(card, "Dates coming soon</li>") && at(card, "Dates coming soon</li>") < at(card, ">5–6pm") && card.includes("Sundays <span") && at(card, ">5–6pm") < at(card, "Newtonbrook Tennis Club</li>") && at(card, "Newtonbrook Tennis Club</li>") < at(card, `>${COHORT_TOTAL_LABEL}</span>`) && count(card, ", tier 3 of 5") === 1);
   check("group card: no range, no visible band, no rail, one link", !card.includes(" – ") && !/text-white\/60">3\.0–3\.5</.test(card) && !card.includes('aria-label="Built for') && !card.includes('role="meter"') && count(card, "<a ") === 1);
-  const hp = render(createElement(ProgramGroupCard, { group: g("high-performance"), program: youth }));
+  // Backlog #85: High Performance's "Ask to join" belongs to an open block, so the card shows one.
+  const hpBlock = blockFacts({ id: "hp-winter", programId: "youth-programs", locationId: "", label: "HP", startDate: "2027-01-09", endDate: "", weeks: COHORT_WEEKS, sessions: [{ day: "Sat", start: "14:00", end: "15:00" }], capacityMin: 4, capacityMax: 8, priceCents: COHORT_TOTAL_CENTS, currency: "CAD", status: "open", levelMin: 5, levelMax: 7 });
+  const hp = render(createElement(ProgramGroupCard, { group: g("high-performance"), block: hpBlock }));
   check("the High Performance card: the bootcamp title, the High Performance tag with the gold mark, By approval, Ask to join", hp.includes(">High Performance Youth Bootcamp</h3>") && hp.includes("#E3C46F") && hp.includes(", tier 5 of 5, levels 5.0–7.0") && hp.includes("By approval") && hp.includes(">Ask to join<") && !hp.includes("The competitive track"));
   const programCard = render(createElement(ProgramCard, { program: youth }));
   check("program card: Levels block lists the three tags in ladder order and the When row names the level-led groups", programCard.includes(">Levels</p>") && at(programCard, ">Beginner</span>") < at(programCard, ">Novice</span>") && at(programCard, ">Novice</span>") < at(programCard, ">High Performance</span>") && programCard.includes("Beginner Junior Bootcamp") && !programCard.includes('aria-label="Built for'));
@@ -253,7 +258,7 @@ async function main() {
   const privateCard = render(createElement(ProgramCard, { program: listedPrograms[2] }));
   check("private lessons card: one Level, All levels", privateCard.includes(">Level</p>") && privateCard.includes(">All levels</span>") && count(privateCard, "All levels") === 1);
   const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({ slug: p.slug, title: p.title }));
-  const view = render(createElement(ProgramCatalogView, { programs: catalogPrograms, groups: programGroups, nextCohorts: {}, header: null, query: parseCatalogQuery(params("age=9&level=intermediate")), onChange: () => {} }));
+  const view = render(createElement(ProgramCatalogView, { programs: catalogPrograms, cards: programGroups.map((group) => ({ group, block: null })), header: null, query: parseCatalogQuery(params("age=9&level=intermediate")), onChange: () => {} }));
   check("catalog: the five levels in the select by name, Closest fit after the exact match", count(view, '<optgroup label="Exact age">') === 1 && TIERS.every((t) => new RegExp(`<option value="${t.slug}"( selected="")?>${t.name}</option>`).test(view)) && view.includes(">Closest fit</h2>") && view.includes("The nearest levels to Intermediate for age 9.") && !view.includes("tagged") && at(view, 'id="catalog-private-lessons"') < at(view, ">Closest fit</h2>") && view.includes('id="youth-7-10"'));
   check("Closest fit carries the week-one line and the move-or-refund promise, no legal terms", view.includes("Your coach confirms your level on court in week one.") && view.includes("If another group fits you better, we move you to it at the same price.") && !/\b\d+ days?\b|fee|%/.test(view.slice(at(view, ">Closest fit</h2>"), at(view, 'id="youth-7-10"'))));
 

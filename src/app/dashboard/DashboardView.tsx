@@ -30,6 +30,8 @@ import { ProgramPlate } from "@/components/plates/ProgramPlate";
 import { PlateMark } from "@/components/plates/PlateMark";
 import { AgeBandChips } from "@/components/programs/AgeBandChips";
 import { ProgramCardList } from "@/components/sections/ProgramCard";
+import { OPEN_GROUPS_HEADING, OpenGroupsList } from "@/components/sections/OpenGroups";
+import type { GroupCard } from "@/lib/groupBlocks";
 import { suggestionsSubCopy, type ProgramFit, type SuggestedProgram } from "@/lib/programCatalog";
 import { AvailabilityEditor } from "./AvailabilityEditor";
 
@@ -37,11 +39,13 @@ import { AvailabilityEditor } from "./AvailabilityEditor";
 // session and hands it over as plain data; the words for each state come
 // from src/lib/dashboardState.ts. One surface style throughout — the
 // homepage card: rounded-2xl, border white/10, bg white/5. Mobile order top
-// to bottom: next step, tiers, my programs, open groups, players, availability,
-// suggestions.
+// to bottom: next step, tiers, my programs, groups with dates, open for your
+// tier, players, availability, suggestions.
 //
 // The next-step card is the one primary on the page (audit M32): every other
-// action is an outline button or a text link. The page speaks to the players
+// action is an outline button or a text link, except an open block's "Join"
+// under "Groups with dates", which is the group card's own lime button
+// (owner, 2026-11-19: the same cards as /programs). The page speaks to the players
 // who train (audit M26): a parent who registered only a child reads about
 // that child by name, never "you" as an unranked player.
 
@@ -79,6 +83,12 @@ export type DashboardViewProps = {
   sessionsByCohort: Record<string, CohortSessionRow[]>;
   /** Open cohorts a player on the account may join by level, not yet enrolled. */
   openForTier: OpenForTier[];
+  /**
+   * The open blocks as group cards (owner, 2026-11-19), each with "Join" to
+   * its sign-up page: the same cards as /programs (openBlockCards,
+   * src/lib/groupBlocks.ts). None reads one line: no group has dates yet.
+   */
+  openGroups?: GroupCard[];
   /**
    * "Suggested for you" (audit M31): programs the account isn't enrolled in
    * that fit at least one player's age and level, with the ranked player each
@@ -417,6 +427,7 @@ export function DashboardView(props: DashboardViewProps) {
     cohorts,
     sessionsByCohort,
     openForTier,
+    openGroups = [],
     suggestions,
     programs,
     placedSpans = {},
@@ -545,6 +556,15 @@ export function DashboardView(props: DashboardViewProps) {
                 })}
               </div>
             )}
+          </section>
+
+          {/* Groups with dates (owner, 2026-11-19: no dead end when signed
+              in): every open block as the same group card as /programs, its
+              lime "Join" to the block's sign-up page. With none open, one
+              line says so and points to the groups. */}
+          <section aria-labelledby="open-groups">
+            <SectionHeading id="open-groups" title={OPEN_GROUPS_HEADING} />
+            <OpenGroupsList cards={openGroups} />
           </section>
 
           {/* Open cohorts a player's level admits (audit M27): per player, by

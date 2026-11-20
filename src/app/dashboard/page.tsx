@@ -3,14 +3,16 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { programs, listedPrograms } from "@/content/programs";
+import { programGroups, programs, listedPrograms } from "@/content/programs";
 import {
   getAllCohorts,
   getOpenCohortsForPlayers,
   getSessionsForCohorts,
   type CohortSessionRow,
 } from "@/lib/cohortsDb";
-import { todayIso } from "@/lib/cohortVisibility";
+import { isCohortPublic, todayIso } from "@/lib/cohortVisibility";
+import { groupCards, openBlockCards } from "@/lib/groupBlocks";
+import { readBlockSeats } from "@/lib/groupSeats";
 import {
   listParticipantsForAccount,
   ensureSelfParticipant,
@@ -231,11 +233,17 @@ async function DashboardContent({
   const voice = rosterVoice(roster, self?.id);
 
   const enrolledCohortIds = [...new Set(rows.map((e) => e.cohort_id).filter(Boolean))];
-  const [cohortSessions, tierMatches] = await Promise.all([
+  // The open blocks (public, inviting or confirmed, not yet started), shown
+  // as the same group cards as /programs, each with "Join" (owner,
+  // 2026-11-19). Their seats are one sheet read, none while no block is open.
+  const publicBlocks = cohorts.filter((c) => isCohortPublic(c, today));
+  const [cohortSessions, tierMatches, blockSeats] = await Promise.all([
     getSessionsForCohorts(enrolledCohortIds),
     // Per player (audit M27): one numeric rule, the same one /enroll admits by.
     getOpenCohortsForPlayers(roster),
+    readBlockSeats(publicBlocks),
   ]);
+  const openGroups = openBlockCards(groupCards(programGroups, publicBlocks, blockSeats));
   const sessionsByCohort: Record<string, CohortSessionRow[]> = {};
   for (const s of cohortSessions) {
     (sessionsByCohort[s.cohort_id] ??= []).push(s);
@@ -309,6 +317,7 @@ async function DashboardContent({
       cohorts={cohorts}
       sessionsByCohort={sessionsByCohort}
       openForTier={openForTier}
+      openGroups={openGroups}
       suggestions={suggestions}
       programs={programs}
       placedSpans={placedSpans}

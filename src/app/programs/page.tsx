@@ -1,20 +1,19 @@
 import type { Metadata } from "next";
 import { COHORT_LENGTH_ADJ, listedPrograms, programGroups } from "@/content/programs";
 import { PROGRAMS_DESCRIPTION } from "@/content/site";
-import type { Cohort } from "@/types/cohort";
 import { getPublicCohorts } from "@/lib/cohortsDb";
-import { readGroupSeats } from "@/lib/groupSeats";
-import { nextCohortForGroup } from "@/lib/programCatalog";
+import { readBlockSeats } from "@/lib/groupSeats";
+import { groupCards } from "@/lib/groupBlocks";
 import { ProgramCatalog, type CatalogProgram } from "@/components/sections/ProgramCatalog";
 import { GoodToKnow } from "@/components/sections/GoodToKnow";
 import { LevelsStrip } from "@/components/sections/LevelsStrip";
 import { Container } from "@/components/layout/Container";
 import { Heading } from "@/components/ui/Heading";
 
-// Incremental static regeneration (audit M39): each group's start date and
-// seats are rebuilt at most once a minute, and at once when an admin changes
-// a cohort (src/lib/cohortRevalidate.ts), instead of being frozen at build
-// time. The location, age and level filters live in the URL and are applied
+// Incremental static regeneration (audit M39): the open blocks, their dates
+// and their seats are rebuilt at most once a minute, and at once when an
+// admin changes a cohort (src/lib/cohortRevalidate.ts), instead of being
+// frozen at build time. The location, age and level filters live in the URL and are applied
 // in the browser, so a filtered link never bypasses the cache.
 export const revalidate = 60;
 
@@ -26,14 +25,12 @@ export const metadata: Metadata = {
 
 export default async function ProgramsPage() {
   const publicCohorts = await getPublicCohorts();
-  const nextCohorts: Record<string, Cohort> = {};
-  for (const g of programGroups) {
-    const next = nextCohortForGroup(publicCohorts, g);
-    if (next) nextCohorts[g.id] = next;
-  }
-  // Seats for the groups' next public cohorts: one read per render, none
-  // while no group has a public cohort. Display only.
-  const seats = await readGroupSeats(programGroups, publicCohorts);
+  // Seats for the open blocks: one read per render, none while no block is
+  // open. Display only.
+  const seats = await readBlockSeats(publicCohorts);
+  // One card per open block, and one per planned group with none (owner,
+  // 2026-11-19; src/lib/groupBlocks.ts).
+  const cards = groupCards(programGroups, publicCohorts, seats);
   const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({ slug: p.slug, title: p.title }));
 
   return (
@@ -48,9 +45,7 @@ export default async function ProgramsPage() {
           button is the header's, and each group has its own. */}
       <ProgramCatalog
         programs={catalogPrograms}
-        groups={programGroups}
-        nextCohorts={nextCohorts}
-        seats={seats}
+        cards={cards}
         header={
           <>
             <Heading as="h1">Our Programs</Heading>

@@ -21,7 +21,8 @@ import {
   formatStartDate,
 } from "@/lib/cohorts";
 import { getPublicCohorts } from "@/lib/cohortsDb";
-import { groupSeatsFromSnapshot, readSeatSnapshot } from "@/lib/groupSeats";
+import { readSeatSnapshot } from "@/lib/groupSeats";
+import { groupCards } from "@/lib/groupBlocks";
 import { seatsFromSnapshot } from "@/lib/seatCount";
 import { GROUPS_ANCHOR, JOIN_CTA_LABEL } from "@/lib/mainAction";
 import { locationLine } from "@/content/locations";
@@ -31,7 +32,6 @@ import { LocationLine } from "@/components/locations/LocationLine";
 import {
   LOW_SEATS_THRESHOLD,
   agesChipLabel,
-  nextCohortForGroup,
   programLevelRange,
   programLevelTags,
 } from "@/lib/programCatalog";
@@ -101,7 +101,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
 
   // Live seat counts, from one read of the enrollment sheet per render (none
   // while the program has no public cohort; null = credentials not set or
-  // the read failed). The cohort cards and the group cards share it.
+  // the read failed). The cohort cards and the group cards share it, by the
+  // block's id.
   const seatSnapshot = openCohorts.length > 0 ? await readSeatSnapshot() : null;
   const seatCounts: Record<string, number | null> = Object.fromEntries(
     openCohorts.map((c) => [c.id, seatSnapshot ? seatsFromSnapshot(seatSnapshot, c.id, c.capacityMax) : null] as const)
@@ -110,8 +111,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   const hasOpenCohorts = openCohorts.length > 0;
   // Earliest public cohort (public cohorts are all inviting/confirmed → "open")
   const nextOpenCohort = openCohorts.find((c) => c.status === "open") ?? null;
-  // No public Enroll button yet (backlog #20): a public enroll flow would ask
-  // for an e-transfer before the written agreement is delivered (backlog #2b).
+  // Each open block's own card carries Join, to its sign-up page (owner,
+  // 2026-11-19); the panel's main button scrolls to the cards.
   const quizHref = `/intake?program=${program.slug}`;
   // Null for a program with no stated price: no Course markup.
   const courseLd = courseJsonLd(program);
@@ -130,9 +131,10 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // 2026-10-12); one with no fixed class (private lessons) states its terms
   // in the panel instead, so the page never shows the same card twice.
   const scheduledGroups = groups.filter((g) => g.day !== null);
-  // Seats left in each group's next public cohort, for the cards' "Full" and
-  // "{n} spots left" (display only; absent reads "Open to join").
-  const groupSeats = groupSeatsFromSnapshot(scheduledGroups, publicCohorts, seatSnapshot);
+  // One card per open block of this program, with its dates, class days,
+  // price and seats left, and one per planned group with none ("Dates coming
+  // soon"; owner, 2026-11-19 and 2026-11-20; src/lib/groupBlocks.ts).
+  const cards = groupCards(groups, openCohorts, seatCounts).filter((c) => c.group.status !== "arranged");
   // The page's own group list, which the main button scrolls to.
   const groupListHref = scheduledGroups.length > 0 ? `#${GROUPS_ANCHOR}` : undefined;
   // Where the program's groups train (owner, 2026-10-12): one club today.
@@ -326,14 +328,11 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 take the 2-minute quiz and our coaches place you.
               </p>
               <ul role="list" className="mt-6 grid gap-3 md:grid-cols-3 md:gap-4">
-                {scheduledGroups.map((g) => (
+                {cards.map(({ group: g, block }) => (
                   <li key={g.id} className="flex [&>*]:w-full">
                     <ProgramGroupCard
                       group={g}
-                      program={program}
-                      nextCohort={nextCohortForGroup(publicCohorts, g)}
-                      seatsLeft={groupSeats[g.id]}
-                      source="program-group"
+                      block={block}
                       // With no public cohort the page carries its own
                       // newsletter form (and the footer hides its line), so
                       // "Notify me" points at that one.
