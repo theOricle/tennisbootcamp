@@ -15,6 +15,9 @@ import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
 import { ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
 import { latePaymentPlan } from "@/lib/stripeOutcome";
+import { guestPlayer } from "@/lib/guestAccount";
+import { settleGuestSubmission } from "@/lib/household";
+import type { ParticipantInput } from "@/lib/participantInput";
 import {
   findUserIdByEmail,
   setPlayerLevel,
@@ -281,15 +284,21 @@ async function attachParticipant(bookingId: string, participantId: string) {
  * participant_id (written before 0007, or by a guest whose account came later)
  * is resolved to the holder's 'self' participant and stamped, so the Sheet and
  * the emails always carry the household columns.
+ *
+ * `resolveByEmail` (backlog #84): only the coach's own actions (completing a
+ * booking, scheduling a request) resolve and stamp an unowned booking by its
+ * email. The payment path never does: a booking a signed-out visitor made
+ * under an existing account's email stays unowned, with the typed names.
  */
 export async function bookingHousehold(
-  booking: BookingRow
+  booking: BookingRow,
+  opts: { resolveByEmail: boolean }
 ): Promise<BookingHousehold> {
   let participant: PlayerRecord | null = null;
   if (booking.participant_id) {
     participant = await getParticipant(booking.participant_id).catch(() => null);
   }
-  if (!participant) {
+  if (!participant && (opts.resolveByEmail || booking.user_id)) {
     const resolved = await resolveParticipantId({
       accountId: booking.user_id,
       email: booking.email,
@@ -557,7 +566,7 @@ export async function confirmBooking(
   const withBlock = await getBookingWithBlock(bookingId);
   if (!withBlock) return updated as BookingRow;
   const { booking, block } = withBlock;
-  const household = await bookingHousehold(booking);
+  const household = await bookingHousehold(booking, { resolveByEmail: false });
 
   await appendAssessmentRow({
     name: household.participantName,
@@ -588,7 +597,7 @@ export async function confirmBooking(
 
   // Same set-password account email enrollees get. Fires only on the
   // pending → booked transition above, so a duplicate webhook can't re-send it.
-  await issueActivationLink(booking.email, null).catch((err) =>
+  await issueActivationLink(booking.email).catch((err) =>
     console.error("Activation link failed (non-blocking):", err)
   );
 
@@ -704,7 +713,7 @@ export async function completeBooking(
   // The level lands on the participant this booking was for — two children on
   // one account get two separate levels — mirrored to the profile when the
   // participant is the account holder themselves.
-  const household = await bookingHousehold(booking);
+  const household = await bookingHousehold(booking, { resolveByEmail: true });
   if (household.participantId) {
     await setPlayerLevel(household.participantId, {
       level: input.level,
@@ -990,9 +999,70 @@ export async function createRequestedBooking(input: {
     ({ data, error } = await attemptInsert());
   }
   if (error) throw new Error(`Failed to create request: ${error.message}`);
-  const booking = data as BookingRow;
+  return data as BookingRow;
+}
 
-  const holderName = input.accountName?.trim() || booking.name;
+/** The typed holder and player of a signed-out booking (backlog #84). */
+export type GuestBooking = {
+  holderName: string;
+  holderPhone: string | null;
+  /** The "who is this for?" block, as typed. */
+  participant: ParticipantInput | null;
+};
+
+/**
+ * A signed-out booking's account step, after the response (backlog #84). A
+ * new address booking for someone else gets its account and that player
+ * now, and the booking becomes theirs (only while it is still unowned). An
+ * address that already has an account is left exactly as it is, and the
+ * booking stays unowned. Resolves to the account this booking made, if any.
+ */
+export async function attachGuestBooking(
+  booking: Pick<BookingRow, "id" | "email">,
+  guest: GuestBooking
+): Promise<{ accountId: string | null; participantId: string | null }> {
+  const player = guestPlayer(guest.participant, { name: guest.holderName });
+  const settled = await settleGuestSubmission({
+    email: booking.email,
+    holderName: guest.holderName,
+    holderPhone: guest.holderPhone,
+    players: [player],
+  });
+  if (settled.kind !== "new" || !settled.accountId) return { accountId: null, participantId: null };
+  const participantId = settled.playerIds[0] ?? null;
+  const patch: Record<string, unknown> = { user_id: settled.accountId };
+  if (participantId) patch.participant_id = participantId;
+  const supabase = createServiceClient();
+  const { error } = await supabase
+    .from("assessment_bookings")
+    .update(patch)
+    .eq("id", booking.id)
+    .is("user_id", null);
+  if (error) console.warn("Guest booking not stamped with its new account (non-blocking):", error.message);
+  return { accountId: settled.accountId, participantId };
+}
+
+/**
+ * The rest of a requested booking, run after the response: the
+ * request-received email to the prospect, the inbox notification, the
+ * set-password email and the request's grid as the player's availability.
+ * Signed out (backlog #84), the grid lands only in an account this request
+ * made; an existing account's availability is never overwritten.
+ */
+export async function finishRequestedBooking(
+  booking: BookingRow,
+  opts: { accountName?: string | null; guest: GuestBooking | null }
+): Promise<void> {
+  // A signed-in request carries its own account; a guest's may make one.
+  let ownAccountId: string | null = opts.guest ? null : booking.user_id;
+  let participantId = booking.participant_id ?? null;
+  if (opts.guest) {
+    const attached = await attachGuestBooking(booking, opts.guest).catch(() => null);
+    ownAccountId = attached?.accountId ?? null;
+    participantId = attached?.participantId ?? participantId;
+  }
+
+  const holderName = opts.accountName?.trim() || booking.name;
 
   await sendAssessmentRequestReceivedEmail({
     to: booking.email,
@@ -1016,23 +1086,27 @@ export async function createRequestedBooking(input: {
   // Set-password account email, sent once here at request time. The admin
   // assign/schedule path (finalizeScheduledRequest) deliberately does not send
   // it again, and confirmBooking only fires it on pending rows — never these.
-  await issueActivationLink(booking.email, null).catch((err) =>
-    console.error("Activation link failed (non-blocking):", err)
-  );
+  const sent = await issueActivationLink(booking.email).catch((err) => {
+    console.error("Activation link failed (non-blocking):", err);
+    return { userId: null, created: false };
+  });
+  if (opts.guest && !ownAccountId && sent.created) ownAccountId = sent.userId;
+  if (!opts.guest) ownAccountId = ownAccountId ?? sent.userId;
 
-  // The account now exists (invite creates it), so the request's grid becomes
-  // the profile's availability, stamped source = 'request'.
-  await setPlayerAvailabilityByEmail(booking.email, {
-    availability: booking.availability,
-    source: "request",
-    participantId: booking.participant_id ?? null,
-    fullName: input.accountName?.trim() ? null : booking.name,
-    phone: booking.phone,
-  }).catch((err) =>
-    console.error("Profile availability (request) failed (non-blocking):", err)
-  );
-
-  return booking;
+  // The request's grid becomes the player's availability, stamped source =
+  // 'request' — in the session's own account, or in the one this request
+  // made. Never in an account a signed-out visitor only named.
+  if (ownAccountId) {
+    await setPlayerAvailabilityByEmail(booking.email, {
+      availability: booking.availability,
+      source: "request",
+      participantId,
+      fullName: opts.accountName?.trim() ? null : booking.name,
+      phone: booking.phone,
+    }).catch((err) =>
+      console.error("Profile availability (request) failed (non-blocking):", err)
+    );
+  }
 }
 
 /** Open requests, oldest first — the admin works the queue top-down. */
@@ -1059,7 +1133,7 @@ async function finalizeScheduledRequest(bookingId: string): Promise<void> {
   if (!withBlock) return;
   const { booking, block } = withBlock;
 
-  const household = await bookingHousehold(booking);
+  const household = await bookingHousehold(booking, { resolveByEmail: true });
 
   await appendAssessmentRow({
     name: household.participantName,

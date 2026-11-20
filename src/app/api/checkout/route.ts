@@ -1,10 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { google } from "googleapis";
 import { CARD_PAYMENT_UNAVAILABLE, createCheckoutSession, paymentRail } from "@/lib/payments";
 import {
   saveEnrollmentToSupabase,
   notifyEnrollmentAccount,
-  resolveEnrollmentUserId,
 } from "@/lib/supabase/enrollmentActions";
 import { getCohortById } from "@/lib/cohortsDb";
 import { programs } from "@/content/programs";
@@ -33,6 +32,7 @@ import {
   inviteResumeCookie,
 } from "@/lib/checkoutInvite";
 import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
+import { enrollmentOwner } from "@/lib/enrollmentLink";
 
 const TAB = "enrollments";
 // "status" is column P (index 15, 1-based col 16)
@@ -191,11 +191,11 @@ export async function POST(req: NextRequest) {
         )
       : null;
     const players = scrubParticipantIds(sent, owned);
-    // Audit H5: the account every row this request saves belongs to — the
-    // signed-in user, else the account that already exists for the email.
-    const ownerId = enrollmentMeta?.contactEmail
-      ? await resolveEnrollmentUserId(enrollmentMeta.contactEmail, signedIn?.id)
-      : null;
+    // Audit H5, backlog #84: the account every row this request saves belongs
+    // to — the signed-in user, else nobody. A typed email never makes a row
+    // the property of the account that exists for it; the row links when the
+    // address owner signs in through their own emailed link.
+    const ownerId = enrollmentOwner(signedIn?.id);
     const rowNumbers = players
       .map((p) => p.rowNumber ?? null)
       .filter((n): n is number => typeof n === "number" && n > 0);
@@ -347,13 +347,13 @@ export async function POST(req: NextRequest) {
         await markEnrollmentStatus(rowNumber, "test_paid");
       }
       if (enrollmentMeta?.contactEmail) {
-        // Non-blocking: an uncaught refusal here would turn a completed mock
-        // checkout into a 500 via this route's outer catch. A new email gets
+        // After the response (#84), so its timing never says whether the
+        // email has an account; non-blocking either way. A new email gets
         // the set-password link; an existing account gets "You're enrolled" (H5).
-        await notifyEnrollmentAccount({
+        const notice = {
           email: enrollmentMeta.contactEmail,
           enrollmentId: supabaseEnrollmentId,
-          userId: ownerId,
+          ownerId,
           cohortId,
           enrolled: {
             programTitle:
@@ -366,8 +366,11 @@ export async function POST(req: NextRequest) {
             playerNames: players.map((p) => (p.name ?? "").trim()).filter(Boolean),
             paid: true,
           },
-        }).catch((err) =>
-          console.error("Activation link failed (non-blocking):", err)
+        };
+        after(() =>
+          notifyEnrollmentAccount(notice).catch((err) =>
+            console.error("Activation link failed (non-blocking):", err)
+          )
         );
       }
     }

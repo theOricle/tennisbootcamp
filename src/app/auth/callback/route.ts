@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { callbackErrorFor, safeNextPath, type CallbackError } from "@/lib/authFlow";
+import { linkEnrollmentsToAccount } from "@/lib/supabase/enrollmentActions";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -23,15 +24,38 @@ export async function GET(request: NextRequest) {
   const refuse = (error: CallbackError) =>
     NextResponse.redirect(`${origin}/login?error=${error}`);
 
+  let signedIn = false;
   if (token_hash && type) {
     // token_hash flow: invite links, magic links, password-recovery links.
     // verifyOtp establishes the session via server-side cookies (@supabase/ssr).
     const { error } = await supabase.auth.verifyOtp({ token_hash, type });
     if (error) return refuse(callbackErrorFor(error));
+    signedIn = true;
   } else if (code) {
     // PKCE code flow: used by OAuth providers and some Supabase email confirmations.
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) return refuse("link_failed");
+    signedIn = true;
+  }
+
+  // The address owner just signed in through their own emailed link
+  // (backlog #84): enrollment rows saved under their address while nobody
+  // was signed in become theirs now. linkEnrollmentsToAccount re-checks that
+  // the address is this account's own, and only ever touches unowned rows.
+  // It never holds up or fails the sign-in.
+  if (signedIn) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user?.id && user.email) {
+        await linkEnrollmentsToAccount(user.id, user.email).catch(() =>
+          console.error("Enrollment link at sign-in failed (non-blocking)")
+        );
+      }
+    } catch {
+      console.error("Enrollment link at sign-in skipped: no user read (non-blocking)");
+    }
   }
 
   return NextResponse.redirect(`${origin}${next}`);

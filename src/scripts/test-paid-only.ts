@@ -184,8 +184,9 @@ console.log("Source — the routes refuse without a key in production, before an
   const bookRefuse = book.indexOf('rail === "refuse"');
   check("booking refuses with its plain line and a 503", book.includes("{ error: ASSESSMENT_PAYMENT_UNAVAILABLE }, { status: 503 }"));
   check("booking refuses before the slot is held", bookRefuse !== -1 && bookRefuse < book.indexOf("createPendingBooking("));
-  check("a mock booking is a test booking", book.includes('paid: "test"'));
-  check("a free booking is not a paid one", book.includes("paid: false"));
+  // Since part 5 the confirmation runs after the response, with the same word.
+  check("a free booking is not a paid one, a mock booking is a test one", book.includes('const paid = priceCents === 0 ? false : "test";'));
+  check("…and that word is what confirmBooking gets", book.includes("confirmBooking(hold.id, { paid })"));
   check("booking no longer reads isMockMode", book.includes("isMockMode"), false);
 }
 

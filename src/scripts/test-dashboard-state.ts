@@ -545,11 +545,17 @@ console.log("sources");
   ok("reads fall back to the 0007 columns before 0009", players.includes("isUndefinedColumn(first.error)") && players.includes("PARTICIPANT_BASE_COLUMNS"));
   const household = read("src", "lib", "household.ts");
   ok("answers are remembered without blocking a form", household.includes("async function rememberAnswers") && household.includes("catch (err)"));
-  const signedOut = household.slice(household.indexOf("── Signed out"), household.indexOf("// Registering someone else"));
+  // Backlog #84 tightens this: signed out, a form writes nothing at all into
+  // the holder an email names (it used to fill their blanks). Answers land
+  // only on the players a brand-new account is created with (addPlayer).
+  const signedOut = household.slice(household.indexOf("── Signed out"), household.indexOf("export function guestAccountStore"));
   ok(
-    "a signed-out form only fills the holder's blanks",
-    signedOut.includes("rememberAnswers(self?.id, { ageBand, selfLevel }, { fillOnly: true })") &&
-      !/rememberAnswers\(self\?\.id, \{ ageBand, selfLevel \}\);/.test(signedOut)
+    "a signed-out form writes nothing into an existing holder, not even a blank",
+    signedOut.length > 0 && !signedOut.includes("rememberAnswers(")
+  );
+  ok(
+    "a new account's players keep their own answers",
+    household.includes("await rememberAnswers(created.participant.id, {")
   );
   const details = players.slice(players.indexOf("export async function updateParticipantDetails"), players.indexOf("export async function listPlayerEvidence"));
   ok(

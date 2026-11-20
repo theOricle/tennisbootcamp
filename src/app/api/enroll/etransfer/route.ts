@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { recordEtransferIntent } from "@/lib/cohortActions";
 import { getCohortById } from "@/lib/cohortsDb";
 import {
@@ -18,11 +18,11 @@ import { listParticipantsForAccount } from "@/lib/players";
 import {
   saveEnrollmentToSupabase,
   notifyEnrollmentAccount,
-  resolveEnrollmentUserId,
 } from "@/lib/supabase/enrollmentActions";
 import { setEnrollmentStatusByEmail } from "@/lib/enrollmentSheet";
 import { programs } from "@/content/programs";
 import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
+import { enrollmentOwner } from "@/lib/enrollmentLink";
 
 // "I've sent it" on an e-transfer cohort (backlog #12). Mirrors what the card
 // path does at checkout — Supabase enrollment row + activation link — but no
@@ -140,9 +140,10 @@ export async function POST(req: NextRequest) {
         )
       : null;
     const players = scrubParticipantIds(sent, owned);
-    // Audit H5: the account every row this request saves belongs to — the
-    // signed-in user, else the account that already exists for the email.
-    const ownerId = await resolveEnrollmentUserId(enrollmentMeta.contactEmail, signedIn?.id);
+    // Audit H5, backlog #84: the account every row this request saves belongs
+    // to — the signed-in user, else nobody. A typed email never makes a row
+    // (or the invite below) the property of the account that exists for it.
+    const ownerId = enrollmentOwner(signedIn?.id);
 
     // Backlog #38: the page's seat rule, for every player on this transfer.
     const sheet = await readEnrollmentSheet();
@@ -177,6 +178,9 @@ export async function POST(req: NextRequest) {
         playerIndex: i,
         claimedInviteIds,
         claimedCreditBookingIds,
+        // The invite's owner, and whose invites the email fallback may land
+        // on: the session's, or (signed out) only ones nobody owns (#84).
+        accountId: ownerId,
       });
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: result.status });
@@ -213,11 +217,12 @@ export async function POST(req: NextRequest) {
           // gets "Your spot is on your account" with the dashboard link (H5).
           // The e-transfer instructions themselves went out in
           // recordEtransferIntent. One account email per cohort, whatever
-          // is retried.
-          await notifyEnrollmentAccount({
+          // is retried. After the response (#84), so its timing never says
+          // whether the email has an account.
+          const notice = {
             email: enrollmentMeta.contactEmail,
             enrollmentId,
-            userId: ownerId,
+            ownerId,
             cohortId,
             enrolled: {
               programTitle:
@@ -231,10 +236,13 @@ export async function POST(req: NextRequest) {
                 .filter(Boolean),
               paid: false,
             },
-          }).catch((err) =>
-            console.error(
-              "Activation link after e-transfer intent failed (non-blocking):",
-              err
+          };
+          after(() =>
+            notifyEnrollmentAccount(notice).catch((err) =>
+              console.error(
+                "Activation link after e-transfer intent failed (non-blocking):",
+                err
+              )
             )
           );
         }

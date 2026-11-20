@@ -266,14 +266,23 @@ async function main() {
   check("listAccounts degrades a thrown list to [] with a warning", /\(\) => \{\s*console\.warn\([^;]*\);\s*return \[\];/.test(playersSrc), true);
   check("no listAccounts log line names a user or an email", /\[listAccounts\][^;]*(?:email|\.name|\.id)/.test(playersSrc), false);
   const intakeSrc = readFileSync(join(root, "src", "lib", "intakeAccount.ts"), "utf8");
+  const householdSrc = readFileSync(join(root, "src", "lib", "household.ts"), "utf8");
+  // Backlog #84: a signed-out quiz looks the address up after the response,
+  // in the guest step. A thrown lookup still becomes "no account found" or
+  // a logged skip, never a failed quiz.
   check(
-    "intake's lookup sits inside provisionIntakeAccount's try, so a throw becomes account:\"skipped\"",
-    (() => {
-      const tryAt = intakeSrc.indexOf("try {");
-      const lookup = intakeSrc.indexOf("await findUserIdByEmail(email)");
-      const catchAt = intakeSrc.indexOf("} catch", lookup);
-      return tryAt > 0 && lookup > tryAt && catchAt > lookup;
-    })(),
+    "the guest lookup catches a throw (findUserIdByEmail(...).catch)",
+    householdSrc.includes("findAccountId: (email) => findUserIdByEmail(email).catch(() => null)"),
+    true
+  );
+  check(
+    "settleGuestSubmission sits in a try, so any throw becomes kind:\"skipped\"",
+    /export async function settleGuestSubmission[\s\S]*?try \{[\s\S]*?settleGuestPlayers\([\s\S]*?\} catch/.test(householdSrc),
+    true
+  );
+  check(
+    "provisionGuestIntake's account step sits inside its try",
+    /export async function provisionGuestIntake[\s\S]*?try \{[\s\S]*?settleGuestSubmission\([\s\S]*?\} catch/.test(intakeSrc),
     true
   );
   check("the helper's only listUsers calls page at ADMIN_USERS_PER_PAGE", (helperSrc.match(/listUsers\(/g) ?? []).length === 2 && /listUsers\(\{ page, perPage: ADMIN_USERS_PER_PAGE \}\)/.test(helperSrc), true);

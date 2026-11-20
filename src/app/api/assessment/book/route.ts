@@ -1,14 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import {
   ASSESSMENT_PAYMENT_UNAVAILABLE,
   createAssessmentCheckoutSession,
   paymentRail,
 } from "@/lib/payments";
 import {
+  attachGuestBooking,
   createPendingBooking,
   createRequestedBooking,
   confirmBooking,
+  finishRequestedBooking,
   SlotTakenError,
+  type GuestBooking,
 } from "@/lib/assessments";
 import { createServiceClient } from "@/lib/supabase/service";
 import { parseAvailability } from "@/lib/availability";
@@ -96,9 +99,21 @@ export async function POST(req: NextRequest) {
     const holderEmail = who.accountEmail || email;
     const playerName = who.participantName || name;
     const playerSelfLevel = who.selfLevel ?? selfLevel;
+    // Signed out (backlog #84): the booking is the typed block, unowned. Its
+    // account step runs after the response, so the answer and its timing
+    // never say whether the email has an account; an existing one is left
+    // exactly as it is.
+    const guest: GuestBooking | null = signedIn
+      ? null
+      : {
+          holderName: name,
+          holderPhone: phone,
+          participant: (body.participant ?? null) as ParticipantInput | null,
+        };
 
     // Request mode (Phase 2.6): no slot, no payment — the admin coordinates the
-    // time directly. Creates a `requested` booking and fires both emails.
+    // time directly. Creates a `requested` booking; both emails, the
+    // set-password email and the account step follow the response.
     if (body.mode === "request") {
       if (!playerName || !isValidEmail(holderEmail)) {
         return NextResponse.json(
@@ -106,7 +121,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      await createRequestedBooking({
+      const requested = await createRequestedBooking({
         name: playerName,
         email: holderEmail,
         phone,
@@ -117,6 +132,11 @@ export async function POST(req: NextRequest) {
         participantId: who.participantId,
         accountName: who.accountName,
       });
+      after(() =>
+        finishRequestedBooking(requested, { accountName: who.accountName, guest }).catch((err) =>
+          console.error("Request follow-up failed (non-blocking):", err)
+        )
+      );
       return NextResponse.json({ requested: true });
     }
 
@@ -164,13 +184,28 @@ export async function POST(req: NextRequest) {
     // Free mode ($0): booked, and not paid — no money, so no $20 credit
     // later (backlog #84); the coach can still mark it paid at court. Mock
     // mode (no Stripe key, never in production): booked as a test booking.
-    if (priceCents === 0) {
-      await confirmBooking(booking.id, { paid: false });
+    // Both confirm after the response, once a guest's account step has run.
+    const hold = booking;
+    if (priceCents === 0 || rail === "mock") {
+      const paid = priceCents === 0 ? false : "test";
+      after(async () => {
+        if (guest) {
+          await attachGuestBooking(hold, guest).catch((err) =>
+            console.error("Guest booking account step failed (non-blocking):", err)
+          );
+        }
+        await confirmBooking(hold.id, { paid }).catch((err) =>
+          console.error("Booking confirmation failed (non-blocking):", err)
+        );
+      });
       return NextResponse.json({ url: successUrl });
     }
-    if (rail === "mock") {
-      await confirmBooking(booking.id, { paid: "test" });
-      return NextResponse.json({ url: successUrl });
+    if (guest) {
+      after(() =>
+        attachGuestBooking(hold, guest).catch((err) =>
+          console.error("Guest booking account step failed (non-blocking):", err)
+        )
+      );
     }
 
     const { sessionUrl, stripeSessionId } = await createAssessmentCheckoutSession({

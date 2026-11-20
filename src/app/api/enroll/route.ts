@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { google } from "googleapis";
 import {
   currentUser,
   resolveSubmissionParticipant,
+  settleGuestSubmission,
   type ParticipantInput,
 } from "@/lib/household";
+import { guestPlayer } from "@/lib/guestAccount";
 import { getCohortById } from "@/lib/cohortsDb";
 import { gateRefusal, requestedParticipantIds, resolveEnrollGate } from "@/lib/enrollGate";
 import { enrollmentSheetRow } from "@/lib/sheetText";
@@ -202,6 +204,24 @@ export async function POST(req: NextRequest) {
       valueInputOption: "USER_ENTERED",
       requestBody: { values: rows },
     });
+
+    // Signed out (backlog #84): the rows above are the typed blocks, owned by
+    // nobody. After the response, a brand-new address booking someone other
+    // than the holder gets its account and those players, as before; an
+    // address that already has an account is left exactly as it is, and the
+    // answer never says which.
+    if (!signedIn && holderEmail) {
+      const players = incoming.map((p) =>
+        guestPlayer(
+          { name: p.name, relationship: p.relationship, isMinor: p.isMinor } as ParticipantInput,
+          { name: holderName, defaultName: String(p.name ?? body.participantName ?? "").trim() }
+        )
+      );
+      const holderPhone = body.contactPhone ? String(body.contactPhone) : null;
+      after(() =>
+        settleGuestSubmission({ email: holderEmail, holderName, holderPhone, players })
+      );
+    }
 
     // Parse the appended row numbers from the updated range
     // (e.g. "enrollments!A5:U6" → [5, 6]).

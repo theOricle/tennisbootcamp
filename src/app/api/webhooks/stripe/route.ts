@@ -3,8 +3,8 @@ import Stripe from "stripe";
 import {
   saveEnrollmentToSupabase,
   notifyEnrollmentAccount,
+  enrollmentRowsOwner,
   participantNamesOf,
-  resolveEnrollmentUserId,
   setEnrollmentStatusByIds,
 } from "@/lib/supabase/enrollmentActions";
 import { inviteLinkFromMetadata } from "@/lib/checkoutInvite";
@@ -141,9 +141,11 @@ export async function POST(req: NextRequest) {
     // Read once for the invite settlement below and the enrolled email: a
     // cohort that cannot be read counts as private (fail closed).
     const cohort = cohortId ? await getCohortById(cohortId).catch(() => undefined) : undefined;
-    // Audit H5: the account the payer's rows belong to. No session in a
-    // webhook, so this is the account that exists for the email, if any.
-    const ownerId = contactEmail ? await resolveEnrollmentUserId(contactEmail, null) : null;
+    // Audit H5, backlog #84: whoever owns the rows checkout saved — a
+    // signed-in buyer's session — never the account that exists for the
+    // payer's email. A signed-out payment's rows stay unowned and link when
+    // the address owner signs in through their own emailed link.
+    const ownerId = await enrollmentRowsOwner(paidEnrollmentIds);
 
     // ── Phase 3: assessment credit + invite confirmation ─────────────────────
     // Live money only (backlog #84): a test payment spends no credit, settles
@@ -259,7 +261,7 @@ export async function POST(req: NextRequest) {
         await notifyEnrollmentAccount({
           email: contactEmail,
           enrollmentId: newId,
-          userId: ownerId,
+          ownerId,
           cohortId,
           enrolled: { ...enrolled, participantName: null },
         }).catch((err) => console.error("Activation link failed (non-blocking):", err));
@@ -271,7 +273,7 @@ export async function POST(req: NextRequest) {
       await notifyEnrollmentAccount({
         email: contactEmail,
         enrollmentId: supabaseEnrollmentId,
-        userId: ownerId,
+        ownerId,
         cohortId,
         // The player's name is on the row saved at checkout.
         enrolled: { ...enrolled, playerNames },

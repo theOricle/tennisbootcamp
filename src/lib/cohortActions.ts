@@ -1128,9 +1128,17 @@ export async function recordEtransferIntent(params: {
   claimedInviteIds?: string[];
   /** Assessment bookings earlier players on this request already used. */
   claimedCreditBookingIds?: string[];
+  /**
+   * The signed-in account, or null (backlog #84). It owns any invite created
+   * here; signed out, a new invite is nobody's and the email fallback only
+   * lands on an invite nobody owns — never one that belongs to the account
+   * that exists for the typed email.
+   */
+  accountId?: string | null;
 }): Promise<EtransferIntentResult> {
   const { cohortId, inviteToken } = params;
   const claimedInvites = params.claimedInviteIds ?? [];
+  const accountId = params.accountId ?? null;
   const plan = etransferRowPlan({
     hasToken: Boolean(inviteToken),
     participantId: params.participantId,
@@ -1186,12 +1194,16 @@ export async function recordEtransferIntent(params: {
     invite = (data as InviteRef | null) ?? null;
   }
   if (!invite && plan.includes("email")) {
-    const { data } = await supabase
+    let q = supabase
       .from("cohort_invites")
       .select("*")
       .eq("cohort_id", cohortId)
       .eq("email", email)
-      .in("status", ["invited", "paid"])
+      .in("status", ["invited", "paid"]);
+    // Signed out (#84), only an invite nobody owns: a typed email never
+    // lands on the invite of the account that exists for it.
+    if (!accountId) q = q.is("user_id", null).is("participant_id", null);
+    const { data } = await q
       .order("invited_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -1200,16 +1212,18 @@ export async function recordEtransferIntent(params: {
   if (!invite && plan.includes("reuse")) {
     // A later player with no participant: a live e-transfer row for this
     // email that names nobody and that no earlier player on this request
-    // claimed — so "I've sent it" tapped twice adds no rows.
-    const { data } = await supabase
+    // claimed — so "I've sent it" tapped twice adds no rows. Signed out,
+    // only a row nobody owns (#84).
+    let q = supabase
       .from("cohort_invites")
       .select("*")
       .eq("cohort_id", cohortId)
       .eq("email", email)
       .eq("status", "invited")
       .eq("payment_method", "etransfer")
-      .is("participant_id", null)
-      .order("invited_at", { ascending: true });
+      .is("participant_id", null);
+    if (!accountId) q = q.is("user_id", null);
+    const { data } = await q.order("invited_at", { ascending: true });
     const free = ((data as InviteRef[] | null) ?? []).find(
       (r) => !claimedInvites.includes(r.id)
     );
@@ -1220,7 +1234,8 @@ export async function recordEtransferIntent(params: {
     const row: Record<string, unknown> = {
       cohort_id: cohortId,
       email,
-      user_id: await findUserIdByEmail(email),
+      // The session's, or nobody's (#84): never looked up by the typed email.
+      user_id: accountId,
       token: newToken(),
       status: "invited",
       expires_at: new Date(Date.now() + holdHours * 3600 * 1000).toISOString(),
