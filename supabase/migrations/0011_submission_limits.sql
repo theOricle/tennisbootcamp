@@ -13,14 +13,18 @@
 -- The server deletes rows older than a day as it checks the limits.
 --
 -- Who may touch it: the server only (the service role). Row level security is
--- on and there is no policy, and every privilege is withdrawn from public,
--- anon and authenticated, so a visitor or a signed-in account can neither
--- read nor write a row.
+-- on, every privilege is withdrawn from public, anon and authenticated, and
+-- one rule refuses visitors and accounts every row, so a visitor or a
+-- signed-in account can neither read nor write a row. The rule changes
+-- nothing the revoked privileges do not already stop; it is written out so
+-- Supabase's Security Advisor does not list the table under "RLS enabled, no
+-- policy". The server's service role bypasses row level security.
 --
 -- Run this in the Supabase SQL editor (Dashboard → SQL Editor → New query).
 -- Applied manually, same as 0001–0010 — there is no runner. Needs nothing
 -- from them. Safe to re-run: the table and indexes are IF NOT EXISTS, the
--- checks are guarded, and the privilege statements set a final state.
+-- checks and the rule are guarded, and the privilege statements set a final
+-- state.
 -- Purely additive: no other table, column or row is added, changed or
 -- removed. Until this runs, the forms work exactly as before and the server
 -- logs one warning.
@@ -66,18 +70,41 @@ create index if not exists submission_limits_created_idx
 
 alter table public.submission_limits enable row level security;
 
+-- An explicit deny for visitors and accounts: every command, no row.
+do $$ begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'submission_limits'
+      and policyname = 'submission_limits_no_client_access'
+  ) then
+    create policy submission_limits_no_client_access
+      on public.submission_limits
+      for all
+      to anon, authenticated
+      using (false)
+      with check (false);
+  end if;
+end $$;
+
 revoke all on table public.submission_limits from public, anon, authenticated;
 
 grant select, insert, delete on table public.submission_limits to service_role;
 
 -- verify:
--- One row. Expected: rls_on true, policies 0, every visitor_* and account_*
--- false, every server_* true. rows_now is a count and nothing else; it may be
--- above zero once forms have been submitted, and no row is older than a day
--- for long (oldest_hours stays near or under 24).
+-- One row. Expected: rls_on true, policies 1, deny_rule true, every visitor_*
+-- and account_* false, every server_* true. rows_now is a count and nothing
+-- else; it may be above zero once forms have been submitted, and no row is
+-- older than a day for long (oldest_hours stays near or under 24).
 select
   (select c.relrowsecurity from pg_class c where c.oid = 'public.submission_limits'::regclass) as rls_on,
   (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = 'submission_limits') as policies,
+  (select coalesce(bool_and(p.policyname = 'submission_limits_no_client_access'
+                            and p.cmd = 'ALL'
+                            and p.qual = 'false'
+                            and p.with_check = 'false'
+                            and p.roles @> array['anon', 'authenticated']::name[]), false)
+     from pg_policies p where p.schemaname = 'public' and p.tablename = 'submission_limits') as deny_rule,
   has_table_privilege('anon', 'public.submission_limits', 'select')            as visitor_read,
   has_table_privilege('anon', 'public.submission_limits', 'insert')            as visitor_write,
   has_table_privilege('authenticated', 'public.submission_limits', 'select')   as account_read,

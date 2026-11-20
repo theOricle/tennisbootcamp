@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import {
   ASSESSMENT_PAYMENT_UNAVAILABLE,
+  assessmentPriceCents,
   createAssessmentCheckoutSession,
   paymentRail,
 } from "@/lib/payments";
@@ -38,12 +39,6 @@ function siteOrigin(req: NextRequest): string {
     process.env.NEXT_PUBLIC_SITE_URL ??
     "https://tennisbootcamp-seven.vercel.app"
   );
-}
-
-function assessmentPriceCents(): number {
-  const raw = process.env.ASSESSMENT_PRICE_CENTS;
-  const n = raw == null || raw === "" ? 2000 : Number(raw);
-  return Number.isFinite(n) && n >= 0 ? n : 2000;
 }
 
 export async function POST(req: NextRequest) {

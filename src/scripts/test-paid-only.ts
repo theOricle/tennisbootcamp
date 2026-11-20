@@ -24,10 +24,19 @@ import { join } from "node:path";
 import {
   ASSESSMENT_PAYMENT_UNAVAILABLE,
   CARD_PAYMENT_UNAVAILABLE,
+  assessmentPriceCents,
   assessmentSessionParams,
+  cardPaymentIsTest,
   enrollmentSessionParams,
   paymentRail,
 } from "../lib/payments";
+import {
+  TEST_PAYMENT_BOOKING_LINE,
+  TEST_PAYMENT_ENROLL_LINE,
+  TEST_PAYMENT_HEADING,
+  bookedConfirmation,
+  enrollConfirmation,
+} from "../lib/paymentConfirmation";
 import { bookingPaid, bookingPaymentPlan, paymentOutcome, settlementPlan } from "../lib/stripeOutcome";
 import { seatsFromSnapshot } from "../lib/seatCount";
 import { PAYMENT_STATUS_LABELS, statusLabel } from "../lib/adminLabels";
@@ -233,6 +242,101 @@ console.log("Source — a test payment is no member and no paid booking");
   check("the cohort page lists card payments with their labels", client.includes("PAYMENT_STATUS_LABELS") && client.includes("Card payments"));
   const api = read("src/app/api/admin/cohorts/[id]/route.ts");
   check("the cohort API hands the page its payments", api.includes("cohortPayments(id)"));
+}
+
+console.log("The page after a test payment says so, and promises nothing a live payment brings (review)");
+{
+  check("mock mode (no key, outside production) → a test payment", cardPaymentIsTest({ stripeKey: undefined, vercelEnv: "preview" }));
+  check("a Stripe test key → a test payment", cardPaymentIsTest({ stripeKey: "sk_test_abc", vercelEnv: "production" }));
+  check("a restricted test key, with spaces → a test payment", cardPaymentIsTest({ stripeKey: " rk_test_abc ", vercelEnv: "production" }));
+  check("a live key → a live payment", cardPaymentIsTest({ stripeKey: "sk_live_abc", vercelEnv: "production" }), false);
+  check("a restricted live key → a live payment", cardPaymentIsTest({ stripeKey: "rk_live_abc", vercelEnv: "production" }), false);
+  check("no key in production → no card payment is taken, so no test page", cardPaymentIsTest({ stripeKey: "", vercelEnv: "production" }), false);
+
+  check("the assessment price: $20 when the setting is empty", assessmentPriceCents(""), 2000);
+  check("…free when set to 0", assessmentPriceCents("0"), 0);
+  check("…$20 when the setting is not a price", assessmentPriceCents("abc"), 2000);
+
+  const words = (c: object) => JSON.stringify(c);
+  const enrollTest = enrollConfirmation({ viaEtransfer: false, testPayment: true, signedIn: false, firstName: "Sam" });
+  check("card, test payment: it says so", enrollTest.heading, TEST_PAYMENT_HEADING);
+  check("…no money taken, nothing booked, no email sent", enrollTest.lead, TEST_PAYMENT_ENROLL_LINE);
+  check("…no next steps at all", enrollTest.nextSteps, []);
+  check("…never 'Check your email', never enrolled or reserved", /check your email|enrolled|reserved|Payment Received/i.test(words(enrollTest)), false);
+  check("…signed in, the same", enrollConfirmation({ viaEtransfer: false, testPayment: true, signedIn: true, firstName: null }), enrollTest);
+  check("…and the browser tab says so too", [enrollTest.title, enrollTest.description], ["Test payment", TEST_PAYMENT_HEADING]);
+
+  const LIVE_STEPS_TAIL = "We'll send reminders before your first session with court details and what to bring.";
+  const LIVE_ENROLL_META = { title: "Enrollment Confirmed", description: "Your Tennis Bootcamp enrollment has been confirmed." };
+  check("card, live, signed out: the page is as it was", enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: false, firstName: "Sam" }), {
+    ...LIVE_ENROLL_META,
+    badge: "Payment Received",
+    icon: "check",
+    heading: "Sam, you're enrolled.",
+    lead: "Your payment is confirmed and your spot is reserved. Everything below is what you signed up for — save this page or check your email for a receipt.",
+    nextSteps: [
+      "Check your email for the link to set up your account: it names the players you enrolled and sets your password. Already signed in to an account with this email before? You'll get a note that this enrollment is on it instead.",
+      "Your dashboard then shows this enrollment, each player's level once our coaches set it, the weekly slot and, once the group is set, every session date.",
+      LIVE_STEPS_TAIL,
+    ],
+  });
+  check("card, live, signed in: as it was", enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: true, firstName: null }), {
+    ...LIVE_ENROLL_META,
+    badge: "Payment Received",
+    icon: "check",
+    heading: "You're enrolled.",
+    lead: "Your payment is confirmed and your spot is reserved. Everything below is what you signed up for — save this page or check your email for a receipt.",
+    nextSteps: [
+      "This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date.",
+      LIVE_STEPS_TAIL,
+    ],
+  });
+  check("e-transfer: as it was, and never a test page (no card was used)", enrollConfirmation({ viaEtransfer: true, testPayment: true, signedIn: true, firstName: "Sam" }), {
+    ...LIVE_ENROLL_META,
+    badge: "Spot Held",
+    icon: "check",
+    heading: "Sam, your spot is held.",
+    lead: "Once the coach confirms your e-transfer arrived, you're in and the confirmation email follows. The amount, the address, and the message to put on the transfer are in your inbox.",
+    nextSteps: [
+      "Send the e-transfer if you haven't yet — the amount, address, and message are in your email.",
+      "This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date.",
+      "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email.",
+    ],
+  });
+
+  const bookedTest = bookedConfirmation({ testPayment: true });
+  check("assessment, test payment: it says so and shows no slot", bookedTest.heading === TEST_PAYMENT_HEADING && bookedTest.showSlot === false && bookedTest.note === null && bookedTest.icon === "info");
+  check("…no money taken, nothing booked, no email sent", bookedTest.lead, TEST_PAYMENT_BOOKING_LINE);
+  check("…never 'sent the details to your email' or 'You're booked'", /sent the details|check your email|booked\.|you're booked/i.test(words(bookedTest)), false);
+  check("…and the browser tab says so too", [bookedTest.title, bookedTest.description], ["Test payment", TEST_PAYMENT_HEADING]);
+  check("assessment, live: the page is as it was", bookedConfirmation({ testPayment: false }), {
+    title: "You're booked",
+    description: "Your assessment is confirmed.",
+    icon: "check",
+    heading: "You're booked.",
+    showSlot: true,
+    lead: "Your 20-minute assessment is confirmed. We've sent the details to your email — slot time, what to bring, and how to reach us if you need to move it.",
+    note: "See you on the court. Bring a racquet if you have one, water, and court shoes.",
+  });
+  const testLines = [TEST_PAYMENT_HEADING, TEST_PAYMENT_ENROLL_LINE, TEST_PAYMENT_BOOKING_LINE].join(" ");
+  check("the test lines say test payment, no money, nothing booked, no email", /test payment/.test(testLines) && /no money was taken/.test(TEST_PAYMENT_ENROLL_LINE) && /no money was taken/.test(TEST_PAYMENT_BOOKING_LINE) && /Nothing was booked/.test(TEST_PAYMENT_ENROLL_LINE) && /Nothing was booked/.test(TEST_PAYMENT_BOOKING_LINE) && /no email was sent/.test(TEST_PAYMENT_ENROLL_LINE) && /no email was sent/.test(TEST_PAYMENT_BOOKING_LINE));
+  check("…with no exclamation mark", testLines.includes("!"), false);
+
+  // The pages read their words from these, and decide a test payment from
+  // the same env the payment itself used.
+  const confirmedPage = read("src/app/enroll/[cohortId]/confirmed/page.tsx");
+  check("enrollment page: a test payment is a card payment on a test rail", confirmedPage.includes("testPayment: !viaEtransfer && cardPaymentIsTest()"));
+  check("…its words come from enrollConfirmation", confirmedPage.includes("enrollConfirmation({") && confirmedPage.includes("{copy.badge}") && confirmedPage.includes("{copy.heading}") && confirmedPage.includes("{copy.lead}"));
+  check("…'What happens next' only when there is a next step", confirmedPage.includes("{copy.nextSteps.length > 0 && ("));
+  check("…and no payment words of its own are left", /Check your email|Payment Received|Enrollment Confirmed|test_paid|isMock/.test(confirmedPage), false);
+  check("…its tab title comes from the same words, test decided the same way", /export async function generateMetadata\(/.test(confirmedPage) && confirmedPage.includes("testPayment: sp.etransfer !== \"1\" && cardPaymentIsTest()") && confirmedPage.includes("title: meta.title") && !/export const metadata/.test(confirmedPage));
+  const bookedPage = read("src/app/assessment/booked/page.tsx");
+  check("booking page: a test payment is a paid assessment on a test rail", bookedPage.includes("testPayment: assessmentPriceCents() > 0 && cardPaymentIsTest()"));
+  check("…the slot is read only when it is shown", bookedPage.includes("copy.showSlot ? await getBookedSlotSummary(bookingId) : null"));
+  check("…its words come from bookedConfirmation", bookedPage.includes("bookedConfirmation({") && bookedPage.includes("{copy.heading}") && bookedPage.includes("{copy.lead}") && !bookedPage.includes("sent the details"));
+  check("…and its tab title too, over the layout's", /export async function generateMetadata\(/.test(bookedPage) && bookedPage.includes("title: copy.title") && bookedPage.includes("description: copy.description"));
+  const bookRoute = read("src/app/api/assessment/book/route.ts");
+  check("the booking route reads the one assessment price", bookRoute.includes("assessmentPriceCents()") && !bookRoute.includes("function assessmentPriceCents("));
 }
 
 if (failures > 0) {

@@ -23,6 +23,38 @@ export function paymentRail(
   return env.vercelEnv === "production" ? "refuse" : "mock";
 }
 
+/**
+ * Whether a card payment taken now is a test payment (backlog #84, review):
+ * mock mode, or a Stripe key that is not a live one (sk_test_, rk_test_).
+ * Every session a test key makes is livemode false, which the webhook records
+ * as a test (src/lib/stripeOutcome.ts): it holds no seat or slot and sends no
+ * email, so the page after it says so (src/lib/paymentConfirmation.ts). False
+ * when production refuses card payment: then no card payment is taken at all.
+ */
+export function cardPaymentIsTest(
+  env: { stripeKey?: string; vercelEnv?: string } = {
+    stripeKey: process.env.STRIPE_SECRET_KEY,
+    vercelEnv: process.env.VERCEL_ENV,
+  }
+): boolean {
+  const rail = paymentRail(env);
+  if (rail === "mock") return true;
+  if (rail === "refuse") return false;
+  return !/^(sk|rk)_live_/.test((env.stripeKey ?? "").trim());
+}
+
+/**
+ * The assessment's price in cents: ASSESSMENT_PRICE_CENTS when it is set to
+ * a price (0 makes the assessment free), else $20. One reading for the
+ * booking route and the page after it.
+ */
+export function assessmentPriceCents(
+  raw: string | undefined = process.env.ASSESSMENT_PRICE_CENTS
+): number {
+  const n = raw == null || raw === "" ? 2000 : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 2000;
+}
+
 /** The 503 checkout answers when production has no Stripe key. */
 export const CARD_PAYMENT_UNAVAILABLE =
   "Card payment isn't available right now, and nothing was charged. Email info@tennisbootcamp.ca and our coaches will finish your enrollment with you.";

@@ -509,7 +509,10 @@ for (const route of ["src/app/api/enroll/etransfer/route.ts", "src/app/api/webho
 }
 check("the checkout submit sends no account email", !read("src/app/api/checkout/route.ts").includes("notifyEnrollmentAccount("));
 check("the webhook reads the names from the rows it marked paid", read("src/app/api/webhooks/stripe/route.ts").includes("participantNamesOf(paidEnrollmentIds)"));
-check("the confirmation page tells a guest to check their email and what the dashboard shows", read("src/app/enroll/[cohortId]/confirmed/page.tsx").includes("Check your email for the link to set up your account: it names the players you enrolled") && read("src/app/enroll/[cohortId]/confirmed/page.tsx").includes("Your dashboard then shows this enrollment"));
+// The confirmation page's words live in src/lib/paymentConfirmation.ts since
+// backlog #84 (a test payment's page says it was a test, and test-paid-only.ts
+// renders every state); a live payment's words are unchanged.
+check("the confirmation page tells a guest to check their email and what the dashboard shows", read("src/lib/paymentConfirmation.ts").includes("Check your email for the link to set up your account: it names the players you enrolled") && read("src/lib/paymentConfirmation.ts").includes("Your dashboard then shows this enrollment") && read("src/app/enroll/[cohortId]/confirmed/page.tsx").includes("enrollConfirmation({"));
 check("this script is in the npm test chain", JSON.parse(read("package.json")).scripts.test.includes("src/scripts/test-quiz-state.ts"));
 
 if (failed > 0) {

@@ -6,6 +6,8 @@ import { formatDateRange, formatDaysTimes } from "@/lib/cohorts";
 import { getCohortById } from "@/lib/cohortsDb";
 import { locationForCohort } from "@/content/locations";
 import { createClient } from "@/lib/supabase/server";
+import { cardPaymentIsTest } from "@/lib/payments";
+import { enrollConfirmation } from "@/lib/paymentConfirmation";
 import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
 type PageProps = {
@@ -13,11 +15,21 @@ type PageProps = {
   searchParams: Promise<{ invite?: string | string[]; etransfer?: string | string[] }>;
 };
 
-export const metadata: Metadata = {
-  title: "Enrollment Confirmed",
-  description: "Your Tennis Bootcamp enrollment has been confirmed.",
-  robots: { index: false, follow: false },
-};
+// The tab says what the page says: a test payment's reads "Test payment".
+export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+  const sp = await searchParams;
+  const meta = enrollConfirmation({
+    viaEtransfer: sp.etransfer === "1",
+    testPayment: sp.etransfer !== "1" && cardPaymentIsTest(),
+    signedIn: false,
+    firstName: null,
+  });
+  return {
+    title: meta.title,
+    description: meta.description,
+    robots: { index: false, follow: false },
+  };
+}
 
 export default async function EnrollConfirmedPage({ params, searchParams }: PageProps) {
   const { cohortId } = await params;
@@ -31,7 +43,6 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
 
   const program = programs.find((p) => p.id === cohort.programId);
   const location = locationForCohort(cohort);
-  const isMock = !process.env.STRIPE_SECRET_KEY && !viaEtransfer;
 
   // Auth check — used for CTA and personalised greeting.
   const supabase = await createClient();
@@ -53,27 +64,17 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
 
   const firstName = participantName?.trim().split(/\s+/)[0] ?? null;
 
-  // Audit H5: an email that already had an account gets no activation link
-  // any more — the enrollment is linked to that account and the email says
-  // so — so the steps only promise what each visitor will actually get. A
-  // guest (owner, 2026-10-12) is told to check their email for the link
-  // that sets up the account, and what the dashboard will show them.
-  const nextSteps = [
-    ...(viaEtransfer
-      ? ["Send the e-transfer if you haven't yet — the amount, address, and message are in your email."]
-      : []),
-    ...(user
-      ? [
-          "This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date.",
-        ]
-      : [
-          "Check your email for the link to set up your account: it names the players you enrolled and sets your password. Already signed in to an account with this email before? You'll get a note that this enrollment is on it instead.",
-          "Your dashboard then shows this enrollment, each player's level once our coaches set it, the weekly slot and, once the group is set, every session date.",
-        ]),
-    viaEtransfer
-      ? "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email."
-      : "We'll send reminders before your first session with court details and what to bring.",
-  ];
+  // The page's words (src/lib/paymentConfirmation.ts). A card payment on a
+  // test rail (backlog #84: mock mode, or a Stripe key that is not live)
+  // holds no spot and sends no email, so its page says it was a test and
+  // promises nothing that follows a live payment. Decided from the same env
+  // the payment itself used.
+  const copy = enrollConfirmation({
+    viaEtransfer,
+    testPayment: !viaEtransfer && cardPaymentIsTest(),
+    signedIn: Boolean(user),
+    firstName,
+  });
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -97,44 +98,19 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
                 strokeWidth={2.5}
                 viewBox="0 0 24 24"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                {copy.icon === "check" ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v6M12 7h.01" />
+                )}
               </svg>
             </div>
-            <span className="text-sm font-semibold text-[#B4E655]">
-              {viaEtransfer ? "Spot Held" : isMock ? "Test Enrollment Confirmed" : "Payment Received"}
-            </span>
+            <span className="text-sm font-semibold text-[#B4E655]">{copy.badge}</span>
           </div>
 
           {/* Greeting */}
-          <h1 className="mt-4 text-2xl font-semibold md:text-3xl">
-            {viaEtransfer
-              ? firstName
-                ? `${firstName}, your spot is held.`
-                : "Your spot is held."
-              : firstName
-              ? `${firstName}, you're enrolled.`
-              : "You're enrolled."}
-          </h1>
-          <p className="mt-2 text-sm leading-relaxed text-white/65">
-            {viaEtransfer ? (
-              <>
-                Once the coach confirms your e-transfer arrived, you&apos;re in and
-                the confirmation email follows. The amount, the address, and the
-                message to put on the transfer are in your inbox.
-              </>
-            ) : isMock ? (
-              <>
-                This is a <strong className="text-yellow-200">test enrollment</strong> — no real
-                payment was collected. It will appear in the database with status{" "}
-                <code className="rounded bg-white/10 px-1 text-xs">test_paid</code>.
-              </>
-            ) : (
-              <>
-                Your payment is confirmed and your spot is reserved. Everything below is what you
-                signed up for — save this page or check your email for a receipt.
-              </>
-            )}
-          </p>
+          <h1 className="mt-4 text-2xl font-semibold md:text-3xl">{copy.heading}</h1>
+          <p className="mt-2 text-sm leading-relaxed text-white/65">{copy.lead}</p>
 
           {/* Enrollment detail box */}
           <div className="mt-6 divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">
@@ -171,20 +147,22 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
             </div>
           </div>
 
-          {/* What happens next */}
-          <div className="mt-6 rounded-xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-5 py-5">
-            <p className="mb-3 text-sm font-semibold text-white">What happens next</p>
-            <ol className="space-y-2 text-sm text-white/70">
-              {nextSteps.map((text, i) => (
-                <li key={i} className="flex gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-xs font-bold text-[#B4E655]">
-                    {i + 1}
-                  </span>
-                  <span>{text}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
+          {/* What happens next: nothing, after a test payment */}
+          {copy.nextSteps.length > 0 && (
+            <div className="mt-6 rounded-xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-5 py-5">
+              <p className="mb-3 text-sm font-semibold text-white">What happens next</p>
+              <ol className="space-y-2 text-sm text-white/70">
+                {copy.nextSteps.map((text, i) => (
+                  <li key={i} className="flex gap-3">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-xs font-bold text-[#B4E655]">
+                      {i + 1}
+                    </span>
+                    <span>{text}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
 
           {/* Primary CTA — auth-aware */}
           <div className="mt-8 flex flex-wrap gap-3">

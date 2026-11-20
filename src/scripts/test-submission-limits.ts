@@ -15,8 +15,8 @@
 //      them here). A try the route refuses for its own reasons is taken back.
 //   3. A refusal is one plain line (429) with nothing an attacker can use:
 //      not which limit, not how many, not when.
-//   4. One additive table (migration 0011): RLS on, no policy for visitors or
-//      accounts, written only by the server. It stores keyed hashes, never an
+//   4. One additive table (migration 0011): RLS on, with one rule that
+//      refuses visitors and accounts every row, written only by the server. It stores keyed hashes, never an
 //      address or an email, and rows older than a day are deleted. Until the
 //      migration runs the routes work as before and log one warning.
 //   5. Checkout, enroll and e-transfer run the existing bot check (honeypot
@@ -136,7 +136,7 @@ async function main() {
   {
     check("seven forms are limited", [...LIMIT_SCOPES], ["intake", "book", "enroll", "checkout", "etransfer", "newsletter", "interest"]);
     check("the forms that send our email", [...MAIL_SCOPES], ["intake", "book", "etransfer"]);
-    check("per address, per form: 10 an hour, 30 a day", LIMITS.perAddress, { hour: 10, day: 30 });
+    check("per address, per form: 20 an hour, 30 a day", LIMITS.perAddress, { hour: 20, day: 30 });
     check("per email, per form: 5 an hour, 10 a day", LIMITS.perEmail, { hour: 5, day: 10 });
     check("across the email-sending forms: 20 a day per address, 12 per email", LIMITS.mail, { addressDay: 20, emailDay: 12 });
   }
@@ -175,18 +175,19 @@ async function main() {
     check("…well under the 100 a day", sent < 100);
   }
 
-  console.log("Scenario — a sign-up evening at the club, twenty families on one Wi-Fi");
+  console.log("Scenario — a sign-up evening at the club, twenty families on one Wi-Fi inside one hour");
   {
     const t = { now: Date.parse("2026-11-20T23:00:00.000Z") };
     const { store } = makeTable(() => t.now);
-    let joined = 0;
+    const through: boolean[] = [];
     // Each family sends its e-transfer (an email-sending form), one every
-    // nine minutes over three hours, all from the club's one address.
+    // three minutes, all from the club's one address: twenty inside the hour.
     for (let i = 0; i < 20; i++) {
-      if ((await submit(store, "etransfer", "203.0.113.200", `family${i}@example.com`, t.now)).allowed) joined++;
-      t.now += 9 * MIN;
+      through.push((await submit(store, "etransfer", "203.0.113.200", `family${i}@example.com`, t.now)).allowed);
+      t.now += 3 * MIN;
     }
-    check("all twenty go through", joined, 20);
+    check("the eleventh family inside the hour goes through", through[10]);
+    check("all twenty go through", through.filter(Boolean).length, 20);
     check("a twenty-first email-sending try from that address that day is refused", (await submit(store, "intake", "203.0.113.200", "late@example.com", t.now)).allowed, false);
   }
 
@@ -229,7 +230,7 @@ async function main() {
       Array.from({ length: 50 }, (_, i) => submit(table.store, "intake", "198.51.100.9", `n${i}@example.com`, t.now))
     );
     const allowed = tickets.filter((x) => x.allowed).length;
-    check("never more than the 10 an hour one address may send", allowed <= LIMITS.perAddress.hour);
+    check("never more than the 20 an hour one address may send", allowed <= LIMITS.perAddress.hour);
     check("every refused try took its hit back (two rows per allowed try)", table.rows.length, allowed * 2);
 
     // The same fifty, read-then-decide-then-write, for contrast: this is the
@@ -265,12 +266,12 @@ async function main() {
       );
       worst = Math.max(worst, tickets.filter((x) => x.allowed).length);
     }
-    check("25 random interleavings of 40 tries: never more than 10 through", worst <= LIMITS.perAddress.hour);
+    check("25 random interleavings of 40 tries: never more than 20 through", worst <= LIMITS.perAddress.hour);
     const t = { now: START };
     const calm = makeTable(() => t.now);
     let one = 0;
     for (let i = 0; i < 40; i++) if ((await submit(calm.store, "book", "198.51.100.9", `m${i}@example.com`, t.now)).allowed) one++;
-    check("one at a time, exactly 10 go through", one, 10);
+    check("one at a time, exactly 20 go through", one, 20);
   }
 
   console.log("release — a try the route refused for its own reasons is not counted");
@@ -376,10 +377,18 @@ async function main() {
       .toLowerCase();
     check("create table if not exists", body.includes("create table if not exists public.submission_limits ("));
     check("the columns are an id, the form, the keyed hash and the time — no address or email", /create table if not exists public\.submission_limits \( id uuid primary key default gen_random_uuid\(\), scope text not null, key_hash text not null, created_at timestamptz not null default now\(\) \);/.test(body));
-    check("guarded do $$ blocks for its checks", (body.match(/do \$\$ begin if not exists \(/g) ?? []).length >= 2);
+    check("guarded do $$ blocks for its two checks and its one rule", (body.match(/do \$\$ begin if not exists \(/g) ?? []).length, 3);
     check("the hash is 64 hex characters, checked by the table", body.includes("check (key_hash ~ '^[0-9a-f]{64}$')"));
     check("row level security is on", body.includes("alter table public.submission_limits enable row level security;"));
-    check("no policy at all", /create policy/.test(body), false);
+    check("one rule, so the Security Advisor never lists the table as having none", (body.match(/create policy/g) ?? []).length, 1);
+    check(
+      "…created in a guarded do $$ block, by its name",
+      body.includes("do $$ begin if not exists ( select 1 from pg_policies where schemaname = 'public' and tablename = 'submission_limits' and policyname = 'submission_limits_no_client_access' ) then create policy submission_limits_no_client_access on public.submission_limits")
+    );
+    check("…an explicit deny: visitors and accounts, every command, no row", body.includes("for all to anon, authenticated using (false) with check (false);"));
+    check("…and nothing in the file lets a row through", /using \(true\)|with check \(true\)|to public\b|to service_role using/.test(body), false);
+    const verify = sqlRaw.slice(verifyAt);
+    check("the verify block expects the one rule and reads it back", verify.includes("policies 1") && verify.includes("deny_rule true") && verify.includes("as deny_rule"));
     check("visitors and accounts get nothing", body.includes("revoke all on table public.submission_limits from public, anon, authenticated;"));
     check("the server reads, writes and deletes", body.includes("grant select, insert, delete on table public.submission_limits to service_role;"));
     check("indexed for the window reads and the clean-up", body.includes("create index if not exists submission_limits_key_idx") && body.includes("create index if not exists submission_limits_created_idx"));

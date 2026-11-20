@@ -8,14 +8,15 @@
 // emails, and nobody can bury one inbox.
 //
 // The numbers, and why (stated in the pull request too):
-//   - per address, per form: 10 an hour, 30 a day;
+//   - per address, per form: 20 an hour, 30 a day;
 //   - per email, per form: 5 an hour, 10 a day;
 //   - across the three forms that send our email (the quiz, the booking, the
 //     e-transfer), 20 a day per address and 12 a day per email.
 // A family entering two children separately on every form and retrying each
 // once sends 4 per form: inside every limit, the 12 a day per email across
 // the email forms included. Twenty families on the club's one Wi-Fi can each
-// send their e-transfer in an evening. A script on one address gets 20
+// send their e-transfer inside one hour of a sign-up evening, so the eleventh
+// is never refused. A script on one address still gets only 20
 // email-sending submissions a day, at most 3 emails each: 60, under the 100.
 // An IPv6 address counts by its /64, which one home or office holds whole.
 //
@@ -40,7 +41,7 @@ export type LimitScope = (typeof LIMIT_SCOPES)[number];
 export const MAIL_SCOPES: readonly LimitScope[] = ["intake", "book", "etransfer"];
 
 export const LIMITS = {
-  perAddress: { hour: 10, day: 30 },
+  perAddress: { hour: 20, day: 30 },
   perEmail: { hour: 5, day: 10 },
   mail: { addressDay: 20, emailDay: 12 },
 } as const;
