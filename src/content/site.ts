@@ -55,6 +55,16 @@ export const site: SiteConfig = {
  */
 export const NEWSLETTER_ANCHOR = "notify";
 
+/**
+ * The /programs lead's second line while no block is open anywhere (backlog
+ * #85, fix round 3): every card's button then reads "Notify me", so the lead
+ * says what is true and what that button does. It promises what the
+ * newsletter line it leads to promises ("we'll tell you when one opens") and
+ * nothing more. "Cohort", not "block": one name per thing (voice.md rule 7).
+ * With an open block the lead reads "Pick your group and join."
+ */
+export const PROGRAMS_NO_DATES_LINE = "New cohort dates are coming. Tap Notify me and we'll email you when they're set.";
+
 export type NavLink = { href: string; label: string };
 
 /**

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { COHORT_LENGTH_ADJ, listedPrograms, programGroups } from "@/content/programs";
-import { PROGRAMS_DESCRIPTION } from "@/content/site";
+import { PROGRAMS_DESCRIPTION, PROGRAMS_NO_DATES_LINE } from "@/content/site";
 import { getPublicCohorts } from "@/lib/cohortsDb";
 import { readBlockSeats } from "@/lib/groupSeats";
-import { groupCards } from "@/lib/groupBlocks";
+import { groupCards, openBlockCards } from "@/lib/groupBlocks";
 import { ProgramCatalog, type CatalogProgram } from "@/components/sections/ProgramCatalog";
 import { GoodToKnow } from "@/components/sections/GoodToKnow";
 import { LevelsStrip } from "@/components/sections/LevelsStrip";
@@ -31,6 +31,9 @@ export default async function ProgramsPage() {
   // One card per open block, and one per planned group with none (owner,
   // 2026-11-19; src/lib/groupBlocks.ts).
   const cards = groupCards(programGroups, publicCohorts, seats);
+  // With no block open anywhere, every card's button reads "Notify me", so
+  // the lead says dates are coming instead of "Pick your group and join."
+  const anyOpen = openBlockCards(cards).length > 0;
   const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({ slug: p.slug, title: p.title }));
 
   return (
@@ -51,10 +54,12 @@ export default async function ProgramsPage() {
             <Heading as="h1">Our Programs</Heading>
             {/* What every group is and how long a cohort runs (the length
                 from the setting). No class length and no classes a week
-                (owner, 2026-11-17): each group card carries its own time. */}
+                (owner, 2026-11-17): each group card carries its own time.
+                Then what to do: join, or, with no block open anywhere, that
+                dates are coming and what "Notify me" does. */}
             <p className="mt-2.5 max-w-[40rem] text-pretty text-base text-white/75">
-              Every group is a bootcamp: tennis and fitness in every class, in {COHORT_LENGTH_ADJ} cohorts.
-              Pick your group and join.
+              Every group is a bootcamp: tennis and fitness in every class, in {COHORT_LENGTH_ADJ} cohorts.{" "}
+              {anyOpen ? "Pick your group and join." : PROGRAMS_NO_DATES_LINE}
             </p>
           </>
         }

@@ -43,10 +43,10 @@ import { ProgramViewerPanel, ViewerSwap } from "@/components/programs/ProgramVie
  * The phone summary under the H1 (audit M13): which days and what it costs,
  * so the decision facts sit above the fold; who it is for, and the tier
  * span, are the chip row under the description (L8). The days and the price
- * are the cards' below (fix round, #85): one price when the open blocks
- * share it, "from" the lowest when they differ, the setting's while none is
- * open; always the whole price (owner, 2026-11-17: never a per-session
- * figure). A program with no fixed class states its terms in the panel.
+ * are the cards' below (fix round, #85), every card's, with dates or without:
+ * one price when they share it, "from" the lowest when they differ, each with
+ * its class count as the cards name it; always the whole price (owner,
+ * 2026-11-17: never a per-session figure). A program with no fixed class states its terms in the panel.
  * Each fact is joined with no-break spaces, so a line wraps only between
  * facts.
  */
@@ -124,8 +124,9 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // The schedule line in the panel: the cards' days and starts; a program
   // with no fixed class keeps its own line ("By arrangement").
   const scheduleLine = cards.length > 0 ? cardsScheduleLine(cards) : program.schedule;
-  // The panel's price sentence: the cards' price (one, or "From" the lowest),
-  // then the $20 mechanic in full; the program's own line with no fixed class.
+  // The panel's price sentence: the cards' price (one, or "From" the lowest,
+  // with its class count), then the $20 mechanic in full; the program's own
+  // line with no fixed class.
   const cardsPriceText = cards.length > 0 && program.priceSummary ? cardsPrice(cards, program.priceSummary) : null;
   const priceLine = cardsPriceText
     ? priceLineFor(`${cardsPriceText.charAt(0).toUpperCase()}${cardsPriceText.slice(1)}`)

@@ -20,6 +20,9 @@ import { tierById, type TierId } from "@/lib/tiers";
 import {
   BOOTCAMP_AUDIENCE,
   COHORT_LENGTH_ADJ,
+  COHORT_TOTAL_CENTS,
+  COHORT_WEEKS,
+  GROUP_PRICE,
   blockGroupTitle,
   formatDollars,
   numberInWords,
@@ -70,8 +73,10 @@ export type BlockFacts = {
    * per-session figure.
    */
   price: string;
-  /** The block's total in cents (0 when no price is set): what "from" reads when a page's blocks differ. */
+  /** The block's total in cents (0 when no price is set): what a page's price reads (cardsPrice). */
   totalCents: number;
+  /** How many classes the block runs, counted from its sessions (blockClassCount). */
+  classes: number;
   /**
    * Seats left, the enroll page's own count (src/lib/groupSeats.ts). Null when
    * it could not be read, which reads "Open to join". Display only.
@@ -151,6 +156,7 @@ export function blockFacts(block: Cohort, seatsLeft?: number | null): BlockFacts
     weekly,
     price: blockPrice(block),
     totalCents: block.priceCents > 0 ? block.priceCents : 0,
+    classes: blockClassCount(block),
     seatsLeft: typeof seatsLeft === "number" && Number.isFinite(seatsLeft) ? seatsLeft : null,
   };
 }
@@ -371,18 +377,36 @@ export function cardsHeading(cards: readonly GroupCard[]): string {
   return days ? `${count} on ${days}` : count;
 }
 
+/** A card's price as numbers: a block's own, or a planned group's from the setting; null when it names no amount. */
+function cardPriceFacts(card: GroupCard): { totalCents: number; classes: number } | null {
+  if (card.block) {
+    const { totalCents, classes } = card.block;
+    return totalCents > 0 && classes > 0 ? { totalCents, classes } : null;
+  }
+  // A planned group reads the setting's price, one class a week (GROUP_PRICE).
+  if (card.group.day !== null && card.group.price === GROUP_PRICE) {
+    return { totalCents: COHORT_TOTAL_CENTS, classes: COHORT_WEEKS };
+  }
+  return null;
+}
+
 /**
- * A program page's price, from its cards: the one price its open blocks
- * share ("$280 for 8 classes over eight weeks"), "from" the lowest when they
- * differ ("from $280"), and the setting's (`fallback`) while none is open.
+ * A program page's price, short, from every card it shows, with dates or
+ * without, with the class count as the cards name it: "$280 for 8 classes"
+ * when they all cost the same, "from $280 for 8 classes" (the lowest, and its
+ * class count) when they differ, so one open block beside cheaper cards
+ * with no dates never reads as the only price. The setting's line
+ * (`fallback`) when no card names an amount.
  */
 export function cardsPrice(cards: readonly GroupCard[], fallback: string): string {
-  const blocks = cards.flatMap((c) => (c.block ? [c.block] : []));
-  if (blocks.length === 0) return fallback;
-  const prices = [...new Set(blocks.map((b) => b.price))];
-  if (prices.length === 1) return prices[0];
-  const totals = blocks.map((b) => b.totalCents).filter((t) => t > 0);
-  return totals.length > 0 ? `from ${formatDollars(Math.min(...totals) / 100)}` : fallback;
+  const priced = cards.flatMap((c) => {
+    const facts = cardPriceFacts(c);
+    return facts ? [facts] : [];
+  });
+  if (priced.length === 0) return fallback;
+  const lowest = [...priced].sort((a, b) => a.totalCents - b.totalCents || a.classes - b.classes)[0];
+  const text = `${formatDollars(lowest.totalCents / 100)} for ${lowest.classes} class${lowest.classes === 1 ? "" : "es"}`;
+  return priced.every((p) => p.totalCents === lowest.totalCents && p.classes === lowest.classes) ? text : `from ${text}`;
 }
 
 /** The first class of the earliest open block among the cards, ISO, or null when none is open. */

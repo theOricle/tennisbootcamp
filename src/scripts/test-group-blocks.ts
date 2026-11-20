@@ -78,6 +78,7 @@ import {
 } from "../lib/groupBlocks";
 import {
   DATES_COMING_SOON,
+  NOTIFY_LABEL,
   cohortMatchesGroup,
   formatBlockDates,
   formatClassDays,
@@ -90,7 +91,7 @@ import {
 import { approvalGateApplies, approvalRefusal } from "../lib/enrollGate";
 import { nextStepFor, type NextStepInput } from "../lib/dashboardState";
 import { tierById } from "../lib/tiers";
-import { PROGRAMS_DESCRIPTION } from "../content/site";
+import { PROGRAMS_DESCRIPTION, PROGRAMS_NO_DATES_LINE } from "../content/site";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { NO_DATES_LINE, OPEN_GROUPS_HEADING, OpenGroupsList, noOpenGroupLine } from "../components/sections/OpenGroups";
 import { AlreadyTakenPanel, twoPathsLine } from "../components/quiz/AlreadyTakenPanel";
@@ -182,7 +183,7 @@ check("a block of its own length and total reads its own, with its class count",
 check("a block with no price set says so, never $0", blockPrice(block({ id: "free", priceCents: 0 })) === "Pricing TBA");
 {
   const twiceLong = block({ id: "twice-long", weeks: 8, priceCents: 56000, sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] });
-  check("twice a week: the class count, counted from the block's sessions, beside the total and the length", blockClassCount(twiceLong) === 16 && blockPrice(twiceLong) === "$560 for 16 classes over eight weeks");
+  check("twice a week: the class count, counted from the block's sessions, beside the total and the length", blockClassCount(twiceLong) === 16 && blockPrice(twiceLong) === "$560 for 16 classes over eight weeks" && blockFacts(twiceLong).classes === 16 && blockFacts(twiceLong).totalCents === 56000);
   const twiceSet = block({ id: "twice-set", sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] });
   check("…at the setting's length too, so two blocks of one group at different class counts read apart", blockPrice(twiceSet) === `${formatDollars(COHORT_TOTAL)} for ${COHORT_WEEKS * 2} classes over ${cohortLengthFor(COHORT_WEEKS)}` && blockPrice(block({ id: "once" })) === GROUP_PRICE);
   const [, onceRest] = priceParts(blockPrice(block({ id: "once" })));
@@ -414,17 +415,29 @@ console.log("Every heading, count, day list and next-start line reads the cards 
   check("two blocks of one group are one group with two date options: three groups over four cards", adult.length === 4 && cardsHeading(adult) === "Three groups on Sundays and Wednesdays" && cardsNextStart(adult) === "2027-01-10");
   check("one group reads in the singular, with one block or two", cardsHeading(groupCards([g("adult-newer")], [])) === "One group on Sundays" && cardsHeading(groupCards([g("adult-newer")], [block({ id: "b1" }), block({ id: "b2", startDate: "2027-03-07" })])) === "One group on Sundays");
 
-  // The price above the cards (fix round 2): one when every open block
-  // shares it, "from" the lowest when they differ, the setting's with none.
-  check("no open block: the setting's price", cardsPrice(groupCards(adultPlanned, []), PRICE_SUMMARY) === PRICE_SUMMARY);
-  check("every open block at one price: that price, with its class count", cardsPrice(groupCards(adultPlanned, [block({ id: "s1" }), block({ id: "s2", levelMin: 3, levelMax: 3.5 })]), PRICE_SUMMARY) === GROUP_PRICE);
-  check("blocks at different prices: from the lowest total", cardsPrice(adult, PRICE_SUMMARY) === `from ${formatDollars(COHORT_TOTAL)}` && cardsPrice(groupCards(adultPlanned, [block({ id: "p1", weeks: 8, priceCents: 28000 }), block({ id: "p2", weeks: 8, priceCents: 56000, sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] })]), PRICE_SUMMARY) === "from $280");
-  check("…a block with no price set never makes the lowest", cardsPrice(groupCards(adultPlanned, [block({ id: "tba", priceCents: 0 }), block({ id: "p3", weeks: 8, priceCents: 28000 })]), PRICE_SUMMARY) === "from $280");
+  // The price above the cards (fix rounds 2 and 3): every card the page
+  // shows counts, with dates or without; one price when they all share it,
+  // "from" the lowest when they differ, each short, with its class count.
+  const settingShort = `${formatDollars(COHORT_TOTAL)} for ${COHORT_WEEKS} classes`;
+  check("no open block: every card at the setting's price, so that price, short, with its class count", cardsPrice(groupCards(adultPlanned, []), PRICE_SUMMARY) === settingShort);
+  check("every card at one price, blocks and cards with no dates alike: that price", cardsPrice(groupCards(adultPlanned, [block({ id: "s1" }), block({ id: "s2", levelMin: 3, levelMax: 3.5 })]), PRICE_SUMMARY) === settingShort);
+  const dearer = groupCards(adultPlanned, [block({ id: "dear", weeks: 8, priceCents: 28000 })]);
+  check("one open block at $280 beside cards with no dates at the setting's price: from the lowest, never the block's price alone", dearer.filter((c) => c.block === null).length === 2 && cardsPrice(dearer, PRICE_SUMMARY) === `from ${settingShort}`, cardsPrice(dearer, PRICE_SUMMARY));
+  check("blocks at different prices: from the lowest, with its class count", cardsPrice(adult, PRICE_SUMMARY) === `from ${settingShort}` && cardsPrice(groupCards([g("adult-newer")], [block({ id: "p1", weeks: 8, priceCents: 28000 }), block({ id: "p2", weeks: 8, priceCents: 56000, sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] })]), PRICE_SUMMARY) === "from $280 for 8 classes");
+  check("…a block with no price set never makes the lowest, and no amount at all reads the setting's line", cardsPrice(groupCards([g("adult-newer")], [block({ id: "tba", priceCents: 0 }), block({ id: "p3", weeks: 8, priceCents: 28000 })]), PRICE_SUMMARY) === "$280 for 8 classes" && cardsPrice(groupCards([g("adult-newer")], [block({ id: "tba2", priceCents: 0 })]), PRICE_SUMMARY) === PRICE_SUMMARY);
+  check("…one class reads in the singular, and the price box stays short: no length, no per-session figure", cardsPrice(groupCards([g("adult-newer")], [block({ id: "one", weeks: 1, priceCents: 3500 })]), PRICE_SUMMARY) === "$35 for 1 class" && ![settingShort, cardsPrice(dearer, PRICE_SUMMARY)].some((t) => / over |week|session/i.test(t)));
 
   const detail = read("src/app/programs/[slug]/page.tsx");
   check("program pages: the heading, the summary days, the schedule line, the next start and the level tags read the cards", detail.includes('const groupsHeading = cards.length > 0 ? cardsHeading(cards) : "Groups";') && detail.includes("const days = cardsDaysLabel(cards);") && detail.includes("const scheduleLine = cards.length > 0 ? cardsScheduleLine(cards) : program.schedule;") && detail.includes("const nextStart = cardsNextStart(cards);") && detail.includes("Next cohort starts {formatStartDate(nextStart)}") && detail.includes("cardsLevelTags(cards)") && !detail.includes("scheduledGroups.length === 3") && !detail.includes("nextOpenCohort"));
   check("program pages: no list under the groups repeats the open blocks", !detail.includes("openCohorts.map((cohort)") && !detail.includes("Spots open") && detail.includes("{!arranged && !hasOpenCohorts && ("));
   check("program pages: the phone line and the panel's price sentence read the cards' price", detail.includes("cardsPrice(cards, program.priceSummary)") && detail.includes("priceLineFor(") && detail.includes("const summary = summaryFacts(program, cards);"));
+  // /programs with no block open anywhere (fix round 3): every card reads
+  // "Notify me", so the lead says dates are coming and what the button does,
+  // promising what the newsletter line promises and nothing more.
+  const programsSrc = read("src/app/programs/page.tsx");
+  check("/programs: with an open block the lead keeps Pick your group and join; with none it says dates are coming", programsSrc.includes("const anyOpen = openBlockCards(cards).length > 0;") && programsSrc.includes('{anyOpen ? "Pick your group and join." : PROGRAMS_NO_DATES_LINE}'));
+  check("…in one plain line: new dates are coming, and Notify me brings an email when they are set", PROGRAMS_NO_DATES_LINE === `New cohort dates are coming. Tap ${NOTIFY_LABEL} and we'll email you when they're set.`);
+  check("…naming the cohort, not the block, and promising no spot, no hold and no date", !/\bblock\b|spot|hold|first|guarantee|soon/i.test(PROGRAMS_NO_DATES_LINE));
   // The programs' own words never contradict the cards (fix round 2): no
   // weekday and no count of groups or levels in a description, a search
   // line, a long description, a level line or a caption, nor in the
