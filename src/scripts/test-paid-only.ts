@@ -194,7 +194,7 @@ console.log("Source — the webhook reads Stripe's word before it writes");
   const hook = read("src/app/api/webhooks/stripe/route.ts");
   check("the outcome comes from livemode and payment_status", hook.includes("paymentOutcome({ livemode: event.livemode, paymentStatus: session.payment_status })"));
   const unpaidAt = hook.indexOf('outcome === "unpaid"');
-  check("an unpaid session returns before any booking or row is touched", unpaidAt !== -1 && unpaidAt < hook.indexOf("await confirmBooking(") && unpaidAt < hook.indexOf("await markEnrollmentStatus("));
+  check("an unpaid session returns before any booking or row is touched", unpaidAt !== -1 && unpaidAt < hook.indexOf("await confirmBooking(") && unpaidAt < hook.indexOf("await flipEnrollmentRows("));
   check("a booking is confirmed with Stripe's word on the money", hook.includes("const paid = bookingPaid(outcome);") && hook.includes("{ stripeSessionId: session.id, paid }"));
   check("credits are spent only on the plan's word", hook.includes("plan.applyCredits"));
   check("invites settle only on the plan's word", hook.includes("plan.settleInvites"));

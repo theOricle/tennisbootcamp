@@ -116,6 +116,34 @@ export async function saveEnrollmentToSupabase(
 }
 
 /**
+ * Move these enrollment rows out of one of `from` into `to`, and resolve to
+ * the ids moved (backlog #84). Guarded on `from`: a redelivered Stripe event
+ * moves nothing, so the caller knows not to send an email twice, and a row
+ * that was refunded or disputed is never brought back. A failed write moves
+ * nothing; Supabase unconfigured moves nothing.
+ */
+export async function setEnrollmentStatusByIds(
+  ids: readonly string[],
+  from: readonly string[],
+  to: string
+): Promise<string[]> {
+  const list = [...new Set(ids.filter(Boolean))];
+  if (!supabaseConfigured() || list.length === 0) return [];
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("enrollments")
+    .update({ status: to })
+    .in("id", list)
+    .in("status", [...from])
+    .select("id");
+  if (error) {
+    console.error("Enrollment status move failed (non-blocking):", error.message);
+    return [];
+  }
+  return ((data ?? []) as { id: string }[]).map((r) => r.id);
+}
+
+/**
  * Every enrollment row for this email that no account owns yet becomes this
  * account's (audit H5) — provided the email is the account's own address.
  * Idempotent; a row that already has an owner is never touched. Resolves to

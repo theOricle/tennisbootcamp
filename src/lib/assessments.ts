@@ -14,6 +14,7 @@ import { availabilityChips } from "@/lib/availability";
 import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
 import { ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
+import { latePaymentPlan } from "@/lib/stripeOutcome";
 import {
   findUserIdByEmail,
   setPlayerLevel,
@@ -531,7 +532,7 @@ export async function confirmBooking(
 
   // Only transition rows that are still pending → booked, so a duplicate webhook
   // doesn't re-send the email.
-  const { data: updated } = await supabase
+  let { data: updated } = await supabase
     .from("assessment_bookings")
     .update({
       status: "booked",
@@ -544,8 +545,13 @@ export async function confirmBooking(
     .maybeSingle();
 
   if (!updated) {
-    // Already confirmed (or gone) — nothing more to do.
-    return null;
+    // Not pending any more. A payment is never dropped silently (backlog
+    // #84): a hold swept to expired before the money landed is booked again
+    // when its slot is still free; otherwise the coach is told. Anything
+    // else (already booked: a redelivery) needs nothing more.
+    if (!opts.stripeSessionId) return null;
+    updated = await settleLatePayment(bookingId, { stripeSessionId: opts.stripeSessionId, paid: opts.paid });
+    if (!updated) return null;
   }
 
   const withBlock = await getBookingWithBlock(bookingId);
@@ -587,6 +593,86 @@ export async function confirmBooking(
   );
 
   return booking;
+}
+
+/**
+ * A paid session landing on a booking that is no longer pending (backlog
+ * #84). Resolves to the booking when it was booked again, so confirmBooking
+ * carries on exactly as for a hold that was still pending; null otherwise.
+ *
+ *   expired, slot free   → booked again (guarded expired → booked; the
+ *                          one-active-hold-per-slot index refuses it when
+ *                          someone else holds the slot).
+ *   expired, slot taken  → cancelled with the money kept (guarded), a plain
+ *                          log line and a row in the assessments tab for the
+ *                          coach to refund or rebook. No email.
+ *   anything else        → nothing (a redelivery, or the coach's own call).
+ *   no booking           → a plain log line.
+ */
+async function settleLatePayment(
+  bookingId: string,
+  opts: { stripeSessionId: string; paid: boolean | "test" }
+): Promise<BookingRow | null> {
+  const supabase = createServiceClient();
+  const { data: current } = await supabase
+    .from("assessment_bookings")
+    .select("*")
+    .eq("id", bookingId)
+    .maybeSingle();
+  const row = (current as BookingRow | null) ?? null;
+  const plan = latePaymentPlan(row?.status ?? null);
+  if (plan === "missing") {
+    console.error(
+      `[assessment] Payment for a booking that does not exist: booking ${bookingId}, Stripe session ${opts.stripeSessionId}. Refund it or book another time by hand.`
+    );
+    return null;
+  }
+  if (plan === "nothing" || !row) return null;
+
+  const { data: restored, error } = await supabase
+    .from("assessment_bookings")
+    .update({ status: "booked", paid: opts.paid === true, stripe_session_id: opts.stripeSessionId })
+    .eq("id", bookingId)
+    .eq("status", "expired")
+    .select("*")
+    .maybeSingle();
+  if (restored) return restored as BookingRow;
+  if (error?.code !== "23505") {
+    // Moved underneath us (or a failed write): a redelivery decides again.
+    if (error) console.error(`[assessment] Late payment for booking ${bookingId} not recorded:`, error.message);
+    return null;
+  }
+
+  // The slot went to someone else while the money was on its way: keep the
+  // record of the payment on a cancelled booking (it holds no slot) so the
+  // admin shows it, and say so plainly. Guarded, so it is logged once.
+  const { data: marked } = await supabase
+    .from("assessment_bookings")
+    .update({ status: "cancelled", paid: opts.paid === true, stripe_session_id: opts.stripeSessionId })
+    .eq("id", bookingId)
+    .eq("status", "expired")
+    .select("id")
+    .maybeSingle();
+  if (!marked) return null;
+  console.error(
+    `[assessment] Paid assessment not booked: its hold expired and the slot was taken before the payment landed. Booking ${bookingId}, Stripe session ${opts.stripeSessionId}. Refund it or book another time by hand.`
+  );
+  const block = row.block_id
+    ? ((await supabase.from("assessment_blocks").select("*").eq("id", row.block_id).maybeSingle())
+        .data as BlockRow | null)
+    : null;
+  await appendAssessmentRow({
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    slotDate: block?.block_date ?? "",
+    slotStart: normTime(row.slot_start ?? ""),
+    status: "paid, slot taken: refund or rebook",
+    paid: opts.paid,
+    creditStatus: row.credit_status,
+    participantId: row.participant_id ?? null,
+  });
+  return null;
 }
 
 // ─── Completion (admin) ───────────────────────────────────────────────────────

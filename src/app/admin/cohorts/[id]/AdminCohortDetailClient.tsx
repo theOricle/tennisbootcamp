@@ -84,6 +84,8 @@ const INVITE_STYLE: Record<string, string> = {
 const PAYMENT_STYLE: Record<string, string> = {
   paid: "bg-[#B4E655]/15 text-[#B4E655]",
   test_paid: "bg-white/10 text-white/70",
+  refunded: "bg-white/10 text-white/60",
+  disputed: "bg-red-400/15 text-red-200",
 };
 
 const REASONS = [
@@ -143,7 +145,7 @@ function CardPayments({ payments }: { payments: PaymentRow[] }) {
       </h2>
       <p className="text-xs text-white/60">
         A test payment took no money, holds no seat and never counts toward the
-        minimum.
+        minimum. A full refund or a dispute in Stripe releases the seat.
       </p>
       <ul className="space-y-2">
         {payments.map((p) => (

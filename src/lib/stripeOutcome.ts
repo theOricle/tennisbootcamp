@@ -68,3 +68,93 @@ export function bookingPaid(outcome: PaymentOutcome): true | "test" | null {
   if (outcome === "test") return "test";
   return null;
 }
+
+// ─── Refunds, disputes, redelivery (part 3) ───────────────────────────────────
+
+/** How a reversed payment reads on our records and in admin. */
+export type ReversalKind = "refunded" | "disputed";
+
+/**
+ * A charge.refunded event reverses a payment only when the refund is full —
+ * Stripe's `refunded` flag, or the refunded amount reaching the charge. A
+ * partial refund changes nothing: the seat (or the booking) stays paid.
+ */
+export function refundReversal(charge: {
+  amount?: number | null;
+  amount_refunded?: number | null;
+  refunded?: boolean | null;
+}): ReversalKind | null {
+  if (charge.refunded === true) return "refunded";
+  const amount = charge.amount ?? 0;
+  const refunded = charge.amount_refunded ?? 0;
+  return amount > 0 && refunded >= amount ? "refunded" : null;
+}
+
+/**
+ * The enrollment statuses a completed payment moves a row out of. Never a
+ * refunded or disputed row: a late or redelivered event cannot bring a
+ * reversed seat back, and a row already paid is not paid twice.
+ */
+export const SETTLE_FROM = ["pending", "pending_etransfer"] as const;
+
+/**
+ * The enrollment statuses a reversal moves one of this session's rows out
+ * of: paid, a test payment, or still pending (a refund that outran its own
+ * completed event — that event then finds nothing to settle). A row already
+ * refunded or disputed is left as it is, so a redelivery changes nothing.
+ */
+export const REVERSE_FROM = ["pending", "paid", "test_paid"] as const;
+
+/** The row numbers whose status (as read) is in `from`; rows not read are left alone. */
+export function rowsInStatus(
+  statusByRow: ReadonlyMap<number, string>,
+  from: readonly string[]
+): number[] {
+  const out: number[] = [];
+  for (const [row, status] of statusByRow) {
+    if (from.includes(status)) out.push(row);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/**
+ * What an assessment booking becomes once its payment is reversed: a hold
+ * or a booking still ahead is cancelled, which frees its slot (only pending
+ * and booked rows hold one); every reversed booking loses `paid`, so no $20
+ * credit stands on money that went back. Null when there is nothing left to
+ * undo — the redelivery case.
+ */
+export function bookingReversalPatch(booking: {
+  status: string;
+  paid: boolean;
+}): { status?: "cancelled"; paid: false } | null {
+  if (booking.status === "pending" || booking.status === "booked") {
+    return { status: "cancelled", paid: false };
+  }
+  return booking.paid ? { paid: false } : null;
+}
+
+/**
+ * A paid assessment session landing on a booking that is no longer pending:
+ *   restore  the hold was swept to expired before the money arrived: book it
+ *            again if the slot is still free, else mark it cancelled with the
+ *            money kept and log it plainly for the coach;
+ *   nothing  already booked (a redelivery), completed, or cancelled (logged
+ *            already, or the coach's own call);
+ *   missing  no such booking: logged plainly, never dropped silently.
+ */
+export function latePaymentPlan(status: string | null): "restore" | "nothing" | "missing" {
+  if (status === null) return "missing";
+  return status === "expired" ? "restore" : "nothing";
+}
+
+/**
+ * The line a released card invite carries in admin (its payment note): the
+ * fact first, then whatever note it already had (the player's name, the
+ * coach's words), so nothing is lost. Capped like every payment note.
+ */
+export function reversalNote(kind: ReversalKind, existing: string | null | undefined): string {
+  const line = kind === "refunded" ? "Card payment refunded in Stripe" : "Card payment disputed in Stripe";
+  const rest = (existing ?? "").trim();
+  return (rest ? `${line} · ${rest}` : line).slice(0, 500);
+}

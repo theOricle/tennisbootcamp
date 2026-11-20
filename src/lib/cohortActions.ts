@@ -555,7 +555,7 @@ export type CohortPayment = {
 };
 
 /** The enrollment row statuses the cohort page lists as payments. */
-export const PAYMENT_ROW_STATUSES = ["paid", "test_paid"];
+export const PAYMENT_ROW_STATUSES = ["paid", "test_paid", "refunded", "disputed"];
 
 /**
  * The cohort's card payments, newest first, for the admin (backlog #84): so

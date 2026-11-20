@@ -534,7 +534,8 @@ console.log("sources");
   ok("the label placeholder speaks tiers", create.includes('placeholder="Saturday 12pm — Intermediate"'));
 
   const webhook = read("src", "app", "api", "webhooks", "stripe", "route.ts");
-  ok("a household card payment marks every Supabase row paid", webhook.includes('.in("id", paidEnrollmentIds)'));
+  // Every player's row, moved through the guarded helper (backlog #84).
+  ok("a household card payment marks every Supabase row paid", webhook.includes("setEnrollmentStatusByIds(paidEnrollmentIds, SETTLE_FROM, rowStatus)"));
 
   const sql = read("supabase", "migrations", "0009_participants_age_band_self_level.sql");
   ok("0009 is additive and guarded", sql.includes("add column if not exists age_band") && sql.includes("add column if not exists self_level") && !/\bdrop\b/i.test(sql.replace(/--.*$/gm, "")));
