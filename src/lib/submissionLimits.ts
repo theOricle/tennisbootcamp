@@ -118,3 +118,71 @@ export function isMissingTable(error: { code?: string | null; message?: string |
   if (!error) return false;
   return error.code === "PGRST205" || error.code === "42P01";
 }
+
+// ─── The count, atomic ────────────────────────────────────────────────────────
+
+/** One row of the table, as read back. */
+export type StoredHit = { id: string; key_hash: string; scope: string; created_at: string };
+
+/**
+ * Where the hits are kept: migration 0011's table (src/lib/submissionLimitsDb.ts)
+ * or an in-memory fake in npm test. It is handed keyed hashes only.
+ */
+export type LimitStore = {
+  /** Record these hits; their ids, or "missing" when the table is not there yet. */
+  insert(hits: { scope: LimitScope; key_hash: string }[]): Promise<string[] | "missing">;
+  /** Every hit for these keys newer than `since` (ISO), the caller's own included. */
+  readWindow(keys: string[], since: string): Promise<StoredHit[]>;
+  /** Take these hits back. */
+  remove(ids: string[]): Promise<void>;
+};
+
+/** A try that was counted: whether it may go ahead, and how to take it back. */
+export type SubmissionTicket = {
+  allowed: boolean;
+  /**
+   * Take the try back: a route that then refuses it for a reason of its own
+   * (a slot just taken, a full cohort) leaves the family's limit as it was.
+   */
+  release(): Promise<void>;
+};
+
+/**
+ * Count one try, atomically: its hits are recorded first, then the window is
+ * read — so of any two tries at the same moment, at least one sees the other
+ * — and a try over a limit takes its own hits back and is refused. Under a
+ * burst this can refuse a little early, never late: tries that go ahead never
+ * exceed the limits. The address and the email reach the store only as
+ * limitKeyHash values.
+ */
+export async function takeTicket(
+  store: LimitStore,
+  input: {
+    secret: string;
+    scope: LimitScope;
+    address: string;
+    email: string | null | undefined;
+    now: number;
+  }
+): Promise<SubmissionTicket | "missing"> {
+  const addressHash = limitKeyHash(input.secret, "address", input.address);
+  const email = (input.email ?? "").trim().toLowerCase();
+  const emailHash = email ? limitKeyHash(input.secret, "email", email) : null;
+  const keys = emailHash ? [addressHash, emailHash] : [addressHash];
+
+  const ids = await store.insert(keys.map((key_hash) => ({ scope: input.scope, key_hash })));
+  if (ids === "missing") return "missing";
+  const own = new Set(ids);
+  const release = () => store.remove(ids);
+
+  const window = await store.readWindow(keys, new Date(input.now - DAY_MS).toISOString());
+  const others = window
+    .filter((h) => !own.has(h.id))
+    .map((h) => ({ keyHash: h.key_hash, scope: h.scope, createdAt: h.created_at }));
+  const verdict = limitVerdict({ scope: input.scope, addressHash, emailHash, hits: others, now: input.now });
+  if (!verdict.allowed) {
+    await release();
+    return { allowed: false, release: async () => {} };
+  }
+  return { allowed: true, release };
+}
