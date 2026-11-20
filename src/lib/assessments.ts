@@ -12,6 +12,8 @@ import {
 } from "@/lib/email";
 import { availabilityChips } from "@/lib/availability";
 import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
+import { ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
+import { normalizeEmail } from "@/lib/supabase/adminUsers";
 import {
   findUserIdByEmail,
   setPlayerLevel,
@@ -399,11 +401,6 @@ async function getBookingWithBlock(
   return { booking: booking as BookingRow, block: block as BlockRow };
 }
 
-/** Escape a value for an exact, case-insensitive `ilike` match. */
-function likeExact(value: string): string {
-  return value.trim().replace(/[\\%_]/g, (c) => "\\" + c);
-}
-
 /** A booked assessment as the account's dashboard shows it (audit M25). */
 export type AccountBooking = {
   id: string;
@@ -435,15 +432,23 @@ export async function listUpcomingBookingsForAccount(input: {
     const supabase = createServiceClient();
     const base = () =>
       supabase.from("assessment_bookings").select("*").eq("status", "booked");
+    // The account's own address, escaped and then re-checked exactly:
+    // PostgREST reads `*` as `%` (backlog #84).
+    const email = normalizeEmail(input.email);
     const reads = [
       base().eq("user_id", input.accountId),
-      input.email.trim() ? base().ilike("email", likeExact(input.email)) : null,
+      email ? base().ilike("email", ilikePattern(email)) : null,
       input.participantIds.length > 0 ? base().in("participant_id", input.participantIds) : null,
     ];
     const results = await Promise.all(reads.map((q) => (q ? q.then((r) => r, () => null) : null)));
     const byId = new Map<string, BookingRow>();
-    for (const r of results) {
-      for (const row of ((r?.data as BookingRow[] | null) ?? [])) byId.set(row.id, row);
+    const [byAccount, byEmail, byPlayer] = results.map((r) => (r?.data as BookingRow[] | null) ?? []);
+    for (const row of [
+      ...(byAccount ?? []),
+      ...rowsWithEmail(byEmail ?? [], email, (b) => b.email),
+      ...(byPlayer ?? []),
+    ]) {
+      byId.set(row.id, row);
     }
     const bookings = [...byId.values()].filter((b) => b.block_id && b.slot_start);
     if (bookings.length === 0) return [];

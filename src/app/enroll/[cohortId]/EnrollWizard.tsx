@@ -263,10 +263,16 @@ function OrderSummary({
   cohort,
   program,
   seatsRemaining,
+  creditAfterSignIn,
 }: {
   cohort: Cohort;
   program: Program | undefined;
   seatsRemaining: number | null;
+  /**
+   * Signed out, with no credit already on the invitation (backlog #84): the
+   * $20 comes off only for a signed-in account's own players.
+   */
+  creditAfterSignIn: boolean;
 }) {
   const price = formatCohortPrice(cohort);
   const location = locationForCohort(cohort);
@@ -359,8 +365,9 @@ function OrderSummary({
         )}
         {cohort.priceCents > 0 && (
           <p className="mt-1 text-xs text-white/60">
-            Completed your $20 assessment? It comes off this price automatically
-            at payment.
+            {creditAfterSignIn
+              ? "Completed your $20 assessment? Sign in first, and that $20 comes off this price at payment."
+              : "Completed your $20 assessment? It comes off this price automatically at payment."}
           </p>
         )}
         {seatsRemaining !== null && seatsRemaining <= 3 && (
@@ -839,6 +846,7 @@ export function EnrollWizard({
   seatsRemaining,
   inviteToken = null,
   initialEmail = null,
+  signedIn = false,
   etransfer = null,
   eligibleParticipantIds = null,
   blocked = [],
@@ -852,6 +860,12 @@ export function EnrollWizard({
   seatsRemaining: number | null;
   inviteToken?: string | null;
   initialEmail?: string | null;
+  /**
+   * Signed in, as the server read it (backlog #84). Card checkout takes the
+   * $20 credit off only for a signed-in account's own players, so a visitor
+   * who is signed out is told it comes off once they sign in.
+   */
+  signedIn?: boolean;
   etransfer?: EtransferInfo | null;
   /**
    * Set when the page admitted the holder by level (audit M27): the players
@@ -1369,6 +1383,7 @@ export function EnrollWizard({
               cohort={cohort}
               program={program}
               seatsRemaining={seatsRemaining}
+              creditAfterSignIn={!signedIn && !(etransfer && etransfer.creditCents > 0)}
             />
           )}
           {step === 1 && (

@@ -22,6 +22,7 @@ import {
 } from "@/lib/supabase/enrollmentActions";
 import { setEnrollmentStatusByEmail } from "@/lib/enrollmentSheet";
 import { programs } from "@/content/programs";
+import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
 
 // "I've sent it" on an e-transfer cohort (backlog #12). Mirrors what the card
 // path does at checkout — Supabase enrollment row + activation link — but no
@@ -73,6 +74,11 @@ export async function POST(req: NextRequest) {
 
     if (!cohortId || !enrollmentMeta?.contactEmail) {
       return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+    }
+    // The same format check as every other form (backlog #84), before any
+    // invite row or Sheet write.
+    if (!isValidEmail(String(enrollmentMeta.contactEmail).trim())) {
+      return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
     }
 
     // Backlog #38: the enroll page's gate, run again here before any invite

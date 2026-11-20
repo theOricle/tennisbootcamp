@@ -19,6 +19,7 @@ import {
   RECORDS_UNAVAILABLE_ERROR,
   ROW_MISMATCH_ERROR,
   approvalRefusal,
+  checkoutCreditParticipants,
   cohortRequiresInvite,
   contactEmailRefusal,
   foreignRows,
@@ -40,6 +41,7 @@ import {
   enrollReturnUrls,
   inviteResumeCookie,
 } from "@/lib/checkoutInvite";
+import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
 
 const TAB = "enrollments";
 // "status" is column P (index 15, 1-based col 16)
@@ -116,6 +118,13 @@ export async function POST(req: NextRequest) {
         { error: "Missing required fields." },
         { status: 400 }
       );
+    }
+    // The same format check as every other form (backlog #84), before any
+    // row, credit or Stripe session. A body with no contact email saves
+    // nothing and passes, as before.
+    const typedEmail = String(enrollmentMeta?.contactEmail ?? "").trim();
+    if (typedEmail && !isValidEmail(typedEmail)) {
+      return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
     }
 
     // The server's price wins over whatever the client sent.
@@ -214,20 +223,20 @@ export async function POST(req: NextRequest) {
     }
 
     // The $20 assessment credit is per player: two children assessed under one
-    // parent's email bring $40 off between them.
+    // parent's account bring $40 off between them. Only a signed-in account's
+    // own players, by participant id (backlog #84): signed out, no credit is
+    // looked up — a typed email never finds one — and the sign-up page says
+    // it applies once they sign in.
     const credits: { rowNumber: number | null; bookingId: string; cents: number }[] = [];
-    if (enrollmentMeta?.contactEmail) {
-      for (const p of players) {
-        const found = await findUnusedCredit(enrollmentMeta.contactEmail, {
-          participantId: p.participantId ?? null,
+    const creditFor = checkoutCreditParticipants(Boolean(signedIn), players);
+    for (const [i, p] of players.entries()) {
+      const found = await findUnusedCredit(creditFor[i]);
+      if (found && !credits.some((c) => c.bookingId === found.bookingId)) {
+        credits.push({
+          rowNumber: p.rowNumber ?? null,
+          bookingId: found.bookingId,
+          cents: found.creditCents,
         });
-        if (found && !credits.some((c) => c.bookingId === found.bookingId)) {
-          credits.push({
-            rowNumber: p.rowNumber ?? null,
-            bookingId: found.bookingId,
-            cents: found.creditCents,
-          });
-        }
       }
     }
     const discountCents = Math.min(

@@ -49,6 +49,22 @@ export function ilikePattern(literal: string): string {
   return literal.replace(/[\\%_]/g, "\\$&");
 }
 
+/**
+ * The re-check every `ilike` read on an email needs (backlog #84): PostgREST
+ * reads `*` as `%`, which ilikePattern leaves alone, so a candidate row is
+ * kept only when its address is exactly `email` (trimmed, case folded). A
+ * `%`, `_` or `*` in a typed address then matches nothing but itself.
+ */
+export function rowsWithEmail<T>(
+  rows: readonly T[],
+  email: string,
+  addressOf: (row: T) => string | null | undefined
+): T[] {
+  const target = normalizeEmail(email);
+  if (!target) return [];
+  return rows.filter((row) => normalizeEmail(addressOf(row) ?? "") === target);
+}
+
 export type UnownedEnrollmentRow = {
   id: string;
   contact_email: string | null;
