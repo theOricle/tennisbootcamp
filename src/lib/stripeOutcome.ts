@@ -141,21 +141,69 @@ export function rowsInStatus(
   return out.sort((a, b) => a - b);
 }
 
+// ─── Assessment bookings ──────────────────────────────────────────────────────
+
 /**
- * What an assessment booking becomes once its payment is reversed: a hold
- * or a booking still ahead is cancelled, which frees its slot (only pending
- * and booked rows hold one); every reversed booking loses `paid`, so no $20
- * credit stands on money that went back. Null when there is nothing left to
- * undo — the redelivery case.
+ * The statuses a booking takes for its payment's states (migration 0012
+ * widens the table's check to allow them): a test-mode payment, a full
+ * refund, a dispute. None holds a slot, and the admin list names each.
  */
-export function bookingReversalPatch(booking: {
-  status: string;
+export const BOOKING_PAYMENT_STATUSES = ["test", "refunded", "disputed"] as const;
+export type BookingPaymentStatus = (typeof BOOKING_PAYMENT_STATUSES)[number];
+
+/** The statuses that hold a slot: the database's one-active-hold index. */
+export const SLOT_HOLDING_STATUSES = ["pending", "booked"] as const;
+
+/**
+ * What a payment does to an assessment booking (part 2's rule, review fix
+ * 2): live money books it, paid; a free ($0) assessment books it, unpaid;
+ * a test-mode payment (Stripe test keys, or mock mode) makes it a test
+ * booking, which holds no slot and sends nothing — no confirmation, no
+ * account email — and earns no $20 credit.
+ */
+export function bookingPaymentPlan(paid: boolean | "test"): {
+  status: "booked" | "test";
   paid: boolean;
-}): { status?: "cancelled"; paid: false } | null {
+  holdsSlot: boolean;
+  sendEmails: boolean;
+} {
+  if (paid === "test") return { status: "test", paid: false, holdsSlot: false, sendEmails: false };
+  return { status: "booked", paid: paid === true, holdsSlot: true, sendEmails: true };
+}
+
+/**
+ * What a booking's status becomes while migration 0012 has not run: the
+ * table's check still refuses the three payment states, and "cancelled" —
+ * which also holds no slot — stands in. Null for any other status.
+ */
+export function bookingStatusFallback(status: string): "cancelled" | null {
+  return (BOOKING_PAYMENT_STATUSES as readonly string[]).includes(status) ? "cancelled" : null;
+}
+
+/** A write the table's check constraint refused (Postgres 23514). */
+export function isCheckViolation(error: { code?: string | null } | null | undefined): boolean {
+  return error?.code === "23514";
+}
+
+/**
+ * What an assessment booking becomes once its payment is reversed: a hold or
+ * a booking still ahead — or one that kept the money with no slot — reads
+ * refunded or disputed, which frees any slot it held (only pending and booked
+ * rows hold one); a completed assessment keeps its result and loses `paid`.
+ * Every reversed booking loses `paid`, so no $20 credit stands on money that
+ * went back. Null when there is nothing left to undo: already reversed (a
+ * redelivery), or a test booking, which held no slot and no money.
+ */
+export function bookingReversalPatch(
+  booking: { status: string; paid: boolean },
+  kind: ReversalKind
+): { status?: ReversalKind; paid: false } | null {
   if (booking.status === "pending" || booking.status === "booked") {
-    return { status: "cancelled", paid: false };
+    return { status: kind, paid: false };
   }
-  return booking.paid ? { paid: false } : null;
+  if (booking.status === "cancelled" && booking.paid) return { status: kind, paid: false };
+  if (booking.status === "completed" && booking.paid) return { paid: false };
+  return null;
 }
 
 /**

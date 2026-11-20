@@ -14,7 +14,12 @@ import { availabilityChips } from "@/lib/availability";
 import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
 import { ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
-import { latePaymentPlan } from "@/lib/stripeOutcome";
+import {
+  bookingPaymentPlan,
+  bookingStatusFallback,
+  isCheckViolation,
+  latePaymentPlan,
+} from "@/lib/stripeOutcome";
 import { guestPlayer } from "@/lib/guestAccount";
 import { settleGuestSubmission } from "@/lib/household";
 import type { ParticipantInput } from "@/lib/participantInput";
@@ -537,6 +542,9 @@ export async function confirmBooking(
   bookingId: string,
   opts: { stripeSessionId?: string | null; paid: boolean | "test" }
 ): Promise<BookingRow | null> {
+  // A test-mode payment holds no slot and sends nothing (backlog #84).
+  if (opts.paid === "test") return recordTestBooking(bookingId, opts.stripeSessionId ?? null);
+
   const supabase = createServiceClient();
 
   // Only transition rows that are still pending → booked, so a duplicate webhook
@@ -602,6 +610,55 @@ export async function confirmBooking(
   );
 
   return booking;
+}
+
+/**
+ * A test-mode payment on a booking (Stripe test keys, or mock mode; backlog
+ * #84, part 2's rule): the hold — still pending, or already lapsed — becomes
+ * a test booking. It holds no slot, so the slot is free for a real booking;
+ * nothing is sent (no confirmation, no account email); it earns no $20
+ * credit; and the admin list and the assessments tab say "test". Guarded, so
+ * a redelivery does nothing. Before migration 0012 the table refuses the
+ * status, and "cancelled", which also holds no slot, stands in.
+ */
+async function recordTestBooking(bookingId: string, stripeSessionId: string | null): Promise<BookingRow | null> {
+  const supabase = createServiceClient();
+  const plan = bookingPaymentPlan("test");
+  const move = (status: string) =>
+    supabase
+      .from("assessment_bookings")
+      .update({ status, paid: plan.paid, stripe_session_id: stripeSessionId ?? undefined })
+      .eq("id", bookingId)
+      .in("status", ["pending", "expired"])
+      .select("*")
+      .maybeSingle();
+  let { data, error } = await move(plan.status);
+  if (isCheckViolation(error)) ({ data, error } = await move(bookingStatusFallback(plan.status) ?? "cancelled"));
+  if (error) console.error(`[assessment] Test booking ${bookingId} not recorded:`, error.code ?? "unknown");
+  if (!data) return null;
+
+  const withBlock = await getBookingWithBlock(bookingId);
+  if (withBlock) {
+    const { booking, block } = withBlock;
+    const household = await bookingHousehold(booking, { resolveByEmail: false });
+    await appendAssessmentRow({
+      name: household.participantName,
+      email: booking.email,
+      phone: booking.phone,
+      slotDate: block.block_date,
+      slotStart: normTime(booking.slot_start ?? ""),
+      status: "test",
+      paid: "test",
+      creditStatus: booking.credit_status,
+      accountEmail: household.accountEmail,
+      accountName: household.accountName,
+      participantName: household.participantName,
+      participantRelationship: household.participantRelationship,
+      participantId: household.participantId,
+    });
+  }
+  console.log(`[assessment] booking ${bookingId}: test payment recorded, no slot held, nothing sent`);
+  return data as BookingRow;
 }
 
 /**
@@ -926,7 +983,8 @@ export async function listBookings(opts: { date?: string } = {}): Promise<
     .from("assessment_bookings")
     .select("*")
     .in("block_id", blockIds)
-    .in("status", ["pending", "booked", "completed", "no_show"])
+    // Test, refunded and disputed bookings show too, labelled (backlog #84).
+    .in("status", ["pending", "booked", "completed", "no_show", "test", "refunded", "disputed"])
     .order("created_at", { ascending: false });
 
   const decorated = await decorateHousehold((data as BookingRow[]) ?? []);

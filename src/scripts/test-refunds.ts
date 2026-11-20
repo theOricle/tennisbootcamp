@@ -20,9 +20,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  BOOKING_PAYMENT_STATUSES,
   REVERSE_FROM,
   SETTLE_FROM,
+  SLOT_HOLDING_STATUSES,
   bookingReversalPatch,
+  bookingStatusFallback,
+  isCheckViolation,
   isFirstDelivery,
   latePaymentPlan,
   refundReversal,
@@ -30,7 +34,7 @@ import {
 } from "../lib/stripeOutcome";
 import { seatsFromSnapshot } from "../lib/seatCount";
 import { planMarkUnpaid } from "../lib/paymentTransitions";
-import { PAYMENT_STATUS_LABELS, statusLabel } from "../lib/adminLabels";
+import { BOOKING_STATUS_LABELS, PAYMENT_STATUS_LABELS, statusLabel } from "../lib/adminLabels";
 import {
   ENROLLMENT_CHIP,
   enrollmentIsActive,
@@ -152,12 +156,34 @@ console.log("Invites — a reversed card payment gives the spot back");
 
 console.log("Bookings — a reversed assessment payment frees the slot");
 {
-  check("booked → cancelled and unpaid (the slot is free)", bookingReversalPatch({ status: "booked", paid: true }), { status: "cancelled", paid: false });
-  check("a test booking frees its slot too", bookingReversalPatch({ status: "booked", paid: false }), { status: "cancelled", paid: false });
-  check("a hold that outran its payment event is freed", bookingReversalPatch({ status: "pending", paid: false }), { status: "cancelled", paid: false });
-  check("a completed assessment keeps its result but loses its payment (no $20 credit on refunded money)", bookingReversalPatch({ status: "completed", paid: true }), { paid: false });
-  check("redelivered: already cancelled and unpaid → nothing", bookingReversalPatch({ status: "cancelled", paid: false }), null);
-  check("a cancelled booking that kept the money (slot taken) gives it up", bookingReversalPatch({ status: "cancelled", paid: true }), { paid: false });
+  check("booked → refunded and unpaid (the slot is free, the admin list says so)", bookingReversalPatch({ status: "booked", paid: true }, "refunded"), { status: "refunded", paid: false });
+  check("booked → disputed and unpaid", bookingReversalPatch({ status: "booked", paid: true }, "disputed"), { status: "disputed", paid: false });
+  check("a hold that outran its payment event is freed", bookingReversalPatch({ status: "pending", paid: false }, "refunded"), { status: "refunded", paid: false });
+  check("a completed assessment keeps its result but loses its payment (no $20 credit on refunded money)", bookingReversalPatch({ status: "completed", paid: true }, "refunded"), { paid: false });
+  check("a booking that kept the money with no slot (slot taken) reads refunded", bookingReversalPatch({ status: "cancelled", paid: true }, "refunded"), { status: "refunded", paid: false });
+  check("redelivered: already refunded → nothing", bookingReversalPatch({ status: "refunded", paid: false }, "refunded"), null);
+  check("a dispute after a refund → nothing", bookingReversalPatch({ status: "refunded", paid: false }, "disputed"), null);
+  check("a test booking held no slot and no money → nothing", bookingReversalPatch({ status: "test", paid: false }, "refunded"), null);
+  check("an unpaid cancelled booking → nothing", bookingReversalPatch({ status: "cancelled", paid: false }, "refunded"), null);
+}
+
+console.log("Booking states — test, refunded and disputed hold no slot, and say so in admin");
+{
+  check("the three states", [...BOOKING_PAYMENT_STATUSES], ["test", "refunded", "disputed"]);
+  check("none of them holds a slot (only pending and booked do, as the database's index)", BOOKING_PAYMENT_STATUSES.some((s) => (SLOT_HOLDING_STATUSES as readonly string[]).includes(s)), false);
+  check("admin: test → Test booking", statusLabel(BOOKING_STATUS_LABELS, "test"), "Test booking");
+  check("admin: refunded → Refunded", statusLabel(BOOKING_STATUS_LABELS, "refunded"), "Refunded");
+  check("admin: disputed → Disputed", statusLabel(BOOKING_STATUS_LABELS, "disputed"), "Disputed");
+  check("before migration 0012, each falls back to cancelled (which also frees the slot)", BOOKING_PAYMENT_STATUSES.map((s) => bookingStatusFallback(s)), ["cancelled", "cancelled", "cancelled"]);
+  check("any other status has no fallback", bookingStatusFallback("booked"), null);
+  check("a check-constraint refusal is recognised", [isCheckViolation({ code: "23514" }), isCheckViolation({ code: "23505" }), isCheckViolation(null)], [true, false, false]);
+  const assessments = read("src/lib/assessments.ts");
+  check("the admin list shows the three states", /\.in\("status", \["pending", "booked", "completed", "no_show", "test", "refunded", "disputed"\]\)/.test(assessments));
+  const sql = read("supabase/migrations/0012_booking_payment_states.sql");
+  const verifyAt = sql.indexOf("-- verify:");
+  const body = sql.slice(0, verifyAt).split("\n").map((l) => l.replace(/--.*$/, "")).join(" ").replace(/\s+/g, " ").toLowerCase();
+  check("migration 0012 carries a -- verify: block", verifyAt > 0);
+  check("migration 0012 widens the status check, guarded, and nothing else", body.includes("do $$ begin if exists ( select 1 from pg_constraint where conname = 'assessment_bookings_status_check'") && body.includes("check (status in ('pending','booked','completed','no_show','cancelled','expired','requested','test','refunded','disputed'))") && !/create table|drop table|drop column|update public|delete from|create policy|grant |revoke /.test(body));
 }
 
 // ─── 3. A payment on an expired hold ──────────────────────────────────────────

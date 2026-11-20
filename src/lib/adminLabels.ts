@@ -48,6 +48,11 @@ export const BOOKING_STATUS_LABELS: Record<string, string> = {
   requested: "Requested",
   expired: "Expired",
   cancelled: "Cancelled",
+  // Backlog #84: a test-mode payment holds no slot; a full refund or a
+  // dispute in Stripe released the booking.
+  test: "Test booking",
+  refunded: "Refunded",
+  disputed: "Disputed",
 };
 
 /** A stored status in sentence case: the table's word, else the value tidied. */

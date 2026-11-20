@@ -8,6 +8,8 @@ import { planMarkUnpaid, type InviteStatus } from "@/lib/paymentTransitions";
 import {
   REVERSE_FROM,
   bookingReversalPatch,
+  bookingStatusFallback,
+  isCheckViolation,
   reversalNote,
   type ReversalKind,
 } from "@/lib/stripeOutcome";
@@ -149,10 +151,11 @@ async function releaseCardInvites(
 }
 
 /**
- * A reversed assessment payment: the booking is cancelled while it still
- * holds a slot (which frees it), and loses `paid` either way, so no $20
- * credit stands on money that went back. The assessments tab says refunded
- * or disputed. Guarded on the state just read.
+ * A reversed assessment payment: a booking that still holds a slot (or kept
+ * the money with none) becomes refunded or disputed, which frees the slot
+ * and is how the admin list names it; a completed one keeps its result. It
+ * loses `paid` either way, so no $20 credit stands on money that went back.
+ * The assessments tab says refunded or disputed. Guarded on the state read.
  */
 async function reverseBooking(bookingId: string, kind: ReversalKind, sessionId: string): Promise<void> {
   if (!bookingId || !supabaseConfigured()) {
@@ -170,16 +173,24 @@ async function reverseBooking(bookingId: string, kind: ReversalKind, sessionId: 
     console.warn(`[stripe webhook] session ${sessionId} ${kind}: booking ${bookingId} not found`);
     return;
   }
-  const patch = bookingReversalPatch(booking);
-  if (!patch) return; // already released: a redelivery
-  const { data: moved } = await supabase
-    .from("assessment_bookings")
-    .update(patch)
-    .eq("id", bookingId)
-    .eq("status", booking.status)
-    .eq("paid", booking.paid)
-    .select("id")
-    .maybeSingle();
+  const patch = bookingReversalPatch(booking, kind);
+  if (!patch) return; // already released: a redelivery, or a test booking
+  const move = (p: Record<string, unknown>) =>
+    supabase
+      .from("assessment_bookings")
+      .update(p)
+      .eq("id", bookingId)
+      .eq("status", booking.status)
+      .eq("paid", booking.paid)
+      .select("id")
+      .maybeSingle();
+  let { data: moved, error } = await move(patch);
+  // Before migration 0012 the table refuses "refunded" and "disputed";
+  // "cancelled", which also frees the slot, stands in.
+  if (isCheckViolation(error) && patch.status) {
+    ({ data: moved, error } = await move({ ...patch, status: bookingStatusFallback(patch.status) ?? "cancelled" }));
+  }
+  if (error) console.error(`[stripe webhook] booking ${bookingId} ${kind}: not released (${error.code ?? "unknown"})`);
   if (!moved) return; // changed underneath us; the next delivery decides
 
   if (booking.block_id && booking.slot_start) {

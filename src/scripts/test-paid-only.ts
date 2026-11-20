@@ -28,7 +28,7 @@ import {
   enrollmentSessionParams,
   paymentRail,
 } from "../lib/payments";
-import { bookingPaid, paymentOutcome, settlementPlan } from "../lib/stripeOutcome";
+import { bookingPaid, bookingPaymentPlan, paymentOutcome, settlementPlan } from "../lib/stripeOutcome";
 import { seatsFromSnapshot } from "../lib/seatCount";
 import { PAYMENT_STATUS_LABELS, statusLabel } from "../lib/adminLabels";
 
@@ -100,8 +100,13 @@ console.log("settlementPlan — what each outcome may touch");
     notifyAccount: false,
   });
   check("a paid booking is paid", bookingPaid("paid"), true);
-  check("a test booking is booked but not paid (no $20 credit later)", bookingPaid("test"), "test");
+  check("a test payment is a test booking", bookingPaid("test"), "test");
   check("an unpaid session confirms no booking", bookingPaid("unpaid"), null);
+  // Part 2's rule for assessments (review fix 2): a test-mode payment holds
+  // no slot and sends no confirmation; it is labelled a test in admin.
+  check("live: booked, paid, holds its slot, confirmation sent", bookingPaymentPlan(true), { status: "booked", paid: true, holdsSlot: true, sendEmails: true });
+  check("free ($0): booked, unpaid, holds its slot, confirmation sent", bookingPaymentPlan(false), { status: "booked", paid: false, holdsSlot: true, sendEmails: true });
+  check("test: status test, unpaid, holds no slot, nothing sent", bookingPaymentPlan("test"), { status: "test", paid: false, holdsSlot: false, sendEmails: false });
 }
 
 console.log("Scenario — a test-mode event never moves a seat count or a group's status");
@@ -208,6 +213,17 @@ console.log("Source — a test payment is no member and no paid booking");
   check("cohortMembers (the confirmed-email list) counts paid rows only", /\.from\("enrollments"\)\s*\.select\("contact_email, participant_name"\)\s*\.eq\("cohort_id", cohortId\)\s*\.eq\("status", "paid"\)/.test(actions));
   const assessments = read("src/lib/assessments.ts");
   check("confirmBooking stores paid only when the money is real", assessments.includes("paid: opts.paid === true"));
+  const confirm = assessments.slice(assessments.indexOf("export async function confirmBooking("));
+  check(
+    "a test payment leaves confirmBooking before the booked move, the emails or the account link",
+    /if \(opts\.paid === "test"\) return recordTestBooking\(/.test(confirm) &&
+      confirm.indexOf("recordTestBooking(") < confirm.indexOf('status: "booked"')
+  );
+  const testBooking = assessments.slice(assessments.indexOf("async function recordTestBooking("));
+  const testBody = testBooking.slice(0, testBooking.indexOf("\n}\n"));
+  check("recordTestBooking exists", testBody.length > 0);
+  check("…moves only a pending or lapsed hold, to status test (no slot)", testBody.includes('.in("status", ["pending", "expired"])') && testBody.includes("bookingPaymentPlan(\"test\")"));
+  check("…and sends nothing: no confirmation, no account email", /send[A-Z]\w*\(|issueActivationLink\(/.test(testBody), false);
   // The assessments row is built in src/lib/sheetText.ts since part 4.
   const sheet = read("src/lib/sheetText.ts");
   check("the assessments tab says test for a test booking", sheet.includes('r.paid === "test" ? "test"'));
