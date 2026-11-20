@@ -69,12 +69,6 @@ export async function POST(req: NextRequest) {
       logBotDrop("enroll", verdict.reason);
       return NextResponse.json({ ok: true, rowNumber: null, rowNumbers: [], participants: [] });
     }
-    // Repeated submissions (backlog #84): per network address and per email,
-    // before the gate reads anything or a row is appended.
-    const limitEmail = typeof body?.contactEmail === "string" ? body.contactEmail : null;
-    if (!(await checkSubmissionLimit(req, "enroll", limitEmail)).allowed) {
-      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
-    }
 
     // Backlog #38: the enroll page's gate, before any row is appended, so a
     // private cohort never collects stray pending rows from a bare POST.
@@ -91,6 +85,13 @@ export async function POST(req: NextRequest) {
     const refused = gateRefusal(gate);
     if (refused) {
       return NextResponse.json({ error: refused.error }, { status: refused.status });
+    }
+
+    // Repeated submissions (backlog #84): counted once the gate admits the
+    // try (a refused one costs the family nothing), before any row.
+    const limitEmail = typeof body?.contactEmail === "string" ? body.contactEmail : null;
+    if (!(await checkSubmissionLimit(req, "enroll", limitEmail)).allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
     }
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;

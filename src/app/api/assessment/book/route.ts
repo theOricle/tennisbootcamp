@@ -86,12 +86,6 @@ export async function POST(req: NextRequest) {
       ? parseAvailability(body.availability)
       : null;
 
-    // Repeated submissions (backlog #84): per network address and per email,
-    // before any participant lookup, booking row, payment or email.
-    if (!(await checkSubmissionLimit(req, "book", email)).allowed) {
-      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
-    }
-
     // Who is this for? A signed-in holder picks one of their people; a guest
     // types a person in. Either way one booking is one participant, one slot,
     // one $20 — two children are two bookings under one payer.
@@ -129,6 +123,11 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+      // Repeated submissions (backlog #84): counted once the fields pass,
+      // before the request row or any email.
+      if (!(await checkSubmissionLimit(req, "book", holderEmail)).allowed) {
+        return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
+      }
       const requested = await createRequestedBooking({
         name: playerName,
         email: holderEmail,
@@ -164,6 +163,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: ASSESSMENT_PAYMENT_UNAVAILABLE }, { status: 503 });
     }
 
+    // Repeated submissions (backlog #84): counted once the fields pass and
+    // payment can be taken, before the hold. A slot taken meanwhile gives the
+    // try back below, so a family picking another slot loses nothing.
+    const ticket = await checkSubmissionLimit(req, "book", holderEmail);
+    if (!ticket.allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
+    }
+
     // Create the pending hold. The DB partial-unique index makes a taken slot fail.
     let booking;
     try {
@@ -180,6 +187,7 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       if (err instanceof SlotTakenError) {
+        await ticket.release();
         return NextResponse.json({ error: err.message }, { status: 409 });
       }
       throw err;

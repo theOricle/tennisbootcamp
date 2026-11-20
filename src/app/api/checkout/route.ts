@@ -126,11 +126,6 @@ export async function POST(req: NextRequest) {
     if (typedEmail && !isValidEmail(typedEmail)) {
       return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
     }
-    // Repeated submissions (backlog #84): per network address and per email,
-    // before any row, credit, coupon or Stripe session.
-    if (!(await checkSubmissionLimit(req, "checkout", typedEmail)).allowed) {
-      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
-    }
 
     // Backlog #84: in production, no Stripe key means no checkout — a plain
     // line and a 503 before any row, credit or session exists. Mock mode
@@ -191,6 +186,15 @@ export async function POST(req: NextRequest) {
     if (mismatch) {
       return NextResponse.json({ error: mismatch.error }, { status: mismatch.status });
     }
+    // Repeated submissions (backlog #84): counted once the fields, the gate
+    // and the contact check pass, before the records are read or any row,
+    // credit, coupon or Stripe session exists. A refusal of the route's own
+    // below (records unreachable, a full cohort, a foreign row, a declined
+    // invite) gives the try back.
+    const ticket = await checkSubmissionLimit(req, "checkout", typedEmail);
+    if (!ticket.allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
+    }
     const owned = signedIn
       ? new Set(
           (
@@ -222,15 +226,18 @@ export async function POST(req: NextRequest) {
     // (local dev) skips both, exactly as the page skips its seat check.
     const sheet = await readEnrollmentSheet();
     if (sheet.status === "error") {
+      await ticket.release();
       return NextResponse.json({ error: RECORDS_UNAVAILABLE_ERROR }, { status: 503 });
     }
     if (sheet.status === "ok" && cohort) {
       const seatsRemaining = seatsFromSnapshot(sheet.snapshot, cohort.id, cohort.capacityMax);
       if (seatsRefuse(seatsRemaining, players.length)) {
+        await ticket.release();
         return NextResponse.json({ error: COHORT_FULL_ERROR }, { status: 409 });
       }
       const toVerify = Array.from(new Set([enrollmentRowNumber, ...rowNumbers]));
       if (foreignRows(sheet.snapshot, cohort.id, toVerify).length > 0) {
+        await ticket.release();
         return NextResponse.json({ error: ROW_MISMATCH_ERROR }, { status: 400 });
       }
     }
@@ -279,6 +286,7 @@ export async function POST(req: NextRequest) {
           : await findInviteRefByToken(cohortId, inviteToken);
       const decision = checkoutInviteLink({ lookup, rowByToken });
       if (decision.kind === "refuse") {
+        await ticket.release();
         return NextResponse.json(
           { error: decision.error },
           { status: decision.status }

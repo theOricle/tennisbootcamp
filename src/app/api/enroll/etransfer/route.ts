@@ -96,11 +96,6 @@ export async function POST(req: NextRequest) {
     if (!isValidEmail(String(enrollmentMeta.contactEmail).trim())) {
       return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
     }
-    // Repeated submissions (backlog #84): per network address and per email,
-    // before any invite row, Sheet write or email.
-    if (!(await checkSubmissionLimit(req, "etransfer", String(enrollmentMeta.contactEmail))).allowed) {
-      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
-    }
 
     // Backlog #38: the enroll page's gate, run again here before any invite
     // row or Sheet write. Same rule as /api/checkout.
@@ -147,6 +142,14 @@ export async function POST(req: NextRequest) {
     if (mismatch) {
       return NextResponse.json({ error: mismatch.error }, { status: mismatch.status });
     }
+    // Repeated submissions (backlog #84): counted once the fields, the gate
+    // and the contact check pass, before the records are read or any invite
+    // row, Sheet write or email. A refusal of the route's own below gives
+    // the try back.
+    const ticket = await checkSubmissionLimit(req, "etransfer", String(enrollmentMeta.contactEmail));
+    if (!ticket.allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
+    }
     const owned = signedIn
       ? new Set(
           (
@@ -169,11 +172,13 @@ export async function POST(req: NextRequest) {
     // Backlog #38: the page's seat rule, for every player on this transfer.
     const sheet = await readEnrollmentSheet();
     if (sheet.status === "error") {
+      await ticket.release();
       return NextResponse.json({ error: RECORDS_UNAVAILABLE_ERROR }, { status: 503 });
     }
     if (sheet.status === "ok" && cohort) {
       const seatsRemaining = seatsFromSnapshot(sheet.snapshot, cohort.id, cohort.capacityMax);
       if (seatsRefuse(seatsRemaining, players.length)) {
+        await ticket.release();
         return NextResponse.json({ error: COHORT_FULL_ERROR }, { status: 409 });
       }
     }
@@ -203,7 +208,11 @@ export async function POST(req: NextRequest) {
         // on: the session's, or (signed out) only ones nobody owns (#84).
         accountId: ownerId,
       });
+      // Refused before anything was recorded for this transfer: the try is
+      // given back. A later player's refusal keeps it counted, since the
+      // first player's invite and emails already went.
       if (!result.ok) {
+        if (i === 0) await ticket.release();
         return NextResponse.json({ error: result.error }, { status: result.status });
       }
       claimedInviteIds.push(result.inviteId);

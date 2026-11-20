@@ -387,6 +387,44 @@ async function main() {
     check("reset-password keeps its own cooldown (no second limit)", reset.includes("checkSubmissionLimit("), false);
   }
 
+  console.log("Source — a try counts only after its fields, the gate and a free slot");
+  {
+    const book = read("src/app/api/assessment/book/route.ts");
+    const firstBook = book.indexOf('checkSubmissionLimit(req, "book",');
+    const lastBook = book.lastIndexOf('checkSubmissionLimit(req, "book",');
+    check("booking: a request is counted after its own field check", book.indexOf('"Please provide your name and a valid email."') < firstBook);
+    check("booking: a slot booking is counted after its field check", book.indexOf('"Please provide your name, a valid email, and pick a slot."') < lastBook && firstBook !== lastBook);
+    check("booking: …and after the card-unavailable refusal", book.indexOf("ASSESSMENT_PAYMENT_UNAVAILABLE }") < lastBook);
+    check("booking: a slot just taken takes the try back before its 409", /if \(err instanceof SlotTakenError\) \{\s*await ticket\.release\(\);/.test(book));
+
+    const enroll = read("src/app/api/enroll/route.ts");
+    check("enroll: counted after the gate", enroll.indexOf("gateRefusal(gate)") < enroll.indexOf("checkSubmissionLimit("));
+
+    for (const file of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts"]) {
+      const src = read(file);
+      const at = src.indexOf("checkSubmissionLimit(");
+      check(`${file}: counted after the invite gate`, src.indexOf("gateRefusal(gate)") < at);
+      check(`${file}: …the by-approval wall`, src.indexOf("approvalRefusal(cohort, gate)") < at);
+      check(`${file}: …and the contact-email check`, src.indexOf("contactEmailRefusal(signedIn") < at);
+      check(`${file}: a full cohort takes the try back`, /seatsRefuse\(seatsRemaining, players\.length\)\) \{\s*await ticket\.release\(\);/.test(src));
+      check(`${file}: records it cannot read take the try back`, /if \(sheet\.status === "error"\) \{\s*await ticket\.release\(\);/.test(src));
+    }
+    const checkout = read("src/app/api/checkout/route.ts");
+    check("checkout: rows from another cohort take the try back", /foreignRows\([^)]*\)\.length > 0\) \{\s*await ticket\.release\(\);/.test(checkout));
+    check("checkout: a declined invite takes the try back", /decision\.kind === "refuse"\) \{\s*await ticket\.release\(\);/.test(checkout));
+    const etransfer = read("src/app/api/enroll/etransfer/route.ts");
+    check("e-transfer: a first player refused before anything is recorded takes the try back", /if \(!result\.ok\) \{\s*if \(i === 0\) await ticket\.release\(\);/.test(etransfer));
+
+    for (const [file, guard] of [
+      ["src/app/api/intake/route.ts", 'decision.action === "reject"'],
+      ["src/app/api/newsletter/route.ts", "!isValidEmail(body.email)"],
+      ["src/app/api/program-interest/route.ts", "!isValidEmail(body.email)"],
+    ] as const) {
+      const src = read(file);
+      check(`${file}: counted after its field check`, src.indexOf(guard) < src.indexOf("checkSubmissionLimit("));
+    }
+  }
+
   console.log("Source — the store: keyed hashes, a day's rows, one warning");
   {
     const db = read("src/lib/submissionLimitsDb.ts");
