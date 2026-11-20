@@ -7,8 +7,9 @@
 //      2026-11-18: a browser cannot tell who is at it), so the device flag
 //      /api/intake still writes (a first-party cookie plus a localStorage
 //      mirror) decides nothing; every quiz prompt becomes a signed-in taker's
-//      next step, and a group card's "Ask to join" takes them to their
-//      dashboard;
+//      next step, a group card's button opens its block's sign-up page for
+//      everyone (backlog #85), and the already-taken panel lists the open
+//      blocks, never a dead end;
 //   2. who an enrollment is for (src/lib/enrollPlayers.ts): seats per
 //      player, a player already in the cohort shown disabled, ages checked
 //      and blocked with the right group offered, levels noted and never a
@@ -70,6 +71,7 @@ import {
   twinBlockedNote,
 } from "../lib/enrollPlayers";
 import { approvalGateApplies, claimedInvite, type EnrollGateDecision } from "../lib/enrollGate";
+import { AlreadyTakenPanel } from "../components/quiz/AlreadyTakenPanel";
 import { groupById, programGroups } from "../content/programs";
 import { defaultLocation } from "../content/locations";
 import { MAX_PARTICIPANTS_PER_ACCOUNT } from "../lib/participantInput";
@@ -351,7 +353,26 @@ check("the quiz mirrors the flag after the route answered ok", at(intakePage, "r
 // Re-pinned for backlog #71: the panel's quiz-aware button read "See your
 // groups" for a signed-out browser that had sent the quiz. Only a signed-in
 // taker sees the panel now, so it reads "Open your dashboard".
-check("the already-taken panel: open your dashboard (the quiz-aware button), add another player, retake", intakePage.includes("function AlreadyTakenPanel") && intakePage.includes("You&apos;ve already taken the quiz.") && intakePage.includes("{ADD_PLAYER_LABEL}") && intakePage.includes("{RETAKE_QUIZ_LABEL}") && /<TrackedButton variant="primary" href="\/intake" track="quiz" source="intake-taken">/.test(intakePage));
+// Re-pinned for backlog #85 (owner, 2026-11-19): the panel lists the open
+// blocks with "Join", and the dashboard button is an outline beside them.
+// Re-pinned in the fix round of backlog #85: the panel is its own component
+// now (src/components/quiz/AlreadyTakenPanel.tsx), rendered here, and the
+// page hands it the open blocks from its layout. With none open it keeps
+// the quiz-aware button on the lime; its words with blocks are pinned in
+// test-group-blocks.ts.
+{
+  const panel = renderToStaticMarkup(createElement(AlreadyTakenPanel, { playerCount: 1, cards: [], onAdd: () => {}, onRetake: () => {} }));
+  const quizButton = panel.match(/<a [^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a>/)?.[0] ?? "";
+  check(
+    "the already-taken panel: its heading, the quiz-aware button on the lime, add another player, retake",
+    panel.includes("You&#x27;ve already taken the quiz.</h1>") &&
+      quizButton.includes("bg-[#B4E655]") &&
+      panel.includes(`>${ADD_PLAYER_LABEL}</button>`) &&
+      panel.includes(`>${RETAKE_QUIZ_LABEL}</button>`) &&
+      intakePage.includes("<AlreadyTakenPanel") &&
+      intakePage.includes("cards={openGroups}")
+  );
+}
 check(
   "/intake: the panel needs a taken view, which only a signed-in account is, so signed out the quiz opens on its first step, with or without ?program=",
   /quiz\.state === "taken" &&\s+!skipTakenPanel/.test(intakePage) &&
@@ -394,10 +415,14 @@ check("/programs: the quiz prompt in the band is the side line", catalogSrc.incl
 // Re-pinned for backlog #71: the card opted out of the swap entirely
 // (quizAware={false}), so a signed-in taker's "Join" opened the quiz's
 // already-taken panel. It keeps its words and follows them to the dashboard.
+// Re-pinned for backlog #85 (owner, 2026-11-19: "when I am already signed in
+// it just tell me I already submitted request"): the card's button opens
+// the block's sign-up page, so it is no quiz prompt and nothing swaps it.
 {
   const cardFile = read("src/components/sections/ProgramGroupCard.tsx");
   const cardSrc = cardFile.slice(at(cardFile, "export function ProgramGroupCard("), at(cardFile, "export function ArrangedGroupRow"));
-  check("a group card always reads its own action, and a signed-in taker's goes to the dashboard: its link keeps its words (quizAware=\"href\")", cardFile.includes("<TrackedLink") && cardSrc.includes('quizAware="href"') && !cardSrc.includes("quizAware={false}"));
+  const buttonSrc = cardFile.slice(at(cardFile, "function GroupButton("), at(cardFile, "export function ProgramGroupCard("));
+  check("a group card's button is the same for everyone signed in or not: the block's sign-up page, no quiz swap", buttonSrc.includes("`/enroll/${block.cohortId}`") && !buttonSrc.includes("quizAware") && !cardSrc.includes("quizAware"));
 }
 // Re-pinned for backlog #71: the program pages had two sentences for a
 // signed-out browser that had sent the quiz ("You've taken the quiz, so
@@ -406,7 +431,9 @@ check("/programs: the quiz prompt in the band is the side line", catalogSrc.incl
 // guest now, so both left the page with ViewerSwap's taken node.
 const detail = read("src/app/programs/[slug]/page.tsx");
 const viewerSrc = read("src/components/programs/ProgramViewer.tsx");
-check("program pages: no sentence for a signed-out quiz-taker; a member keeps their own lines", !detail.includes("You&apos;ve taken the quiz") && !/\btaken=\{/.test(detail) && detail.includes("member={<>You&apos;re on our list already.</>}") && detail.includes("You&apos;re on our list: our coaches place you in a group by level"));
+// Re-pinned in the fix round of backlog #85: "You're on our list already."
+// sat under the cohort list, which left the page with it.
+check("program pages: no sentence for a signed-out quiz-taker; a member keeps their own line", !detail.includes("You&apos;ve taken the quiz") && !/\btaken=\{/.test(detail) && detail.includes("You&apos;re on our list: our coaches place you in a group by level"));
 check("ViewerSwap: members first, everyone else the guest's words, and no quiz read", viewerSrc.includes('if (viewer.state === "member") return <>{member}</>;') && !viewerSrc.includes("taken?: ReactNode") && !viewerSrc.includes("useQuizStatus"));
 // About closes on the main action too (backlog #69, pass 2): JoinClosing puts the quiz-aware side line after the lime button.
 check("404 and About are quiz-aware", read("src/app/not-found.tsx").includes('<MainAction source="not-found"') && read("src/app/about/page.tsx").includes('<JoinClosing source="about-closing" />') && read("src/components/sections/JoinClosing.tsx").includes("<MainAction source={source}") && !read("src/app/about/page.tsx").includes('href="/intake"'));

@@ -3,14 +3,16 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { programs, listedPrograms } from "@/content/programs";
+import { programGroups, programs, listedPrograms } from "@/content/programs";
 import {
   getAllCohorts,
   getOpenCohortsForPlayers,
   getSessionsForCohorts,
   type CohortSessionRow,
 } from "@/lib/cohortsDb";
-import { todayIso } from "@/lib/cohortVisibility";
+import { isCohortPublic, todayIso } from "@/lib/cohortVisibility";
+import { accountOpenCards, groupCards, openBlockCards, suggestionsBesideCards } from "@/lib/groupBlocks";
+import { readBlockSeats } from "@/lib/groupSeats";
 import {
   listParticipantsForAccount,
   ensureSelfParticipant,
@@ -231,11 +233,23 @@ async function DashboardContent({
   const voice = rosterVoice(roster, self?.id);
 
   const enrolledCohortIds = [...new Set(rows.map((e) => e.cohort_id).filter(Boolean))];
-  const [cohortSessions, tierMatches] = await Promise.all([
+  // The open blocks (public, inviting or confirmed, not yet started), shown
+  // as the same group cards as /programs, each with "Enroll" (owner,
+  // 2026-11-19): not a block the account is already in, not a by-approval
+  // one, and only those whose ages take one of its players (ages only, never
+  // the level). Their seats are one sheet read, none while no block is open.
+  const publicBlocks = cohorts.filter((c) => isCohortPublic(c, today));
+  const [cohortSessions, tierMatches, blockSeats] = await Promise.all([
     getSessionsForCohorts(enrolledCohortIds),
     // Per player (audit M27): one numeric rule, the same one /enroll admits by.
     getOpenCohortsForPlayers(roster),
+    readBlockSeats(publicBlocks),
   ]);
+  const allOpenGroups = openBlockCards(groupCards(programGroups, publicBlocks, blockSeats));
+  const openGroups = accountOpenCards(allOpenGroups, {
+    enrolledCohortIds,
+    players: roster.length > 0 ? roster : players,
+  });
   const sessionsByCohort: Record<string, CohortSessionRow[]> = {};
   for (const s of cohortSessions) {
     (sessionsByCohort[s.cohort_id] ??= []).push(s);
@@ -263,8 +277,12 @@ async function DashboardContent({
   // Suggestions come from the public catalog only, filtered by each player's
   // age band and level (audit M31) — the players who train, not the holder
   // of a child-only account; `programs` (above) still resolves retired ids
-  // so old enrollment rows keep their title.
-  const suggestions = suggestProgramsFor(roster, listedPrograms, enrolledProgramIds);
+  // so old enrollment rows keep their title. A program whose groups with
+  // dates are listed above them is left out: those cards carry its block.
+  const suggestions = suggestionsBesideCards(
+    suggestProgramsFor(roster, listedPrograms, enrolledProgramIds),
+    openGroups
+  );
 
   // The Placed state (audit L17, owner D6-B): a player with no level who is
   // enrolled in a tier-banded cohort shows that band instead of "Unranked".
@@ -292,6 +310,8 @@ async function DashboardContent({
     recipientEmail: etransferRecipient(),
     today,
     now: new Date().toISOString(),
+    // "Or pick a group with dates below." only when the list below shows one.
+    groupsBelow: openGroups.length > 0,
   });
   const returning =
     rows.length > 0 || invites.length > 0 || bookings.length > 0 || roster.some((p) => hasLevel(p.level));
@@ -309,6 +329,8 @@ async function DashboardContent({
       cohorts={cohorts}
       sessionsByCohort={sessionsByCohort}
       openForTier={openForTier}
+      openGroups={openGroups}
+      anyGroupOpen={allOpenGroups.length > 0}
       suggestions={suggestions}
       programs={programs}
       placedSpans={placedSpans}

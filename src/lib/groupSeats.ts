@@ -1,16 +1,15 @@
 import type { Cohort } from "@/types/cohort";
-import type { ProgramGroup } from "@/types/program";
 import type { EnrollmentSheetSnapshot } from "@/lib/enrollGate";
-import { nextCohortForGroup } from "@/lib/programCatalog";
 import { readEnrollmentSheet, seatsFromSnapshot } from "@/lib/seatCount";
 
-// Seats on a group card (owner-approved design, 2026-11-17): "Full" and
-// "{n} spots left" come from the seat count the enroll page already uses
-// (src/lib/seatCount.ts: capacity minus the cohort's paid rows), read once
-// per page render for the groups' next public cohorts. Display only: nothing
-// here writes, holds a spot or changes who can enroll, and the enroll page
-// and the payment routes still make the real call. Server-side: it reads the
-// enrollment sheet, so a client component imports the types only.
+// Seats on a group card (owner-approved design, 2026-11-17; one card per open
+// block, owner 2026-11-19): "Full" and "{n} spots left" come from the seat
+// count the enroll page already uses (src/lib/seatCount.ts: capacity minus
+// the block's paid rows), read once per page render for the open blocks.
+// Display only: nothing here writes, holds a spot or changes who can enroll,
+// and the enroll page and the payment routes still make the real call.
+// Server-side: it reads the enrollment sheet, so a client component imports
+// the types only.
 
 /**
  * One read of the enrollment sheet for a page render, or null when there is
@@ -28,34 +27,30 @@ export async function readSeatSnapshot(): Promise<EnrollmentSheetSnapshot | null
 }
 
 /**
- * Seats left in each group's next public cohort, by group id. A group with
- * no public cohort, or whose count cannot be read from the snapshot, has no
- * entry, so its card reads "Open to join" (groupStatus, src/lib/programCatalog.ts).
+ * Seats left in each open block, by the block's id. A block whose count
+ * cannot be read from the snapshot has no entry, so its card reads "Open to
+ * join" (groupStatus, src/lib/programCatalog.ts).
  */
-export function groupSeatsFromSnapshot(
-  groups: readonly ProgramGroup[],
-  publicCohorts: readonly Cohort[],
+export function blockSeatsFromSnapshot(
+  blocks: readonly Pick<Cohort, "id" | "capacityMax">[],
   snapshot: EnrollmentSheetSnapshot | null
 ): Record<string, number> {
   const seats: Record<string, number> = {};
   if (!snapshot) return seats;
-  for (const g of groups) {
-    const next = nextCohortForGroup(publicCohorts, g);
-    if (!next) continue;
-    const left = seatsFromSnapshot(snapshot, next.id, next.capacityMax);
-    if (left !== null) seats[g.id] = left;
+  for (const block of blocks) {
+    const left = seatsFromSnapshot(snapshot, block.id, block.capacityMax);
+    if (left !== null) seats[block.id] = left;
   }
   return seats;
 }
 
 /**
- * The seats for a page's groups: one sheet read, and none at all when no
- * group has a public cohort (today, while the cohorts are private).
+ * The seats for a page's open blocks: one sheet read, and none at all while
+ * no block is open (today, while the blocks are private).
  */
-export async function readGroupSeats(
-  groups: readonly ProgramGroup[],
-  publicCohorts: readonly Cohort[]
+export async function readBlockSeats(
+  blocks: readonly Pick<Cohort, "id" | "capacityMax">[]
 ): Promise<Record<string, number>> {
-  if (!groups.some((g) => nextCohortForGroup(publicCohorts, g))) return {};
-  return groupSeatsFromSnapshot(groups, publicCohorts, await readSeatSnapshot());
+  if (blocks.length === 0) return {};
+  return blockSeatsFromSnapshot(blocks, await readSeatSnapshot());
 }

@@ -374,7 +374,7 @@ export const APPROVAL_ONLY_ERROR =
  * to ApprovalGate (`claimedInvite` is null there), as before.
  */
 export function approvalRefusal(
-  cohort: Pick<Cohort, "programId" | "sessions"> | null | undefined,
+  cohort: Pick<Cohort, "programId" | "sessions" | "levelMin" | "levelMax"> | null | undefined,
   gate: Pick<ResolvedEnrollGate, "decision" | "lookup">,
   groups: readonly ProgramGroup[] = programGroups
 ): { error: string; status: 403 } | null {
