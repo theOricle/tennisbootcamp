@@ -24,6 +24,7 @@ import { selfEstimateToLevel } from "@/lib/level";
 import {
   cleanParticipantName,
   isRelationship,
+  normalizeParticipantName,
   type ParticipantInput,
   type Relationship,
 } from "@/lib/participantInput";
@@ -146,4 +147,27 @@ export async function settleGuestPlayers(
     if (!player.isHolder) playerIds[i] = await store.addPlayer(accountId, player);
   }
   return { kind: "new", accountId, playerIds };
+}
+
+/**
+ * Whose player a booking's result reaches once the booking links to an
+ * account (its owner signed in through their own emailed link; backlog #84):
+ * the booking's own participant when it is on the account; else the one
+ * player on the account with the booking's name; else, on a brand-new
+ * account with no player yet, the holder ("new-self": a guest booking for
+ * someone else on a new address already made its player when it was taken).
+ * Anything less clear is nobody: the level and the availability stay on the
+ * booking for the coach, never on a guessed player.
+ */
+export function linkedBookingPlayer(
+  booking: { participantId: string | null; name: string },
+  players: readonly { id: string; full_name: string | null }[]
+): string | "new-self" | null {
+  if (booking.participantId && players.some((p) => p.id === booking.participantId)) {
+    return booking.participantId;
+  }
+  if (players.length === 0) return "new-self";
+  const name = normalizeParticipantName(booking.name);
+  const matches = name ? players.filter((p) => normalizeParticipantName(p.full_name) === name) : [];
+  return matches.length === 1 ? matches[0].id : null;
 }

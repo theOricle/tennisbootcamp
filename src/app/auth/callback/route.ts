@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { callbackErrorFor, safeNextPath, type CallbackError } from "@/lib/authFlow";
 import { linkEnrollmentsToAccount } from "@/lib/supabase/enrollmentActions";
+import { linkBookingsToAccount } from "@/lib/assessments";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -39,10 +40,11 @@ export async function GET(request: NextRequest) {
   }
 
   // The address owner just signed in through their own emailed link
-  // (backlog #84): enrollment rows saved under their address while nobody
-  // was signed in become theirs now. linkEnrollmentsToAccount re-checks that
-  // the address is this account's own, and only ever touches unowned rows.
-  // It never holds up or fails the sign-in.
+  // (backlog #84): enrollment rows and assessment bookings saved under their
+  // address while nobody was signed in become theirs now, with any result the
+  // coach recorded meanwhile. Both links re-check that the address is this
+  // account's own, and only ever touch unowned rows. Neither holds up or
+  // fails the sign-in.
   if (signedIn) {
     try {
       const {
@@ -52,9 +54,12 @@ export async function GET(request: NextRequest) {
         await linkEnrollmentsToAccount(user.id, user.email).catch(() =>
           console.error("Enrollment link at sign-in failed (non-blocking)")
         );
+        await linkBookingsToAccount(user.id, user.email).catch(() =>
+          console.error("Booking link at sign-in failed (non-blocking)")
+        );
       }
     } catch {
-      console.error("Enrollment link at sign-in skipped: no user read (non-blocking)");
+      console.error("Link at sign-in skipped: no user read (non-blocking)");
     }
   }
 

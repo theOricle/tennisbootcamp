@@ -87,11 +87,12 @@ console.log("settlementPlan — what each outcome may touch");
     settleInvites: true,
     notifyAccount: true,
   });
-  check("test → rows test_paid only: no credit, no invite, no confirmation", settlementPlan("test"), {
+  // Review fix 7: a test payment sends no account email either.
+  check("test → rows test_paid only: no credit, no invite, no confirmation, no account email", settlementPlan("test"), {
     rowStatus: "test_paid",
     applyCredits: false,
     settleInvites: false,
-    notifyAccount: true,
+    notifyAccount: false,
   });
   check("unpaid → nothing at all", settlementPlan("unpaid"), {
     rowStatus: null,
@@ -184,6 +185,7 @@ console.log("Source — the routes refuse without a key in production, before an
   check("mock rows are test rows", mockTail.includes('"test_paid"'));
   check("the mock tail settles no invite and confirms no cohort", mockTail.includes("markInvitePaidAndMaybeConfirm"), false);
   check("the mock tail spends no credit", mockTail.includes("markCreditApplied"), false);
+  check("the mock tail sends no account email (a test payment sends none)", mockTail.includes("notifyEnrollmentAccount"), false);
 
   const book = read("src/app/api/assessment/book/route.ts");
   const bookRefuse = book.indexOf('rail === "refuse"');

@@ -1,12 +1,8 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { CARD_PAYMENT_UNAVAILABLE, createCheckoutSession, paymentRail } from "@/lib/payments";
-import {
-  saveEnrollmentToSupabase,
-  notifyEnrollmentAccount,
-} from "@/lib/supabase/enrollmentActions";
+import { saveEnrollmentToSupabase } from "@/lib/supabase/enrollmentActions";
 import { getCohortById } from "@/lib/cohortsDb";
-import { programs } from "@/content/programs";
 import { findUnusedCredit } from "@/lib/assessmentCredit";
 import { findInviteRefByToken } from "@/lib/cohortActions";
 import {
@@ -362,38 +358,10 @@ export async function POST(req: NextRequest) {
       // Mock mode (no Stripe key, never in production; backlog #84): no money
       // moved, so every row it writes is a test row. A test payment never
       // counts toward the seats (they count "paid" rows only), the minimum or
-      // the confirmation, and it spends no credit: nothing is settled onto an
-      // invite. The account email still goes, so the whole joining path can
-      // be tried end to end.
+      // the confirmation, spends no credit (nothing is settled onto an
+      // invite) and sends no account email.
       for (const rowNumber of rowNumbers.length > 0 ? rowNumbers : [enrollmentRowNumber]) {
         await markEnrollmentStatus(rowNumber, "test_paid");
-      }
-      if (enrollmentMeta?.contactEmail) {
-        // After the response (#84), so its timing never says whether the
-        // email has an account; non-blocking either way. A new email gets
-        // the set-password link; an existing account gets "You're enrolled" (H5).
-        const notice = {
-          email: enrollmentMeta.contactEmail,
-          enrollmentId: supabaseEnrollmentId,
-          ownerId,
-          cohortId,
-          enrolled: {
-            programTitle:
-              programs.find((p) => p.id === cohort?.programId)?.title ??
-              programTitle ??
-              "your program",
-            cohortLabel: cohort?.label ?? cohortId,
-            participantName: players[0]?.name ?? enrollmentMeta.participantName ?? null,
-            // Every player on the payment, for the set-up email (owner, 2026-10-12).
-            playerNames: players.map((p) => (p.name ?? "").trim()).filter(Boolean),
-            paid: true,
-          },
-        };
-        after(() =>
-          notifyEnrollmentAccount(notice).catch((err) =>
-            console.error("Activation link failed (non-blocking):", err)
-          )
-        );
       }
     }
 

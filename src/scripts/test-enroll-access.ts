@@ -364,9 +364,19 @@ console.log("Source: enrollment rows carry their owner (H5)");
   for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
     const src = read(route);
     check(`${route}: no owner looked up by email`, src.includes("resolveEnrollmentUserId("), false);
-    check(`${route}: notifies through notifyEnrollmentAccount`, src.includes("notifyEnrollmentAccount("), true);
     check(`${route}: no direct issueActivationLink`, src.includes("issueActivationLink("), false);
   }
+  // Backlog #84 review fix 7: the account email follows the money. The card
+  // payment's webhook sends it (live money only); the e-transfer submit sends
+  // it; the checkout submit, mock mode included, never does.
+  for (const route of ["src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
+    check(`${route}: notifies through notifyEnrollmentAccount`, read(route).includes("notifyEnrollmentAccount("), true);
+  }
+  check(
+    "src/app/api/checkout/route.ts: the submit sends no account email",
+    read("src/app/api/checkout/route.ts").includes("notifyEnrollmentAccount("),
+    false
+  );
   for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts"]) {
     const src = read(route);
     check(`${route}: refuses a signed-in caller's foreign contact email`, src.includes("contactEmailRefusal(signedIn, enrollmentMeta"), true);

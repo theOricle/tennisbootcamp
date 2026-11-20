@@ -28,6 +28,7 @@ import { join } from "node:path";
 import {
   guestPlayer,
   guestPlayers,
+  linkedBookingPlayer,
   settleGuestPlayers,
   type GuestAccountStore,
   type GuestPlayer,
@@ -226,6 +227,24 @@ console.log("enrollmentNoticePlan — what the address hears; nothing is linked 
   check("an account in use → \"You're enrolled\"", plan({ accountExists: true }), "enrolled");
 }
 
+console.log("linkedBookingPlayer — whose result a booking carries once it links at sign-in");
+{
+  const players = [
+    { id: "p_dana", full_name: "Dana Chen" },
+    { id: "p_maya", full_name: "Maya Chen" },
+  ];
+  check("the booking's own participant, when it is on the account", linkedBookingPlayer({ participantId: "p_maya", name: "Whoever" }, players), "p_maya");
+  check("a participant from another account is ignored: the name decides", linkedBookingPlayer({ participantId: "p_other", name: "Maya Chen" }, players), "p_maya");
+  check("the one player with the booking's name (case and spaces aside)", linkedBookingPlayer({ participantId: null, name: "  maya   CHEN " }, players), "p_maya");
+  check(
+    "two players with that name → nobody: the result stays on the booking for the coach",
+    linkedBookingPlayer({ participantId: null, name: "Sam" }, [...players, { id: "a", full_name: "Sam" }, { id: "b", full_name: "sam" }]),
+    null
+  );
+  check("no player with that name → nobody", linkedBookingPlayer({ participantId: null, name: "Leo Chen" }, players), null);
+  check("a brand-new account with no players yet: the holder, made now", linkedBookingPlayer({ participantId: null, name: "Ana Ruiz" }, []), "new-self");
+}
+
 // ─── Source: every route's signed-out path ────────────────────────────────────
 
 console.log("Source — the signed-out branch touches no account before the response");
@@ -261,7 +280,7 @@ console.log("Source — each route does its signed-out account work after the re
   const checkout = read("src/app/api/checkout/route.ts");
   check("checkout: the owner is the session, never the email's account", checkout.includes("const ownerId = enrollmentOwner(signedIn?.id)"));
   check("checkout: no email lookup for an owner", checkout.includes("resolveEnrollmentUserId("), false);
-  check("checkout: the mock account email runs after the response", /after\(\(\) =>\s*notifyEnrollmentAccount\(/.test(checkout));
+  check("checkout: the submit itself sends no account email (the payment does; a test payment never)", checkout.includes("notifyEnrollmentAccount("), false);
 
   const etransfer = read("src/app/api/enroll/etransfer/route.ts");
   check("e-transfer: the owner is the session, never the email's account", etransfer.includes("const ownerId = enrollmentOwner(signedIn?.id)"));
@@ -292,7 +311,27 @@ console.log("Source — rows link only when the owner signs in through their ema
 console.log("Source — a guest's booking, request and invite stay unowned");
 {
   const assessments = read("src/lib/assessments.ts");
-  check("confirmBooking never resolves an unowned booking by its email", assessments.includes("bookingHousehold(booking, { resolveByEmail: false })"));
+  const household = assessments.slice(assessments.indexOf("export async function bookingHousehold("));
+  const householdBody = household.slice(0, household.indexOf("\n}\n"));
+  check("a booking's player is its own participant, never one found by email or guessed from the account", householdBody.length > 0 && !/resolveParticipantId\(|findUserIdByEmail\(|ensureSelfParticipant\(/.test(householdBody));
+  const complete = assessments.slice(assessments.indexOf("export async function completeBooking("));
+  const completeBody = complete.slice(0, complete.indexOf("\n}\n"));
+  check("completion writes the level and the availability only into a linked booking's player", /if \(household\.participantId\) \{[\s\S]*setPlayerLevel\(household\.participantId[\s\S]*setKnownPlayerAvailability\(household\.participantId/.test(completeBody));
+  check("…and never outside that check", completeBody.indexOf("setPlayerLevel(") > completeBody.indexOf("if (household.participantId) {") && completeBody.indexOf("setKnownPlayerAvailability(") > completeBody.indexOf("if (household.participantId) {"));
+  check("…addressed to that player, never by the booking's email", completeBody.includes("setPlayerAvailabilityByEmail("), false);
+  const players = read("src/lib/players.ts");
+  const known = players.slice(players.indexOf("export async function setKnownPlayerAvailability("));
+  const knownBody = known.slice(0, known.indexOf("\n}\n"));
+  check("the player-addressed write never resolves anyone by email", knownBody.length > 0 && !/resolveParticipantId\(|findUserIdByEmail\(|ensureSelfParticipant\(/.test(knownBody));
+  const link = assessments.slice(assessments.indexOf("export async function linkBookingsToAccount("));
+  const linkBody = link.slice(0, link.indexOf("\n}\n"));
+  check("a linked booking's result is addressed to its player, never by email", linkBody.includes("setKnownPlayerAvailability(participantId") && !linkBody.includes("setPlayerAvailabilityByEmail("));
+  check("bookings link at sign-in: the address is re-checked against the account", linkBody.includes("emailBelongsToAccount(owner.user.email, target)"));
+  check("…read with the escaped, re-checked email", linkBody.includes('.ilike("email", ilikePattern(target))') && linkBody.includes("rowsWithEmail("));
+  check("…only unowned bookings", linkBody.includes('.is("user_id", null)'));
+  check("…and a recorded result reaches only the clear player", linkBody.includes("linkedBookingPlayer("));
+  const callbackSrc = read("src/app/auth/callback/route.ts");
+  check("the callback links the owner's bookings too", callbackSrc.includes("linkBookingsToAccount(user.id, user.email)"));
   check("the guest request's availability lands only in an account this request made", assessments.includes("if (ownAccountId)"));
   const actions = read("src/lib/cohortActions.ts");
   check("recordEtransferIntent no longer looks an owner up by email", /user_id: await findUserIdByEmail\(email\)/.test(actions), false);

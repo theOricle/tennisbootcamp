@@ -499,10 +499,13 @@ check("an activated account gets You're enrolled, never a second set-password em
 check("the admin can send it again on purpose", actions.includes("export async function resendAccountEmail") && actions.includes("force: true") && read("src/app/api/admin/cohorts/[id]/route.ts").includes('action === "account_link"') && read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx").includes("Send account email"));
 check("…only on an invite someone enrolled on: the button and the route both read accountEmailOffered", read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx").includes("{accountEmailOffered(invite) && mode === \"idle\" && (") && !read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx").includes('invite.status !== "declined" && mode === "idle"') && read("src/app/api/admin/cohorts/[id]/route.ts").includes("if (!accountEmailOffered(invite)) {") && read("src/app/api/admin/cohorts/[id]/route.ts").includes("ACCOUNT_EMAIL_NOT_OFFERED"));
 check("owner writes still only touch an unowned row", (actions.match(/\.update\(\{ user_id: \w+ \}\)[^;]*;/g) ?? []).every((w) => w.includes('.is("user_id", null)')));
-for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
+// The checkout submit sends no account email since backlog #84 (review fix
+// 7): the card payment's webhook does, on live money only.
+for (const route of ["src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
   const src = read(route);
   check(`${route}: passes the cohort and every player's name to the account email`, src.includes("cohortId,") && (src.includes("playerNames:") || src.includes("playerNames }")));
 }
+check("the checkout submit sends no account email", !read("src/app/api/checkout/route.ts").includes("notifyEnrollmentAccount("));
 check("the webhook reads the names from the rows it marked paid", read("src/app/api/webhooks/stripe/route.ts").includes("participantNamesOf(paidEnrollmentIds)"));
 check("the confirmation page tells a guest to check their email and what the dashboard shows", read("src/app/enroll/[cohortId]/confirmed/page.tsx").includes("Check your email for the link to set up your account: it names the players you enrolled") && read("src/app/enroll/[cohortId]/confirmed/page.tsx").includes("Your dashboard then shows this enrollment"));
 check("this script is in the npm test chain", JSON.parse(read("package.json")).scripts.test.includes("src/scripts/test-quiz-state.ts"));

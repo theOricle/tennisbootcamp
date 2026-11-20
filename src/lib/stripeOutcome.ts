@@ -41,17 +41,16 @@ export type SettlementPlan = {
 
 /**
  * A live payment counts as it always has. A test payment records test rows
- * (the seat count only ever counts "paid") and nothing else that counts: no
- * credit spent, no invite paid, so no minimum met and no "confirmed" email.
- * The account email still goes, so the test-card run sees the whole joining
- * path. An unpaid session touches nothing.
+ * (the seat count only ever counts "paid") and nothing else: no credit spent,
+ * no invite paid, so no minimum met and no "confirmed" email, and no account
+ * email either (review fix 7). An unpaid session touches nothing.
  */
 export function settlementPlan(outcome: PaymentOutcome): SettlementPlan {
   switch (outcome) {
     case "paid":
       return { rowStatus: "paid", applyCredits: true, settleInvites: true, notifyAccount: true };
     case "test":
-      return { rowStatus: "test_paid", applyCredits: false, settleInvites: false, notifyAccount: true };
+      return { rowStatus: "test_paid", applyCredits: false, settleInvites: false, notifyAccount: false };
     default:
       return { rowStatus: null, applyCredits: false, settleInvites: false, notifyAccount: false };
   }
