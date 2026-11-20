@@ -18,9 +18,12 @@ import { COHORT_LENGTH_ADJ, GROUP_MAX_PLAYERS, numberInWords } from "@/content/p
 export const SITE_DESCRIPTION =
   `Group bootcamps in Toronto for juniors, teens and adults: ${CLASS_IDEA}, in ${COHORT_LENGTH_ADJ} cohorts.`;
 
-/** /programs: the two bootcamp programs by day, then private lessons. */
+/**
+ * /programs: who the two bootcamp programs are for, then private lessons. No
+ * weekday (backlog #85, fix round): each group's card shows its own days.
+ */
 export const PROGRAMS_DESCRIPTION =
-  `Group bootcamps in Toronto, ${CLASS_IDEA}: youth on Saturdays, adults on Sundays. Private lessons by arrangement.`;
+  `Group bootcamps in Toronto, ${CLASS_IDEA}: for youth and for adults, by age and level. Private lessons by arrangement.`;
 
 /** /about: what we run, the cohort and the public group size. */
 export const ABOUT_DESCRIPTION =

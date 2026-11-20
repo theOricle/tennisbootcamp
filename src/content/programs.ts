@@ -393,13 +393,16 @@ export const programs: Program[] = [
     id: "youth-programs",
     slug: "youth-programs",
     title: "Youth Bootcamps",
-    description: "Tennis and fitness in every class: three Saturday groups for ages 7–17.",
+    // No count of groups and no weekday in the program's own words (backlog
+    // #85, fix round): the cards below show each open group with its dates
+    // and class days, and a group may run on another day or twice a week.
+    description: "Tennis and fitness in every class: groups for ages 7–17, by age and level.",
     metaDescription:
-      `Saturday group bootcamps in Toronto for ages 7–17: tennis and fitness in every class, three groups by age and level. ${PRICE_SUMMARY}.`,
+      `Youth group bootcamps in Toronto, ages 7–17: tennis and fitness in every class, in groups by age and level. ${PRICE_SUMMARY}.`,
     longDescription:
       `${CLASS_LINE} ` +
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}. ` +
-      "Three groups run back to back on Saturdays: the Beginner Junior Bootcamp (ages 7–10) at 12:00, the Novice Youth Bootcamp (ages 11–15) at 1:00, and the High Performance Youth Bootcamp at 2:00 for players 12–17 who compete, or are training to. " +
+      "The groups go by age and level: the Beginner Junior Bootcamp (ages 7–10), the Novice Youth Bootcamp (ages 11–15), and the High Performance Youth Bootcamp for players 12–17 who compete, or are training to. Each group below shows its dates and class times. " +
       PLACEMENT_LINE,
     type: "Group bootcamp",
     comingSoon: false,
@@ -417,7 +420,7 @@ export const programs: Program[] = [
     plateCaption: "Cross-court rallies. Every rep aimed past the service line.",
     ageBands: YOUTH_BANDS,
     ...spanFor("youth-programs"),
-    levelNote: "Three groups by age and level, from a first season to the competitive track",
+    levelNote: "Groups by age and level, from a first season to the competitive track",
     priceSummary: PRICE_SUMMARY,
     enrollmentStatus: "forming",
     schedule: scheduleFor("youth-programs", "Saturday"),
@@ -434,13 +437,14 @@ export const programs: Program[] = [
     id: "bootcamps",
     slug: "bootcamps",
     title: "Adult Bootcamps",
-    description: "Tennis and fitness in every class: three Sunday levels for adults and players 16 and up.",
+    // No count and no weekday here either (backlog #85, fix round).
+    description: "Tennis and fitness in every class: groups by level for adults and players 16 and up.",
     metaDescription:
-      `Sunday group bootcamps for adults in Toronto, 16 and up: tennis and fitness in every class, three levels back to back. ${PRICE_SUMMARY}.`,
+      `Adult group bootcamps in Toronto, 16 and up: tennis and fitness in every class, in groups by level. ${PRICE_SUMMARY}.`,
     longDescription:
       `${CLASS_LINE} ` +
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}. ` +
-      "Three levels run back to back on Sundays: Beginner at 4:00, Intermediate at 5:00, Advanced at 6:00. Players 16 and up are welcome. " +
+      "The groups go by level: Beginner, Intermediate and Advanced. Players 16 and up are welcome. Each group below shows its dates and class times. " +
       PLACEMENT_LINE,
     type: "Group bootcamp",
     comingSoon: false,
@@ -455,10 +459,10 @@ export const programs: Program[] = [
     plate: "bootcamps",
     plateAlt:
       "Court diagram: three ball flights from the same spot, from a high arc landing short to a flat drive landing deep.",
-    plateCaption: "Three levels on Sunday. As the level goes up, the ball flies flatter and lands deeper.",
+    plateCaption: "As the level goes up, the ball flies flatter and lands deeper.",
     ageBands: ADULT_BANDS,
     ...spanFor("bootcamps"),
-    levelNote: "Beginner, Intermediate and Advanced classes, back to back",
+    levelNote: "Beginner, Intermediate and Advanced groups",
     priceSummary: PRICE_SUMMARY,
     enrollmentStatus: "forming",
     schedule: scheduleFor("bootcamps", "Sunday"),

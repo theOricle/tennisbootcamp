@@ -42,6 +42,7 @@ import {
   cohortLengthFor,
   formatDollars,
   groupById,
+  listedPrograms,
   numberInWords,
   priceSummaryFor,
   programGroups,
@@ -81,6 +82,7 @@ import {
 import { approvalGateApplies, approvalRefusal } from "../lib/enrollGate";
 import { nextStepFor, type NextStepInput } from "../lib/dashboardState";
 import { tierById } from "../lib/tiers";
+import { PROGRAMS_DESCRIPTION } from "../content/site";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { NO_DATES_LINE, OPEN_GROUPS_HEADING, OpenGroupsList } from "../components/sections/OpenGroups";
 import { AlreadyTakenPanel, twoPathsLine } from "../components/quiz/AlreadyTakenPanel";
@@ -374,6 +376,15 @@ console.log("Every heading, count, day list and next-start line reads the cards 
   const detail = read("src/app/programs/[slug]/page.tsx");
   check("program pages: the heading, the summary days, the schedule line, the next start and the level tags read the cards", detail.includes('const groupsHeading = cards.length > 0 ? cardsHeading(cards) : "Groups";') && detail.includes("const days = cardsDaysLabel(cards);") && detail.includes("const scheduleLine = cards.length > 0 ? cardsScheduleLine(cards) : program.schedule;") && detail.includes("const nextStart = cardsNextStart(cards);") && detail.includes("Next cohort starts {formatStartDate(nextStart)}") && detail.includes("cardsLevelTags(cards)") && !detail.includes("scheduledGroups.length === 3") && !detail.includes("nextOpenCohort"));
   check("program pages: no list under the groups repeats the open blocks", !detail.includes("openCohorts.map((cohort)") && !detail.includes("Spots open") && detail.includes("{!arranged && !hasOpenCohorts && ("));
+  // The programs' own words never contradict the cards (fix round 2): no
+  // weekday and no count of groups or levels in a description, a search
+  // line, a long description, a level line or a caption, nor in the
+  // /programs search line. The cards say which groups are open, and when.
+  const WEEKDAY = /\b(mon|tues|wednes|thurs|fri|satur|sun)days?\b/i;
+  const GROUP_COUNT = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(?:[a-z]+\s+)?(groups?|levels?)\b/i;
+  const programWords = listedPrograms.flatMap((p) => [p.description, p.metaDescription ?? "", p.longDescription, p.levelNote ?? "", p.plateCaption ?? ""]).concat(PROGRAMS_DESCRIPTION);
+  check("no program description names a weekday or a count of groups", programWords.every((w) => !WEEKDAY.test(w) && !GROUP_COUNT.test(w)), programWords.find((w) => WEEKDAY.test(w) || GROUP_COUNT.test(w)));
+  check("…and the check catches the old lines", ["Tennis and fitness in every class: three Saturday groups for ages 7–17.", "three levels back to back", "youth on Saturdays, adults on Sundays."].every((w) => WEEKDAY.test(w) || GROUP_COUNT.test(w)));
   const catalog = read("src/components/sections/ProgramCatalog.tsx");
   check("/programs: each program's line reads its cards", catalog.includes("{cardsProgramLine(cards)}") && catalog.includes("all: cards.filter((c) => c.group.programSlug === program.slug),") && !catalog.includes("programHeadingLine("));
 }

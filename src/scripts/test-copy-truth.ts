@@ -107,7 +107,8 @@ for (const [path, d] of DESCRIPTIONS) {
   check(`${path}: no banned claim and no separate fitness session`, !/experience|actually|journey|unlock|limited spots|circuit|strength-and-conditioning|fitness session/i.test(d), d);
 }
 // Re-pinned for backlog #70: it carried "… a session" between the days and private lessons.
-check("/programs: the two days, no price, then private lessons", PROGRAMS_DESCRIPTION.includes("youth on Saturdays, adults on Sundays. ") && !PROGRAMS_DESCRIPTION.includes("$") && !/session|price/i.test(PROGRAMS_DESCRIPTION) && PROGRAMS_DESCRIPTION.endsWith("Private lessons by arrangement."), PROGRAMS_DESCRIPTION);
+// Re-pinned for backlog #85 (fix round): it named the two days ("youth on Saturdays, adults on Sundays."); each group's card shows its own.
+check("/programs: who the two programs are for, no weekday, no price, then private lessons", PROGRAMS_DESCRIPTION.includes("for youth and for adults, by age and level. ") && !/day\b|days\b/i.test(PROGRAMS_DESCRIPTION) && !PROGRAMS_DESCRIPTION.includes("$") && !/session|price/i.test(PROGRAMS_DESCRIPTION) && PROGRAMS_DESCRIPTION.endsWith("Private lessons by arrangement."), PROGRAMS_DESCRIPTION);
 check("/about: no price", !ABOUT_DESCRIPTION.includes("$") && !/session|price/i.test(ABOUT_DESCRIPTION), ABOUT_DESCRIPTION);
 check("/about: the cohort length and the group size from the constants, in words", ABOUT_DESCRIPTION.includes(`${COHORT_LENGTH_ADJ} cohorts of up to ${numberInWords(GROUP_MAX_PLAYERS)} players`), ABOUT_DESCRIPTION);
 const typedDescriptions = siteSrc.slice(siteSrc.indexOf("export const SITE_DESCRIPTION"), siteSrc.indexOf("export const site:"));

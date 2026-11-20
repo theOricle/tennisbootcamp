@@ -546,10 +546,14 @@ for (const p of [youth, adults]) {
   check(`${p.id}: the kind of class is Group bootcamp`, p.type === "Group bootcamp");
   check(`${p.id}: the card line opens on the idea`, p.description.startsWith(`${CLASS_HEADING.slice(0, -1)}: `), p.description);
   // Re-pinned for backlog #70: the cohort sentence ended ", one …-minute class every Saturday / Sunday."; the day now sits with the groups' own times.
+  // Re-pinned for backlog #85 (fix round): the groups went with their day
+  // and times ("Three groups run back to back on Saturdays: … at 12:00"),
+  // since the cards below show each open group's own dates and days.
   check(
-    `${p.id}: the long description opens on how a class runs, then the cohort, then its groups on their own day, and still ends on the week-one line`,
-    p.longDescription.startsWith(`${CLASS_LINE} Each cohort is a fixed group that trains together for ${COHORT_LENGTH}. Three `) &&
-      p.longDescription.includes(` run back to back on ${days}: `) &&
+    `${p.id}: the long description opens on how a class runs, then the cohort, then its groups by ${p === youth ? "age and level" : "level"}, with no day, and still ends on the week-one line`,
+    p.longDescription.startsWith(`${CLASS_LINE} Each cohort is a fixed group that trains together for ${COHORT_LENGTH}. The groups go by `) &&
+      p.longDescription.includes("Each group below shows its dates and class times. ") &&
+      !p.longDescription.includes(days) &&
       p.longDescription.endsWith(PLACEMENT_LINE),
     p.longDescription
   );
@@ -585,18 +589,20 @@ for (const p of [youth, adults]) {
   check(`${p.id}: no general class length and no classes a week in any of its words`, !GENERAL_LENGTH.test(words), words.match(GENERAL_LENGTH)?.[0]);
   check(`${p.id}: no per-session figure in any of its words`, !/\ba session\b|per session/i.test(words), words.match(/.{0,30}(\ba session\b|per session).{0,10}/i)?.[0]);
 }
+// Re-pinned for backlog #85 (fix round): the programs' own words name no
+// count of groups and no weekday; the cards show each group's dates and days.
 check(
-  "Youth Bootcamps keeps its groups, ages and times, and its week-one line in the list",
-  ["Three groups run back to back on Saturdays: the Beginner Junior Bootcamp (ages 7–10) at 12:00", "the Novice Youth Bootcamp (ages 11–15) at 1:00", "the High Performance Youth Bootcamp at 2:00 for players 12–17 who compete, or are training to"].every((fact) => youth.longDescription.includes(fact)) &&
-    youth.description.endsWith("three Saturday groups for ages 7–17.") &&
-    (youth.levelNote ?? "").startsWith("Three groups by age and level") &&
+  "Youth Bootcamps keeps its groups and their ages, and its week-one line in the list",
+  ["The groups go by age and level: the Beginner Junior Bootcamp (ages 7–10)", "the Novice Youth Bootcamp (ages 11–15)", "the High Performance Youth Bootcamp for players 12–17 who compete, or are training to"].every((fact) => youth.longDescription.includes(fact)) &&
+    youth.description.endsWith("groups for ages 7–17, by age and level.") &&
+    (youth.levelNote ?? "").startsWith("Groups by age and level") &&
     youth.includes?.[5] === "One level per group, confirmed on court in week one"
 );
 check(
-  "Adult Bootcamps keeps its levels, ages and times, and the coach's corrections in the list",
-  adults.longDescription.includes("Three levels run back to back on Sundays: Beginner at 4:00, Intermediate at 5:00, Advanced at 6:00. Players 16 and up are welcome.") &&
-    adults.description.endsWith("three Sunday levels for adults and players 16 and up.") &&
-    (adults.levelNote ?? "").endsWith("back to back") &&
+  "Adult Bootcamps keeps its levels and ages, and the coach's corrections in the list",
+  adults.longDescription.includes("The groups go by level: Beginner, Intermediate and Advanced. Players 16 and up are welcome.") &&
+    adults.description.endsWith("groups by level for adults and players 16 and up.") &&
+    adults.levelNote === "Beginner, Intermediate and Advanced groups" &&
     adults.includes?.[5] === "Corrections from the coach every session"
 );
 const programsSrc = read("src/content/programs.ts");
