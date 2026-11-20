@@ -23,6 +23,7 @@ import {
   REVERSE_FROM,
   SETTLE_FROM,
   bookingReversalPatch,
+  isFirstDelivery,
   latePaymentPlan,
   refundReversal,
   rowsInStatus,
@@ -106,21 +107,39 @@ console.log("Scenario — a full refund frees the seat; a redelivered refund cha
   check("the seat stays free", seatsFromSnapshot(snapshot(), "coh_1", 8), 7);
 }
 
-console.log("Scenario — a redelivered payment sends no email twice");
+console.log("isFirstDelivery — the database move decides when the session has rows there");
 {
-  // The webhook sends the account email only when this delivery moved a row.
-  const rows = new Map<number, string>([[2, "pending"]]);
-  let emails = 0;
-  const deliver = () => {
-    const flipped = rowsInStatus(rows, SETTLE_FROM);
-    for (const n of flipped) rows.set(n, "paid");
-    if (flipped.length > 0) emails++;
+  check("rows in Supabase, this delivery moved them → first", isFirstDelivery({ dbRows: 2, dbMoved: 2, sheetRows: 2, sheetMoved: 0 }));
+  check("rows in Supabase, none moved → a redelivery, even if the Sheet moved", isFirstDelivery({ dbRows: 2, dbMoved: 0, sheetRows: 2, sheetMoved: 2 }), false);
+  check("rows in Supabase, none moved, Sheets off → a redelivery", isFirstDelivery({ dbRows: 1, dbMoved: 0, sheetRows: 1, sheetMoved: null }), false);
+  check("no Supabase rows: the Sheet decides — moved → first", isFirstDelivery({ dbRows: 0, dbMoved: 0, sheetRows: 2, sheetMoved: 2 }));
+  check("no Supabase rows: the Sheet decides — none moved → a redelivery", isFirstDelivery({ dbRows: 0, dbMoved: 0, sheetRows: 2, sheetMoved: 0 }), false);
+  check("nothing it can check (local development) → first", isFirstDelivery({ dbRows: 0, dbMoved: 0, sheetRows: 0, sheetMoved: null }));
+  check("no Sheet rows and Sheets off → first", isFirstDelivery({ dbRows: 0, dbMoved: 0, sheetRows: 2, sheetMoved: null }));
+}
+
+console.log("Scenario — two deliveries of one payment at the same moment send one account email");
+{
+  // A shared Sheet and a shared enrollments table. The Sheet flip reads then
+  // writes, so both deliveries can see "pending" and both write "paid"; the
+  // table's update is one guarded statement, so only one moves the rows.
+  const sheet = new Map<number, string>([[2, "pending"], [3, "pending"]]);
+  const table = new Map<string, string>([["enr_1", "pending"], ["enr_2", "pending"]]);
+  const guardedUpdate = (ids: string[]) => {
+    const moved = ids.filter((id) => SETTLE_FROM.includes(table.get(id) as never));
+    for (const id of moved) table.set(id, "paid");
+    return moved;
   };
-  deliver();
-  deliver();
-  deliver();
-  check("three deliveries, one email", emails, 1);
-  check("the row is paid once", rows.get(2), "paid");
+  const sheetReads = [rowsInStatus(sheet, SETTLE_FROM), rowsInStatus(sheet, SETTLE_FROM)]; // both read first
+  for (const n of sheetReads[0]) sheet.set(n, "paid");
+  for (const n of sheetReads[1]) sheet.set(n, "paid");
+  const deliveries = [guardedUpdate(["enr_1", "enr_2"]), guardedUpdate(["enr_1", "enr_2"])];
+  const firsts = deliveries.map((dbMoved, i) =>
+    isFirstDelivery({ dbRows: 2, dbMoved: dbMoved.length, sheetRows: 2, sheetMoved: sheetReads[i].length })
+  );
+  check("both deliveries saw the Sheet rows pending", sheetReads.map((r) => r.length), [2, 2]);
+  check("only one is the first delivery: one account email", firsts.filter(Boolean).length, 1);
+  check("a third, later delivery is a redelivery", isFirstDelivery({ dbRows: 2, dbMoved: guardedUpdate(["enr_1", "enr_2"]).length, sheetRows: 2, sheetMoved: 0 }), false);
 }
 
 console.log("Invites — a reversed card payment gives the spot back");
@@ -189,6 +208,18 @@ console.log("Source — the webhook takes refunds and disputes");
   );
   check("…and only the row moves come before it", redeliveryAt > hook.indexOf("await flipEnrollmentRows(") && redeliveryAt > hook.indexOf("await setEnrollmentStatusByIds("));
   check("rows settle only out of SETTLE_FROM", hook.includes("SETTLE_FROM"));
+  // The decision is the tested helper's, fed by what this delivery moved —
+  // never a value the route makes up.
+  check(
+    "firstDelivery is isFirstDelivery's answer, from the moves themselves",
+    /const firstDelivery = isFirstDelivery\(\{\s*dbRows: paidEnrollmentIds\.length,\s*dbMoved: dbMoved\.length,\s*sheetRows: paidRows\.length,\s*sheetMoved: sheetMoved === null \? null : sheetMoved\.length,\s*\}\);/.test(hook)
+  );
+  const actions = read("src/lib/supabase/enrollmentActions.ts");
+  const move = actions.slice(actions.indexOf("export async function setEnrollmentStatusByIds("));
+  check(
+    "a failed database move throws, so the webhook answers 500 and Stripe retries",
+    /if \(error\) \{[^}]*throw new Error\(/.test(move.slice(0, move.indexOf("\n}\n")))
+  );
 }
 
 console.log("Source — every reversal is a guarded move and sends no email");

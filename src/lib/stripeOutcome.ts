@@ -105,6 +105,30 @@ export const SETTLE_FROM = ["pending", "pending_etransfer"] as const;
  */
 export const REVERSE_FROM = ["pending", "paid", "test_paid"] as const;
 
+/**
+ * Whether this delivery of a completed payment is the one that settles it —
+ * the only one that spends credits, settles invites and sends the account
+ * email. When the session carries Supabase enrollment rows, their move
+ * decides: it is one guarded update, so of two deliveries at the same moment
+ * exactly one moves them (the Sheet's read-then-write flip cannot tell them
+ * apart). With no Supabase rows, the Sheet's flip decides; with nothing to
+ * check at all (local development), the delivery counts as the first.
+ */
+export function isFirstDelivery(input: {
+  /** How many Supabase enrollment rows the session carries. */
+  dbRows: number;
+  /** How many of them this delivery moved. */
+  dbMoved: number;
+  /** How many Sheet rows the session carries. */
+  sheetRows: number;
+  /** How many of them this delivery moved; null when Sheets is not configured. */
+  sheetMoved: number | null;
+}): boolean {
+  if (input.dbRows > 0) return input.dbMoved > 0;
+  if (input.sheetMoved !== null && input.sheetRows > 0) return input.sheetMoved > 0;
+  return true;
+}
+
 /** The row numbers whose status (as read) is in `from`; rows not read are left alone. */
 export function rowsInStatus(
   statusByRow: ReadonlyMap<number, string>,

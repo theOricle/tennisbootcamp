@@ -108,10 +108,11 @@ export async function saveEnrollmentToSupabase(
 
 /**
  * Move these enrollment rows out of one of `from` into `to`, and resolve to
- * the ids moved (backlog #84). Guarded on `from`: a redelivered Stripe event
- * moves nothing, so the caller knows not to send an email twice, and a row
- * that was refunded or disputed is never brought back. A failed write moves
- * nothing; Supabase unconfigured moves nothing.
+ * the ids moved (backlog #84). Guarded on `from`, in one statement: of two
+ * deliveries of one Stripe event, only one moves the rows, so the caller can
+ * tell which one sends the email, and a row that was refunded or disputed is
+ * never brought back. A failed write throws, so the webhook answers 500 and
+ * Stripe retries; Supabase unconfigured moves nothing.
  */
 export async function setEnrollmentStatusByIds(
   ids: readonly string[],
@@ -128,8 +129,8 @@ export async function setEnrollmentStatusByIds(
     .in("status", [...from])
     .select("id");
   if (error) {
-    console.error("Enrollment status move failed (non-blocking):", error.message);
-    return [];
+    console.error("Enrollment status move failed:", error.code ?? "unknown");
+    throw new Error(`Enrollment status move failed: ${error.code ?? "unknown"}`);
   }
   return ((data ?? []) as { id: string }[]).map((r) => r.id);
 }

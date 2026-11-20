@@ -15,6 +15,7 @@ import { reverseCheckoutSession } from "@/lib/paymentReversal";
 import {
   SETTLE_FROM,
   bookingPaid,
+  isFirstDelivery,
   paymentOutcome,
   refundReversal,
   settlementPlan,
@@ -123,16 +124,21 @@ export async function POST(req: NextRequest) {
 
     // The session's rows move out of pending into paid (or test_paid), never
     // out of refunded or disputed (#84): the Sheet first — it carries the seat
-    // count, and a failed write answers 500 so Stripe retries — then every
-    // player's Supabase row, not just the first (audit M25).
+    // count — then every player's Supabase row, not just the first (audit
+    // M25). Either write that fails answers 500 and Stripe retries; every
+    // move is guarded, so a retry finishes the job without doing it twice.
     const sheetMoved = await flipEnrollmentRows(paidRows, SETTLE_FROM, rowStatus);
     const dbMoved = await setEnrollmentStatusByIds(paidEnrollmentIds, SETTLE_FROM, rowStatus);
-    // Whether this delivery made the move. A redelivered event finds every
-    // row already moved and then changes and sends nothing more. A session
-    // whose rows live nowhere it can check (local development with neither
-    // Sheets nor Supabase) counts as moved.
-    const checkedSomewhere = (sheetMoved !== null && paidRows.length > 0) || paidEnrollmentIds.length > 0;
-    const firstDelivery = !checkedSomewhere || (sheetMoved?.length ?? 0) > 0 || dbMoved.length > 0;
+    // Whether this delivery is the one that settles the payment: the
+    // database's guarded move decides whenever the session has rows there,
+    // so two deliveries at the same moment never both send the account
+    // email. A redelivered event changes and sends nothing more.
+    const firstDelivery = isFirstDelivery({
+      dbRows: paidEnrollmentIds.length,
+      dbMoved: dbMoved.length,
+      sheetRows: paidRows.length,
+      sheetMoved: sheetMoved === null ? null : sheetMoved.length,
+    });
     if (!firstDelivery) {
       console.log(`[stripe webhook] session ${session.id} already settled: redelivery, nothing changed`);
       return NextResponse.json({ received: true });
