@@ -25,6 +25,7 @@ import {
   COHORT_TOTAL_CENTS,
   COHORT_TOTAL_LABEL,
   COHORT_WEEKS,
+  GROUP_PRICE,
   PRICE_SUMMARY,
   PRIVATE_LESSONS_PRICE,
   SESSION_PRICE_LABEL,
@@ -94,7 +95,8 @@ for (const g of programGroups) {
   check(`${g.id}: one level tag (a tier id) or any level`, g.level === null || TIERS.some((t) => t.id === g.level));
   check(`${g.id}: ages make sense`, (g.ageMin === null || g.ageMax === null || g.ageMin <= g.ageMax) && (g.ageMin === null || g.ageMin >= 4));
   check(`${g.id}: a class has a day, a start and an end together`, (g.day === null) === (g.start === null) && (g.start === null) === (g.end === null));
-  check(`${g.id}: price from the constant`, g.price === (g.day ? PRICE_SUMMARY : PRIVATE_LESSONS_PRICE));
+  // Re-pinned for backlog #85 (owner, 2026-11-20): a group card names its class count.
+  check(`${g.id}: price from the constant`, g.price === (g.day ? GROUP_PRICE : PRIVATE_LESSONS_PRICE));
 }
 const pin = (id: string, want: Partial<ProgramGroup>) => {
   const g = groupById(id);
@@ -164,7 +166,8 @@ const words = (html: string) => html.replace(/<!--[\s\S]*?-->/g, "").replace(/<[
 const youth = listedPrograms.find((p) => p.slug === "youth-programs")!;
 const privateProgram = listedPrograms.find((p) => p.slug === "private-lessons")!;
 // Backlog #70 (owner, 2026-11-17): the card shows the whole price, the cohort total over the cohort length.
-const [TOTAL_LINE, LENGTH_LINE] = priceParts(PRICE_SUMMARY);
+// Re-pinned for backlog #85 (owner, 2026-11-20): with its class count, once a week or twice.
+const [TOTAL_LINE, LENGTH_LINE] = priceParts(GROUP_PRICE);
 // Re-pinned for backlog #85 (owner, 2026-11-19 and 2026-11-20): a card shows
 // one open block, its dates, class days, price and seats, and its button
 // opens the block's sign-up page. The fixtures are blocks a coach could
@@ -191,7 +194,7 @@ check("the helpers behind the lines", groupWhoLabel(g("youth-7-10")) === "Ages 7
 check("one level tag: the mark and the name with no chip around them, no span, no band, no rail", hpCard.includes(">High Performance</span>") && hpCard.includes(", tier 5 of 5, levels 5.0–7.0") && /<span class="inline-flex items-center gap-1\.5 text-\[13px\] text-white"><svg/.test(hpCard) && !hpCard.slice(0, at(hpCard, "<h3")).includes("–<") && !hpCard.includes('aria-label="Built for') && !hpCard.includes('role="meter"') && !hpCard.includes("3.0–5.5"));
 // Re-pinned for backlog #70: it was the session price over the cohort total.
 check("the price once, stacked: the total in bold over the length", !!LENGTH_LINE && count(hpCard, TOTAL_LINE) === 1 && count(hpCard, LENGTH_LINE) === 1 && at(hpCard, `>${TOTAL_LINE}</span>`) > 0 && at(hpCard, `>${TOTAL_LINE}</span>`) < at(hpCard, `>${LENGTH_LINE}</span>`) && new RegExp(`<span class="block text-lg font-semibold[^"]*text-white">\\${TOTAL_LINE}</span><span class="block text-\\[13px\\] text-white/60">${LENGTH_LINE}</span>`).test(hpCard));
-check("the price reads the price constants, and the card types none", PRICE_SUMMARY === `${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}` && hpCard.includes(`>${COHORT_TOTAL_LABEL}</span>`) && hpCard.includes(`>for ${COHORT_LENGTH}</span>`) && !/\$\d/.test(read("src/components/sections/ProgramGroupCard.tsx")));
+check("the price reads the price constants, and the card types none", PRICE_SUMMARY === `${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}` && GROUP_PRICE === `${COHORT_TOTAL_LABEL} for ${COHORT_WEEKS} classes over ${COHORT_LENGTH}` && hpCard.includes(`>${COHORT_TOTAL_LABEL}</span>`) && hpCard.includes(`>for ${COHORT_WEEKS} classes over ${COHORT_LENGTH}</span>`) && !/\$\d/.test(read("src/components/sections/ProgramGroupCard.tsx")));
 check("no per-session figure on a group card, in any state", programGroups.filter((group) => group.day !== null).every((group) => [null, openBlock, { ...openBlock, seatsLeft: 2 }, { ...openBlock, seatsLeft: 0 }].every((b) => { const html = render(createElement(ProgramGroupCard, { group, block: b })); return !/a session|per session/i.test(html) && !html.includes(SESSION_PRICE_LABEL) && count(html, "$") === 1; })));
 check("the price sits in the foot, after the lines and before the button, on a hairline pinned to the bottom", at(hpCard, "Newtonbrook Tennis Club</li>") < at(hpCard, `>${TOTAL_LINE}</span>`) && at(hpCard, `>${LENGTH_LINE}</span>`) < at(hpCard, "<a ") && hpCard.includes('<div class="mt-auto flex') && hpCard.includes("border-t border-white/10") && hpCard.includes("flex h-full"));
 // What left the card (owner-approved design, 2026-11-17): the competitive

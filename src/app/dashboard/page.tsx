@@ -11,7 +11,7 @@ import {
   type CohortSessionRow,
 } from "@/lib/cohortsDb";
 import { isCohortPublic, todayIso } from "@/lib/cohortVisibility";
-import { accountOpenCards, groupCards } from "@/lib/groupBlocks";
+import { accountOpenCards, groupCards, openBlockCards, suggestionsBesideCards } from "@/lib/groupBlocks";
 import { readBlockSeats } from "@/lib/groupSeats";
 import {
   listParticipantsForAccount,
@@ -245,7 +245,8 @@ async function DashboardContent({
     getOpenCohortsForPlayers(roster),
     readBlockSeats(publicBlocks),
   ]);
-  const openGroups = accountOpenCards(groupCards(programGroups, publicBlocks, blockSeats), {
+  const allOpenGroups = openBlockCards(groupCards(programGroups, publicBlocks, blockSeats));
+  const openGroups = accountOpenCards(allOpenGroups, {
     enrolledCohortIds,
     players: roster.length > 0 ? roster : players,
   });
@@ -276,8 +277,12 @@ async function DashboardContent({
   // Suggestions come from the public catalog only, filtered by each player's
   // age band and level (audit M31) — the players who train, not the holder
   // of a child-only account; `programs` (above) still resolves retired ids
-  // so old enrollment rows keep their title.
-  const suggestions = suggestProgramsFor(roster, listedPrograms, enrolledProgramIds);
+  // so old enrollment rows keep their title. A program whose groups with
+  // dates are listed above them is left out: those cards carry its block.
+  const suggestions = suggestionsBesideCards(
+    suggestProgramsFor(roster, listedPrograms, enrolledProgramIds),
+    openGroups
+  );
 
   // The Placed state (audit L17, owner D6-B): a player with no level who is
   // enrolled in a tier-banded cohort shows that band instead of "Unranked".
@@ -305,6 +310,8 @@ async function DashboardContent({
     recipientEmail: etransferRecipient(),
     today,
     now: new Date().toISOString(),
+    // "Or pick a group with dates below." only when the list below shows one.
+    groupsBelow: openGroups.length > 0,
   });
   const returning =
     rows.length > 0 || invites.length > 0 || bookings.length > 0 || roster.some((p) => hasLevel(p.level));
@@ -323,6 +330,7 @@ async function DashboardContent({
       sessionsByCohort={sessionsByCohort}
       openForTier={openForTier}
       openGroups={openGroups}
+      anyGroupOpen={allOpenGroups.length > 0}
       suggestions={suggestions}
       programs={programs}
       placedSpans={placedSpans}

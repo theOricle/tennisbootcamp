@@ -13,7 +13,6 @@ import { AGE_BAND_LABELS } from "@/lib/ageBand";
 import { locations } from "@/content/locations";
 import { LocationBlock } from "@/components/locations/LocationLine";
 import { formatTierLevel, formatTierSpan, hasLevel, levelNumber, type PlacedSpan } from "@/lib/tiers";
-import { isCohortPublic } from "@/lib/cohortVisibility";
 import { artFocusForCohort } from "@/lib/plates/variant";
 import {
   ENROLLMENT_CHIP,
@@ -77,7 +76,7 @@ export type DashboardViewProps = {
   /** The unused $20 assessment line, when one exists (audit M25). */
   creditLine: string | null;
   enrollments: DashboardEnrollment[];
-  /** Every cohort (enrollment lookups + the public ones for suggestion cards). */
+  /** Every cohort (enrollment lookups). */
   cohorts: Cohort[];
   /** Dated session rows keyed by cohort id (empty when none are generated yet). */
   sessionsByCohort: Record<string, CohortSessionRow[]>;
@@ -88,13 +87,17 @@ export type DashboardViewProps = {
    * its sign-up page: the same cards as /programs, for this account
    * (accountOpenCards, src/lib/groupBlocks.ts: not a block it is in, not a
    * by-approval one, ages that take one of its players). None reads one
-   * line: no group has dates yet.
+   * line, by anyGroupOpen: no group has dates yet, or none with dates is
+   * open to this account.
    */
   openGroups?: GroupCard[];
+  /** Whether any block is open at all, listed for this account or not. */
+  anyGroupOpen?: boolean;
   /**
    * "Suggested for you" (audit M31): programs the account isn't enrolled in
    * that fit at least one player's age and level, with the ranked player each
-   * one fits, from suggestProgramsFor().
+   * one fits, from suggestProgramsFor(), less any program whose groups with
+   * dates are listed above them (suggestionsBesideCards).
    */
   suggestions: SuggestedProgram[];
   programs: Program[];
@@ -430,6 +433,7 @@ export function DashboardView(props: DashboardViewProps) {
     sessionsByCohort,
     openForTier,
     openGroups = [],
+    anyGroupOpen,
     suggestions,
     programs,
     placedSpans = {},
@@ -437,7 +441,6 @@ export function DashboardView(props: DashboardViewProps) {
     quizTaken = true,
   } = props;
 
-  const publicCohorts = cohorts.filter((c) => isCohortPublic(c, today));
   const several = roster.length > 1;
   const names = roster.map((p) => (p.id === self?.id ? "you" : firstNameOf(p.full_name) || "your player"));
   const openCount = (playerId: string) =>
@@ -564,10 +567,16 @@ export function DashboardView(props: DashboardViewProps) {
               in): the account's open blocks as the same group cards as
               /programs, each "Join" an outline to the block's sign-up page,
               since the next step above is the page's one primary. With none
-              open, one line says so and points to the groups. */}
+              listed, one line says which is true, no group has dates yet or
+              none with dates is open to them, and points to the groups. */}
           <section aria-labelledby="open-groups">
             <SectionHeading id="open-groups" title={OPEN_GROUPS_HEADING} />
-            <OpenGroupsList cards={openGroups} quiet />
+            <OpenGroupsList
+              cards={openGroups}
+              quiet
+              blocksOpen={anyGroupOpen}
+              whom={several ? "your players" : (names[0] ?? "you")}
+            />
           </section>
 
           {/* Open cohorts a player's level admits (audit M27): per player, by
@@ -766,7 +775,10 @@ export function DashboardView(props: DashboardViewProps) {
       {/* Suggested for you (audit M31, H7): the same spec-sheet card as the
           home grid, filtered by each player's age and level, with "Fits
           Maya" and her place on the rail. Hidden when there is nothing to
-          suggest. */}
+          suggest. It never repeats a block (backlog #85): a program whose
+          groups with dates are listed above is left out, and the cards carry
+          no Next row, since the group cards are where a block's dates,
+          price and "Join" live. */}
       {suggestions.length > 0 && (
         <section aria-labelledby="suggested">
           <SectionHeading
@@ -781,7 +793,6 @@ export function DashboardView(props: DashboardViewProps) {
           />
           <ProgramCardList
             programs={suggestions.map((s) => s.program)}
-            publicCohorts={publicCohorts}
             fits={Object.fromEntries(suggestions.map((s) => [s.program.id, s.fit])) as Record<string, ProgramFit>}
           />
         </section>

@@ -2,7 +2,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { CONTACT_EMAIL, groupsForProgram, programs } from "@/content/programs";
+import { CONTACT_EMAIL, groupsForProgram, priceLineFor, programs } from "@/content/programs";
 import type { Program } from "@/types/program";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { GoodToKnow } from "@/components/sections/GoodToKnow";
@@ -22,6 +22,7 @@ import {
   cardsHeading,
   cardsLevelTags,
   cardsNextStart,
+  cardsPrice,
   cardsScheduleLine,
   groupCards,
   type GroupCard,
@@ -41,19 +42,20 @@ import { ProgramViewerPanel, ViewerSwap } from "@/components/programs/ProgramVie
 /**
  * The phone summary under the H1 (audit M13): which days and what it costs,
  * so the decision facts sit above the fold; who it is for, and the tier
- * span, are the chip row under the description (L8). The days are the ones
- * the cards below run on (fix round, #85); the cost is the whole price of
- * one bootcamp, the program's own price line (owner, 2026-11-17: never a
- * per-session figure). A program with no fixed class states its terms in the
- * panel. Each fact is joined with no-break spaces, so a line wraps only
- * between facts.
+ * span, are the chip row under the description (L8). The days and the price
+ * are the cards' below (fix round, #85): one price when the open blocks
+ * share it, "from" the lowest when they differ, the setting's while none is
+ * open; always the whole price (owner, 2026-11-17: never a per-session
+ * figure). A program with no fixed class states its terms in the panel.
+ * Each fact is joined with no-break spaces, so a line wraps only between
+ * facts.
  */
 const NBSP = " ";
 
 function summaryFacts(program: Program, cards: readonly GroupCard[]): string[] {
   const days = cardsDaysLabel(cards);
   if (program.comingSoon || !days) return [];
-  return [days, ...(program.priceSummary ? [program.priceSummary] : [])];
+  return [days, ...(program.priceSummary ? [cardsPrice(cards, program.priceSummary)] : [])];
 }
 
 // Incremental static regeneration (audit M39): the page is served from the
@@ -122,6 +124,12 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // The schedule line in the panel: the cards' days and starts; a program
   // with no fixed class keeps its own line ("By arrangement").
   const scheduleLine = cards.length > 0 ? cardsScheduleLine(cards) : program.schedule;
+  // The panel's price sentence: the cards' price (one, or "From" the lowest),
+  // then the $20 mechanic in full; the program's own line with no fixed class.
+  const cardsPriceText = cards.length > 0 && program.priceSummary ? cardsPrice(cards, program.priceSummary) : null;
+  const priceLine = cardsPriceText
+    ? priceLineFor(`${cardsPriceText.charAt(0).toUpperCase()}${cardsPriceText.slice(1)}`)
+    : program.priceLine;
   // The numeric span the program's groups together cover (the viewer panel's
   // fit check) and the level tags the cards carry (owner, 2026-10-13): one
   // per group, and one more for a block at a level the lineup has none for.
@@ -238,8 +246,8 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               {scheduleLine && (
                 <p className="text-xs text-white/60">{scheduleLine}</p>
               )}
-              {program.priceLine && (
-                <p className="mt-3 text-sm text-white">{program.priceLine}</p>
+              {priceLine && (
+                <p className="mt-3 text-sm text-white">{priceLine}</p>
               )}
               {nextStart && (
                 <p className="mt-3 text-sm font-semibold text-[#B4E655]">

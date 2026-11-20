@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { useFocusOnMount } from "@/lib/useFocusOnChange";
 import { ADD_PLAYER_LABEL, RETAKE_QUIZ_LABEL } from "@/lib/quizStatus";
-import { signedInOpenCards, type GroupCard } from "@/lib/groupBlocks";
+import { accountOpenCards, type AgePlayer, type GroupCard } from "@/lib/groupBlocks";
 import { buttonClass } from "@/components/ui/Button";
 import { TextLink } from "@/components/ui/TextLink";
 import { TrackedButton } from "@/components/ui/TrackedButton";
@@ -21,10 +21,12 @@ import { OPEN_GROUPS_HEADING, OpenGroupsList } from "@/components/sections/OpenG
 // the two paths, the open blocks follow as the same group cards, each with
 // "Join" to its sign-up page, and the dashboard button steps back to an
 // outline beside them. The cards sit on the page, never inside a card of
-// their own. With none open, the panel keeps its card and one line says no
-// group has dates yet. The blocks come from the quiz's server layout
-// (src/app/intake/layout.tsx); a by-approval block is never listed
-// (signedInOpenCards): a quiz-taker has asked already.
+// their own. With none listed, the panel keeps its card and one line says
+// which is true: no group has dates yet, or none with dates is open to them.
+// The blocks come from the quiz's server layout (src/app/intake/layout.tsx);
+// the panel lists the ones whose ages take one of the household's players,
+// as the dashboard does (accountOpenCards), and never a by-approval block: a
+// quiz-taker has asked already.
 
 /** The wizard card's chrome, as the quiz's result screens draw it: flat on phones (audit L10). */
 const PANEL_CARD = "md:rounded-3xl md:border md:border-white/10 md:bg-white/5 md:p-8";
@@ -37,19 +39,23 @@ export function twoPathsLine(whom: string): string {
 export function AlreadyTakenPanel({
   playerCount,
   cards,
+  players = [],
   onAdd,
   onRetake,
 }: {
   playerCount: number;
-  /** The open blocks (signedInOpenCards); none reads the no-dates line. */
+  /** Every open block's card (openBlockCards), listed or not. */
   cards: readonly GroupCard[];
+  /** The household's players, for their ages (ages only, never the level); none lists every open block. */
+  players?: readonly AgePlayer[];
   onAdd: () => void;
   onRetake: () => void;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   useFocusOnMount(headingRef);
-  const open = signedInOpenCards(cards);
+  const open = accountOpenCards(cards, { enrolledCohortIds: [], players });
   const anyOpen = open.length > 0;
+  const blocksOpen = cards.some((c) => c.block !== null);
   // A household reads by its count.
   const whom = playerCount > 1 ? `your ${playerCount} players` : "you";
 
@@ -110,7 +116,13 @@ export function AlreadyTakenPanel({
               Your answers are in, and our coaches place {whom} by level and schedule from them. There is nothing
               else you need to do unless something changed.
             </p>
-            <OpenGroupsList cards={open} empty="line" className="mt-4" />
+            <OpenGroupsList
+              cards={open}
+              blocksOpen={blocksOpen}
+              whom={playerCount > 1 ? "your players" : "you"}
+              empty="line"
+              className="mt-4"
+            />
             {actions}
           </div>
         )}

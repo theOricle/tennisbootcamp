@@ -76,31 +76,45 @@ export const INSTALMENT_LABEL = formatDollars(INSTALMENT_AMOUNT);
 
 /**
  * A whole price as a visitor reads it: the total, then "for" and the length
- * ("$210 for six weeks"). The planned groups read it from the constants
- * (PRICE_SUMMARY); a block the coach opens reads its own total over its own
- * length (owner, 2026-11-20; src/lib/groupBlocks.ts). A block with more than
- * one class a week names its class count with it ("$420 for 12 classes over
- * six weeks"), so two blocks of one group at different counts read apart.
+ * ("$210 for six weeks"). A group card names its class count with it, once
+ * a week or twice ("$210 for 6 classes over six weeks", "$420 for 12 classes
+ * over six weeks"; owner, 2026-11-20), so two cards' prices compare at a
+ * glance: a planned group from the constants (GROUP_PRICE), a block the
+ * coach opens from its own total, length and classes (src/lib/groupBlocks.ts).
  * Never a per-session figure.
  */
-export function priceSummaryFor(totalDollars: number, weeks: number, classes: number = weeks): string {
+export function priceSummaryFor(totalDollars: number, weeks: number, classes?: number): string {
   const length = cohortLengthFor(weeks);
-  return classes === weeks
-    ? `${formatDollars(totalDollars)} for ${length}`
-    : `${formatDollars(totalDollars)} for ${classes} classes over ${length}`;
+  if (classes === undefined || !(classes > 0)) return `${formatDollars(totalDollars)} for ${length}`;
+  return `${formatDollars(totalDollars)} for ${classes} class${classes === 1 ? "" : "es"} over ${length}`;
 }
 
 /**
  * "$210 for six weeks": the price a visitor reads, the whole price of one
- * bootcamp (owner, 2026-11-17), on the group cards, the program pages, the
- * dashboard's program cards and the quiz's match card. Never a per-session
- * figure. Cards show it stacked (priceParts, src/lib/programCatalog.ts).
+ * bootcamp (owner, 2026-11-17), on the program pages while no block is open,
+ * the dashboard's program cards and the quiz's match card; the group cards
+ * add the class count (GROUP_PRICE). Never a per-session figure. Cards show
+ * it stacked (priceParts, src/lib/programCatalog.ts).
  */
 export const PRICE_SUMMARY = priceSummaryFor(COHORT_TOTAL, COHORT_WEEKS);
 
-/** The program page's price sentence: the whole price, then the $20 mechanic in full (voice.md rule 2). */
-const PRICE_LINE =
-  `${PRICE_SUMMARY}. If you took the $20 assessment, that $20 comes off the price.`;
+/**
+ * "$210 for 6 classes over six weeks": a planned group's price on its card,
+ * one class a week for the cohort length, with its class count like an open
+ * block's beside it (owner, 2026-11-20).
+ */
+export const GROUP_PRICE = priceSummaryFor(COHORT_TOTAL, COHORT_WEEKS, COHORT_WEEKS);
+
+/**
+ * The program page's price sentence: a whole price, then the $20 mechanic in
+ * full (voice.md rule 2). A program page reads it with its open blocks' price
+ * (src/lib/groupBlocks.ts cardsPrice), and with the setting's when none is open.
+ */
+export function priceLineFor(price: string): string {
+  return `${price}. If you took the $20 assessment, that $20 comes off the price.`;
+}
+
+const PRICE_LINE = priceLineFor(PRICE_SUMMARY);
 
 /** Private lessons carry no public rate (owner, 2026-10-12). */
 export const PRIVATE_LESSONS_PRICE = "Rates on request";
@@ -232,7 +246,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Saturday",
     start: "12:00",
     end: "13:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },
@@ -247,7 +261,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Saturday",
     start: "13:00",
     end: "14:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },
@@ -265,7 +279,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Saturday",
     start: "14:00",
     end: "15:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     // By approval (owner, 2026-10-12): the quiz, then our coaches' yes.
     joining: "approval",
@@ -282,7 +296,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Sunday",
     start: "16:00",
     end: "17:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },
@@ -297,7 +311,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Sunday",
     start: "17:00",
     end: "18:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },
@@ -312,7 +326,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Sunday",
     start: "18:00",
     end: "19:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },

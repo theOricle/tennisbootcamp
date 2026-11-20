@@ -17,7 +17,14 @@ import {
   twelveHourStart,
 } from "@/lib/programCatalog";
 import { tierById, type TierId } from "@/lib/tiers";
-import { BOOTCAMP_AUDIENCE, COHORT_LENGTH_ADJ, blockGroupTitle, numberInWords, priceSummaryFor } from "@/content/programs";
+import {
+  BOOTCAMP_AUDIENCE,
+  COHORT_LENGTH_ADJ,
+  blockGroupTitle,
+  formatDollars,
+  numberInWords,
+  priceSummaryFor,
+} from "@/content/programs";
 import { defaultLocation, locationForCohort } from "@/content/locations";
 
 // One group card per open block (owner, 2026-11-19: "you should be able to
@@ -57,11 +64,14 @@ export type BlockFacts = {
   /** The weekly classes in the order they first come: what a page's day lists read. */
   weekly: Pick<SessionSlot, "day" | "start" | "end">[];
   /**
-   * "$280 for eight weeks": the block's own total over its own length, with
-   * its class count when it runs more than one class a week ("$560 for 16
-   * classes over eight weeks"; priceSummaryFor). Never a per-session figure.
+   * "$280 for 8 classes over eight weeks", "$560 for 16 classes over eight
+   * weeks": the block's own total over its own length, with its class count,
+   * so two cards' prices compare at a glance (priceSummaryFor). Never a
+   * per-session figure.
    */
   price: string;
+  /** The block's total in cents (0 when no price is set): what "from" reads when a page's blocks differ. */
+  totalCents: number;
   /**
    * Seats left, the enroll page's own count (src/lib/groupSeats.ts). Null when
    * it could not be read, which reads "Open to join". Display only.
@@ -120,9 +130,9 @@ export function plannedGroupForBlock(
 }
 
 /**
- * "$280 for eight weeks", "$560 for 16 classes over eight weeks": the block's
- * own total over its own length, with its class count when it runs more than
- * one class a week; "Pricing TBA" for a block with no price set.
+ * "$280 for 8 classes over eight weeks", "$560 for 16 classes over eight
+ * weeks": the block's own total over its own length, with its class count,
+ * once a week or twice; "Pricing TBA" for a block with no price set.
  */
 export function blockPrice(block: Cohort): string {
   if (!(block.priceCents > 0)) return formatCohortPrice({ ...block, priceCents: 0 });
@@ -140,6 +150,7 @@ export function blockFacts(block: Cohort, seatsLeft?: number | null): BlockFacts
     days: formatClassDays(weekly),
     weekly,
     price: blockPrice(block),
+    totalCents: block.priceCents > 0 ? block.priceCents : 0,
     seatsLeft: typeof seatsLeft === "number" && Number.isFinite(seatsLeft) ? seatsLeft : null,
   };
 }
@@ -318,6 +329,19 @@ export function accountOpenCards(
   );
 }
 
+/**
+ * The dashboard's "Suggested for you" beside its groups with dates: a
+ * program whose open groups are listed there is left out, since those cards
+ * already carry its dates, its price and "Join". Every other suggestion stays.
+ */
+export function suggestionsBesideCards<T extends { program: { id: string } }>(
+  suggestions: readonly T[],
+  listed: readonly GroupCard[]
+): T[] {
+  const programs = new Set(listed.filter((c) => c.block !== null).map((c) => c.group.programSlug));
+  return suggestions.filter((s) => !programs.has(s.program.id));
+}
+
 // ─── What a page says about its cards (fix round, #85) ──────────────────────
 // Every heading, count, day list and "next starts" line on a program page and
 // on /programs reads the cards the page shows, so a block on another day, or
@@ -334,12 +358,31 @@ export function cardsDaysLabel(cards: readonly GroupCard[]): string {
   return joinDays([...new Set(cards.flatMap(cardDays))]);
 }
 
-/** "Three groups on Saturdays" · "Four groups on Saturdays and Wednesdays": counted from the cards shown. */
+/**
+ * "Three groups on Saturdays" · "Four groups on Saturdays and Wednesdays":
+ * the groups the cards show, counted once each (two blocks of one group are
+ * one group with two date options), on the days their classes run.
+ */
 export function cardsHeading(cards: readonly GroupCard[]): string {
-  const word = numberInWords(cards.length);
-  const count = `${word.charAt(0).toUpperCase()}${word.slice(1)} group${cards.length === 1 ? "" : "s"}`;
+  const groups = new Set(cards.map((c) => c.group.name)).size;
+  const word = numberInWords(groups);
+  const count = `${word.charAt(0).toUpperCase()}${word.slice(1)} group${groups === 1 ? "" : "s"}`;
   const days = cardsDaysLabel(cards);
   return days ? `${count} on ${days}` : count;
+}
+
+/**
+ * A program page's price, from its cards: the one price its open blocks
+ * share ("$280 for 8 classes over eight weeks"), "from" the lowest when they
+ * differ ("from $280"), and the setting's (`fallback`) while none is open.
+ */
+export function cardsPrice(cards: readonly GroupCard[], fallback: string): string {
+  const blocks = cards.flatMap((c) => (c.block ? [c.block] : []));
+  if (blocks.length === 0) return fallback;
+  const prices = [...new Set(blocks.map((b) => b.price))];
+  if (prices.length === 1) return prices[0];
+  const totals = blocks.map((b) => b.totalCents).filter((t) => t > 0);
+  return totals.length > 0 ? `from ${formatDollars(Math.min(...totals) / 100)}` : fallback;
 }
 
 /** The first class of the earliest open block among the cards, ISO, or null when none is open. */

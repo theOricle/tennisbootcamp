@@ -14,17 +14,21 @@
 //   2. what a card takes from its block: the dates from the first class to
 //      the last ("Jan 11 – Feb 15", the year only across a new year), the
 //      class days and times ("Sundays 4–5pm", "Sundays and Wednesdays
-//      4–5pm"), the price and length, with the class count when a block
-//      runs more than one class a week, and the seats;
+//      4–5pm"), the price and length with the class count, once a week or
+//      twice, so two cards' prices compare at a glance, and the seats;
 //   3. the card's states and its one button: "Join" to the block's sign-up
 //      page, "Ask to join" by approval, "Notify me" when full, and "Dates
 //      coming soon" with "Notify me" for a group with no open block (the
 //      owner's decision, 2026-11-20); the dates the strongest of its lines;
 //   4. the signed-in screens, rendered: the quiz's already-taken panel and
 //      the dashboard's list, with and without open blocks, never a
-//      by-approval block, the dashboard's for the account only;
-//   5. the pages' headings, counts, day lists and "next starts" lines, read
-//      from the cards they show.
+//      by-approval block, both for the household's ages only; with none
+//      listed, the line that is true (no group has dates yet, or none with
+//      dates is open to them); the next step that names the groups below
+//      only when there are some; no suggestion that repeats a listed block;
+//   5. the pages' headings (groups counted once, whatever their blocks),
+//      counts, day lists, prices and "next starts" lines, read from the
+//      cards they show.
 // Checks that read source text accept either line ending (`read`). Exits
 // non-zero on any failure. Never spells the cohort length or total.
 
@@ -37,6 +41,7 @@ import {
   COHORT_TOTAL,
   COHORT_TOTAL_CENTS,
   COHORT_WEEKS,
+  GROUP_PRICE,
   PRICE_SUMMARY,
   SESSION_PRICE_LABEL,
   cohortLengthFor,
@@ -58,6 +63,7 @@ import {
   cardsHeading,
   cardsLevelTags,
   cardsNextStart,
+  cardsPrice,
   cardsProgramLine,
   cardsScheduleLine,
   groupCards,
@@ -66,6 +72,8 @@ import {
   openBlockCards,
   plannedGroupForBlock,
   signedInOpenCards,
+  suggestionsBesideCards,
+  type AgePlayer,
   type GroupCard,
 } from "../lib/groupBlocks";
 import {
@@ -84,7 +92,7 @@ import { nextStepFor, type NextStepInput } from "../lib/dashboardState";
 import { tierById } from "../lib/tiers";
 import { PROGRAMS_DESCRIPTION } from "../content/site";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
-import { NO_DATES_LINE, OPEN_GROUPS_HEADING, OpenGroupsList } from "../components/sections/OpenGroups";
+import { NO_DATES_LINE, OPEN_GROUPS_HEADING, OpenGroupsList, noOpenGroupLine } from "../components/sections/OpenGroups";
 import { AlreadyTakenPanel, twoPathsLine } from "../components/quiz/AlreadyTakenPanel";
 import type { Cohort, SessionSlot } from "../types/cohort";
 
@@ -164,17 +172,22 @@ check("a block's days come in the order its first week brings them, whatever ord
 check("a planned group's own class reads the same way", groupClassDays(g("youth-7-10")) === "Saturdays 12–1pm" && groupClassDays(g("adult-advanced")) === "Sundays 6–7pm");
 
 // ── 2. The price and length ─────────────────────────────────────────────────
-console.log("The price: the block's own total over its own length, and its class count when it differs");
-check("the whole price from a total and a length", priceSummaryFor(280, 8) === "$280 for eight weeks" && cohortLengthFor(1) === "one week" && cohortLengthFor(13) === "13 weeks");
-check("the planned groups' price is the same sentence from the setting", PRICE_SUMMARY === priceSummaryFor(COHORT_TOTAL, COHORT_WEEKS) && PRICE_SUMMARY === `${formatDollars(COHORT_TOTAL)} for ${numberInWords(COHORT_WEEKS)} weeks`);
-check("a block priced at the setting reads the setting's words", blockPrice(block({ id: "set" })) === PRICE_SUMMARY);
-check("a block of its own length and total reads its own", blockPrice(block({ id: "long", weeks: 8, priceCents: 28000 })) === "$280 for eight weeks" && blockPrice(block({ id: "half", weeks: 3, priceCents: 10500 })) === "$105 for three weeks");
+console.log("The price: the block's own total over its own length, with its class count, once a week or twice");
+check("the whole price from a total and a length, with a class count when one is given", priceSummaryFor(280, 8) === "$280 for eight weeks" && priceSummaryFor(280, 8, 8) === "$280 for 8 classes over eight weeks" && cohortLengthFor(1) === "one week" && cohortLengthFor(13) === "13 weeks");
+check("…one class reads in the singular, and no class count reads none", priceSummaryFor(35, 1, 1) === "$35 for 1 class over one week" && priceSummaryFor(280, 8, 0) === "$280 for eight weeks");
+check("the planned groups' price is the setting's, with its class count, one a week", GROUP_PRICE === priceSummaryFor(COHORT_TOTAL, COHORT_WEEKS, COHORT_WEEKS) && GROUP_PRICE === `${formatDollars(COHORT_TOTAL)} for ${COHORT_WEEKS} classes over ${numberInWords(COHORT_WEEKS)} weeks` && programGroups.filter((x) => x.day !== null).every((x) => x.price === GROUP_PRICE));
+check("the program pages' price with no block open stays the setting's, with no count", PRICE_SUMMARY === priceSummaryFor(COHORT_TOTAL, COHORT_WEEKS) && PRICE_SUMMARY === `${formatDollars(COHORT_TOTAL)} for ${numberInWords(COHORT_WEEKS)} weeks`);
+check("a once-a-week block priced at the setting reads the planned groups' words", blockPrice(block({ id: "set" })) === GROUP_PRICE);
+check("a block of its own length and total reads its own, with its class count", blockPrice(block({ id: "long", weeks: 8, priceCents: 28000 })) === "$280 for 8 classes over eight weeks" && blockPrice(block({ id: "half", weeks: 3, priceCents: 10500 })) === "$105 for 3 classes over three weeks");
 check("a block with no price set says so, never $0", blockPrice(block({ id: "free", priceCents: 0 })) === "Pricing TBA");
 {
   const twiceLong = block({ id: "twice-long", weeks: 8, priceCents: 56000, sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] });
   check("twice a week: the class count, counted from the block's sessions, beside the total and the length", blockClassCount(twiceLong) === 16 && blockPrice(twiceLong) === "$560 for 16 classes over eight weeks");
   const twiceSet = block({ id: "twice-set", sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] });
-  check("…at the setting's length too, so two blocks of one group at different class counts read apart", blockPrice(twiceSet) === `${formatDollars(COHORT_TOTAL)} for ${COHORT_WEEKS * 2} classes over ${cohortLengthFor(COHORT_WEEKS)}` && blockPrice(block({ id: "once" })) === PRICE_SUMMARY);
+  check("…at the setting's length too, so two blocks of one group at different class counts read apart", blockPrice(twiceSet) === `${formatDollars(COHORT_TOTAL)} for ${COHORT_WEEKS * 2} classes over ${cohortLengthFor(COHORT_WEEKS)}` && blockPrice(block({ id: "once" })) === GROUP_PRICE);
+  const [, onceRest] = priceParts(blockPrice(block({ id: "once" })));
+  const [, twiceRest] = priceParts(blockPrice(twiceSet));
+  check("once a week and twice read in parallel: the same words, only the count apart", onceRest === `for ${COHORT_WEEKS} classes over ${cohortLengthFor(COHORT_WEEKS)}` && twiceRest === `for ${COHORT_WEEKS * 2} classes over ${cohortLengthFor(COHORT_WEEKS)}` && onceRest.replace(/\d+/, "N") === twiceRest.replace(/\d+/, "N"));
   const html = render(createElement(ProgramGroupCard, { group: g("adult-newer"), block: blockFacts(twiceLong) }));
   const [lead, rest] = priceParts(blockPrice(twiceLong));
   check("the card shows the total in bold over the class count and length, never a per-session figure", rest === "for 16 classes over eight weeks" && html.includes(`>${lead}</span>`) && html.includes(`>${rest}</span>`) && !/a session|per session|a class\b|per class/i.test(html) && !html.includes(SESSION_PRICE_LABEL) && count(html, "$") === 1);
@@ -241,11 +254,11 @@ console.log("One card per open block, one per planned group with none");
   const cards = groupCards(programGroups, [twice, sunday]);
   const beg = cards.filter((c) => c.group.name === "Beginner Adult Bootcamp");
   check("two blocks of one group are two cards, the earliest first, and the group has no card of its own", beg.length === 2 && beg[0].block?.cohortId === "beg-sun" && beg[1].block?.cohortId === "beg-sun-wed" && beg[0].group.id === "adult-newer" && beg[1].group.id === "adult-newer-2" && !cards.some((c) => c.group.name === "Beginner Adult Bootcamp" && c.block === null));
-  check("each reads its own dates, days and price", beg[0].block?.dates === "Jan 10 – Feb 14" && beg[0].block?.days === "Sundays 4–5pm" && beg[1].block?.days === "Sundays and Wednesdays 4–5pm" && beg[0].block?.price === PRICE_SUMMARY && beg[1].block?.price !== PRICE_SUMMARY);
+  check("each reads its own dates, days and price", beg[0].block?.dates === "Jan 10 – Feb 14" && beg[0].block?.days === "Sundays 4–5pm" && beg[1].block?.days === "Sundays and Wednesdays 4–5pm" && beg[0].block?.price === GROUP_PRICE && beg[1].block?.price === blockPrice(twice) && beg[1].block?.price !== GROUP_PRICE);
   check("card ids are unique on a page, so each anchor lands on one card", new Set(cards.map((c) => c.group.id)).size === cards.length);
   check("the rest of the lineup keeps its cards in order, around them", ids(cards) === "youth-7-10,youth-11-15,high-performance,adult-newer,adult-newer-2,adult-intermediate,adult-advanced,private-lessons");
   check("from the lineup a card takes the program, the level tag, the title and the ages", beg.every((c) => c.group.programSlug === "bootcamps" && c.group.level === 1 && c.group.ageMin === 16 && c.group.ageMax === null));
-  check("from the block it takes its class day and time, its location and its price", beg[0].group.day === "Sunday" && beg[0].group.start === "16:00" && beg[0].group.locationId === "newtonbrook" && beg[0].group.price === PRICE_SUMMARY);
+  check("from the block it takes its class day and time, its location and its price", beg[0].group.day === "Sunday" && beg[0].group.start === "16:00" && beg[0].group.locationId === "newtonbrook" && beg[0].group.price === GROUP_PRICE && beg[1].group.price === blockPrice(twice));
 
   const intermediateYouth = youthBlock({ id: "int-youth", startDate: "2026-12-05", levelMin: 3, levelMax: 3.5, sessions: [{ day: "Sat", start: "15:00", end: "16:00" }, { day: "Wed", start: "18:00", end: "19:00" }] });
   const built = groupCards(programGroups, [intermediateYouth]);
@@ -300,8 +313,8 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   check("a by-approval block is left out of the signed-in list: its Ask to join would lead back to it", ids(signedInOpenCards(all)) === "adult-newer");
 
   // The quiz's already-taken panel.
-  const panel = (cards: readonly GroupCard[], playerCount = 1) =>
-    render(createElement(AlreadyTakenPanel, { playerCount, cards, onAdd: () => {}, onRetake: () => {} }));
+  const panel = (cards: readonly GroupCard[], playerCount = 1, players: AgePlayer[] = []) =>
+    render(createElement(AlreadyTakenPanel, { playerCount, cards, players, onAdd: () => {}, onRetake: () => {} }));
   const withBlocks = panel(all);
   check("the quiz panel with open blocks: one line with the two paths, then Groups with dates and the cards", twoPathsLine("you") === "Pick a group with dates and join now, or our coaches place you from your quiz answers." && withBlocks.includes(`>${twoPathsLine("you")}</p>`) && withBlocks.includes(`>${OPEN_GROUPS_HEADING}</h2>`) && count(withBlocks, "<article") === 1 && />Join</.test(linkTo(withBlocks, "/enroll/beg-sun")));
   check("…never the by-approval block", !withBlocks.includes("High Performance Youth Bootcamp") && !withBlocks.includes("/enroll/hp"));
@@ -311,7 +324,17 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   check("a household reads by its count", panel(all, 3).includes(`>${twoPathsLine("your 3 players")}</p>`));
   const noBlocks = panel([]);
   const onlyHp = panel(groupCards(programGroups, [hpBlock]));
-  check("with none open (a by-approval block alone counts as none): the panel keeps its card, its sentence and one plain line", [noBlocks, onlyHp].every((html) => html.includes("md:rounded-3xl") && html.includes("There is nothing else you need to do unless something changed.") && html.includes(`>${NO_DATES_LINE}</p>`) && !html.includes("border-dashed") && !html.includes("<article")));
+  check("with none listed: the panel keeps its card, its sentence and one plain line", [noBlocks, onlyHp].every((html) => html.includes("md:rounded-3xl") && html.includes("There is nothing else you need to do unless something changed.") && !html.includes("border-dashed") && !html.includes("<article")));
+  check("…No group has dates yet only when no block is open at all", noBlocks.includes(`>${NO_DATES_LINE}</p>`) && !onlyHp.includes(NO_DATES_LINE));
+  check("…blocks open but none for them (a by-approval one alone): it says so, for one player or a household", onlyHp.includes(`>${noOpenGroupLine("you")}</p>`) && panel(groupCards(programGroups, [hpBlock]), 2).includes(`>${noOpenGroupLine("your players")}</p>`));
+  // The household's ages, as the dashboard reads them (accountOpenCards).
+  const novicePanel = youthBlock({ id: "nov-panel", levelMin: 2, levelMax: 2.5, sessions: [{ day: "Sat", start: "13:00", end: "14:00" }] });
+  const mixed = groupCards(programGroups, [open, novicePanel]);
+  const adultOnly = panel(mixed, 1, [{ age_band: "adult", is_minor: false }]);
+  const juniorOnly = panel(mixed, 1, [{ age_band: "junior", is_minor: true }]);
+  check("the quiz panel lists only the blocks whose ages take one of the household's players", count(adultOnly, "<article") === 1 && adultOnly.includes("/enroll/beg-sun") && !adultOnly.includes("/enroll/nov-panel") && count(juniorOnly, "<article") === 1 && juniorOnly.includes("/enroll/nov-panel") && !juniorOnly.includes("/enroll/beg-sun"));
+  const adultsNoFit = panel(groupCards(programGroups, [novicePanel]), 1, [{ age_band: "adult", is_minor: false }]);
+  check("…and with blocks open for other ages only, the panel says none is open to them", adultsNoFit.includes(`>${noOpenGroupLine("you")}</p>`) && !adultsNoFit.includes(NO_DATES_LINE) && !adultsNoFit.includes("<article") && /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(adultsNoFit));
   check("…a link to the groups, and the dashboard button the one lime action", /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(noBlocks) && lime(linkTo(noBlocks, "/intake")));
   check("…promising nothing the site does not do: no email when a block opens", !/email|notify|tell you|we&#x27;ll|we will|let you know/i.test(words(noBlocks).replace("Retake the quiz", "")));
 
@@ -321,7 +344,9 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   check("the dashboard's list: the same cards, every button an outline, never the by-approval block", count(dash, "<article") === 1 && links.length > 0 && links.every((a) => !a.includes("bg-[#B4E655]")) && />Join</.test(linkTo(dash, "/enroll/beg-sun")) && !dash.includes("/enroll/hp"));
   const dashEmpty = render(createElement(OpenGroupsList, { cards: [], quiet: true }));
   check("…with none: the dashed box, the one line and the link to the groups", dashEmpty.includes("border-dashed") && dashEmpty.includes(`>${NO_DATES_LINE}</p>`) && /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(dashEmpty) && !/email|tell you|let you know/i.test(dashEmpty));
-  check("the heading over the open blocks, and the line with none", OPEN_GROUPS_HEADING === "Groups with dates" && NO_DATES_LINE === "No group has dates yet.");
+  const dashNoFit = render(createElement(OpenGroupsList, { cards: [], quiet: true, blocksOpen: true, whom: "Maya" }));
+  check("…with blocks open but none for the account: the line that is true, by name, and the link", dashNoFit.includes("border-dashed") && dashNoFit.includes(`>${noOpenGroupLine("Maya")}</p>`) && !dashNoFit.includes(NO_DATES_LINE) && /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(dashNoFit));
+  check("the heading over the open blocks, and the two lines with none listed", OPEN_GROUPS_HEADING === "Groups with dates" && NO_DATES_LINE === "No group has dates yet." && noOpenGroupLine("you") === "No group with dates is open to you right now." && noOpenGroupLine("your players") === "No group with dates is open to your players right now.");
 
   // Which open blocks an account sees: not one it is in; ages only.
   const novice = youthBlock({ id: "nov-sat", levelMin: 2, levelMax: 2.5, sessions: [{ day: "Sat", start: "13:00", end: "14:00" }] });
@@ -343,16 +368,32 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   check("an account with no player on file sees every open block but the by-approval one", seen([]) === "nov-sat,beg-sun,adv-sun");
 
   const dashPage = read("src/app/dashboard/page.tsx");
-  check("the dashboard page: the account's open blocks, by its enrollments and its players", dashPage.includes("accountOpenCards(groupCards(programGroups, publicBlocks, blockSeats), {") && dashPage.includes("    enrolledCohortIds,") && dashPage.includes("players: roster.length > 0 ? roster : players,"));
+  check("the dashboard page: the account's open blocks, by its enrollments and its players", dashPage.includes("const allOpenGroups = openBlockCards(groupCards(programGroups, publicBlocks, blockSeats));") && dashPage.includes("accountOpenCards(allOpenGroups, {") && dashPage.includes("    enrolledCohortIds,") && dashPage.includes("players: roster.length > 0 ? roster : players,"));
+  check("…whether any block is open at all, for the line with none listed, and whether the list shows one, for the next step", dashPage.includes("anyGroupOpen={allOpenGroups.length > 0}") && dashPage.includes("groupsBelow: openGroups.length > 0,"));
   const view = read("src/app/dashboard/DashboardView.tsx");
-  check("the dashboard view draws them quiet under Groups with dates, under My programs", view.includes('<SectionHeading id="open-groups" title={OPEN_GROUPS_HEADING} />') && view.includes("<OpenGroupsList cards={openGroups} quiet />") && at(view, 'id="my-programs"') < at(view, 'id="open-groups"') && at(view, 'id="open-groups"') < at(view, 'id="open-for-tier"'));
+  check("the dashboard view draws them quiet under Groups with dates, under My programs", view.includes('<SectionHeading id="open-groups" title={OPEN_GROUPS_HEADING} />') && /<OpenGroupsList\s+cards=\{openGroups\}\s+quiet\s+blocksOpen=\{anyGroupOpen\}\s+whom=\{several \? "your players" : \(names\[0\] \?\? "you"\)\}\s+\/>/.test(view) && at(view, 'id="my-programs"') < at(view, 'id="open-groups"') && at(view, 'id="open-groups"') < at(view, 'id="open-for-tier"'));
 
-  // The next step above them never says there is nothing else to do.
+  // Suggested for you never repeats a listed block (fix round 2).
+  const suggestions = listedPrograms.map((program) => ({ program, fit: null }));
+  const listed = accountOpenCards(groupCards(programGroups, [open, hpBlock]), { enrolledCohortIds: [], players: [] });
+  const kept = suggestionsBesideCards(suggestions, listed).map((s) => s.program.id).join(",");
+  check("a program whose groups with dates are listed is left out of Suggested for you; every other stays", kept === listedPrograms.filter((p) => p.id !== "bootcamps").map((p) => p.id).join(","), kept);
+  check("…with none listed, every suggestion stays, and a group with no block lists nothing", suggestionsBesideCards(suggestions, []).length === suggestions.length && suggestionsBesideCards(suggestions, groupCards(programGroups, [])).length === suggestions.length && suggestionsBesideCards(suggestions, groupCards(programGroups, [hpBlock]).filter((c) => c.block === null)).length === suggestions.length);
+  check("the dashboard page takes them out beside the list it shows", /suggestionsBesideCards\(\s*suggestProgramsFor\(roster, listedPrograms, enrolledProgramIds\),\s*openGroups\s*\)/.test(dashPage));
+  const suggested = view.slice(at(view, 'aria-labelledby="suggested"'));
+  check("…and its cards carry no block in the old format: no Next row, no Next cohort chip", suggested.includes("<ProgramCardList") && !suggested.includes("publicCohorts") && !view.includes("isCohortPublic"));
+
+  // The next step above them names the groups below only when the list
+  // shows one (fix round 2); with none, it keeps the old sentence.
   const player = (id: string, level: number | null) => ({ id, relationship: id === "self" ? "self" : "child", full_name: id === "self" ? "Dana Reyes" : "Maya Reyes", level });
-  const step = (roster: ReturnType<typeof player>[], voice: "you" | "named") =>
-    nextStepFor({ selfId: "self", roster, voice, enrollments: [], cohorts: [], sessionsByCohort: {}, programs: [], invites: [], bookings: [], recipientEmail: "info@tennisbootcamp.ca", today: "2026-11-20", now: "2026-11-20T12:00:00Z" } as NextStepInput);
-  const steps = [step([player("self", null)], "you"), step([player("self", 3)], "you"), step([player("self", null), player("kid", null)], "named"), step([player("self", 3), player("kid", 2)], "named")];
-  check("the next step offers the groups below instead of saying there is nothing else to do, in every placing state", steps.every((s) => s.detail.startsWith("Or pick a group with dates below.") && !/nothing else you need to do/i.test(s.detail)) && steps.map((s) => s.kind).join() === "placing,placed,placing,placed");
+  const step = (roster: ReturnType<typeof player>[], voice: "you" | "named", groupsBelow?: boolean) =>
+    nextStepFor({ selfId: "self", roster, voice, enrollments: [], cohorts: [], sessionsByCohort: {}, programs: [], invites: [], bookings: [], recipientEmail: "info@tennisbootcamp.ca", today: "2026-11-20", now: "2026-11-20T12:00:00Z", groupsBelow } as NextStepInput);
+  const rosters: [ReturnType<typeof player>[], "you" | "named"][] = [[[player("self", null)], "you"], [[player("self", 3)], "you"], [[player("self", null), player("kid", null)], "named"], [[player("self", 3), player("kid", 2)], "named"]];
+  const withGroups = rosters.map(([r, v]) => step(r, v, true));
+  const withoutGroups = rosters.map(([r, v]) => step(r, v, false));
+  const unflagged = rosters.map(([r, v]) => step(r, v));
+  check("with groups listed below, the next step offers them instead of saying there is nothing else to do, in every placing state", withGroups.every((s) => s.detail.startsWith("Or pick a group with dates below.") && !/nothing else you need to do/i.test(s.detail)) && withGroups.map((s) => s.kind).join() === "placing,placed,placing,placed");
+  check("with none listed, it keeps the old sentence, word for word", [...withoutGroups, ...unflagged].every((s) => s.detail.startsWith("There is nothing else you need to do. ") && !s.detail.includes("pick a group")) && withoutGroups.every((s, i) => s.detail === unflagged[i].detail && s.detail === withGroups[i].detail.replace("Or pick a group with dates below.", "There is nothing else you need to do.")) && withoutGroups[1].detail === "There is nothing else you need to do. Your group, dates and price land here once they are set." && withoutGroups[3].detail === "There is nothing else you need to do. Groups, dates and prices land here once they are set.");
 }
 
 // ── 5. What the pages say about their cards ─────────────────────────────────
@@ -370,12 +411,20 @@ console.log("Every heading, count, day list and next-start line reads the cards 
   check("the schedule line lists each day's starts, earliest first", cardsScheduleLine(youth).endsWith(" · Saturdays 12:00, 1:00, 2:00 and 3:00 · Wednesdays 6:00"), cardsScheduleLine(youth));
   check("the level tags follow the cards: a block at a level the lineup lacks adds its tag", JSON.stringify(cardsLevelTags(youth)) === "[1,2,3,5]" && JSON.stringify(cardsLevelTags(ordinaryYouth)) === "[1,2,5]");
   const adult = groupCards(adultPlanned, [block({ id: "a1" }), block({ id: "a2", startDate: "2027-02-21", sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] })]);
-  check("two blocks of one group are two of the count", cardsHeading(adult) === "Four groups on Sundays and Wednesdays" && cardsNextStart(adult) === "2027-01-10");
-  check("one group reads in the singular", cardsHeading(groupCards([g("adult-newer")], [])) === "One group on Sundays");
+  check("two blocks of one group are one group with two date options: three groups over four cards", adult.length === 4 && cardsHeading(adult) === "Three groups on Sundays and Wednesdays" && cardsNextStart(adult) === "2027-01-10");
+  check("one group reads in the singular, with one block or two", cardsHeading(groupCards([g("adult-newer")], [])) === "One group on Sundays" && cardsHeading(groupCards([g("adult-newer")], [block({ id: "b1" }), block({ id: "b2", startDate: "2027-03-07" })])) === "One group on Sundays");
+
+  // The price above the cards (fix round 2): one when every open block
+  // shares it, "from" the lowest when they differ, the setting's with none.
+  check("no open block: the setting's price", cardsPrice(groupCards(adultPlanned, []), PRICE_SUMMARY) === PRICE_SUMMARY);
+  check("every open block at one price: that price, with its class count", cardsPrice(groupCards(adultPlanned, [block({ id: "s1" }), block({ id: "s2", levelMin: 3, levelMax: 3.5 })]), PRICE_SUMMARY) === GROUP_PRICE);
+  check("blocks at different prices: from the lowest total", cardsPrice(adult, PRICE_SUMMARY) === `from ${formatDollars(COHORT_TOTAL)}` && cardsPrice(groupCards(adultPlanned, [block({ id: "p1", weeks: 8, priceCents: 28000 }), block({ id: "p2", weeks: 8, priceCents: 56000, sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] })]), PRICE_SUMMARY) === "from $280");
+  check("…a block with no price set never makes the lowest", cardsPrice(groupCards(adultPlanned, [block({ id: "tba", priceCents: 0 }), block({ id: "p3", weeks: 8, priceCents: 28000 })]), PRICE_SUMMARY) === "from $280");
 
   const detail = read("src/app/programs/[slug]/page.tsx");
   check("program pages: the heading, the summary days, the schedule line, the next start and the level tags read the cards", detail.includes('const groupsHeading = cards.length > 0 ? cardsHeading(cards) : "Groups";') && detail.includes("const days = cardsDaysLabel(cards);") && detail.includes("const scheduleLine = cards.length > 0 ? cardsScheduleLine(cards) : program.schedule;") && detail.includes("const nextStart = cardsNextStart(cards);") && detail.includes("Next cohort starts {formatStartDate(nextStart)}") && detail.includes("cardsLevelTags(cards)") && !detail.includes("scheduledGroups.length === 3") && !detail.includes("nextOpenCohort"));
   check("program pages: no list under the groups repeats the open blocks", !detail.includes("openCohorts.map((cohort)") && !detail.includes("Spots open") && detail.includes("{!arranged && !hasOpenCohorts && ("));
+  check("program pages: the phone line and the panel's price sentence read the cards' price", detail.includes("cardsPrice(cards, program.priceSummary)") && detail.includes("priceLineFor(") && detail.includes("const summary = summaryFacts(program, cards);"));
   // The programs' own words never contradict the cards (fix round 2): no
   // weekday and no count of groups or levels in a description, a search
   // line, a long description, a level line or a caption, nor in the
@@ -398,9 +447,11 @@ console.log("The pages build their cards from the open blocks");
   check("program pages: the program's cards, with their blocks", detail.includes("groupCards(groups, openCohorts, seatCounts)") && detail.includes("block={block}"));
   check("the home page shows no group card and no price", !read("src/app/page.tsx").includes("ProgramGroupCard"));
   const layout = read("src/app/intake/layout.tsx");
-  check("the quiz's layout reads the public blocks on the server and hands the signed-in list to the page", layout.includes("await getPublicCohorts()") && layout.includes("await readBlockSeats(publicCohorts)") && layout.includes("signedInOpenCards(groupCards(programGroups, publicCohorts, seats))") && layout.includes("<OpenGroupsProvider cards={cards}>{children}</OpenGroupsProvider>") && /export const revalidate = 60;/.test(layout));
+  check("the quiz's layout reads the public blocks on the server and hands every open one to the page", layout.includes("await getPublicCohorts()") && layout.includes("await readBlockSeats(publicCohorts)") && layout.includes("openBlockCards(groupCards(programGroups, publicCohorts, seats))") && layout.includes("<OpenGroupsProvider cards={cards}>{children}</OpenGroupsProvider>") && /export const revalidate = 60;/.test(layout));
   const intake = read("src/app/intake/page.tsx");
-  check("the quiz page hands the panel the blocks, and reads none over the network", intake.includes("const openGroups = useOpenGroups();") && intake.includes("cards={openGroups}") && !/fetch\(["'`]\/api\/(cohorts|blocks|groups|open)/.test(intake));
+  check("the quiz page hands the panel the blocks and the household's ages, and reads none over the network", intake.includes("const openGroups = useOpenGroups();") && intake.includes("cards={openGroups}") && intake.includes("players={household.participants.map((p) => ({ age_band: p.ageBand ?? null, is_minor: p.isMinor }))}") && !/fetch\(["'`]\/api\/(cohorts|blocks|groups|open)/.test(intake));
+  const panelSrc = read("src/components/quiz/AlreadyTakenPanel.tsx");
+  check("the panel filters them as the dashboard does", panelSrc.includes("accountOpenCards(cards, { enrolledCohortIds: [], players })"));
   const card = read("src/components/sections/ProgramGroupCard.tsx");
   check("the card types no amount, no length and no day name of its own", !/\$\d/.test(card) && !/\b(Sundays|Saturdays|Wednesdays)\b/.test(card.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, "")));
   const pkg = JSON.parse(read("package.json")) as { scripts: { test: string } };

@@ -1063,12 +1063,18 @@ function IntakePageInner() {
     !panelDismissed &&
     draftChecked &&
     !draftInProgress.current &&
-    stepIndex === 0
+    stepIndex === 0 &&
+    // The household is read first, so the panel lists only the open blocks
+    // whose ages take one of its players (never a flash of the others).
+    !household.loading
   ) {
     return (
       <AlreadyTakenPanel
         playerCount={quiz.playerCount}
         cards={openGroups}
+        // The household's ages: the panel lists the open blocks that take
+        // one of its players, as the dashboard does.
+        players={household.participants.map((p) => ({ age_band: p.ageBand ?? null, is_minor: p.isMinor }))}
         onAdd={() => {
           setForm((s) => ({
             ...s,
