@@ -14,12 +14,7 @@ import { availabilityChips } from "@/lib/availability";
 import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
 import { emailBelongsToAccount, ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
-import {
-  bookingPaymentPlan,
-  bookingStatusFallback,
-  isCheckViolation,
-  latePaymentPlan,
-} from "@/lib/stripeOutcome";
+import { bookingPaymentPlan, latePaymentPlan, writeBookingState } from "@/lib/stripeOutcome";
 import { guestPlayer, linkedBookingPlayer } from "@/lib/guestAccount";
 import { settleGuestSubmission } from "@/lib/household";
 import type { ParticipantInput } from "@/lib/participantInput";
@@ -673,16 +668,21 @@ export async function confirmBooking(
 async function recordTestBooking(bookingId: string, stripeSessionId: string | null): Promise<BookingRow | null> {
   const supabase = createServiceClient();
   const plan = bookingPaymentPlan("test");
-  const move = (status: string) =>
+  const write = (p: Record<string, unknown>) =>
     supabase
       .from("assessment_bookings")
-      .update({ status, paid: plan.paid, stripe_session_id: stripeSessionId ?? undefined })
+      .update(p)
       .eq("id", bookingId)
       .in("status", ["pending", "expired"])
       .select("*")
       .maybeSingle();
-  let { data, error } = await move(plan.status);
-  if (isCheckViolation(error)) ({ data, error } = await move(bookingStatusFallback(plan.status) ?? "cancelled"));
+  // Before migration 0012 the table refuses "test"; writeBookingState writes
+  // "cancelled", which also frees the slot, in its place.
+  const { data, error } = await writeBookingState(write, {
+    status: plan.status,
+    paid: plan.paid,
+    stripe_session_id: stripeSessionId ?? undefined,
+  });
   if (error) console.error(`[assessment] Test booking ${bookingId} not recorded:`, error.code ?? "unknown");
   if (!data) return null;
 
@@ -1035,8 +1035,10 @@ export async function listBookings(opts: { date?: string } = {}): Promise<
     .from("assessment_bookings")
     .select("*")
     .in("block_id", blockIds)
-    // Test, refunded and disputed bookings show too, labelled (backlog #84).
-    .in("status", ["pending", "booked", "completed", "no_show", "test", "refunded", "disputed"])
+    // Test, refunded and disputed bookings show too, labelled (backlog #84),
+    // and cancelled ones: before migration 0012 those three are stored as
+    // cancelled, and a payment that landed on a lost hold is kept there.
+    .in("status", ["pending", "booked", "completed", "no_show", "cancelled", "test", "refunded", "disputed"])
     .order("created_at", { ascending: false });
 
   const decorated = await decorateHousehold((data as BookingRow[]) ?? []);

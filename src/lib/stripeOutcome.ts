@@ -184,6 +184,28 @@ export function isCheckViolation(error: { code?: string | null } | null | undefi
   return error?.code === "23514";
 }
 
+/** What one write of a booking answers, as Supabase does. */
+export type BookingWriteResult<R> = { data: R | null; error: { code?: string | null } | null };
+
+/**
+ * Writes a booking's new state. While migration 0012 has not run, the table
+ * refuses the three payment states (a check violation), and "cancelled",
+ * which also holds no slot, is written in their place. Without that second
+ * write, a refund or a dispute before 0012 would leave the booking booked and
+ * paid, and a test payment's hold would stay pending until it lapsed. Any
+ * other error is returned as it is. The write is injected, so
+ * src/scripts/test-refunds.ts runs this against a table that still refuses.
+ */
+export async function writeBookingState<R>(
+  write: (patch: Record<string, unknown>) => PromiseLike<BookingWriteResult<R>>,
+  patch: Record<string, unknown> & { status?: string }
+): Promise<BookingWriteResult<R>> {
+  const first = await write(patch);
+  if (!isCheckViolation(first.error) || !patch.status) return first;
+  const fallback = bookingStatusFallback(patch.status);
+  return fallback ? write({ ...patch, status: fallback }) : first;
+}
+
 /**
  * What an assessment booking becomes once its payment is reversed: a hold or
  * a booking still ahead — or one that kept the money with no slot — reads

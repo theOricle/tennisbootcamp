@@ -24,6 +24,7 @@ import {
   REVERSE_FROM,
   SETTLE_FROM,
   SLOT_HOLDING_STATUSES,
+  bookingPaymentPlan,
   bookingReversalPatch,
   bookingStatusFallback,
   isCheckViolation,
@@ -31,6 +32,7 @@ import {
   latePaymentPlan,
   refundReversal,
   rowsInStatus,
+  writeBookingState,
 } from "../lib/stripeOutcome";
 import { seatsFromSnapshot } from "../lib/seatCount";
 import { planMarkUnpaid } from "../lib/paymentTransitions";
@@ -178,7 +180,11 @@ console.log("Booking states — test, refunded and disputed hold no slot, and sa
   check("any other status has no fallback", bookingStatusFallback("booked"), null);
   check("a check-constraint refusal is recognised", [isCheckViolation({ code: "23514" }), isCheckViolation({ code: "23505" }), isCheckViolation(null)], [true, false, false]);
   const assessments = read("src/lib/assessments.ts");
-  check("the admin list shows the three states", /\.in\("status", \["pending", "booked", "completed", "no_show", "test", "refunded", "disputed"\]\)/.test(assessments));
+  check(
+    "the admin list shows the three states, and cancelled, which stands in for them before 0012",
+    /\.in\("status", \["pending", "booked", "completed", "no_show", "cancelled", "test", "refunded", "disputed"\]\)/.test(assessments)
+  );
+  check("admin: cancelled → Cancelled", statusLabel(BOOKING_STATUS_LABELS, "cancelled"), "Cancelled");
   const sql = read("supabase/migrations/0012_booking_payment_states.sql");
   const verifyAt = sql.indexOf("-- verify:");
   const body = sql.slice(0, verifyAt).split("\n").map((l) => l.replace(/--.*$/, "")).join(" ").replace(/\s+/g, " ").toLowerCase();
@@ -266,8 +272,82 @@ console.log("Source — every reversal is a guarded move and sends no email");
   check("the Sheet flip reads before it writes", sheet.includes("export async function flipEnrollmentRows(") && sheet.includes("rowsInStatus("));
 }
 
-if (failures > 0) {
-  console.error(`\n${failures} check(s) failed.`);
-  process.exit(1);
+// ─── Before migration 0012: cancelled stands in ───────────────────────────────
+
+async function fallbackScenarios() {
+  console.log("Before migration 0012 — the table refuses the new states, and cancelled stands in");
+  // One booking row behind the status check as 0003 left it (or as 0012
+  // widens it), written the way reverseBooking and recordTestBooking write: a
+  // guarded update on the state they read. A refused status is Postgres 23514.
+  const PRE_0012 = ["pending", "booked", "completed", "no_show", "cancelled", "expired", "requested"];
+  const POST_0012 = [...PRE_0012, "test", "refunded", "disputed"];
+  const bookingTable = (row: { status: string; paid: boolean }, allowed: readonly string[]) => {
+    const state: Record<string, unknown> = { ...row };
+    let writes = 0;
+    const write = async (patch: Record<string, unknown>) => {
+      writes++;
+      if (typeof patch.status === "string" && !allowed.includes(patch.status)) {
+        return { data: null, error: { code: "23514" } };
+      }
+      if (state.status !== row.status || state.paid !== row.paid) return { data: null, error: null };
+      Object.assign(state, patch);
+      return { data: { id: "booking-1" }, error: null };
+    };
+    return { state, write, writes: () => writes };
+  };
+
+  const bookedPaid = { status: "booked", paid: true };
+  for (const kind of ["refunded", "disputed"] as const) {
+    const t = bookingTable(bookedPaid, PRE_0012);
+    const result = await writeBookingState(t.write, bookingReversalPatch(bookedPaid, kind)!);
+    check(`${kind} before 0012: the booking is cancelled and unpaid, never left booked and paid`, t.state, { status: "cancelled", paid: false });
+    check("…the write reports the row it moved, with no error", [result.data !== null, result.error], [true, null]);
+  }
+  {
+    const t = bookingTable(bookedPaid, POST_0012);
+    await writeBookingState(t.write, bookingReversalPatch(bookedPaid, "refunded")!);
+    check("after 0012 the same refund reads refunded, in one write", [t.state, t.writes()], [{ status: "refunded", paid: false }, 1]);
+  }
+  {
+    const pending = { status: "pending", paid: false };
+    const plan = bookingPaymentPlan("test");
+    const before = bookingTable(pending, PRE_0012);
+    await writeBookingState(before.write, { status: plan.status, paid: plan.paid });
+    check("a test payment before 0012: the hold is cancelled (no slot held), never left pending", before.state, { status: "cancelled", paid: false });
+    const after = bookingTable(pending, POST_0012);
+    await writeBookingState(after.write, { status: plan.status, paid: plan.paid });
+    check("…after 0012 it reads test", after.state, { status: "test", paid: false });
+  }
+  {
+    let calls = 0;
+    const result = await writeBookingState(
+      async () => {
+        calls++;
+        return { data: null, error: { code: "42501" } };
+      },
+      { status: "refunded", paid: false }
+    );
+    check("any other error is returned as it is, with no second write", [result.error?.code, calls], ["42501", 1]);
+  }
+
+  // Both writes go through it, so neither fallback can quietly go.
+  const reversal = read("src/lib/paymentReversal.ts");
+  const reverseBody = reversal.slice(reversal.indexOf("async function reverseBooking(")).split("\n}\n")[0];
+  check("the refund and dispute write goes through writeBookingState", reverseBody.includes("await writeBookingState(move, patch)"));
+  const assessmentsSrc = read("src/lib/assessments.ts");
+  const testBody = assessmentsSrc.slice(assessmentsSrc.indexOf("async function recordTestBooking(")).split("\n}\n")[0];
+  check("the test-payment write goes through writeBookingState", testBody.includes("await writeBookingState(write, {"));
 }
-console.log("\nAll refund checks passed.");
+
+fallbackScenarios()
+  .then(() => {
+    if (failures > 0) {
+      console.error(`\n${failures} check(s) failed.`);
+      process.exit(1);
+    }
+    console.log("\nAll refund checks passed.");
+  })
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

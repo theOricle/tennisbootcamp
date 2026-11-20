@@ -8,9 +8,8 @@ import { planMarkUnpaid, type InviteStatus } from "@/lib/paymentTransitions";
 import {
   REVERSE_FROM,
   bookingReversalPatch,
-  bookingStatusFallback,
-  isCheckViolation,
   reversalNote,
+  writeBookingState,
   type ReversalKind,
 } from "@/lib/stripeOutcome";
 
@@ -184,12 +183,10 @@ async function reverseBooking(bookingId: string, kind: ReversalKind, sessionId: 
       .eq("paid", booking.paid)
       .select("id")
       .maybeSingle();
-  let { data: moved, error } = await move(patch);
   // Before migration 0012 the table refuses "refunded" and "disputed";
-  // "cancelled", which also frees the slot, stands in.
-  if (isCheckViolation(error) && patch.status) {
-    ({ data: moved, error } = await move({ ...patch, status: bookingStatusFallback(patch.status) ?? "cancelled" }));
-  }
+  // writeBookingState writes "cancelled", which also frees the slot, in their
+  // place, so a refund never leaves the booking booked and paid.
+  const { data: moved, error } = await writeBookingState(move, patch);
   if (error) console.error(`[stripe webhook] booking ${bookingId} ${kind}: not released (${error.code ?? "unknown"})`);
   if (!moved) return; // changed underneath us; the next delivery decides
 
