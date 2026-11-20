@@ -2,8 +2,15 @@
 // text } out. No Resend, no server-only import, so src/scripts/test-privacy.ts
 // can render each one and check what a player actually receives. email.ts
 // does the sending.
+//
+// Typed values (backlog #43): anything a person typed (a visitor, an account
+// holder or the coach) is escaped with escapeHtml where it enters the HTML,
+// never earlier, so it shows as text and never as a tag. The plain text keeps
+// it as typed, and a subject keeps it as typed on one line (oneLine). Links,
+// prices and dates the app builds go in as they are.
 
 import type { Recommendation } from "@/lib/recommend";
+import { escapeHtml } from "@/lib/escapeHtml";
 import { membershipNote } from "@/lib/membership";
 import { cohortWhereLine } from "@/lib/locationCatalog";
 import {
@@ -36,6 +43,16 @@ export const INK_STRONG = "#E6EBF0";
 export const INK_UNLIT = "#1C2A3C";
 
 export type EmailBody = { subject: string; html: string; text: string };
+
+/**
+ * A subject is one line (backlog #43): a line break typed into a name or a
+ * label becomes a space. The subject is plain text, so nothing is escaped.
+ * The breaks: CR, LF, VT, FF, NEL and the Unicode line and paragraph
+ * separators (U+2028, U+2029).
+ */
+function oneLine(subject: string): string {
+  return subject.replace(/[\r\n\v\f\u0085\u{2028}\u{2029}]+/gu, " ");
+}
 
 // ─── Shared branded wrapper ───────────────────────────────────────────────────
 
@@ -141,6 +158,16 @@ function subjectOf(holderName: string, participantName?: string | null): Subject
     possessive: isSelf ? "your" : `${playerFirst}'s`,
     Possessive: isSelf ? "Your" : `${playerFirst}'s`,
   };
+}
+
+/**
+ * subjectOf for the HTML part (backlog #43): the same first names, self check
+ * and possessives, with the typed names escaped. Escaping adds no spaces and
+ * keeps letters as they are, so the names split and compare as they do in
+ * subjectOf.
+ */
+function htmlSubjectOf(holderName: string, participantName?: string | null): Subject {
+  return subjectOf(escapeHtml(holderName), escapeHtml(participantName));
 }
 
 export function moneyCAD(cents: number): string {
@@ -263,10 +290,11 @@ export function buildRecommendationEmail(
   participantName?: string | null
 ): EmailBody {
   const who = subjectOf(name, participantName);
+  const whoHtml = htmlSubjectOf(name, participantName);
   const firstName = who.holderFirst;
   const top = recommendations[0];
   const programTitle = top?.program.title ?? "one of our programs";
-  const subject = `Your Tennis Bootcamp answers are in — ${firstName}`;
+  const subject = oneLine(`Your Tennis Bootcamp answers are in — ${firstName}`);
 
   // Confirmation first; the assessment is a suggestion, never a required step
   // (backlog #19). HTML and text say the same thing in the same order.
@@ -278,18 +306,20 @@ export function buildRecommendationEmail(
     ? `From your answers, ${who.possessive} likely tier is ${provisionalTierName}. It's provisional — we confirm it when we place ${who.isSelf ? "you" : who.playerFirst}.`
     : `Thanks for telling us about ${who.possessive} game.`;
   const tierHtml = provisionalTierName
-    ? `From your answers, ${who.possessive} likely tier is <strong style="color:#fff;">${provisionalTierName}</strong>. It's provisional — we confirm it when we place ${who.isSelf ? "you" : who.playerFirst}.`
-    : `Thanks for telling us about ${who.possessive} game.`;
+    ? `From your answers, ${whoHtml.possessive} likely tier is <strong style="color:#fff;">${provisionalTierName}</strong>. It's provisional — we confirm it when we place ${whoHtml.isSelf ? "you" : whoHtml.playerFirst}.`
+    : `Thanks for telling us about ${whoHtml.possessive} game.`;
   const fit = `Based on your answers, ${programTitle} looks like ${who.possessive} fit.`;
-  const fitHtml = `Based on your answers, <strong style="color:#B4E655;">${programTitle}</strong> looks like ${who.possessive} fit.`;
+  const fitHtml = `Based on your answers, <strong style="color:#B4E655;">${programTitle}</strong> looks like ${whoHtml.possessive} fit.`;
   const dashboardLine =
     "Your dashboard shows the availability you gave us and, once our coaches set it, every player's tier.";
-  const suggestion = who.isSelf
-    ? "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with one of our coaches. It's optional. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."
-    : `If you'd like ${who.playerFirst}'s level confirmed on court before they're placed, you can book a 20-minute assessment with one of our coaches. It's optional. The assessment is $20, and if ${who.playerFirst} enrolls in a program afterward that $20 comes off the price.`;
+  const suggestionFor = (w: Subject) =>
+    w.isSelf
+      ? "If you'd like your level confirmed on court before you're placed, you can book a 20-minute assessment with one of our coaches. It's optional. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price."
+      : `If you'd like ${w.playerFirst}'s level confirmed on court before they're placed, you can book a 20-minute assessment with one of our coaches. It's optional. The assessment is $20, and if ${w.playerFirst} enrolls in a program afterward that $20 comes off the price.`;
+  const suggestion = suggestionFor(who);
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Hi ${firstName},</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Hi ${whoHtml.holderFirst},</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">${done}</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">${newAccount}</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">${tierHtml} ${fitHtml}</p>
@@ -297,7 +327,7 @@ export function buildRecommendationEmail(
     <div>
       ${outlineButton(DASHBOARD_URL, "See it on your dashboard")}
     </div>
-    <p style="margin:20px 0 4px;font-size:13px;color:${INK_MUTED};">${suggestion}</p>
+    <p style="margin:20px 0 4px;font-size:13px;color:${INK_MUTED};">${suggestionFor(whoHtml)}</p>
     <div>
       ${outlineButton(`${BASE_URL}/assessment/book`, "Book Your Assessment")}
     </div>
@@ -323,14 +353,19 @@ export function buildBookingConfirmationEmail(params: {
 }): EmailBody {
   const { name, participantName, dateLabel, timeLabel, locationLabel } = params;
   const who = subjectOf(name, participantName);
-  const subject = who.isSelf
-    ? `You're booked: ${dateLabel} at ${timeLabel}`
-    : `${who.playerFirst}'s assessment is booked: ${dateLabel} at ${timeLabel}`;
+  const whoHtml = htmlSubjectOf(name, participantName);
+  const subject = oneLine(
+    who.isSelf
+      ? `You're booked: ${dateLabel} at ${timeLabel}`
+      : `${who.playerFirst}'s assessment is booked: ${dateLabel} at ${timeLabel}`
+  );
 
   const firstName = who.holderFirst;
   const whereLine = locationLabel
     ? locationLabel
     : "We'll confirm the exact court with you before your slot.";
+  // The slot's location label is typed in admin.
+  const whereHtml = locationLabel ? escapeHtml(locationLabel) : whereLine;
   const membership = membershipNote();
 
   const detailRow = (label: string, value: string) => `
@@ -341,14 +376,14 @@ export function buildBookingConfirmationEmail(params: {
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${
-      who.isSelf ? `You're on court, ${firstName}.` : `${who.playerFirst} is on court.`
+      whoHtml.isSelf ? `You're on court, ${whoHtml.holderFirst}.` : `${whoHtml.playerFirst} is on court.`
     }</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">
-      ${who.Possessive} 20-minute player assessment is booked. Here's everything you need.
+      ${whoHtml.Possessive} 20-minute player assessment is booked. Here's everything you need.
     </p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
       ${detailRow("When", `${dateLabel}, ${timeLabel}`)}
-      ${detailRow("Where", whereLine)}
+      ${detailRow("Where", whereHtml)}
       ${detailRow("Bring", "A racquet if you have one, water, and court shoes.")}
     </table>
     <p style="margin:20px 0 0;font-size:13px;color:${INK_MUTED};">
@@ -387,16 +422,19 @@ export function buildAssessmentRequestReceivedEmail(params: {
 }): EmailBody {
   const { name, participantName } = params;
   const who = subjectOf(name, participantName);
-  const subject = who.isSelf
-    ? "Your assessment request is in — we'll set your time"
-    : `${who.playerFirst}'s assessment request is in — we'll set the time`;
+  const whoHtml = htmlSubjectOf(name, participantName);
+  const subject = oneLine(
+    who.isSelf
+      ? "Your assessment request is in — we'll set your time"
+      : `${who.playerFirst}'s assessment request is in — we'll set the time`
+  );
 
   const firstName = who.holderFirst;
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Got it, ${firstName}.</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">Got it, ${whoHtml.holderFirst}.</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">
-      ${who.Possessive} 20-minute assessment request is in. We'll reach out within a day to set a time that fits the availability you gave us.
+      ${whoHtml.Possessive} 20-minute assessment request is in. We'll reach out within a day to set a time that fits the availability you gave us.
     </p>
     <p style="margin:0;font-size:14px;color:${INK_BODY};">
       No payment now — we'll confirm your time first. The assessment is $20, and if you enroll in a program afterward that $20 comes off the price.
@@ -434,10 +472,11 @@ export function buildAssessmentRequestAdminEmail(params: {
 }): EmailBody {
   const { name, participantName, email, phone, selfLevel, preferredTimes, note } = params;
   const player = (participantName ?? "").trim();
-  const subject =
+  const subject = oneLine(
     player && player.toLowerCase() !== name.trim().toLowerCase()
       ? `New assessment request: ${player} (account: ${name})`
-      : `New assessment request: ${name}`;
+      : `New assessment request: ${name}`
+  );
 
   const detailRow = (label: string, value: string) => `
     <tr>
@@ -451,12 +490,12 @@ export function buildAssessmentRequestAdminEmail(params: {
       They're waiting on a time — the site told them we'd reach out within a day.
     </p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
-      ${detailRow("Name", name)}
-      ${detailRow("Email", email)}
-      ${phone ? detailRow("Phone", phone) : ""}
-      ${selfLevel ? detailRow("Self level", selfLevel) : ""}
-      ${detailRow("Preferred", preferredTimes.length ? preferredTimes.join(" · ") : "No times given")}
-      ${note ? detailRow("Note", note) : ""}
+      ${detailRow("Name", escapeHtml(name))}
+      ${detailRow("Email", escapeHtml(email))}
+      ${phone ? detailRow("Phone", escapeHtml(phone)) : ""}
+      ${selfLevel ? detailRow("Self level", escapeHtml(selfLevel)) : ""}
+      ${detailRow("Preferred", preferredTimes.length ? preferredTimes.map(escapeHtml).join(" · ") : "No times given")}
+      ${note ? detailRow("Note", escapeHtml(note)) : ""}
     </table>
     ${limeButton(`${BASE_URL}/admin/assessments`, "Open requests →")}
   `;
@@ -520,7 +559,7 @@ export function cohortInviteSubject(
   params: Pick<CohortInviteParams, "participantName" | "levelLabel" | "tierNames" | "programTitle" | "dayTimeLabel" | "startDateLabel">
 ): string {
   const { dayTimeLabel, startDateLabel } = params;
-  return `${cohortInviteGroupName(params)} is forming — ${dayTimeLabel}, starts ${startDateLabel}`;
+  return oneLine(`${cohortInviteGroupName(params)} is forming — ${dayTimeLabel}, starts ${startDateLabel}`);
 }
 
 export function buildCohortInviteEmail(params: CohortInviteParams): EmailBody {
@@ -530,8 +569,17 @@ export function buildCohortInviteEmail(params: CohortInviteParams): EmailBody {
   } = params;
 
   const groupName = cohortInviteGroupName(params);
+  // The player's name and the program title escaped; the tiers and the band
+  // are the app's own.
+  const groupNameHtml = cohortInviteGroupName({
+    ...params,
+    participantName: escapeHtml(params.participantName),
+    programTitle: escapeHtml(programTitle),
+  });
   const subject = cohortInviteSubject(params);
   // The club by name (owner, 2026-10-12), never "confirmed in your email".
+  // An id the location list doesn't know reads as the admin typed it
+  // (cohortWhereLine), so the line is escaped.
   const where = params.locationLine?.trim() || cohortWhereLine({ locationId: "" });
 
   const priceMath =
@@ -554,16 +602,16 @@ export function buildCohortInviteEmail(params: CohortInviteParams): EmailBody {
     </tr>`;
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${groupName} is forming.</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${groupNameHtml} is forming.</p>
     ${tierLine}
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">
-      We've built ${withArticle(programTitle)} group around your level and the availability you gave us. Here's the schedule.
+      We've built ${escapeHtml(withArticle(programTitle))} group around your level and the availability you gave us. Here's the schedule.
     </p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
-      ${detailRow("Group", `${cohortLabel}`)}
+      ${detailRow("Group", escapeHtml(cohortLabel))}
       ${detailRow("Schedule", `${dayTimeLabel} · ${weeks} week${weeks === 1 ? "" : "s"}`)}
       ${detailRow("Starts", startDateLabel)}
-      ${detailRow("Where", where)}
+      ${detailRow("Where", escapeHtml(where))}
       ${detailRow("Price", priceMath)}
     </table>
     <p style="margin:20px 0 0;font-size:14px;color:${INK_STRONG};">
@@ -609,9 +657,11 @@ export function buildCohortConfirmedEmail(params: {
 }): EmailBody {
   const { participantName, cohortLabel, programTitle, startDateLabel, sessionLines } = params;
   const player = (participantName ?? "").trim().split(/\s+/)[0] ?? "";
-  const subject = player
-    ? `${player} is in: ${cohortLabel} starts ${startDateLabel}`
-    : `You're in: ${cohortLabel} starts ${startDateLabel}`;
+  const subject = oneLine(
+    player
+      ? `${player} is in: ${cohortLabel} starts ${startDateLabel}`
+      : `You're in: ${cohortLabel} starts ${startDateLabel}`
+  );
 
   const sessionsHtml = sessionLines
     .map(
@@ -624,10 +674,10 @@ export function buildCohortConfirmedEmail(params: {
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${
-      player ? `${player}'s group is confirmed.` : "Your group is confirmed."
+      player ? `${escapeHtml(player)}'s group is confirmed.` : "Your group is confirmed."
     }</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">
-      ${programTitle} — ${cohortLabel} reached its minimum and starts ${startDateLabel}. Every session, in order:
+      ${escapeHtml(programTitle)} — ${escapeHtml(cohortLabel)} reached its minimum and starts ${startDateLabel}. Every session, in order:
     </p>
     <ul style="margin:0;padding:0;list-style:none;border-top:1px solid rgba(255,255,255,0.10);">
       ${sessionsHtml}
@@ -684,7 +734,7 @@ export function buildSessionCancelledEmail(params: {
       </p>`;
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${dateLabel}'s ${cohortLabel} session is cancelled.</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${dateLabel}'s ${escapeHtml(cohortLabel)} session is cancelled.</p>
     <p style="margin:0 0 12px;font-size:14px;color:${INK_BODY};">${reasonLine}</p>
     ${outcomeHtml}
     ${smallText(`You don't lose a session you didn't miss — the full rules are in the <a href="${BASE_URL}/legal/refund-policy" style="color:${INK_MUTED};">program policies</a>.`)}
@@ -728,22 +778,30 @@ export function buildAssessmentCompleteEmail(params: {
 }): EmailBody {
   const { name, participantName, levelLabel, coachNote } = params;
   const who = subjectOf(name, participantName);
-  const subject = `${who.Possessive} level: ${levelLabel} — here's ${who.possessive} next step`;
+  const whoHtml = htmlSubjectOf(name, participantName);
+  const subject = oneLine(`${who.Possessive} level: ${levelLabel} — here's ${who.possessive} next step`);
 
-  const firstName = who.holderFirst;
   const tier = tierForLevel(levelLabel);
   const level = Number(levelLabel);
   const standing = tierStandingLine(levelLabel);
+  // The coach's entry: levelLabel keeps it as typed when it isn't a number.
+  const levelHtml = escapeHtml(levelLabel);
 
-  const headline = who.isSelf
-    ? `Nice work out there, ${firstName}.`
-    : `${who.playerFirst}'s read from the court is in, ${firstName}.`;
-  const intro = who.isSelf
-    ? "Here's your read from the court."
-    : `Here's ${who.playerFirst}'s level and what comes next.`;
-  const tierSentence = tier ? `${who.isSelf ? "You're" : `${who.playerFirst} is`} in the ${tier.name} tier.` : "";
-  const forming = `We're forming ${who.possessive} ${levelLabel} group around everyone's availability — invitations go out by email.`;
-  const dashboardLine = `${who.Possessive} tier, level and what comes next are on your dashboard.`;
+  // These lines name the player and the level, so they are built once for the
+  // text and once, with both escaped, for the HTML.
+  const linesFor = (w: Subject, levelText: string) => ({
+    headline: w.isSelf
+      ? `Nice work out there, ${w.holderFirst}.`
+      : `${w.playerFirst}'s read from the court is in, ${w.holderFirst}.`,
+    intro: w.isSelf
+      ? "Here's your read from the court."
+      : `Here's ${w.playerFirst}'s level and what comes next.`,
+    tierSentence: tier ? `${w.isSelf ? "You're" : `${w.playerFirst} is`} in the ${tier.name} tier.` : "",
+    forming: `We're forming ${w.possessive} ${levelText} group around everyone's availability — invitations go out by email.`,
+    dashboardLine: `${w.Possessive} tier, level and what comes next are on your dashboard.`,
+  });
+  const { headline, intro, tierSentence, forming, dashboardLine } = linesFor(who, levelLabel);
+  const htmlLines = linesFor(whoHtml, levelHtml);
   const sooner = "Want to move sooner?";
 
   const tierBlock = tier
@@ -752,28 +810,28 @@ export function buildAssessmentCompleteEmail(params: {
       <tr>
         <td style="vertical-align:middle;padding-right:16px;">${emblemImg(tier, 64, `${tier.name} emblem`)}</td>
         <td style="vertical-align:middle;">
-          <p style="margin:0;font-size:13px;color:${INK_MUTED};">${who.Possessive} level</p>
-          <p style="margin:2px 0 0;font-size:22px;font-weight:700;color:#fff;">${tierSentence}</p>
-          <p style="margin:4px 0 0;font-size:14px;color:${INK_BODY};">Level <strong style="color:#B4E655;">${levelLabel}</strong> · ${standing}</p>
+          <p style="margin:0;font-size:13px;color:${INK_MUTED};">${whoHtml.Possessive} level</p>
+          <p style="margin:2px 0 0;font-size:22px;font-weight:700;color:#fff;">${htmlLines.tierSentence}</p>
+          <p style="margin:4px 0 0;font-size:14px;color:${INK_BODY};">Level <strong style="color:#B4E655;">${levelHtml}</strong> · ${standing}</p>
         </td>
       </tr>
     </table>
     ${Number.isFinite(level) ? tierLineTable(level) : ""}`
     : `
     <div style="margin:8px 0 4px;">
-      <span style="font-size:13px;color:${INK_MUTED};">${who.Possessive} level</span><br/>
-      <span style="font-size:28px;font-weight:700;color:#B4E655;">${levelLabel}</span>
+      <span style="font-size:13px;color:${INK_MUTED};">${whoHtml.Possessive} level</span><br/>
+      <span style="font-size:28px;font-weight:700;color:#B4E655;">${levelHtml}</span>
     </div>`;
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${headline}</p>
-    <p style="margin:0;font-size:14px;color:${INK_BODY};">${intro}</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${htmlLines.headline}</p>
+    <p style="margin:0;font-size:14px;color:${INK_BODY};">${htmlLines.intro}</p>
     ${tierBlock}
     <p style="margin:20px 0 0;font-size:14px;color:${INK_STRONG};font-style:italic;border-left:2px solid #B4E655;padding-left:14px;">
-      ${coachNote}
+      ${escapeHtml(coachNote)}
     </p>
-    <p style="margin:20px 0 0;font-size:14px;color:${INK_BODY};">${forming}</p>
-    <p style="margin:12px 0 0;font-size:14px;color:${INK_BODY};">${dashboardLine}</p>
+    <p style="margin:20px 0 0;font-size:14px;color:${INK_BODY};">${htmlLines.forming}</p>
+    <p style="margin:12px 0 0;font-size:14px;color:${INK_BODY};">${htmlLines.dashboardLine}</p>
     ${outlineButton(DASHBOARD_URL, "See it on your dashboard")}
     <p style="margin:20px 0 0;font-size:14px;color:${INK_BODY};">${sooner}</p>
     ${limeButton(`${BASE_URL}/programs`, "Browse Programs")}
@@ -823,9 +881,13 @@ export function buildEtransferInstructionsEmail(params: {
     firstName, programTitle, cohortLabel, priceCents, creditCents,
     amountCents, recipientEmail, memo, cardUrl,
   } = params;
-  const subject = `Your spot in ${cohortLabel} is held — send your e-transfer`;
+  const subject = oneLine(`Your spot in ${cohortLabel} is held — send your e-transfer`);
 
   const greeting = firstName ? `Your spot is held, ${firstName}.` : "Your spot is held.";
+  const greetingHtml = firstName ? `Your spot is held, ${escapeHtml(firstName)}.` : "Your spot is held.";
+  // The card link carries the invite token as the request sent it, matched or
+  // not, so it is escaped for the attribute. It opens the same page.
+  const cardEscaped = escapeHtml(cardUrl);
   const amountMath =
     creditCents > 0
       ? `${moneyCAD(priceCents)} − ${moneyCAD(creditCents)} assessment credit = <strong style="color:#fff;">${moneyCAD(amountCents)}</strong>`
@@ -842,19 +904,19 @@ export function buildEtransferInstructionsEmail(params: {
     </tr>`;
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${greeting}</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${greetingHtml}</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">
-      To finish enrolling in ${programTitle} — ${cohortLabel}, send an Interac e-transfer with the details below. Your spot stays held until the coach confirms the transfer arrived. Once it does, you're in, and the confirmation email follows.
+      To finish enrolling in ${escapeHtml(programTitle)} — ${escapeHtml(cohortLabel)}, send an Interac e-transfer with the details below. Your spot stays held until the coach confirms the transfer arrived. Once it does, you're in, and the confirmation email follows.
     </p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
       ${detailRow("Amount", amountMath)}
       ${detailRow("Send to", `<a href="mailto:${recipientEmail}" style="color:#B4E655;">${recipientEmail}</a>`)}
-      ${detailRow("Message", memo)}
+      ${detailRow("Message", escapeHtml(memo))}
     </table>
     <p style="margin:20px 0 0;font-size:14px;color:${INK_STRONG};">
       Put the message on the transfer exactly as shown — it's how we match your payment to your spot.
     </p>
-    ${smallText(`Prefer to pay by card? <a href="${cardUrl}" style="color:${INK_MUTED};">Pay by card instead</a>. Refund terms: <a href="${BASE_URL}/legal/refund-policy" style="color:${INK_MUTED};">program policies</a>.`)}
+    ${smallText(`Prefer to pay by card? <a href="${cardEscaped}" style="color:${INK_MUTED};">Pay by card instead</a>. Refund terms: <a href="${BASE_URL}/legal/refund-policy" style="color:${INK_MUTED};">program policies</a>.`)}
     ${signOff()}
     ${commercialFooter("general")}
   `;
@@ -889,12 +951,18 @@ export function buildPaymentReceivedEmail(params: {
 }): EmailBody {
   const { participantName, programTitle, cohortLabel, amountCents } = params;
   const player = (participantName ?? "").trim().split(/\s+/)[0] ?? "";
-  const subject = player
-    ? `Payment received for ${player} — ${cohortLabel}`
-    : `Payment received — ${cohortLabel}`;
+  const subject = oneLine(
+    player
+      ? `Payment received for ${player} — ${cohortLabel}`
+      : `Payment received — ${cohortLabel}`
+  );
 
-  const headline = player ? `${player}'s payment is in.` : "Your payment is in.";
-  const spotLine = player ? `${player}'s spot is held.` : "Your spot is held.";
+  // Built once for the text and once, with the name escaped, for the HTML.
+  const headlineFor = (p: string) => (p ? `${p}'s payment is in.` : "Your payment is in.");
+  const spotLineFor = (p: string) => (p ? `${p}'s spot is held.` : "Your spot is held.");
+  const headline = headlineFor(player);
+  const spotLine = spotLineFor(player);
+  const playerHtml = escapeHtml(player);
   const dashboardLine = "The program and its weekly slot are on your dashboard.";
 
   const detailRow = (label: string, value: string) => `
@@ -904,13 +972,13 @@ export function buildPaymentReceivedEmail(params: {
     </tr>`;
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${headline}</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${headlineFor(playerHtml)}</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">
-      We've received your e-transfer. ${spotLine} Nothing else to do on your side.
+      We've received your e-transfer. ${spotLineFor(playerHtml)} Nothing else to do on your side.
     </p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
-      ${detailRow("Program", programTitle)}
-      ${detailRow("Group", cohortLabel)}
+      ${detailRow("Program", escapeHtml(programTitle))}
+      ${detailRow("Group", escapeHtml(cohortLabel))}
       ${detailRow("Received", `<strong style="color:#fff;">${moneyCAD(amountCents)}</strong>`)}
     </table>
     <p style="margin:20px 0 0;font-size:14px;color:${INK_STRONG};">
@@ -964,28 +1032,37 @@ export function buildEnrolledEmail(params: {
 }): EmailBody {
   const { name, participantName, programTitle, cohortLabel, paid } = params;
   const who = subjectOf(name, participantName);
-  const firstName = who.holderFirst;
+  const whoHtml = htmlSubjectOf(name, participantName);
   const group = `${programTitle} — ${cohortLabel}`;
+  const groupHtml = `${escapeHtml(programTitle)} — ${escapeHtml(cohortLabel)}`;
 
-  const subject = paid
-    ? who.isSelf
-      ? `You're enrolled: ${group}`
-      : `${who.playerFirst} is enrolled: ${group}`
-    : `${who.Possessive} spot in ${cohortLabel} is on your account`;
+  const subject = oneLine(
+    paid
+      ? who.isSelf
+        ? `You're enrolled: ${group}`
+        : `${who.playerFirst} is enrolled: ${group}`
+      : `${who.Possessive} spot in ${cohortLabel} is on your account`
+  );
 
-  const headline = paid
-    ? who.isSelf
-      ? `You're enrolled, ${firstName}.`
-      : `${who.playerFirst} is enrolled.`
-    : who.isSelf
-      ? `Your spot is on your account, ${firstName}.`
-      : `${who.playerFirst}'s spot is on your account.`;
+  // Built once for the text and once, with the names and the group escaped,
+  // for the HTML.
+  const headlineFor = (w: Subject) =>
+    paid
+      ? w.isSelf
+        ? `You're enrolled, ${w.holderFirst}.`
+        : `${w.playerFirst} is enrolled.`
+      : w.isSelf
+        ? `Your spot is on your account, ${w.holderFirst}.`
+        : `${w.playerFirst}'s spot is on your account.`;
 
-  const statusLine = paid
-    ? `${group} is paid and recorded on your Tennis Bootcamp account. The group runs once enough players have paid to meet its minimum; the moment it does, we'll email every session date and time.`
-    : `${group} is recorded on your Tennis Bootcamp account. Once your e-transfer arrives and the coach marks it received, ${
-        who.isSelf ? "you're" : `${who.playerFirst} is`
-      } in, and the confirmation email follows.`;
+  const statusLineFor = (w: Subject, g: string) =>
+    paid
+      ? `${g} is paid and recorded on your Tennis Bootcamp account. The group runs once enough players have paid to meet its minimum; the moment it does, we'll email every session date and time.`
+      : `${g} is recorded on your Tennis Bootcamp account. Once your e-transfer arrives and the coach marks it received, ${
+          w.isSelf ? "you're" : `${w.playerFirst} is`
+        } in, and the confirmation email follows.`;
+  const headline = headlineFor(who);
+  const statusLine = statusLineFor(who, group);
   const dashboardLine =
     "Your dashboard shows every program on the account, its weekly slot and, once the group is set, every session date.";
   const signInLine =
@@ -993,8 +1070,8 @@ export function buildEnrolledEmail(params: {
   const dashboardUrl = `${BASE_URL}/dashboard`;
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${headline}</p>
-    <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">${statusLine}</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${headlineFor(whoHtml)}</p>
+    <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">${statusLineFor(whoHtml, groupHtml)}</p>
     <p style="margin:0;font-size:14px;color:${INK_BODY};">${dashboardLine}</p>
     ${limeButton(dashboardUrl, "Open your dashboard →")}
     ${smallText(signInLine)}
@@ -1038,17 +1115,29 @@ export function buildAccountSetupEmail(params: {
   const { programTitle, cohortLabel, paid, link } = params;
   const names = params.playerNames.map((n) => n.trim()).filter(Boolean);
   const several = names.length > 1;
-  const who = names.length === 0 ? "You are" : several ? `${listNames(names)} are` : `${names[0]} is`;
   const group = `${programTitle} — ${cohortLabel}`;
 
-  const subject = paid
-    ? `Set up your account: ${names.length === 0 ? "you're" : `${listNames(names)} ${several ? "are" : "is"}`} enrolled in ${cohortLabel}`
-    : `Set up your account: ${names.length === 0 ? "your spot" : `the spot for ${listNames(names)}`} in ${cohortLabel} is held`;
+  const subject = oneLine(
+    paid
+      ? `Set up your account: ${names.length === 0 ? "you're" : `${listNames(names)} ${several ? "are" : "is"}`} enrolled in ${cohortLabel}`
+      : `Set up your account: ${names.length === 0 ? "your spot" : `the spot for ${listNames(names)}`} in ${cohortLabel} is held`
+  );
 
   const headline = "One step left: set your password.";
-  const statusLine = paid
-    ? `${who} enrolled in ${group}, and the payment is in.`
-    : `${who} down for ${group}. Once your e-transfer arrives and our coaches mark it received, the spot is confirmed and the confirmation email follows.`;
+  // Built once for the text and once, with the names and the group escaped,
+  // for the HTML.
+  const statusLineFor = (players: readonly string[], g: string) => {
+    const who =
+      players.length === 0 ? "You are" : players.length > 1 ? `${listNames(players)} are` : `${players[0]} is`;
+    return paid
+      ? `${who} enrolled in ${g}, and the payment is in.`
+      : `${who} down for ${g}. Once your e-transfer arrives and our coaches mark it received, the spot is confirmed and the confirmation email follows.`;
+  };
+  const statusLine = statusLineFor(names, group);
+  const statusLineHtml = statusLineFor(
+    names.map(escapeHtml),
+    `${escapeHtml(programTitle)} — ${escapeHtml(cohortLabel)}`
+  );
   const whyLine =
     "We created a Tennis Bootcamp account for this email address. Set a password and your dashboard opens with this enrollment, its weekly slot and, once the group is set, every session date.";
   const expiryLine =
@@ -1056,7 +1145,7 @@ export function buildAccountSetupEmail(params: {
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${headline}</p>
-    <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">${statusLine}</p>
+    <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">${statusLineHtml}</p>
     <p style="margin:0;font-size:14px;color:${INK_BODY};">${whyLine}</p>
     ${limeButton(link, "Set your password →")}
     ${smallText(expiryLine)}
@@ -1095,15 +1184,17 @@ export function buildEtransferPendingAdminEmail(params: {
   memo: string;
 }): EmailBody & { adminUrl: string } {
   const { playerName, playerEmail, cohortLabel, cohortId, amountCents, memo } = params;
-  const subject = `E-transfer pending: ${playerName || playerEmail} — ${cohortLabel}`;
+  const subject = oneLine(`E-transfer pending: ${playerName || playerEmail} — ${cohortLabel}`);
   const adminUrl = `${BASE_URL}/admin/cohorts/${cohortId}`;
+  const nameHtml = escapeHtml(playerName);
+  const emailHtml = escapeHtml(playerEmail);
 
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${playerName || playerEmail} says their e-transfer is on its way.</p>
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">${nameHtml || emailHtml} says their e-transfer is on its way.</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">
-      Expect <strong style="color:#fff;">${moneyCAD(amountCents)}</strong> with the message “${memo}”. When it lands, mark the invite paid — the cohort confirms on its own once paid invites reach the minimum.
+      Expect <strong style="color:#fff;">${moneyCAD(amountCents)}</strong> with the message “${escapeHtml(memo)}”. When it lands, mark the invite paid — the cohort confirms on its own once paid invites reach the minimum.
     </p>
-    <p style="margin:0;font-size:14px;color:${INK_BODY};">Player: ${playerName || "—"} · ${playerEmail}</p>
+    <p style="margin:0;font-size:14px;color:${INK_BODY};">Player: ${nameHtml || "—"} · ${emailHtml}</p>
     ${limeButton(adminUrl, "Open the cohort →")}
   `;
 
@@ -1135,14 +1226,15 @@ export function buildPaymentUnmatchedAdminEmail(params: {
   payerEmail: string;
 }): EmailBody & { adminUrl: string } {
   const { sessionId, cohortLabel, cohortId, playerIndex, playerCount, payerEmail } = params;
-  const subject = `Paid, no invite matched: ${cohortLabel} — player ${playerIndex} of ${playerCount}`;
+  const subject = oneLine(`Paid, no invite matched: ${cohortLabel} — player ${playerIndex} of ${playerCount}`);
   const adminUrl = `${BASE_URL}/admin/cohorts/${cohortId}`;
   const who = payerEmail || "the payer";
+  const whoHtml = escapeHtml(payerEmail) || "the payer";
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#fff;">A payment landed that no invite claims.</p>
     <p style="margin:0 0 16px;font-size:14px;color:${INK_BODY};">
-      ${who} paid for ${cohortLabel}; the enrollment row is marked paid, but player ${playerIndex} of ${playerCount} on that payment matched no invite in the cohort. Find their invite on the cohort page and mark it paid by hand, or send one — the cohort confirms on its own once paid invites reach the minimum.
+      ${whoHtml} paid for ${escapeHtml(cohortLabel)}; the enrollment row is marked paid, but player ${playerIndex} of ${playerCount} on that payment matched no invite in the cohort. Find their invite on the cohort page and mark it paid by hand, or send one — the cohort confirms on its own once paid invites reach the minimum.
     </p>
     <p style="margin:0;font-size:14px;color:${INK_BODY};">Stripe session: ${sessionId}</p>
     ${limeButton(adminUrl, "Open the cohort →")}
