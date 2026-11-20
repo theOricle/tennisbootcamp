@@ -498,10 +498,11 @@ export async function getInviteByToken(
 export type CohortMember = { email: string; participantName: string | null };
 
 /**
- * Members: paid invites plus paid/test-paid enrollments. One entry per player,
- * so a parent with two children in the same cohort gets one email per child.
+ * Members: paid invites plus paid enrollments. One entry per player, so a
+ * parent with two children in the same cohort gets one email per child.
  * De-duplicated on (email, player) — the same person from both sources is one
- * member.
+ * member. A test payment (test_paid) is no member (backlog #84): it never
+ * hears "confirmed", a cancellation or a make-up meant for the group.
  */
 export async function cohortMembers(cohortId: string): Promise<CohortMember[]> {
   const supabase = createServiceClient();
@@ -515,7 +516,7 @@ export async function cohortMembers(cohortId: string): Promise<CohortMember[]> {
       .from("enrollments")
       .select("contact_email, participant_name")
       .eq("cohort_id", cohortId)
-      .in("status", ["paid", "test_paid"]),
+      .eq("status", "paid"),
   ]);
 
   const participants = await listPlayers().catch(() => [] as PlayerRecord[]);
@@ -541,6 +542,52 @@ export async function cohortMembers(cohortId: string): Promise<CohortMember[]> {
     add(row.contact_email, row.participant_name);
   }
   return out;
+}
+
+/** One card payment on the cohort page (backlog #84). */
+export type CohortPayment = {
+  id: string;
+  participantName: string | null;
+  contactEmail: string | null;
+  /** The enrollment row's status: paid, test_paid (and, after a refund or a dispute, refunded or disputed). */
+  status: string;
+  createdAt: string | null;
+};
+
+/** The enrollment row statuses the cohort page lists as payments. */
+export const PAYMENT_ROW_STATUSES = ["paid", "test_paid"];
+
+/**
+ * The cohort's card payments, newest first, for the admin (backlog #84): so
+ * a test payment is labelled a test, never mistaken for a seat. Rows still
+ * pending (a checkout that was never finished) are not payments and are left
+ * out. A read that fails lists none.
+ */
+export async function cohortPayments(cohortId: string): Promise<CohortPayment[]> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("enrollments")
+    .select("id, participant_name, contact_email, status, created_at")
+    .eq("cohort_id", cohortId)
+    .in("status", PAYMENT_ROW_STATUSES)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("Cohort payments read failed (non-blocking):", error.message);
+    return [];
+  }
+  return ((data ?? []) as {
+    id: string;
+    participant_name: string | null;
+    contact_email: string | null;
+    status: string;
+    created_at: string | null;
+  }[]).map((r) => ({
+    id: r.id,
+    participantName: r.participant_name,
+    contactEmail: r.contact_email,
+    status: r.status,
+    createdAt: r.created_at,
+  }));
 }
 
 /** Distinct member emails (one per inbox, players collapsed). */

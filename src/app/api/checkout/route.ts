@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
-import { isMockMode, createCheckoutSession } from "@/lib/payments";
+import { CARD_PAYMENT_UNAVAILABLE, createCheckoutSession, paymentRail } from "@/lib/payments";
 import {
   saveEnrollmentToSupabase,
   notifyEnrollmentAccount,
@@ -8,34 +8,25 @@ import {
 } from "@/lib/supabase/enrollmentActions";
 import { getCohortById } from "@/lib/cohortsDb";
 import { programs } from "@/content/programs";
-import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
-import { setEnrollmentCredit } from "@/lib/enrollmentSheet";
-import {
-  findInviteRefByToken,
-  markInvitePaidAndMaybeConfirm,
-} from "@/lib/cohortActions";
+import { findUnusedCredit } from "@/lib/assessmentCredit";
+import { findInviteRefByToken } from "@/lib/cohortActions";
 import {
   COHORT_FULL_ERROR,
   RECORDS_UNAVAILABLE_ERROR,
   ROW_MISMATCH_ERROR,
   approvalRefusal,
   checkoutCreditParticipants,
-  cohortRequiresInvite,
   contactEmailRefusal,
   foreignRows,
   gateRefusal,
-  inviteSettlement,
   requestedParticipantIds,
   resolveEnrollGate,
   scrubParticipantIds,
   seatsRefuse,
-  settledByInvite,
-  unmatchedSignal,
 } from "@/lib/enrollGate";
 import { readEnrollmentSheet, seatsFromSnapshot } from "@/lib/seatCount";
 import { currentUser } from "@/lib/household";
 import { listParticipantsForAccount } from "@/lib/players";
-import { sendPaymentUnmatchedAdminEmail } from "@/lib/email";
 import {
   checkoutInviteLink,
   enrollReturnUrls,
@@ -125,6 +116,14 @@ export async function POST(req: NextRequest) {
     const typedEmail = String(enrollmentMeta?.contactEmail ?? "").trim();
     if (typedEmail && !isValidEmail(typedEmail)) {
       return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
+    }
+
+    // Backlog #84: in production, no Stripe key means no checkout — a plain
+    // line and a 503 before any row, credit or session exists. Mock mode
+    // (no key) runs only outside production, and its rows are test rows.
+    const rail = paymentRail();
+    if (rail === "refuse") {
+      return NextResponse.json({ error: CARD_PAYMENT_UNAVAILABLE }, { status: 503 });
     }
 
     // The server's price wins over whatever the client sent.
@@ -307,7 +306,7 @@ export async function POST(req: NextRequest) {
           consentSignedName: enrollmentMeta.consentSignedName,
           consentAgreedAt: enrollmentMeta.consentAgreedAt,
           waiverVersion: enrollmentMeta.waiverVersion,
-          status: isMockMode ? "test_paid" : "pending",
+          status: rail === "mock" ? "test_paid" : "pending",
           userId: ownerId,
         });
         if (!supabaseEnrollmentId) supabaseEnrollmentId = id;
@@ -337,16 +336,20 @@ export async function POST(req: NextRequest) {
       inviteId,
     });
 
-    if (isMockMode) {
-      // No webhook in mock mode — mark paid immediately in Sheets + issue invite
+    if (rail === "mock") {
+      // Mock mode (no Stripe key, never in production; backlog #84): no money
+      // moved, so every row it writes is a test row. A test payment never
+      // counts toward the seats (they count "paid" rows only), the minimum or
+      // the confirmation, and it spends no credit: nothing is settled onto an
+      // invite. The account email still goes, so the whole joining path can
+      // be tried end to end.
       for (const rowNumber of rowNumbers.length > 0 ? rowNumbers : [enrollmentRowNumber]) {
         await markEnrollmentStatus(rowNumber, "test_paid");
       }
       if (enrollmentMeta?.contactEmail) {
-        // Non-blocking: an uncaught refusal here would skip the credit and
-        // invite-confirmation tail below and turn a completed mock checkout
-        // into a 500 via this route's outer catch. A new email gets the
-        // set-password link; an existing account gets "You're enrolled" (H5).
+        // Non-blocking: an uncaught refusal here would turn a completed mock
+        // checkout into a 500 via this route's outer catch. A new email gets
+        // the set-password link; an existing account gets "You're enrolled" (H5).
         await notifyEnrollmentAccount({
           email: enrollmentMeta.contactEmail,
           enrollmentId: supabaseEnrollmentId,
@@ -366,59 +369,6 @@ export async function POST(req: NextRequest) {
         }).catch((err) =>
           console.error("Activation link failed (non-blocking):", err)
         );
-      }
-      // Mirror the webhook's Phase 3 tail: credit applied + invite paid +
-      // minimum-to-run confirmation — once per player.
-      for (const c of credits) {
-        await markCreditApplied(c.bookingId);
-        if (c.rowNumber) {
-          await setEnrollmentCredit(c.rowNumber, (c.cents / 100).toFixed(2));
-        }
-      }
-      // Same settlement rule as the webhook (backlog #38): invite id, else
-      // the named participant, else email only on a cohort anyone may join
-      // — or once the first player proved an invite in this cohort. A player
-      // that settles onto nothing is flagged to the inbox for a hand mark.
-      let priorInviteProof = false;
-      for (const [i, p] of players.entries()) {
-        const by = inviteSettlement({
-          inviteId,
-          participantId: p.participantId ?? undefined,
-          contactEmail: enrollmentMeta?.contactEmail,
-          requiresInvite: cohortRequiresInvite(cohort),
-          isFirstPlayer: i === 0,
-          priorInviteProof,
-        });
-        const result = by
-          ? await markInvitePaidAndMaybeConfirm({ cohortId, ...by }).catch((err) => {
-              console.error("Invite confirmation failed (non-blocking):", err);
-              return null;
-            })
-          : null;
-        const matched = Boolean(result?.matched);
-        if (settledByInvite(by, matched)) priorInviteProof = true;
-        const signal = unmatchedSignal({
-          matched,
-          alreadyPaid: Boolean(result?.alreadyPaid),
-          requiresInvite: cohortRequiresInvite(cohort),
-          byParticipant: Boolean(by?.participantId),
-          playerCount: players.length,
-        });
-        if (signal.warn) {
-          console.warn(
-            `Mock checkout settled to no invite: cohort=${cohortId} player=${i + 1}/${players.length}`
-          );
-        }
-        if (signal.email) {
-          await sendPaymentUnmatchedAdminEmail({
-            sessionId: "mock",
-            cohortLabel: cohort?.label ?? cohortId,
-            cohortId,
-            playerIndex: i + 1,
-            playerCount: players.length,
-            payerEmail: enrollmentMeta?.contactEmail ?? "",
-          });
-        }
       }
     }
 

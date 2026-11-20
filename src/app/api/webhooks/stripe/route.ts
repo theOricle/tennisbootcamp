@@ -10,11 +10,12 @@ import {
 import { inviteLinkFromMetadata } from "@/lib/checkoutInvite";
 import { getCohortById } from "@/lib/cohortsDb";
 import { programs } from "@/content/programs";
+import { bookingPaid, paymentOutcome, settlementPlan } from "@/lib/stripeOutcome";
 
 const TAB = "enrollments";
 const STATUS_COL = "P";
 
-async function markEnrollmentPaid(rowNumber: number) {
+async function markEnrollmentStatus(rowNumber: number, status: "paid" | "test_paid") {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
@@ -32,7 +33,7 @@ async function markEnrollmentPaid(rowNumber: number) {
     spreadsheetId,
     range: `${TAB}!${STATUS_COL}${rowNumber}`,
     valueInputOption: "RAW",
-    requestBody: { values: [["paid"]] },
+    requestBody: { values: [[status]] },
   });
 }
 
@@ -61,18 +62,34 @@ export async function POST(req: NextRequest) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
+    // Backlog #84: Stripe's word on the money decides everything below. Only
+    // a session whose payment_status is "paid" counts (checkout is card only,
+    // so nothing arrives later); with test keys (livemode false) it is a test
+    // payment that never counts toward seats, the minimum or confirmation.
+    const outcome = paymentOutcome({ livemode: event.livemode, paymentStatus: session.payment_status });
+    if (outcome === "unpaid") {
+      console.warn(
+        `[stripe webhook] session ${session.id} completed without payment (${session.payment_status}): nothing marked paid`
+      );
+      return NextResponse.json({ received: true });
+    }
+    const plan = settlementPlan(outcome);
+
     // ── Assessment bookings (Phase 1) — additive branch ──────────────────────
     // Distinguished by metadata.kind; enrollment logic below is untouched.
     if (session.metadata?.kind === "assessment") {
       const bookingId = session.metadata?.bookingId ?? "";
-      if (bookingId) {
+      const paid = bookingPaid(outcome);
+      if (bookingId && paid !== null) {
         const { confirmBooking } = await import("@/lib/assessments");
-        // Marks booked + paid, dual-writes the assessments Sheet tab, sends the
-        // booking confirmation email.
-        await confirmBooking(bookingId, { stripeSessionId: session.id });
+        // Marks booked (paid only on live money), dual-writes the assessments
+        // Sheet tab, sends the booking confirmation email.
+        await confirmBooking(bookingId, { stripeSessionId: session.id, paid });
       }
       return NextResponse.json({ received: true });
     }
+    // A test payment's rows read test_paid; a live one's read paid.
+    const rowStatus = plan.rowStatus ?? "paid";
 
     const rowNumber = Number(session.metadata?.enrollmentRowNumber);
     const contactEmail = session.metadata?.contactEmail ?? "";
@@ -106,7 +123,7 @@ export async function POST(req: NextRequest) {
 
     const paidRows = rowNumbers.length > 0 ? rowNumbers : rowNumber ? [rowNumber] : [];
     for (const n of paidRows) {
-      await markEnrollmentPaid(n);
+      await markEnrollmentStatus(n, rowStatus);
     }
 
     // Read once for the invite settlement below and the enrolled email: a
@@ -117,13 +134,15 @@ export async function POST(req: NextRequest) {
     const ownerId = contactEmail ? await resolveEnrollmentUserId(contactEmail, null) : null;
 
     // ── Phase 3: assessment credit + invite confirmation ─────────────────────
+    // Live money only (backlog #84): a test payment spends no credit, settles
+    // no invite and so can never meet a minimum or send "confirmed".
     const creditBookings =
       bookingIds.length > 0
         ? bookingIds
         : assessmentBookingId && assessmentCreditCents > 0
           ? [assessmentBookingId]
           : [];
-    if (creditBookings.length > 0) {
+    if (plan.applyCredits && creditBookings.length > 0) {
       const { markCreditApplied } = await import("@/lib/assessmentCredit");
       const { setEnrollmentCredit } = await import("@/lib/enrollmentSheet");
       const { ASSESSMENT_CREDIT_CENTS } = await import("@/lib/assessmentCredit");
@@ -138,7 +157,7 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-    if (cohortId) {
+    if (plan.settleInvites && cohortId) {
       const { markInvitePaidAndMaybeConfirm } = await import("@/lib/cohortActions");
       const { cohortRequiresInvite, inviteSettlement, settledByInvite, unmatchedSignal } =
         await import("@/lib/enrollGate");
@@ -217,10 +236,10 @@ export async function POST(req: NextRequest) {
       const newId = await saveEnrollmentToSupabase({
         cohortId,
         contactEmail,
-        status: "paid",
+        status: rowStatus,
         userId: ownerId,
       });
-      if (newId) {
+      if (newId && plan.notifyAccount) {
         // Non-blocking: the payment is already recorded. Letting a Resend
         // refusal throw here would 500 the webhook and make Stripe retry a
         // payment we have already banked.
@@ -239,19 +258,21 @@ export async function POST(req: NextRequest) {
       const supabase = createServiceClient();
       await supabase
         .from("enrollments")
-        .update({ status: "paid" })
+        .update({ status: rowStatus })
         .in("id", paidEnrollmentIds);
       // Every player's name is on the rows saved at checkout, so the set-up
       // email can name them all (owner, 2026-10-12).
       const playerNames = await participantNamesOf(paidEnrollmentIds).catch(() => []);
-      await notifyEnrollmentAccount({
-        email: contactEmail,
-        enrollmentId: supabaseEnrollmentId,
-        userId: ownerId,
-        cohortId,
-        // The player's name is on the row saved at checkout.
-        enrolled: { ...enrolled, playerNames },
-      }).catch((err) => console.error("Activation link failed (non-blocking):", err));
+      if (plan.notifyAccount) {
+        await notifyEnrollmentAccount({
+          email: contactEmail,
+          enrollmentId: supabaseEnrollmentId,
+          userId: ownerId,
+          cohortId,
+          // The player's name is on the row saved at checkout.
+          enrolled: { ...enrolled, playerNames },
+        }).catch((err) => console.error("Activation link failed (non-blocking):", err));
+      }
     }
   }
 

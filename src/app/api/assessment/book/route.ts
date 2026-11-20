@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isMockMode, createAssessmentCheckoutSession } from "@/lib/payments";
+import {
+  ASSESSMENT_PAYMENT_UNAVAILABLE,
+  createAssessmentCheckoutSession,
+  paymentRail,
+} from "@/lib/payments";
 import {
   createPendingBooking,
   createRequestedBooking,
@@ -123,6 +127,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Backlog #84: a paid booking in production with no Stripe key is
+    // refused with a plain line, before the slot is held. A free assessment
+    // ($0) takes no payment and is never refused.
+    const priceCents = assessmentPriceCents();
+    const rail = paymentRail();
+    if (priceCents > 0 && rail === "refuse") {
+      return NextResponse.json({ error: ASSESSMENT_PAYMENT_UNAVAILABLE }, { status: 503 });
+    }
+
     // Create the pending hold. The DB partial-unique index makes a taken slot fail.
     let booking;
     try {
@@ -148,10 +161,15 @@ export async function POST(req: NextRequest) {
     const successUrl = `${origin}/assessment/booked?booking=${booking.id}`;
     const cancelUrl = `${origin}/assessment/book`;
 
-    const priceCents = assessmentPriceCents();
-    // Free-mode ($0) or mock-mode (no Stripe key): skip payment, confirm now.
-    if (priceCents === 0 || isMockMode) {
-      await confirmBooking(booking.id);
+    // Free mode ($0): booked, and not paid — no money, so no $20 credit
+    // later (backlog #84); the coach can still mark it paid at court. Mock
+    // mode (no Stripe key, never in production): booked as a test booking.
+    if (priceCents === 0) {
+      await confirmBooking(booking.id, { paid: false });
+      return NextResponse.json({ url: successUrl });
+    }
+    if (rail === "mock") {
+      await confirmBooking(booking.id, { paid: "test" });
       return NextResponse.json({ url: successUrl });
     }
 

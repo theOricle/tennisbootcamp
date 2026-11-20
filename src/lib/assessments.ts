@@ -514,13 +514,18 @@ export async function getBookedSlotSummary(
 }
 
 /**
- * Mark a pending booking booked + paid, dual-write the Sheet, and send the
+ * Mark a pending booking booked, dual-write the Sheet, and send the
  * confirmation email. Idempotent-ish: re-confirming an already-booked row is a
  * no-op for the status but still safe. Used by free/mock mode and the webhook.
+ *
+ * `paid` is the money's word (backlog #84): true only when Stripe reports a
+ * live payment paid; "test" for a test-key payment or mock mode (booked, not
+ * paid, and "test" in the assessments tab); false for a free booking. Only a
+ * paid assessment earns the $20 credit later.
  */
 export async function confirmBooking(
   bookingId: string,
-  opts: { stripeSessionId?: string | null } = {}
+  opts: { stripeSessionId?: string | null; paid: boolean | "test" }
 ): Promise<BookingRow | null> {
   const supabase = createServiceClient();
 
@@ -530,7 +535,7 @@ export async function confirmBooking(
     .from("assessment_bookings")
     .update({
       status: "booked",
-      paid: true,
+      paid: opts.paid === true,
       stripe_session_id: opts.stripeSessionId ?? undefined,
     })
     .eq("id", bookingId)
@@ -555,7 +560,7 @@ export async function confirmBooking(
     slotDate: block.block_date,
     slotStart: normTime(booking.slot_start ?? ""),
     status: "booked",
-    paid: true,
+    paid: opts.paid,
     creditStatus: booking.credit_status,
     accountEmail: household.accountEmail,
     accountName: household.accountName,

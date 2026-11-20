@@ -27,6 +27,16 @@ export const INVITE_STATUS_LABELS: Record<string, string> = {
   declined: "Declined",
 };
 
+/**
+ * A card payment on the cohort page (backlog #84): an enrollment row's
+ * status as the coach reads it. A test payment (Stripe test keys, or mock
+ * mode) took no money and holds no seat, and says so.
+ */
+export const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  paid: "Paid",
+  test_paid: "Test payment",
+};
+
 export const BOOKING_STATUS_LABELS: Record<string, string> = {
   pending: "Awaiting payment",
   booked: "Booked",

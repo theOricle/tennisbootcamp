@@ -1179,11 +1179,12 @@ export function EnrollWizard({
 
   /**
    * A route that refused before anything was created (declined invite #34;
-   * the invite gate, a full cohort or a mismatched row #38) says why in its
-   * JSON. Show that instead of the generic "couldn't reach payment".
+   * the invite gate, a full cohort or a mismatched row #38; card payment
+   * unavailable, or the records unreachable, #84) says why in its JSON.
+   * Show that instead of the generic "couldn't reach payment".
    */
   async function throwIfRefused(res: Response) {
-    if (res.status !== 400 && res.status !== 403 && res.status !== 409) return;
+    if (res.status !== 400 && res.status !== 403 && res.status !== 409 && res.status !== 503) return;
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     if (body?.error) throw new Error(`refused:${body.error}`);
   }

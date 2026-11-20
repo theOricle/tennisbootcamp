@@ -80,7 +80,8 @@ export type AssessmentSheetRow = {
   slotDate: string;
   slotStart: string;
   status: string;
-  paid: boolean;
+  /** "test" for a test-key or mock payment (backlog #84): booked, no money. */
+  paid: boolean | "test";
   levelResult?: string | number | null;
   coachNotes?: string | null;
   creditStatus?: string;
@@ -101,7 +102,7 @@ function toRow(r: AssessmentSheetRow): string[] {
     r.slotDate ?? "",
     r.slotStart ?? "",
     r.status ?? "",
-    r.paid ? "yes" : "no",
+    r.paid === "test" ? "test" : r.paid ? "yes" : "no",
     r.levelResult != null ? String(r.levelResult) : "",
     r.coachNotes ?? "",
     r.creditStatus ?? "unused",
