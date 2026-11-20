@@ -15,7 +15,7 @@
 //      line.
 //   3. Names read as typed: O'Neil, Zoë, Ana-María and Lê Văn, in what the
 //      inbox shows, in the plain text and in the subject.
-//   4. The links the app makes still work, the card link included.
+//   4. The links and labels the app makes still work, the card link included.
 //   5. Every builder the file exports is rendered here (the source is read
 //      with either line ending), and this script is in the npm test chain.
 //
@@ -168,13 +168,23 @@ const CASES: Case[] = [
   {
     label: "cohort invitation, a tiered group",
     builder: "buildCohortInviteEmail",
-    render: (v, w) => buildCohortInviteEmail({ ...INVITE, participantName: w, programTitle: v, cohortLabel: v, locationLine: v }),
+    render: (v, w) =>
+      buildCohortInviteEmail({ ...INVITE, participantName: w, programTitle: v, cohortLabel: v, dayTimeLabel: v, locationLine: v }),
   },
   {
     label: "cohort invitation, an untiered group named by its program",
     builder: "buildCohortInviteEmail",
     render: (v, w) =>
-      buildCohortInviteEmail({ ...INVITE, levelLabel: null, tierNames: [], participantName: w, programTitle: v, cohortLabel: v, locationLine: v }),
+      buildCohortInviteEmail({
+        ...INVITE,
+        levelLabel: null,
+        tierNames: [],
+        participantName: w,
+        programTitle: v,
+        cohortLabel: v,
+        dayTimeLabel: v,
+        locationLine: v,
+      }),
   },
   {
     label: "cohort confirmed",
@@ -252,6 +262,12 @@ const CASES: Case[] = [
     builder: "buildEtransferPendingAdminEmail",
     render: (v, w) =>
       buildEtransferPendingAdminEmail({ playerName: w, playerEmail: v, cohortLabel: v, cohortId: "c1", amountCents: 20000, memo: v }),
+  },
+  {
+    label: "e-transfer pending, to the coach's inbox, no player name (the headline shows the email)",
+    builder: "buildEtransferPendingAdminEmail",
+    render: (v) =>
+      buildEtransferPendingAdminEmail({ playerName: "", playerEmail: v, cohortLabel: v, cohortId: "c1", amountCents: 20000, memo: v }),
   },
   {
     label: "payment matched no invite, to the coach's inbox",
@@ -380,9 +396,9 @@ check(
   check("full names read as typed in the set-up email", visibleText(setup.html).includes("Ana-María and Lê Văn are enrolled in Youth Bootcamps — Fall A"));
 }
 
-// ─── 4. The links the app makes ───────────────────────────────────────────────
+// ─── 4. The links and labels the app makes ────────────────────────────────────
 
-console.log("The links the app makes still work");
+console.log("The links and labels the app makes still work");
 {
   const setup = buildAccountSetupEmail({ playerNames: HOSTILE, programTitle: "Adult Bootcamps", cohortLabel: "Fall A", paid: true, link: SETUP_LINK });
   check("the set-password button opens the app's link, & and all, beside typed names", setup.html.includes(`href="${SETUP_LINK}"`) && setup.text.includes(SETUP_LINK));
@@ -390,6 +406,13 @@ console.log("The links the app makes still work");
   const invite = buildCohortInviteEmail({ ...INVITE, participantName: HOSTILE[0], cohortLabel: HOSTILE[1] });
   check("the invitation's Claim my spot opens the enroll link", invite.html.includes(`href="${ENROLL_URL}"`));
   check("the invitation's price stays the app's HTML", invite.html.includes('= <strong style="color:#fff;">$180</strong>'));
+  const twoDays = buildCohortInviteEmail({ ...INVITE, dayTimeLabel: "Saturdays & Sundays 9–10am" });
+  check(
+    "a two-day schedule reads as before: its & escaped once in the HTML, as typed in the text",
+    visibleText(twoDays.html).includes("Saturdays & Sundays 9–10am · 4 weeks") &&
+      twoDays.html.includes("Saturdays &amp; Sundays 9–10am") &&
+      twoDays.text.includes("Schedule: Saturdays & Sundays 9–10am")
+  );
   const card = (token: string) =>
     buildEtransferInstructionsEmail({
       firstName: "Maya",

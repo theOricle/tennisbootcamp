@@ -609,7 +609,7 @@ export function buildCohortInviteEmail(params: CohortInviteParams): EmailBody {
     </p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.10);margin-top:8px;">
       ${detailRow("Group", escapeHtml(cohortLabel))}
-      ${detailRow("Schedule", `${dayTimeLabel} · ${weeks} week${weeks === 1 ? "" : "s"}`)}
+      ${detailRow("Schedule", `${escapeHtml(dayTimeLabel)} · ${weeks} week${weeks === 1 ? "" : "s"}`)}
       ${detailRow("Starts", startDateLabel)}
       ${detailRow("Where", escapeHtml(where))}
       ${detailRow("Price", priceMath)}
