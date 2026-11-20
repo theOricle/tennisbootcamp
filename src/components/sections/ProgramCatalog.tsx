@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useId, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Program, ProgramGroup } from "@/types/program";
-import type { BlockFacts, GroupCard } from "@/lib/groupBlocks";
+import { cardsProgramLine, type BlockFacts, type GroupCard } from "@/lib/groupBlocks";
 import { TIERS } from "@/lib/tiers";
 import {
   AGE_BAND_QUERIES,
@@ -22,7 +22,6 @@ import {
   tierQueryFor,
   type CatalogQuery,
 } from "@/lib/programFilters";
-import { programHeadingLine } from "@/lib/programCatalog";
 import { GROUPS_ANCHOR, QUIZ_CTA_LABEL } from "@/lib/mainAction";
 import { RIGHT_GROUP_PROMISE } from "@/content/programs";
 import { locations } from "@/content/locations";
@@ -190,8 +189,12 @@ function Filters({
   );
 }
 
-/** A program's heading row: its title, linked to its page, and one derived line ("Saturdays · ages 7–17"). */
-function ProgramHeading({ program, groups }: { program: CatalogProgram; groups: ProgramGroup[] }) {
+/**
+ * A program's heading row: its title, linked to its page, and one line read
+ * from its cards ("Saturdays · ages 7–17"; "Saturdays and Wednesdays · ages
+ * 7–17" once a block runs on Wednesdays too).
+ */
+function ProgramHeading({ program, cards }: { program: CatalogProgram; cards: GroupCard[] }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
       <h2 id={`catalog-${program.slug}`} className={SECTION_TITLE}>
@@ -200,7 +203,7 @@ function ProgramHeading({ program, groups }: { program: CatalogProgram; groups: 
           {program.title}
         </Link>
       </h2>
-      <p className="text-sm text-white/60">{programHeadingLine(groups)}</p>
+      <p className="text-sm text-white/60">{cardsProgramLine(cards)}</p>
     </div>
   );
 }
@@ -266,8 +269,8 @@ export function ProgramCatalogView({
   const sections = programs
     .map((program) => ({
       program,
-      // The heading line describes the program, so it reads every group of it.
-      all: groups.filter((g) => g.programSlug === program.slug),
+      // The heading line describes the program, so it reads every card of it.
+      all: cards.filter((c) => c.group.programSlug === program.slug),
       shown: matching.filter((g) => g.programSlug === program.slug),
     }))
     .filter((s) => s.shown.length > 0);
@@ -298,7 +301,7 @@ export function ProgramCatalogView({
       <Container id={GROUPS_ANCHOR} className="scroll-mt-24">
         {sections.map(({ program, all, shown }) => (
           <section key={program.slug} aria-labelledby={`catalog-${program.slug}`} className="pt-8 md:pt-11">
-            <ProgramHeading program={program} groups={all} />
+            <ProgramHeading program={program} cards={all} />
             {shown.some((g) => g.day !== null) && (
               <ul role="list" className={GROUP_GRID}>
                 {shown

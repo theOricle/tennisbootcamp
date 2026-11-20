@@ -31,8 +31,9 @@ import { StatusChip } from "./ProgramCard";
 // and times ("Sundays 4–5pm", "Sundays and Wednesdays 4–5pm"), where (the
 // club's name). Then, on a hairline pinned to the bottom so sibling cards
 // line up, the price once (the whole price: the block's own total over its
-// own length, or for a group with no open block the constants in
-// src/content/programs.ts; never a per-session figure) and one button.
+// own length, with its class count when it runs more than one class a week,
+// or for a group with no open block the constants in src/content/programs.ts;
+// never a per-session figure) and one button.
 //
 // No rules on the card: the week-one promise, High Performance by approval
 // and the optional assessment are said once on the page, under "Good to
@@ -63,6 +64,11 @@ export type ProgramGroupCardProps = {
   headingLevel?: 2 | 3 | 4;
   /** Where "Notify me" goes: the footer's newsletter line, or a page's own form when it has one. */
   notifyHref?: string;
+  /**
+   * Every button an outline, "Join" included: for a screen whose one primary
+   * action is elsewhere (the dashboard, where the next step leads).
+   */
+  quiet?: boolean;
 };
 
 /** The words of a button: the label, and the rest of its accessible name for assistive tech. */
@@ -85,18 +91,20 @@ function GroupButton({
   block,
   notifyHref,
   describedBy,
+  quiet = false,
 }: {
   action: GroupAction;
   block: BlockFacts | null;
   notifyHref: string;
   describedBy?: string;
+  quiet?: boolean;
 }) {
   const href = action.kind === "notify" || !block ? notifyHref : `/enroll/${block.cohortId}`;
   return (
     <Link
       href={href}
       aria-describedby={describedBy}
-      className={`${buttonClass(action.kind === "join" ? "primary" : "secondary")} ${BUTTON_SHAPE}`}
+      className={`${buttonClass(action.kind === "join" && !quiet ? "primary" : "secondary")} ${BUTTON_SHAPE}`}
     >
       <ButtonLabel action={action} />
     </Link>
@@ -166,6 +174,7 @@ export function ProgramGroupCard({
   block = null,
   headingLevel = 3,
   notifyHref = `#${NEWSLETTER_ANCHOR}`,
+  quiet = false,
 }: ProgramGroupCardProps) {
   const Title = headingLevel === 2 ? "h2" : headingLevel === 4 ? "h4" : "h3";
   const dated = block !== null;
@@ -190,13 +199,15 @@ export function ProgramGroupCard({
 
       <Title className="mt-2.5 text-lg font-semibold leading-tight tracking-tight text-white">{g.name}</Title>
 
-      {/* Who, the dates, the class days, where: four plain lines. The glyphs are decoration. */}
+      {/* Who, the dates, the class days, where: four plain lines. The glyphs
+          are decoration. The dates are the strongest of the four, white and
+          medium, so two blocks of one group read as two options. */}
       <ul role="list" className="mb-4 mt-2 space-y-1 text-sm text-white/75">
         <li className="flex items-start gap-2 text-white/90">
           <PersonIcon className={FACT_GLYPH} />
           {groupWhoLabel(g)}
         </li>
-        <li id={datesId} className={`flex items-start gap-2 ${dated ? "text-white/90" : "text-white/60"}`}>
+        <li id={datesId} className={`flex items-start gap-2 ${dated ? "font-medium text-white" : "text-white/60"}`}>
           <CalendarIcon className={FACT_GLYPH} />
           {block ? <DateRange text={block.dates} /> : DATES_COMING_SOON}
         </li>
@@ -221,6 +232,7 @@ export function ProgramGroupCard({
           block={block}
           notifyHref={notifyHref}
           describedBy={dated ? datesId : undefined}
+          quiet={quiet}
         />
       </div>
     </article>

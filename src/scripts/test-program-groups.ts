@@ -307,7 +307,8 @@ console.log("Seats: one read, the enroll page's count, display only");
   check("/programs reads the seats once per render, and builds its cards with them", count(programsSrc, "readBlockSeats(") === 1 && programsSrc.includes("groupCards(programGroups, publicCohorts, seats)"));
   const detailSrc = read("src/app/programs/[slug]/page.tsx");
   check("a program page reads the sheet once, for its cohort cards and its group cards", count(detailSrc, "readSeatSnapshot()") === 1 && !detailSrc.includes("getSeatsRemaining") && detailSrc.includes("groupCards(groups, openCohorts, seatCounts)"));
-  check("a program page's cohort cards use the same threshold", detailSrc.includes("seats <= LOW_SEATS_THRESHOLD") && !/seats <= [1-9]/.test(detailSrc));
+  // Re-pinned for backlog #85 (fix round): the page's own cohort cards left it; the group cards read the threshold through groupStatus.
+  check("a program page counts no seats of its own: the group cards read the threshold", !/seats <= [1-9]/.test(detailSrc) && !detailSrc.includes("isLowStock"));
 }
 
 console.log("A group with no fixed class: one row");

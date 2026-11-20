@@ -189,7 +189,9 @@ check("an arranged group shows no chip", groupStatus(solo) === null);
 
 console.log("cohorts and groups");
 const first = programGroups.find((g) => g.id === "youth-7-10")!;
-check("a Saturday 12:00 youth cohort trains in the 7–10 group", cohortMatchesGroup(cohort, first) && !cohortMatchesGroup(cohort, hp));
+const sundayMorning: Cohort = { ...cohort, sessions: [{ day: "Sun", start: "10:00", end: "11:00" }] };
+// Re-pinned for backlog #85 (fix round): a cohort belongs to a group by program and level (its band starts at Beginner), never by its class.
+check("a youth cohort whose band starts at Beginner trains in the Beginner Junior Bootcamp, whatever its class", cohortMatchesGroup(cohort, first) && !cohortMatchesGroup(cohort, hp) && cohortMatchesGroup(sundayMorning, first) && !cohortMatchesGroup({ ...cohort, levelMin: 5, levelMax: 7 }, first) && cohortMatchesGroup({ ...cohort, levelMin: 5, levelMax: 7 }, hp));
 check("a cohort of another program never matches", !cohortMatchesGroup({ ...cohort, programId: "bootcamps" }, first));
 check("an arranged group never matches a cohort", !cohortMatchesGroup({ ...cohort, programId: "private-lessons" }, solo));
 // Backlog #85 (owner, 2026-11-19): a group card no longer shows "its next
@@ -388,7 +390,10 @@ check("detail: Levels in this program lights the groups' tags on the ladder", de
 check("detail: the ladder link reads How levels work, like the strip's", /<Link href="\/assessment#ladder" className=\{`mt-2 \$\{TEXT_LINK_LIME\}`\}>\s*How levels work →\s*<\/Link>/.test(detail) && !detail.includes("How tiers work"));
 // The closing one block below reads "Groups are open to join.", so the empty state no longer opens on "Groups are forming."
 check("detail: with no public cohort, the line says the dates are not public yet, and no longer that groups are forming", detail.includes("Cohort dates aren&apos;t public yet.{\" \"}") && !/>\s*Groups are forming\./.test(detail) && !detail.includes("Groups are forming. Cohort dates"));
-check("detail: cohort cards carry the mark and the rail", detail.includes("<PlateMark plate={program.plate}") && detail.includes("artFocusForCohort(program, cohort)") && /tierGated &&[\s\S]*<TierLine[\s\S]*variant="rail"/.test(detail));
+// Re-pinned for backlog #85 (fix round): the list of cohort cards under the
+// groups repeated the open blocks in older words ("Spots open" on a
+// by-approval group), so it left the page; the group cards carry the blocks.
+check("detail: no list repeats the open blocks under the groups", !detail.includes("<PlateMark") && !detail.includes("Spots open") && !detail.includes("formatCohortPrice(") && detail.includes("{!arranged && !hasOpenCohorts && ("));
 check("detail: the start date helper is shared", detail.includes("formatStartDate(") && !detail.includes("fmtStartDate"));
 const panelOpen = at(detail, "<ProgramViewerPanel");
 const panelClose = at(detail, "</ProgramViewerPanel>");

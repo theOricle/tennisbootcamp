@@ -78,10 +78,16 @@ export const INSTALMENT_LABEL = formatDollars(INSTALMENT_AMOUNT);
  * A whole price as a visitor reads it: the total, then "for" and the length
  * ("$210 for six weeks"). The planned groups read it from the constants
  * (PRICE_SUMMARY); a block the coach opens reads its own total over its own
- * length (owner, 2026-11-20; src/lib/groupBlocks.ts). Never a per-session figure.
+ * length (owner, 2026-11-20; src/lib/groupBlocks.ts). A block with more than
+ * one class a week names its class count with it ("$420 for 12 classes over
+ * six weeks"), so two blocks of one group at different counts read apart.
+ * Never a per-session figure.
  */
-export function priceSummaryFor(totalDollars: number, weeks: number): string {
-  return `${formatDollars(totalDollars)} for ${cohortLengthFor(weeks)}`;
+export function priceSummaryFor(totalDollars: number, weeks: number, classes: number = weeks): string {
+  const length = cohortLengthFor(weeks);
+  return classes === weeks
+    ? `${formatDollars(totalDollars)} for ${length}`
+    : `${formatDollars(totalDollars)} for ${classes} classes over ${length}`;
 }
 
 /**

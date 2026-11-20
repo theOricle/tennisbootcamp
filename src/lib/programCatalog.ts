@@ -2,7 +2,17 @@ import type { Program, ProgramGroup, TimetableSlot } from "@/types/program";
 import type { Cohort, SessionSlot } from "@/types/cohort";
 import { audienceLabel, isAgeBand } from "@/lib/ageBand";
 import { formatStartDate } from "@/lib/cohorts";
-import { levelNumber, levelWithinRange, tierById, LEVEL_MAX, LEVEL_MIN, type Tier, type TierId } from "@/lib/tiers";
+import {
+  coversWholeLadder,
+  levelNumber,
+  levelWithinRange,
+  tierById,
+  tierRangeForLevels,
+  LEVEL_MAX,
+  LEVEL_MIN,
+  type Tier,
+  type TierId,
+} from "@/lib/tiers";
 
 // The program catalog's decision data (audit H7, M31; design specs §5.2;
 // groups per owner 2026-10-12): what a card says about a program or a group's
@@ -303,6 +313,11 @@ const DAY_PLURAL: Record<SessionSlot["day"], string> = {
   Sun: "Sundays",
 };
 
+/** "Sundays" from "Sun": a session's day in the plural, as a card and a page name it. */
+export function classDayPlural(day: SessionSlot["day"]): string {
+  return DAY_PLURAL[day] ?? day;
+}
+
 /** "4" · "4:30" · "12": an hour on the twelve-hour clock, the minutes only when there are some. */
 function shortClock(h: number, m: number): string {
   return m === 0 ? `${h % 12 || 12}` : `${h % 12 || 12}:${String(m).padStart(2, "0")}`;
@@ -325,7 +340,7 @@ export function formatClassHours(start: string, end: string): string {
 }
 
 /** "Sundays" · "Sundays and Wednesdays" · "Mondays, Wednesdays and Fridays". */
-function joinDays(days: readonly string[]): string {
+export function joinDays(days: readonly string[]): string {
   if (days.length <= 1) return days[0] ?? "";
   return `${days.slice(0, -1).join(", ")} and ${days[days.length - 1]}`;
 }
@@ -416,18 +431,27 @@ export function groupsOf(groups: readonly ProgramGroup[], program: Pick<Program,
 }
 
 /**
- * Does a cohort train in this group, by its class? The cohort's program and
- * its first session's day and start must match the group's class. A cohort
- * of a program with no fixed class (private lessons) never matches. The
- * enroll page and the payment routes find a cohort's group this way (its
- * ages, and the by-approval step); the group cards match a block to its
- * group by program and level instead (src/lib/groupBlocks.ts).
+ * The one level a block (a cohort) is built for: the tier its band starts in
+ * (a 3.0–3.5 block is Intermediate), or null for a block built for any level
+ * (no band, or a band over the whole ladder).
  */
-export function cohortMatchesGroup(cohort: Pick<Cohort, "programId" | "sessions">, g: ProgramGroup): boolean {
-  if (cohort.programId !== g.programSlug || !g.day || !g.start) return false;
-  const session = cohort.sessions[0];
-  if (!session) return false;
-  return session.day === g.day.slice(0, 3) && twelveHourStart(session.start) === twelveHourStart(g.start);
+export function blockLevel(cohort: Pick<Cohort, "levelMin" | "levelMax">): TierId | null {
+  if (coversWholeLadder(cohort.levelMin, cohort.levelMax)) return null;
+  return tierRangeForLevels(cohort.levelMin, cohort.levelMax)?.min.id ?? null;
+}
+
+/**
+ * Does a cohort train in this group? The one rule for which group a block
+ * belongs to (owner, 2026-11-19): the same program and the same level, never
+ * the day or time of its classes. The group cards (src/lib/groupBlocks.ts),
+ * the sign-up page (the group's ages, and the by-approval step) and both
+ * payment routes (approvalRefusal, src/lib/enrollGate.ts) all read it, so a
+ * card and its sign-up page always name the same group. A cohort's group is
+ * the first in lineup order that matches; a group with no fixed class
+ * (private lessons) never matches.
+ */
+export function cohortMatchesGroup(cohort: Pick<Cohort, "programId" | "levelMin" | "levelMax">, g: ProgramGroup): boolean {
+  return cohort.programId === g.programSlug && g.day !== null && g.level === blockLevel(cohort);
 }
 
 /** What a card needs to know about one player on an account. */

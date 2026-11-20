@@ -71,6 +71,7 @@ import {
   twinBlockedNote,
 } from "../lib/enrollPlayers";
 import { approvalGateApplies, claimedInvite, type EnrollGateDecision } from "../lib/enrollGate";
+import { AlreadyTakenPanel } from "../components/quiz/AlreadyTakenPanel";
 import { groupById, programGroups } from "../content/programs";
 import { defaultLocation } from "../content/locations";
 import { MAX_PARTICIPANTS_PER_ACCOUNT } from "../lib/participantInput";
@@ -354,7 +355,24 @@ check("the quiz mirrors the flag after the route answered ok", at(intakePage, "r
 // taker sees the panel now, so it reads "Open your dashboard".
 // Re-pinned for backlog #85 (owner, 2026-11-19): the panel lists the open
 // blocks with "Join", and the dashboard button is an outline beside them.
-check("the already-taken panel: open your dashboard (the quiz-aware button, an outline beside open blocks), add another player, retake", intakePage.includes("function AlreadyTakenPanel") && intakePage.includes("You&apos;ve already taken the quiz.") && intakePage.includes("{ADD_PLAYER_LABEL}") && intakePage.includes("{RETAKE_QUIZ_LABEL}") && /<TrackedButton variant=\{anyOpen \? "secondary" : "primary"\} href="\/intake" track="quiz" source="intake-taken">/.test(intakePage));
+// Re-pinned in the fix round of backlog #85: the panel is its own component
+// now (src/components/quiz/AlreadyTakenPanel.tsx), rendered here, and the
+// page hands it the open blocks from its layout. With none open it keeps
+// the quiz-aware button on the lime; its words with blocks are pinned in
+// test-group-blocks.ts.
+{
+  const panel = renderToStaticMarkup(createElement(AlreadyTakenPanel, { playerCount: 1, cards: [], onAdd: () => {}, onRetake: () => {} }));
+  const quizButton = panel.match(/<a [^>]*href="\/intake"[^>]*>Take the 2-minute quiz<\/a>/)?.[0] ?? "";
+  check(
+    "the already-taken panel: its heading, the quiz-aware button on the lime, add another player, retake",
+    panel.includes("You&#x27;ve already taken the quiz.</h1>") &&
+      quizButton.includes("bg-[#B4E655]") &&
+      panel.includes(`>${ADD_PLAYER_LABEL}</button>`) &&
+      panel.includes(`>${RETAKE_QUIZ_LABEL}</button>`) &&
+      intakePage.includes("<AlreadyTakenPanel") &&
+      intakePage.includes("cards={openGroups}")
+  );
+}
 check(
   "/intake: the panel needs a taken view, which only a signed-in account is, so signed out the quiz opens on its first step, with or without ?program=",
   /quiz\.state === "taken" &&\s+!skipTakenPanel/.test(intakePage) &&
@@ -413,7 +431,9 @@ check("/programs: the quiz prompt in the band is the side line", catalogSrc.incl
 // guest now, so both left the page with ViewerSwap's taken node.
 const detail = read("src/app/programs/[slug]/page.tsx");
 const viewerSrc = read("src/components/programs/ProgramViewer.tsx");
-check("program pages: no sentence for a signed-out quiz-taker; a member keeps their own lines", !detail.includes("You&apos;ve taken the quiz") && !/\btaken=\{/.test(detail) && detail.includes("member={<>You&apos;re on our list already.</>}") && detail.includes("You&apos;re on our list: our coaches place you in a group by level"));
+// Re-pinned in the fix round of backlog #85: "You're on our list already."
+// sat under the cohort list, which left the page with it.
+check("program pages: no sentence for a signed-out quiz-taker; a member keeps their own line", !detail.includes("You&apos;ve taken the quiz") && !/\btaken=\{/.test(detail) && detail.includes("You&apos;re on our list: our coaches place you in a group by level"));
 check("ViewerSwap: members first, everyone else the guest's words, and no quiz read", viewerSrc.includes('if (viewer.state === "member") return <>{member}</>;') && !viewerSrc.includes("taken?: ReactNode") && !viewerSrc.includes("useQuizStatus"));
 // About closes on the main action too (backlog #69, pass 2): JoinClosing puts the quiz-aware side line after the lime button.
 check("404 and About are quiz-aware", read("src/app/not-found.tsx").includes('<MainAction source="not-found"') && read("src/app/about/page.tsx").includes('<JoinClosing source="about-closing" />') && read("src/components/sections/JoinClosing.tsx").includes("<MainAction source={source}") && !read("src/app/about/page.tsx").includes('href="/intake"'));

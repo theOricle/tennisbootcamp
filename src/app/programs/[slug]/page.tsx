@@ -14,51 +14,46 @@ import { Heading } from "@/components/ui/Heading";
 import { Button } from "@/components/ui/Button";
 import { QuizSideLine } from "@/components/ui/MainAction";
 import { TrackedButton } from "@/components/ui/TrackedButton";
-import {
-  formatDateRange,
-  formatDaysTimes,
-  formatCohortPrice,
-  formatStartDate,
-} from "@/lib/cohorts";
+import { formatStartDate } from "@/lib/cohorts";
 import { getPublicCohorts } from "@/lib/cohortsDb";
 import { readSeatSnapshot } from "@/lib/groupSeats";
-import { groupCards } from "@/lib/groupBlocks";
+import {
+  cardsDaysLabel,
+  cardsHeading,
+  cardsLevelTags,
+  cardsNextStart,
+  cardsScheduleLine,
+  groupCards,
+  type GroupCard,
+} from "@/lib/groupBlocks";
 import { seatsFromSnapshot } from "@/lib/seatCount";
 import { GROUPS_ANCHOR, JOIN_CTA_LABEL } from "@/lib/mainAction";
-import { locationLine } from "@/content/locations";
-import { membershipNote } from "@/lib/membership";
 import { locationsForProgram } from "@/lib/locationCatalog";
 import { LocationLine } from "@/components/locations/LocationLine";
-import {
-  LOW_SEATS_THRESHOLD,
-  agesChipLabel,
-  programLevelRange,
-  programLevelTags,
-} from "@/lib/programCatalog";
+import { agesChipLabel, programLevelRange, programLevelTags } from "@/lib/programCatalog";
 import { TIER_COUNT_WORD, TIER_LADDER_SPAN, tierById } from "@/lib/tiers";
-import { artFocusForCohort } from "@/lib/plates/variant";
-import { LevelTag, TierLine, TierRangeBadges } from "@/components/tiers";
-import { PlateMark } from "@/components/plates/PlateMark";
+import { LevelTag, TierLine } from "@/components/tiers";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 import { JsonLd } from "@/components/JsonLd";
 import { courseJsonLd } from "@/lib/structuredData";
 import { ProgramViewerPanel, ViewerSwap } from "@/components/programs/ProgramViewer";
 
 /**
- * The phone summary under the H1 (audit M13): which day and what it costs,
+ * The phone summary under the H1 (audit M13): which days and what it costs,
  * so the decision facts sit above the fold; who it is for, and the tier
- * span, are the chip row under the description (L8). The cost is the whole
- * price of one bootcamp, the program's own price line (owner, 2026-11-17:
- * never a per-session figure). Weekend classes only; a program with no
- * fixed class states its terms in the panel. Each fact is joined with
- * no-break spaces, so a line wraps only between facts.
+ * span, are the chip row under the description (L8). The days are the ones
+ * the cards below run on (fix round, #85); the cost is the whole price of
+ * one bootcamp, the program's own price line (owner, 2026-11-17: never a
+ * per-session figure). A program with no fixed class states its terms in the
+ * panel. Each fact is joined with no-break spaces, so a line wraps only
+ * between facts.
  */
 const NBSP = " ";
 
-function summaryFacts(program: Program): string[] {
-  const days = [...new Set((program.timetable ?? []).map((slot) => `${slot.day}s`))];
-  if (program.comingSoon || days.length === 0) return [];
-  return [days.join(" and "), ...(program.priceSummary ? [program.priceSummary] : [])];
+function summaryFacts(program: Program, cards: readonly GroupCard[]): string[] {
+  const days = cardsDaysLabel(cards);
+  if (program.comingSoon || !days) return [];
+  return [days, ...(program.priceSummary ? [program.priceSummary] : [])];
 }
 
 // Incremental static regeneration (audit M39): the page is served from the
@@ -109,19 +104,29 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   );
 
   const hasOpenCohorts = openCohorts.length > 0;
-  // Earliest public cohort (public cohorts are all inviting/confirmed → "open")
-  const nextOpenCohort = openCohorts.find((c) => c.status === "open") ?? null;
   // Each open block's own card carries Join, to its sign-up page (owner,
   // 2026-11-19); the panel's main button scrolls to the cards.
   const quizHref = `/intake?program=${program.slug}`;
   // Null for a program with no stated price: no Course markup.
   const courseLd = courseJsonLd(program);
-  const summary = summaryFacts(program);
-  // The numeric span the program's groups together cover (the viewer panel's
-  // fit check) and the level tags they carry (owner, 2026-10-13): one per group.
-  const range = programLevelRange(program);
   const groups = groupsForProgram(program.slug);
-  const tags = groups.length > 0 ? programLevelTags(groups) : [];
+  // One card per open block of this program, with its dates, class days,
+  // price and seats left, and one per planned group with none ("Dates coming
+  // soon"; owner, 2026-11-19 and 2026-11-20; src/lib/groupBlocks.ts). Every
+  // heading, count, day list and "next starts" line on the page reads these
+  // cards, never the planned lineup alone (fix round, #85).
+  const cards = groupCards(groups, openCohorts, seatCounts).filter((c) => c.group.status !== "arranged");
+  const summary = summaryFacts(program, cards);
+  // The first class of the earliest open block the cards show.
+  const nextStart = cardsNextStart(cards);
+  // The schedule line in the panel: the cards' days and starts; a program
+  // with no fixed class keeps its own line ("By arrangement").
+  const scheduleLine = cards.length > 0 ? cardsScheduleLine(cards) : program.schedule;
+  // The numeric span the program's groups together cover (the viewer panel's
+  // fit check) and the level tags the cards carry (owner, 2026-10-13): one
+  // per group, and one more for a block at a level the lineup has none for.
+  const range = programLevelRange(program);
+  const tags = cards.length > 0 ? cardsLevelTags(cards) : groups.length > 0 ? programLevelTags(groups) : [];
   const tagNames =
     tags === null
       ? "every level"
@@ -131,19 +136,14 @@ export default async function ProgramDetailPage({ params }: PageProps) {
   // 2026-10-12); one with no fixed class (private lessons) states its terms
   // in the panel instead, so the page never shows the same card twice.
   const scheduledGroups = groups.filter((g) => g.day !== null);
-  // One card per open block of this program, with its dates, class days,
-  // price and seats left, and one per planned group with none ("Dates coming
-  // soon"; owner, 2026-11-19 and 2026-11-20; src/lib/groupBlocks.ts).
-  const cards = groupCards(groups, openCohorts, seatCounts).filter((c) => c.group.status !== "arranged");
   // The page's own group list, which the main button scrolls to.
   const groupListHref = scheduledGroups.length > 0 ? `#${GROUPS_ANCHOR}` : undefined;
   // Where the program's groups train (owner, 2026-10-12): one club today.
   const programLocations = locationsForProgram(program.slug);
   const arranged = scheduledGroups.length === 0 && !program.comingSoon;
-  const groupsHeading =
-    scheduledGroups.length > 0
-      ? `${scheduledGroups.length === 3 ? "Three" : String(scheduledGroups.length)} groups on ${scheduledGroups[0].day}s`
-      : "Groups";
+  // "Three groups on Saturdays": counted from the cards shown, on the days
+  // their classes run.
+  const groupsHeading = cards.length > 0 ? cardsHeading(cards) : "Groups";
 
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -235,15 +235,15 @@ export default async function ProgramDetailPage({ params }: PageProps) {
 
             {/* ── Price, next cohort, quiz ────────────────────────────────── */}
             <div className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
-              {program.schedule && (
-                <p className="text-xs text-white/60">{program.schedule}</p>
+              {scheduleLine && (
+                <p className="text-xs text-white/60">{scheduleLine}</p>
               )}
               {program.priceLine && (
                 <p className="mt-3 text-sm text-white">{program.priceLine}</p>
               )}
-              {nextOpenCohort && (
+              {nextStart && (
                 <p className="mt-3 text-sm font-semibold text-[#B4E655]">
-                  Next cohort starts {formatStartDate(nextOpenCohort.startDate)}
+                  Next cohort starts {formatStartDate(nextStart)}
                 </p>
               )}
               {/* The main button (owner, 2026-11-16; "Join a bootcamp"), to this
@@ -319,7 +319,7 @@ export default async function ProgramDetailPage({ params }: PageProps) {
             optional assessment, the policies. A program with no fixed class
             (private lessons) has no group to pick or move between, so
             neither section. */}
-        {scheduledGroups.length > 0 && (
+        {cards.length > 0 && (
           <>
             <section aria-labelledby={GROUPS_ANCHOR} className="mt-12">
               <h2 id={GROUPS_ANCHOR} className="scroll-mt-24 text-xl font-semibold text-white">{groupsHeading}</h2>
@@ -418,144 +418,48 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           </>
         )}
 
-        {/* Cohort cards, or the empty state, for programs that run cohorts. */}
-        {!arranged && (
+        {/* With no open block, the program says so and offers its own
+            newsletter form (the cards' "Notify me" points here). With open
+            blocks the cards above carry every date, time, price and seat,
+            so nothing repeats them here (fix round, #85: the list of cohort
+            cards that stood here told a by-approval group's seats as open). */}
+        {!arranged && !hasOpenCohorts && (
           <>
             <div className="mt-12 border-t border-white/10" />
             <div className="mt-10">
-              {hasOpenCohorts ? (
-                /* Available: cohort cards from Supabase */
-                <div>
-                  <h2 id="cohorts" className="mb-2 text-xl font-semibold text-white">Upcoming cohorts</h2>
-                  {/* Where the cohorts train, then the neutral club-membership
-                      line (D19, locked) that stood here before the club was named. */}
-                  <div className="mb-6 space-y-1 text-sm text-white/60">
-                    {programLocations.length > 0 && (
-                      <p>
-                        At {programLocations.map(locationLine).join(" and ")}.
-                      </p>
-                    )}
-                    <p>{membershipNote()}</p>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {openCohorts.map((cohort) => {
-                      const seats = seatCounts[cohort.id] ?? null;
-                      const isFull = seats !== null && seats <= 0;
-                      const isLowStock = seats !== null && seats > 0 && seats <= LOW_SEATS_THRESHOLD;
-                      const tierGated = cohort.levelMin != null || cohort.levelMax != null;
-                      return (
-                        <div
-                          key={cohort.id}
-                          className="rounded-xl border border-white/10 bg-white/5 px-5 py-4"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            {/* The program's mark (the Adult class the cohort trains
-                                in lit), the label, the tier chip and the dates (L8). */}
-                            <div className="flex min-w-0 items-start gap-3">
-                              <PlateMark plate={program.plate} size={48} focusSlot={artFocusForCohort(program, cohort)} />
-                              <div className="min-w-0">
-                                <p className="font-semibold text-white">{cohort.label}</p>
-                                <TierRangeBadges
-                                  levelMin={cohort.levelMin}
-                                  levelMax={cohort.levelMax}
-                                  className="mt-1"
-                                />
-                                <p className="mt-1 text-sm text-[#B4E655]">
-                                  {formatDateRange(cohort)}
-                                </p>
-                                <p className="mt-0.5 text-sm text-white/60">
-                                  {formatDaysTimes(cohort)}
-                                </p>
-                                <p className="mt-0.5 text-sm text-white/60">
-                                  {cohort.weeks} weeks · {cohort.capacityMin}–{cohort.capacityMax} players
-                                </p>
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <p className="text-sm font-semibold text-white">
-                                {formatCohortPrice(cohort)}
-                              </p>
-                              <span
-                                className={`mt-1 inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
-                                  isFull
-                                    ? "border border-white/15 bg-white/5 text-white/85"
-                                    : "bg-[#B4E655]/10 text-[#B4E655]"
-                                }`}
-                              >
-                                {isFull
-                                  ? "Full"
-                                  : isLowStock
-                                  ? `${seats} spot${seats === 1 ? "" : "s"} left`
-                                  : "Spots open"}
-                              </span>
-                            </div>
-                          </div>
-                          {/* The cohort's band on the rail, so the chip above reads as a place on the ladder. */}
-                          {tierGated && (
-                            <TierLine
-                              variant="rail"
-                              size="sm"
-                              span={{ min: cohort.levelMin, max: cohort.levelMax }}
-                              labels="none"
-                              className="mt-3"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-6 text-sm text-white/60">
-                    Our coaches place each player by level and schedule.{" "}
-                    <ViewerSwap
-                      guest={
-                        <>
-                          <Link href={quizHref} className="text-[#B4E655] hover:underline">
-                            Take the 2-minute quiz
-                          </Link>{" "}
-                          to start.
-                        </>
-                      }
-                      member={<>You&apos;re on our list already.</>}
-                    />
-                  </p>
+              <div>
+                <h2 id="cohorts" className="scroll-mt-24 text-xl font-semibold text-white">
+                  Upcoming cohorts
+                </h2>
+                {/* The groups above are real and open to join; the dated
+                    cohorts are not public yet (fall 2026 runs with the
+                    coach's private students). The line says only that:
+                    "Groups are forming." left it, because the closing one
+                    block below reads "Groups are open to join." */}
+                <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
+                  Cohort dates aren&apos;t public yet.{" "}
+                  <ViewerSwap
+                    guest={
+                      <>
+                        <Link href={quizHref} className="text-[#B4E655] hover:underline">
+                          Take the 2-minute quiz
+                        </Link>{" "}
+                        and our coaches place you in a group by level and schedule, or leave
+                        your email and we&apos;ll tell you when a cohort opens.
+                      </>
+                    }
+                    member={
+                      <>
+                        You&apos;re on our list: our coaches place you in a group by level
+                        and schedule, and your group, dates and price land on your dashboard.
+                      </>
+                    }
+                  />
+                </p>
+                <div className="mt-6">
+                  <EmailCapture source={`program_${program.slug}_email_capture`} />
                 </div>
-              ) : (
-                /* Zero renderable cohorts: empty state, no card, no enroll link */
-                <div>
-                  <h2 id="cohorts" className="scroll-mt-24 text-xl font-semibold text-white">
-                    Upcoming cohorts
-                  </h2>
-                  {/* The groups above are real and open to join; the dated
-                      cohorts are not public yet (fall 2026 runs with the
-                      coach's private students). The line says only that:
-                      "Groups are forming." left it, because the closing one
-                      block below reads "Groups are open to join." */}
-                  <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
-                    Cohort dates aren&apos;t public yet.{" "}
-                    <ViewerSwap
-                      guest={
-                        <>
-                          <Link href={quizHref} className="text-[#B4E655] hover:underline">
-                            Take the 2-minute quiz
-                          </Link>{" "}
-                          and our coaches place you in a group by level and schedule, or leave
-                          your email and we&apos;ll tell you when a cohort opens.
-                        </>
-                      }
-                      member={
-                        <>
-                          You&apos;re on our list: our coaches place you in a group by level
-                          and schedule, and your group, dates and price land on your dashboard.
-                        </>
-                      }
-                    />
-                  </p>
-                  <div className="mt-6">
-                    <EmailCapture source={`program_${program.slug}_email_capture`} />
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           </>
         )}

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { programGroups } from "@/content/programs";
 import { getPublicCohorts } from "@/lib/cohortsDb";
-import { groupCards, openBlockCards } from "@/lib/groupBlocks";
+import { groupCards, signedInOpenCards } from "@/lib/groupBlocks";
 import { readBlockSeats } from "@/lib/groupSeats";
 import { OpenGroupsProvider } from "@/components/quiz/OpenGroupsContext";
 
@@ -21,12 +21,13 @@ export const metadata: Metadata = {
 // The open blocks, read on the server and rebuilt at most once a minute, as
 // /programs is (audit M39). The quiz is a client page; its already-taken
 // screen lists these as group cards, each with "Join" (owner, 2026-11-19).
-// Public blocks only, with the fields a group card shows.
+// Public blocks only, with the fields a group card shows, and no by-approval
+// block: a quiz-taker has asked already (signedInOpenCards).
 export const revalidate = 60;
 
 export default async function IntakeLayout({ children }: { children: React.ReactNode }) {
   const publicCohorts = await getPublicCohorts();
   const seats = await readBlockSeats(publicCohorts);
-  const cards = openBlockCards(groupCards(programGroups, publicCohorts, seats));
+  const cards = signedInOpenCards(groupCards(programGroups, publicCohorts, seats));
   return <OpenGroupsProvider cards={cards}>{children}</OpenGroupsProvider>;
 }

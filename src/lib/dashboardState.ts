@@ -533,7 +533,7 @@ export function nextStepFor(input: NextStepInput): NextStep {
           kind: "placing",
           eyebrow: "Next step",
           headline: "Our coaches are placing you in a group and time.",
-          detail: `There is nothing else you need to do. ${ASSESSMENT_LINE}`,
+          detail: `Or pick a group with dates below. ${ASSESSMENT_LINE}`,
           primary: { href: "#availability", label: "Update my availability" },
           secondary: { href: "/assessment/book", label: "Book Your Assessment" },
         }
@@ -541,7 +541,7 @@ export function nextStepFor(input: NextStepInput): NextStep {
           kind: "placed",
           eyebrow: "Next step",
           headline: "Your level is set. Our coaches are placing you in a group.",
-          detail: "There is nothing else you need to do. Your group, dates and price land here once they are set.",
+          detail: "Or pick a group with dates below. Your group, dates and price land here once they are set.",
           primary: { href: "#availability", label: "Update my availability" },
           secondary: { href: "/programs", label: "Browse Programs" },
         };
@@ -554,8 +554,8 @@ export function nextStepFor(input: NextStepInput): NextStep {
     headline: `Our coaches are placing ${namesList(everyone)} in ${many ? "groups and times" : "a group and time"}.`,
     detail:
       unplaced.length > 0
-        ? `There is nothing else you need to do. ${ASSESSMENT_LINE}`
-        : "There is nothing else you need to do. Groups, dates and prices land here once they are set.",
+        ? `Or pick a group with dates below. ${ASSESSMENT_LINE}`
+        : "Or pick a group with dates below. Groups, dates and prices land here once they are set.",
     primary: { href: "#availability", label: many ? "Update availability" : `Update ${possessive(everyone[0] ?? "their")} availability` },
     secondary:
       unplaced.length > 0

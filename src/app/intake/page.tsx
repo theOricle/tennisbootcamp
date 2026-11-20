@@ -45,11 +45,9 @@ import {
 } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { TextLink } from "@/components/ui/TextLink";
-import { TrackedButton } from "@/components/ui/TrackedButton";
 import { rememberQuizTaken, useQuizStatus } from "@/lib/useQuizStatus";
 import { useOpenGroups } from "@/components/quiz/OpenGroupsContext";
-import { OPEN_GROUPS_HEADING, OpenGroupsList } from "@/components/sections/OpenGroups";
-import { ADD_PLAYER_LABEL, RETAKE_QUIZ_LABEL } from "@/lib/quizStatus";
+import { AlreadyTakenPanel } from "@/components/quiz/AlreadyTakenPanel";
 import {
   WhoIsThisFor,
   useHousehold,
@@ -361,95 +359,6 @@ function LikelyTierBlock({ tier, firstName }: { tier: Tier | null; firstName?: s
 }
 
 const OUTLINE_BUTTON = `inline-flex min-h-[48px] items-center justify-center rounded-full border border-[#B4E655]/60 px-6 py-3 text-sm font-semibold text-[#B4E655] transition hover:border-[#B4E655] hover:bg-[#B4E655]/10 ${FOCUS_RING}`;
-
-/** The outline secondary (design-system.md), as a native button. */
-const SECONDARY_BUTTON = `inline-flex min-h-[44px] items-center justify-center rounded-full border border-white/25 px-6 py-3 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white ${FOCUS_RING}`;
-
-/**
- * The quiz-taker's panel (owner, 2026-10-12): a signed-in account that
- * already took the quiz is told so instead of being asked again — with its
- * next step, "Add another player" (the wizard opens on a child's block) and
- * "Retake the quiz" (the wizard as it is; a retake still writes an ordinary
- * Sheet row, the /api/intake contract unchanged). Signed out, nobody sees it
- * (owner, 2026-11-18). The links `?add=1` and `?retake=1` skip this panel.
- *
- * No dead end (owner, 2026-11-19: "when I am already signed in it just tell
- * me I already submitted request"): the open blocks follow, as the same group
- * cards, each with "Join" to its sign-up page, and the dashboard button steps
- * back to an outline beside them. With none open, one line says no group has
- * dates yet and points to the groups. The blocks come from the server layout
- * (src/app/intake/layout.tsx).
- */
-function AlreadyTakenPanel({
-  playerCount,
-  onAdd,
-  onRetake,
-}: {
-  playerCount: number;
-  onAdd: () => void;
-  onRetake: () => void;
-}) {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  useFocusOnMount(headingRef);
-  const openGroups = useOpenGroups();
-  const anyOpen = openGroups.length > 0;
-  // A household reads by its count.
-  const whom = playerCount > 1 ? `your ${playerCount} players` : "you";
-  return (
-    <main className="min-h-screen bg-[#061427] text-white">
-      {/* Wider while it lists open blocks, so two cards sit side by side
-          at the width they have on /programs; the quiz's own width otherwise. */}
-      <div className={`mx-auto ${anyOpen ? "max-w-4xl" : "max-w-2xl"} px-6 pb-12 pt-6 md:py-14`}>
-        <div className="mb-4 flex items-center justify-between md:mb-8">
-          <TextLink href="/">← Home</TextLink>
-        </div>
-        <div className={RESULT_CARD}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
-            The 2-minute quiz
-          </p>
-          <h1
-            ref={headingRef}
-            tabIndex={-1}
-            className="mt-2 text-2xl font-semibold focus:outline-none md:text-3xl"
-          >
-            You&apos;ve already taken the quiz.
-          </h1>
-          <p className="mt-3 text-sm leading-relaxed text-white/70">
-            Your answers are in, and our coaches place {whom} by level and schedule from them.
-            {!anyOpen && " There is nothing else you need to do unless something changed."}
-          </p>
-          {anyOpen ? (
-            <section aria-labelledby="open-groups" className="mt-7">
-              <h2 id="open-groups" className="text-lg font-semibold tracking-tight text-white">
-                {OPEN_GROUPS_HEADING}
-              </h2>
-              <OpenGroupsList cards={openGroups} className="mt-3" />
-            </section>
-          ) : (
-            <OpenGroupsList cards={openGroups} className="mt-6" />
-          )}
-          <div className="mt-6 flex flex-wrap gap-3">
-            {/* Reads "Open your dashboard": only a signed-in taker sees the
-                panel. An outline beside open blocks, whose "Join" leads. */}
-            <TrackedButton variant={anyOpen ? "secondary" : "primary"} href="/intake" track="quiz" source="intake-taken">
-              Take the 2-minute quiz
-            </TrackedButton>
-            <button type="button" onClick={onAdd} className={SECONDARY_BUTTON}>
-              {ADD_PLAYER_LABEL}
-            </button>
-            <button type="button" onClick={onRetake} className={SECONDARY_BUTTON}>
-              {RETAKE_QUIZ_LABEL}
-            </button>
-          </div>
-          <p className="mt-4 text-xs text-white/60">
-            Adding a player or retaking the quiz sends us a fresh set of answers; the ones on file
-            stay as they are until our coaches read the new ones.
-          </p>
-        </div>
-      </div>
-    </main>
-  );
-}
 
 /** The result screen's chrome: the wizard card, flat on phones (audit L10). */
 const RESULT_CARD =
@@ -807,6 +716,9 @@ function IntakePageInner() {
   // first step, unless they chose to add or retake. Signed out, every visitor
   // opens the first step, with or without ?program= (owner, 2026-11-18).
   const quiz = useQuizStatus();
+  // The open blocks, from the server layout (src/app/intake/layout.tsx), for
+  // the already-taken panel (owner, 2026-11-19: no dead end when signed in).
+  const openGroups = useOpenGroups();
   const [panelDismissed, setPanelDismissed] = useState(false);
 
   // A saved draft is restored after the first render (the server never sees
@@ -1156,6 +1068,7 @@ function IntakePageInner() {
     return (
       <AlreadyTakenPanel
         playerCount={quiz.playerCount}
+        cards={openGroups}
         onAdd={() => {
           setForm((s) => ({
             ...s,

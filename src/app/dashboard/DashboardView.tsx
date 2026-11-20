@@ -43,9 +43,9 @@ import { AvailabilityEditor } from "./AvailabilityEditor";
 // tier, players, availability, suggestions.
 //
 // The next-step card is the one primary on the page (audit M32): every other
-// action is an outline button or a text link, except an open block's "Join"
-// under "Groups with dates", which is the group card's own lime button
-// (owner, 2026-11-19: the same cards as /programs). The page speaks to the players
+// action is an outline button or a text link, the open blocks' "Join" under
+// "Groups with dates" included (the same cards as /programs, drawn quiet).
+// The page speaks to the players
 // who train (audit M26): a parent who registered only a child reads about
 // that child by name, never "you" as an unranked player.
 
@@ -85,8 +85,10 @@ export type DashboardViewProps = {
   openForTier: OpenForTier[];
   /**
    * The open blocks as group cards (owner, 2026-11-19), each with "Join" to
-   * its sign-up page: the same cards as /programs (openBlockCards,
-   * src/lib/groupBlocks.ts). None reads one line: no group has dates yet.
+   * its sign-up page: the same cards as /programs, for this account
+   * (accountOpenCards, src/lib/groupBlocks.ts: not a block it is in, not a
+   * by-approval one, ages that take one of its players). None reads one
+   * line: no group has dates yet.
    */
   openGroups?: GroupCard[];
   /**
@@ -559,12 +561,13 @@ export function DashboardView(props: DashboardViewProps) {
           </section>
 
           {/* Groups with dates (owner, 2026-11-19: no dead end when signed
-              in): every open block as the same group card as /programs, its
-              lime "Join" to the block's sign-up page. With none open, one
-              line says so and points to the groups. */}
+              in): the account's open blocks as the same group cards as
+              /programs, each "Join" an outline to the block's sign-up page,
+              since the next step above is the page's one primary. With none
+              open, one line says so and points to the groups. */}
           <section aria-labelledby="open-groups">
             <SectionHeading id="open-groups" title={OPEN_GROUPS_HEADING} />
-            <OpenGroupsList cards={openGroups} />
+            <OpenGroupsList cards={openGroups} quiet />
           </section>
 
           {/* Open cohorts a player's level admits (audit M27): per player, by

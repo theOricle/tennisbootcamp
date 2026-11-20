@@ -176,8 +176,12 @@ const line = render(createElement(LocationLine, { location: club!, mapLink: true
 check("LocationLine: name · area · map link", line.includes(`>${NAME}</span>`) && line.includes(`</span>${AREA}</span>`) && line.includes("Open in Google Maps"));
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("program pages show the location with its map link", detail.includes("<LocationLine key={l.id} location={l} mapLink") && detail.includes("locationsForProgram(program.slug)"));
-check("program pages: the cohort list names the club, not a stand-in", detail.includes("At {programLocations.map(locationLine).join(\" and \")}.") && !detail.includes("VENUE_LINE"));
-check("program pages: the cohort list keeps the neutral club-membership line (D19)", detail.includes("<p>{membershipNote()}</p>"));
+// Re-pinned for backlog #85 (fix round): the cohort list under the groups
+// left the page (the group cards carry the open blocks, each naming the
+// club), and with it its club line and the club-membership line, which the
+// sign-up page still shows beside the club before anyone pays.
+check("program pages: the club is named by the hero's location line and on every card, never a stand-in", detail.includes("<LocationLine key={l.id} location={l} mapLink") && !detail.includes("VENUE_LINE") && !detail.includes("At {programLocations.map(locationLine)"));
+check("the neutral club-membership line (D19) stays where a player pays: the sign-up page", read("src/app/enroll/[cohortId]/EnrollWizard.tsx").includes("{membershipNote()}") && !detail.includes("membershipNote()"));
 
 console.log("Home: Where we train");
 const home = read("src/app/page.tsx");

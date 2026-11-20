@@ -249,7 +249,8 @@ check("/programs: the quiz is a side line under the dropdowns, never a lime butt
 // Backlog #70: the lead lost "one …-minute class a week" and keeps the cohort length, from the constant.
 check("/programs: the lead says what every group is and how long a cohort runs, from the constant, with no class length and no classes a week", /Every group is a bootcamp: tennis and fitness in every class, in \{COHORT_LENGTH_ADJ\} cohorts\.\s+Pick your group and join\./.test(programsPage) && !/minute|a week|SESSION_MINUTES/.test(programsPage.replace(/\{\/\*[\s\S]*?\*\/\}|\/\/[^\n]*/g, "")));
 const detail = read("src/app/programs/[slug]/page.tsx");
-check("detail: Good to know after the groups, only for a program with fixed classes", /scheduledGroups\.length > 0 && \(\s*<>\s*<section aria-labelledby=\{GROUPS_ANCHOR\}/.test(detail) && at(detail, "aria-labelledby={GROUPS_ANCHOR}") < at(detail, "<GoodToKnow") && !detail.includes("<HowJoiningWorks"));
+// Re-pinned for backlog #85 (fix round): the section shows with its cards, read from the open blocks and the lineup.
+check("detail: Good to know after the groups, only for a program with fixed classes", /cards\.length > 0 && \(\s*<>\s*<section aria-labelledby=\{GROUPS_ANCHOR\}/.test(detail) && detail.includes('.filter((c) => c.group.status !== "arranged")') && at(detail, "aria-labelledby={GROUPS_ANCHOR}") < at(detail, "<GoodToKnow") && !detail.includes("<HowJoiningWorks"));
 check("detail: it lists High Performance only where it trains, and the side line links the program's quiz", detail.includes('approvalGroup={scheduledGroups.find((g) => g.joining === "approval")?.name}') && detail.includes('<QuizSideLine source="program-detail" quizHref={quizHref}'));
 // Second fix round, 2026-11-17: the levels block said the old way in, beside "Pick your group and join"; it now says what About says. Private Lessons keeps its own line.
 check(

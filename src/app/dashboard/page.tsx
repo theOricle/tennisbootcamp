@@ -11,7 +11,7 @@ import {
   type CohortSessionRow,
 } from "@/lib/cohortsDb";
 import { isCohortPublic, todayIso } from "@/lib/cohortVisibility";
-import { groupCards, openBlockCards } from "@/lib/groupBlocks";
+import { accountOpenCards, groupCards } from "@/lib/groupBlocks";
 import { readBlockSeats } from "@/lib/groupSeats";
 import {
   listParticipantsForAccount,
@@ -235,7 +235,9 @@ async function DashboardContent({
   const enrolledCohortIds = [...new Set(rows.map((e) => e.cohort_id).filter(Boolean))];
   // The open blocks (public, inviting or confirmed, not yet started), shown
   // as the same group cards as /programs, each with "Join" (owner,
-  // 2026-11-19). Their seats are one sheet read, none while no block is open.
+  // 2026-11-19): not a block the account is already in, not a by-approval
+  // one, and only those whose ages take one of its players (ages only, never
+  // the level). Their seats are one sheet read, none while no block is open.
   const publicBlocks = cohorts.filter((c) => isCohortPublic(c, today));
   const [cohortSessions, tierMatches, blockSeats] = await Promise.all([
     getSessionsForCohorts(enrolledCohortIds),
@@ -243,7 +245,10 @@ async function DashboardContent({
     getOpenCohortsForPlayers(roster),
     readBlockSeats(publicBlocks),
   ]);
-  const openGroups = openBlockCards(groupCards(programGroups, publicBlocks, blockSeats));
+  const openGroups = accountOpenCards(groupCards(programGroups, publicBlocks, blockSeats), {
+    enrolledCohortIds,
+    players: roster.length > 0 ? roster : players,
+  });
   const sessionsByCohort: Record<string, CohortSessionRow[]> = {};
   for (const s of cohortSessions) {
     (sessionsByCohort[s.cohort_id] ??= []).push(s);
