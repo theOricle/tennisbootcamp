@@ -50,10 +50,10 @@ export const DAY_MS = 24 * HOUR_MS;
 
 /**
  * The 429 a refused submission answers: what to do, and the inbox — never
- * which limit, how many, or when it lifts.
+ * which limit, how many, or when it lifts. Written once, in the client-safe
+ * module the forms read it from (review fix 8).
  */
-export const SUBMISSION_LIMIT_ERROR =
-  "Too many tries in a short time. Please wait a while and try again, or email info@tennisbootcamp.ca.";
+export { SUBMISSION_LIMIT_ERROR } from "@/lib/formRefusal";
 
 /** One counted submission, as stored: a keyed hash, the form, the time. */
 export type LimitHit = { keyHash: string; scope: LimitScope | string; createdAt: string };

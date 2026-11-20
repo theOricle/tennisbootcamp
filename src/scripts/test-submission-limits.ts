@@ -42,6 +42,7 @@ import {
   type LimitStore,
   type StoredHit,
 } from "../lib/submissionLimits";
+import { FormRefusal, refusedLine, submitFailure } from "../lib/formRefusal";
 
 let failures = 0;
 function check(name: string, actual: unknown, expected: unknown = true) {
@@ -477,6 +478,34 @@ async function main() {
     check("the wizard holds the honeypot field", wizard.includes("const bot = useBotCheck();") && wizard.includes("{bot.field}"));
     check("it sends the bot fields to all three routes", (wizard.match(/\.\.\.bot\.payload\(\)/g) ?? []).length, 3);
     check("it shows a 429's plain line", wizard.includes("res.status !== 429"));
+  }
+
+  console.log("A refused try shows the route's own line, never 'Something went wrong' (review fix 8)");
+  {
+    const json = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+    check("a 429 shows the route's line", await refusedLine(json(429, { error: "The route's own line." })), "The route's own line.");
+    check("a 429 with no readable line shows the plain line", await refusedLine(new Response("not json", { status: 429 })), SUBMISSION_LIMIT_ERROR);
+    check("a 429 with an empty line shows the plain line", await refusedLine(json(429, { error: "  " })), SUBMISSION_LIMIT_ERROR);
+    check("any other failure is not a refusal", await refusedLine(json(500, { error: "x" })), null);
+    check("…nor a 400", await refusedLine(json(400, { error: "x" })), null);
+    const refused = await submitFailure(json(429, { error: SUBMISSION_LIMIT_ERROR }));
+    check("a refused submit throws a FormRefusal carrying the line", refused instanceof FormRefusal && refused.message === SUBMISSION_LIMIT_ERROR);
+    const failed = await submitFailure(json(500, {}));
+    check("any other failure throws a plain error, so the form keeps its own line", failed instanceof Error && !(failed instanceof FormRefusal));
+    check("the plain line is written once, in the client-safe module", read("src/lib/submissionLimits.ts").includes('"Too many tries'), false);
+    check("the client-safe module imports nothing from the server", /from "node:|import "server-only"|@\/lib\/supabase/.test(read("src/lib/formRefusal.ts")), false);
+
+    const quiz = read("src/app/intake/page.tsx");
+    check("quiz: a failed submit throws through submitFailure", quiz.includes("if (!res.ok) throw await submitFailure(res);"));
+    check("quiz: a refusal keeps the route's line", quiz.includes("setSubmitError(err instanceof FormRefusal ? err.message : true);"));
+    check("quiz: the line shows in place of 'Something went wrong'", quiz.includes('{typeof submitError === "string" && (') && quiz.includes("{submitError === true && ("));
+    const newsletter = read("src/components/sections/EmailCapture.tsx");
+    check("newsletter: a refusal shows the route's line", newsletter.includes("setRefusal(await refusedLine(res));") && newsletter.includes("{refusal ?? "));
+    check("newsletter: a new try clears it", newsletter.includes("setRefusal(null);"));
+    const interest = read("src/components/sections/ProgramInterestForm.tsx");
+    check("program interest: a failed submit throws through submitFailure", interest.includes("if (!res.ok) throw await submitFailure(res);"));
+    check("program interest: a refusal shows the route's line", interest.includes("err instanceof FormRefusal ? err.message :"));
   }
 
   if (failures > 0) {

@@ -347,7 +347,9 @@ check("a bot drop answers ok with no cookie", drop.includes("NextResponse.json({
 check("the cookie is set after the Sheet append, on the real response", at(intakeRoute, "res.cookies.set(") > at(intakeRoute, "sheets.spreadsheets.values.append(") && intakeRoute.includes("quizFlagCookie(") && intakeRoute.includes("quizFlagFor({ playerCount: rows.length, ageBand: body.ageBand, selfLevel: body.level })"));
 check("the Sheet contract is untouched", intakeRoute.includes("buildIntakeRow(") && intakeRoute.includes("INTAKE_APPEND_RANGE_ALL") && read("src/lib/intakeRow.ts") === read("src/lib/intakeRow.ts"));
 const intakePage = read("src/app/intake/page.tsx");
-check("the quiz mirrors the flag after the route answered ok", at(intakePage, "rememberQuizTaken();") > at(intakePage, 'if (!res.ok) throw new Error("Submission failed");'));
+// The ok check throws through submitFailure since backlog #84 (review fix 8:
+// a refused try shows the route's own line); it still comes first.
+check("the quiz mirrors the flag after the route answered ok", at(intakePage, "rememberQuizTaken();") > at(intakePage, "if (!res.ok) throw await submitFailure(res);"));
 // Re-pinned for backlog #71: the panel's quiz-aware button read "See your
 // groups" for a signed-out browser that had sent the quiz. Only a signed-in
 // taker sees the panel now, so it reads "Open your dashboard".

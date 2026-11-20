@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { useBotCheck } from "@/lib/useBotCheck";
 import { emailError } from "@/lib/formValidation";
+import { refusedLine } from "@/lib/formRefusal";
 import { buttonClass } from "@/components/ui/Button";
 import { CARD_CLASS } from "@/components/ui/Card";
 import { FieldError, LiveStatus, fieldA11y } from "@/components/ui/Input";
@@ -42,6 +43,8 @@ export function EmailCapture({ source, variant = "band" }: EmailCaptureProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [problem, setProblem] = useState<string | null>(null);
+  // A refused try (429) shows the route's own line (backlog #84).
+  const [refusal, setRefusal] = useState<string | null>(null);
   const bot = useBotCheck();
   const inputId = useId();
   const titleId = useId();
@@ -63,6 +66,7 @@ export function EmailCapture({ source, variant = "band" }: EmailCaptureProps) {
       return;
     }
     setStatus("loading");
+    setRefusal(null);
     try {
       const res = await fetch("/api/newsletter", {
         method: "POST",
@@ -73,6 +77,7 @@ export function EmailCapture({ source, variant = "band" }: EmailCaptureProps) {
         trackEvent("newsletter_signup", { source });
         setStatus("done");
       } else {
+        setRefusal(await refusedLine(res));
         setStatus("error");
       }
     } catch {
@@ -141,7 +146,7 @@ export function EmailCapture({ source, variant = "band" }: EmailCaptureProps) {
       <LiveStatus message={status === "loading" ? "Signing you up…" : ""} />
       {status === "error" && (
         <p role="alert" className="text-sm text-red-400">
-          Something went wrong — try again or email us at info@tennisbootcamp.ca
+          {refusal ?? "Something went wrong — try again or email us at info@tennisbootcamp.ca"}
         </p>
       )}
     </form>
