@@ -31,8 +31,10 @@ import {
   enrollReturnUrls,
   inviteResumeCookie,
 } from "@/lib/checkoutInvite";
-import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
+import { INVALID_EMAIL_ERROR, checkBot, isValidEmail, logBotDrop } from "@/lib/botCheck";
 import { enrollmentOwner } from "@/lib/enrollmentLink";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 
 const TAB = "enrollments";
 // "status" is column P (index 15, 1-based col 16)
@@ -88,6 +90,13 @@ type EnrollmentMeta = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    // Bot protection (backlog #84, the same check as the other public forms):
+    // a tripped check gets a success-shaped answer and nothing is created.
+    const verdict = checkBot(body);
+    if (verdict.bot) {
+      logBotDrop("checkout", verdict.reason);
+      return NextResponse.json({ sessionUrl: `/enroll/${encodeURIComponent(String(body?.cohortId ?? ""))}` });
+    }
     const {
       cohortId,
       programTitle,
@@ -116,6 +125,11 @@ export async function POST(req: NextRequest) {
     const typedEmail = String(enrollmentMeta?.contactEmail ?? "").trim();
     if (typedEmail && !isValidEmail(typedEmail)) {
       return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
+    }
+    // Repeated submissions (backlog #84): per network address and per email,
+    // before any row, credit, coupon or Stripe session.
+    if (!(await checkSubmissionLimit(req, "checkout", typedEmail)).allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
     }
 
     // Backlog #84: in production, no Stripe key means no checkout — a plain

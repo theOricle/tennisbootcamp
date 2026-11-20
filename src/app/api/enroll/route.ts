@@ -10,6 +10,9 @@ import { guestPlayer } from "@/lib/guestAccount";
 import { getCohortById } from "@/lib/cohortsDb";
 import { gateRefusal, requestedParticipantIds, resolveEnrollGate } from "@/lib/enrollGate";
 import { enrollmentSheetRow } from "@/lib/sheetText";
+import { checkBot, logBotDrop } from "@/lib/botCheck";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 
 const TAB = "enrollments";
 
@@ -58,6 +61,20 @@ type EnrollParticipant = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
+    // Bot protection (backlog #84, the same check as the other public forms):
+    // a tripped check gets a success-shaped answer and nothing is written.
+    const verdict = checkBot(body);
+    if (verdict.bot) {
+      logBotDrop("enroll", verdict.reason);
+      return NextResponse.json({ ok: true, rowNumber: null, rowNumbers: [], participants: [] });
+    }
+    // Repeated submissions (backlog #84): per network address and per email,
+    // before the gate reads anything or a row is appended.
+    const limitEmail = typeof body?.contactEmail === "string" ? body.contactEmail : null;
+    if (!(await checkSubmissionLimit(req, "enroll", limitEmail)).allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
+    }
 
     // Backlog #38: the enroll page's gate, before any row is appended, so a
     // private cohort never collects stray pending rows from a bare POST.

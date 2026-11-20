@@ -15,6 +15,8 @@ import { provisionGuestIntake, provisionSessionIntake } from "@/lib/intakeAccoun
 import { guestPlayers } from "@/lib/guestAccount";
 import { bodyTooLarge, logBotDrop, REQUEST_TOO_LARGE } from "@/lib/botCheck";
 import { decideIntake } from "@/lib/intakeGuard";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 import { quizFlagCookie, quizFlagFor } from "@/lib/quizStatus";
 import {
   currentUser,
@@ -40,6 +42,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: decision.error }, { status: decision.status });
     }
     const body = decision.body;
+
+    // Repeated submissions (backlog #84): per network address and per email,
+    // before the Sheet, the account or any email. A plain 429, no detail.
+    if (!(await checkSubmissionLimit(req, "intake", body.email)).allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
+    }
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;

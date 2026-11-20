@@ -21,8 +21,10 @@ import {
 } from "@/lib/supabase/enrollmentActions";
 import { setEnrollmentStatusByEmail } from "@/lib/enrollmentSheet";
 import { programs } from "@/content/programs";
-import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
+import { INVALID_EMAIL_ERROR, checkBot, isValidEmail, logBotDrop } from "@/lib/botCheck";
 import { enrollmentOwner } from "@/lib/enrollmentLink";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 
 // "I've sent it" on an e-transfer cohort (backlog #12). Mirrors what the card
 // path does at checkout — Supabase enrollment row + activation link — but no
@@ -60,6 +62,20 @@ type EnrollmentMeta = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    // Bot protection (backlog #84, the same check as the other public forms):
+    // a tripped check gets a success-shaped answer and nothing is recorded.
+    const verdict = checkBot(body);
+    if (verdict.bot) {
+      logBotDrop("enroll/etransfer", verdict.reason);
+      return NextResponse.json({
+        ok: true,
+        alreadyPaid: false,
+        amountCents: 0,
+        creditCents: 0,
+        recipientEmail: "",
+        memo: "",
+      });
+    }
     const {
       cohortId,
       programTitle,
@@ -79,6 +95,11 @@ export async function POST(req: NextRequest) {
     // invite row or Sheet write.
     if (!isValidEmail(String(enrollmentMeta.contactEmail).trim())) {
       return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
+    }
+    // Repeated submissions (backlog #84): per network address and per email,
+    // before any invite row, Sheet write or email.
+    if (!(await checkSubmissionLimit(req, "etransfer", String(enrollmentMeta.contactEmail))).allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
     }
 
     // Backlog #38: the enroll page's gate, run again here before any invite

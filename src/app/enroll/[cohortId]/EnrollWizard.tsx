@@ -47,6 +47,7 @@ import {
   type FieldIssue,
 } from "@/lib/formValidation";
 import { useFocusOnChange } from "@/lib/useFocusOnChange";
+import { useBotCheck } from "@/lib/useBotCheck";
 import {
   FieldError,
   FormAlert,
@@ -887,6 +888,10 @@ export function EnrollWizard({
     contactEmail: initialEmail ?? "",
   });
 
+  // The bot check every public form runs (backlog #84): the honeypot below
+  // and the fill time go with each of the three posts.
+  const bot = useBotCheck();
+
   // Who is this for? (backlog #11) One seat per player, one payment.
   const household = useHousehold();
   const [who, setWho] = useState<HouseholdValue>(() => guestFromInvited(invited));
@@ -1139,6 +1144,7 @@ export function EnrollWizard({
         consentSignedName: form.consentSignedName,
         consentAgreedAt,
         waiverVersion: WAIVER_VERSION,
+        ...bot.payload(),
       }),
     });
     await throwIfRefused(enrollRes);
@@ -1168,6 +1174,7 @@ export function EnrollWizard({
         inviteToken: inviteToken ?? undefined,
         enrollmentRowNumber: row.rowNumber,
         enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
+        ...bot.payload(),
       }),
     });
     await throwIfRefused(checkoutRes);
@@ -1180,11 +1187,11 @@ export function EnrollWizard({
   /**
    * A route that refused before anything was created (declined invite #34;
    * the invite gate, a full cohort or a mismatched row #38; card payment
-   * unavailable, or the records unreachable, #84) says why in its JSON.
-   * Show that instead of the generic "couldn't reach payment".
+   * unavailable, the records unreachable, or too many tries, #84) says why
+   * in its JSON. Show that instead of the generic "couldn't reach payment".
    */
   async function throwIfRefused(res: Response) {
-    if (res.status !== 400 && res.status !== 403 && res.status !== 409 && res.status !== 503) return;
+    if (res.status !== 400 && res.status !== 403 && res.status !== 409 && res.status !== 429 && res.status !== 503) return;
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     if (body?.error) throw new Error(`refused:${body.error}`);
   }
@@ -1259,6 +1266,7 @@ export function EnrollWizard({
           programTitle: program?.title ?? cohort.programId,
           inviteToken: inviteToken ?? undefined,
           enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
+          ...bot.payload(),
         }),
       });
       await throwIfRefused(res);
@@ -1464,6 +1472,10 @@ export function EnrollWizard({
               onPayByCard={() => void submit()}
             />
           )}
+
+          {/* The honeypot (backlog #84): off-screen, out of the tab order and
+              hidden from assistive tech; a person never fills it. */}
+          {bot.field}
 
           {/* Navigation */}
           <div className="mt-6 flex flex-col gap-2">

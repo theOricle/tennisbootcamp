@@ -29,6 +29,8 @@ import {
   REQUEST_TOO_LARGE,
   TEXT_LIMITS,
 } from "@/lib/botCheck";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 
 function siteOrigin(req: NextRequest): string {
   return (
@@ -83,6 +85,12 @@ export async function POST(req: NextRequest) {
     const availability = body.availability
       ? parseAvailability(body.availability)
       : null;
+
+    // Repeated submissions (backlog #84): per network address and per email,
+    // before any participant lookup, booking row, payment or email.
+    if (!(await checkSubmissionLimit(req, "book", email)).allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
+    }
 
     // Who is this for? A signed-in holder picks one of their people; a guest
     // types a person in. Either way one booking is one participant, one slot,
