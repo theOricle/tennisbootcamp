@@ -98,7 +98,7 @@ Use the `Heading` primitive (`src/components/ui/Heading.tsx`, audit L1): the tag
 ### Buttons
 Use `Button` (a link) or `buttonClass(variant)` (a native `<button>`) from `src/components/ui/Button.tsx`. Every button is 44px tall or more.
 ```
-Primary (lime) — the main button, "Join a bootcamp", and an open block's own "Join" on its group card (owner, 2026-11-19: its sign-up page and payment sit behind it; on a program booked by arrangement, "Ask about lessons"). The quiz is never a lime button:
+Primary (lime) — the main button, "Join a bootcamp", and an open block's own "Enroll" on its group card (owner, 2026-11-19: its sign-up page and payment sit behind it; on a program booked by arrangement, "Ask about lessons"). The quiz is never a lime button:
   min-h-[44px] rounded-full bg-[#B4E655] px-6 py-3 text-sm font-semibold text-[#061427]
   hover:brightness-110 transition          (the one primary hover, audit M12)
 
