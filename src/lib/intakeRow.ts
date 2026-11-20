@@ -9,6 +9,14 @@
 // landing_page, first_seen — appended after 22, nothing before them moves.
 // Anything new goes AFTER column 29, and only by explicit owner decision.
 //
+// Formula-safe (backlog #33, built in #84; owner decision of 2026-11-14):
+// the append is USER_ENTERED, so every value a visitor typed in columns 1–22
+// goes through formulaSafe (src/lib/sheetText.ts) — a leading apostrophe
+// when it starts with = + - @, a tab or a carriage return, nothing otherwise.
+// No column moves, is renamed or changes meaning; the values the app writes
+// (timestamp, newsletter, score, lead type, follow-up, participant id) are
+// untouched, and columns 23–29 keep their own escape.
+//
 // Pure: no I/O, so src/scripts/test-intake-row.ts can pin the shape.
 
 import {
@@ -20,6 +28,7 @@ import {
   buildLeadSourceCells,
   type FirstTouch,
 } from "@/lib/leadSource";
+import { formulaSafe } from "@/lib/sheetText";
 
 export const INTAKE_HEADERS = [
   "timestamp", "name", "email", "phone", "who", "level",
@@ -118,9 +127,12 @@ export type IntakeBody = {
   recommendedProgram?: unknown;
 };
 
-/** Exactly the route's `body.x ?? ""` — the value passes through untouched. */
+/**
+ * The route's `body.x ?? ""`, formula-safe: an ordinary value (or one that
+ * is not a string) passes through exactly as before.
+ */
 function orEmpty(v: unknown): unknown {
-  return v ?? "";
+  return formulaSafe(v ?? "");
 }
 
 /** col 9 (area): accept new preferredLocationIds array or legacy area string. */
@@ -160,16 +172,16 @@ function isHighIntent(body: IntakeBody): boolean {
   );
 }
 
-/** The 5 appended household cells (18–22). */
+/** The 5 appended household cells (18–22); 18–21 formula-safe, the id as is. */
 export function buildIntakeHouseholdCells(
   body: IntakeBody,
   household: IntakeHousehold
 ): unknown[] {
   return [
-    household.accountEmail ?? body.email ?? "",
-    household.accountName ?? body.name ?? "",
-    household.participantName ?? body.name ?? "",
-    household.participantRelationship ?? "",
+    orEmpty(household.accountEmail ?? body.email),
+    orEmpty(household.accountName ?? body.name),
+    orEmpty(household.participantName ?? body.name),
+    orEmpty(household.participantRelationship),
     household.participantId ?? "",
   ];
 }
@@ -200,9 +212,9 @@ export function buildIntakeRow(
     orEmpty(body.phone),
     orEmpty(body.who),
     orEmpty(body.level),
-    Array.isArray(body.goals) ? body.goals.join(", ") : "",
-    Array.isArray(body.programs) ? body.programs.join(", ") : "",
-    intakeAreaValue(body),
+    Array.isArray(body.goals) ? orEmpty(body.goals.join(", ")) : "",
+    Array.isArray(body.programs) ? orEmpty(body.programs.join(", ")) : "",
+    orEmpty(intakeAreaValue(body)),
     orEmpty(body.notes),
     body.newsletter === true ? "yes" : body.newsletter === false ? "no" : "",
     // priority_score
@@ -212,8 +224,8 @@ export function buildIntakeRow(
     // follow_up_status
     "new",
     // cols 15–17 (additive 2026-05-23)
-    Array.isArray(body.preferredLocationIds) ? body.preferredLocationIds.join(", ") : "",
-    intakeAvailabilityValue(body),
+    Array.isArray(body.preferredLocationIds) ? orEmpty(body.preferredLocationIds.join(", ")) : "",
+    orEmpty(intakeAvailabilityValue(body)),
     orEmpty(body.recommendedProgram),
   ];
   const withHousehold = household

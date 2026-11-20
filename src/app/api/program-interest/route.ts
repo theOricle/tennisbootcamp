@@ -9,6 +9,7 @@ import {
   REQUEST_TOO_LARGE,
   TEXT_LIMITS,
 } from "@/lib/botCheck";
+import { programInterestSheetRow } from "@/lib/sheetText";
 
 const TAB = "program_interest";
 const HEADERS = ["timestamp", "email", "program"];
@@ -84,11 +85,8 @@ export async function POST(req: NextRequest) {
       range: `${TAB}!A:C`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [[
-          new Date().toISOString(),
-          body.email,
-          body.program ?? "",
-        ]],
+        // The typed cells are written formula-safe (backlog #33, #84).
+        values: [programInterestSheetRow(new Date().toISOString(), body.email, body.program ?? "")],
       },
     });
 

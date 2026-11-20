@@ -207,7 +207,8 @@ console.log("Source — a test payment is no member and no paid booking");
   check("cohortMembers (the confirmed-email list) counts paid rows only", /\.from\("enrollments"\)\s*\.select\("contact_email, participant_name"\)\s*\.eq\("cohort_id", cohortId\)\s*\.eq\("status", "paid"\)/.test(actions));
   const assessments = read("src/lib/assessments.ts");
   check("confirmBooking stores paid only when the money is real", assessments.includes("paid: opts.paid === true"));
-  const sheet = read("src/lib/assessmentSheet.ts");
+  // The assessments row is built in src/lib/sheetText.ts since part 4.
+  const sheet = read("src/lib/sheetText.ts");
   check("the assessments tab says test for a test booking", sheet.includes('r.paid === "test" ? "test"'));
   const client = read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx");
   check("the cohort page lists card payments with their labels", client.includes("PAYMENT_STATUS_LABELS") && client.includes("Card payments"));

@@ -7,6 +7,7 @@ import {
 } from "@/lib/household";
 import { getCohortById } from "@/lib/cohortsDb";
 import { gateRefusal, requestedParticipantIds, resolveEnrollGate } from "@/lib/enrollGate";
+import { enrollmentSheetRow } from "@/lib/sheetText";
 
 const TAB = "enrollments";
 
@@ -163,31 +164,31 @@ export async function POST(req: NextRequest) {
         who?.participantName || String(p.name ?? body.participantName ?? "");
       const isMinor = p.isMinor === true;
 
-      rows.push([
-        timestamp,
-        body.cohortId ?? "",
-        body.program ?? "",
-        body.location ?? "",
-        playerName,
-        p.dob ?? body.participantDob ?? "",
-        isMinor ? "yes" : "no",
-        body.contactEmail ?? "",
-        body.contactPhone ?? "",
-        body.guardianName ?? "",
-        body.guardianEmail ?? "",
-        body.guardianPhone ?? "",
-        body.consentSignedName ?? "",
-        body.consentAgreedAt ?? "",
-        body.waiverVersion ?? "",
-        "pending",
-        // col 17 — set later by the payment path when a credit applies
-        "",
-        // ── household block ──
-        who?.accountEmail ?? body.contactEmail ?? "",
-        who?.accountName ?? holderName,
-        who?.relationship ?? "",
-        who?.participantId ?? "",
-      ]);
+      // Every value the request typed is written formula-safe (backlog
+      // #33, #84); the columns and their order are unchanged.
+      rows.push(
+        enrollmentSheetRow({
+          timestamp,
+          cohortId: body.cohortId,
+          program: body.program,
+          location: body.location,
+          playerName,
+          dob: p.dob ?? body.participantDob,
+          isMinor,
+          contactEmail: body.contactEmail,
+          contactPhone: body.contactPhone,
+          guardianName: body.guardianName,
+          guardianEmail: body.guardianEmail,
+          guardianPhone: body.guardianPhone,
+          consentSignedName: body.consentSignedName,
+          consentAgreedAt: body.consentAgreedAt,
+          waiverVersion: body.waiverVersion,
+          accountEmail: who?.accountEmail ?? body.contactEmail,
+          accountName: who?.accountName ?? holderName,
+          relationship: who?.relationship,
+          participantId: who?.participantId,
+        })
+      );
       resolved.push({
         name: playerName,
         participantId: who?.participantId ?? null,

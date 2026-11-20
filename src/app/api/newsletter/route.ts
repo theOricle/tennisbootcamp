@@ -10,6 +10,7 @@ import {
   REQUEST_TOO_LARGE,
   TEXT_LIMITS,
 } from "@/lib/botCheck";
+import { newsletterSheetRow } from "@/lib/sheetText";
 
 const TAB = "newsletter";
 const HEADERS = ["timestamp", "email", "source"];
@@ -85,11 +86,8 @@ export async function POST(req: NextRequest) {
       range: `${TAB}!A:C`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [[
-          new Date().toISOString(),
-          body.email,
-          body.source ?? "homepage_email_capture",
-        ]],
+        // The typed cells are written formula-safe (backlog #33, #84).
+        values: [newsletterSheetRow(new Date().toISOString(), body.email, body.source ?? "homepage_email_capture")],
       },
     });
 
