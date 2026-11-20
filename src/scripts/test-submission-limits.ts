@@ -137,7 +137,7 @@ async function main() {
     check("the forms that send our email", [...MAIL_SCOPES], ["intake", "book", "etransfer"]);
     check("per address, per form: 10 an hour, 30 a day", LIMITS.perAddress, { hour: 10, day: 30 });
     check("per email, per form: 5 an hour, 10 a day", LIMITS.perEmail, { hour: 5, day: 10 });
-    check("across the email-sending forms: 12 a day per address and per email", LIMITS.mail, { addressDay: 12, emailDay: 12 });
+    check("across the email-sending forms: 20 a day per address, 12 per email", LIMITS.mail, { addressDay: 20, emailDay: 12 });
   }
 
   console.log("Scenario — a family entering two children and retrying once is never refused");
@@ -170,8 +170,23 @@ async function main() {
       }
       t.now += 2 * MIN;
     }
-    check("at most 36 emails in a day (12 submissions × 3)", sent <= 36);
+    check("at most 60 emails in a day (20 submissions × 3)", sent <= 60);
     check("…well under the 100 a day", sent < 100);
+  }
+
+  console.log("Scenario — a sign-up evening at the club, twenty families on one Wi-Fi");
+  {
+    const t = { now: Date.parse("2026-11-20T23:00:00.000Z") };
+    const { store } = makeTable(() => t.now);
+    let joined = 0;
+    // Each family sends its e-transfer (an email-sending form), one every
+    // nine minutes over three hours, all from the club's one address.
+    for (let i = 0; i < 20; i++) {
+      if ((await submit(store, "etransfer", "203.0.113.200", `family${i}@example.com`, t.now)).allowed) joined++;
+      t.now += 9 * MIN;
+    }
+    check("all twenty go through", joined, 20);
+    check("a twenty-first email-sending try from that address that day is refused", (await submit(store, "intake", "203.0.113.200", "late@example.com", t.now)).allowed, false);
   }
 
   console.log("Scenario — one inbox, hammered from many addresses");
@@ -301,6 +316,18 @@ async function main() {
     check("the first x-forwarded-for entry", clientAddress(headers({ "x-forwarded-for": " 203.0.113.7 , 10.0.0.1" })), "203.0.113.7");
     check("else x-real-ip", clientAddress(headers({ "x-real-ip": "198.51.100.2" })), "198.51.100.2");
     check("else unknown (all such requests share one bucket)", clientAddress(headers({})), "unknown");
+    // IPv6 is keyed by its /64: one home or office holds a whole /64, so
+    // counting single addresses would let one script rotate through it.
+    check("IPv6: two addresses in one /64 are one key", [
+      clientAddress(headers({ "x-forwarded-for": "2001:db8:abcd:12:1:2:3:4" })),
+      clientAddress(headers({ "x-forwarded-for": "2001:DB8:ABCD:12::5" })),
+    ], ["2001:db8:abcd:12::/64", "2001:db8:abcd:12::/64"]);
+    check("IPv6: the next /64 is another key", clientAddress(headers({ "x-forwarded-for": "2001:db8:abcd:13::1" })), "2001:db8:abcd:13::/64");
+    check("IPv6: a short form expands", clientAddress(headers({ "x-forwarded-for": "2001:db8::1" })), "2001:db8:0:0::/64");
+    check("IPv6: leading zeros fold", clientAddress(headers({ "x-forwarded-for": "2001:0db8:0000:0012::9" })), "2001:db8:0:12::/64");
+    check("IPv6: brackets and a zone are dropped", clientAddress(headers({ "x-real-ip": "[fe80::1%eth0]" })), "fe80:0:0:0::/64");
+    check("an IPv4-mapped IPv6 address is its IPv4 address", clientAddress(headers({ "x-forwarded-for": "::ffff:203.0.113.7" })), "203.0.113.7");
+    check("something that is no address is kept as it is", clientAddress(headers({ "x-forwarded-for": "not-an-ip" })), "not-an-ip");
   }
 
   console.log("The refusal line");

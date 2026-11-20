@@ -11,11 +11,13 @@
 //   - per address, per form: 10 an hour, 30 a day;
 //   - per email, per form: 5 an hour, 10 a day;
 //   - across the three forms that send our email (the quiz, the booking, the
-//     e-transfer), 12 a day per address and 12 a day per email.
+//     e-transfer), 20 a day per address and 12 a day per email.
 // A family entering two children separately on every form and retrying each
-// once sends 4 per form: inside every limit, the 12 a day across the email
-// forms included. A script on one address gets 12 email-sending submissions
-// a day, at most 3 emails each: 36, well under the 100.
+// once sends 4 per form: inside every limit, the 12 a day per email across
+// the email forms included. Twenty families on the club's one Wi-Fi can each
+// send their e-transfer in an evening. A script on one address gets 20
+// email-sending submissions a day, at most 3 emails each: 60, under the 100.
+// An IPv6 address counts by its /64, which one home or office holds whole.
 //
 // Pure: the counting and the hashing. The table reads and writes live in
 // src/lib/submissionLimitsDb.ts; src/scripts/test-submission-limits.ts pins
@@ -40,7 +42,7 @@ export const MAIL_SCOPES: readonly LimitScope[] = ["intake", "book", "etransfer"
 export const LIMITS = {
   perAddress: { hour: 10, day: 30 },
   perEmail: { hour: 5, day: 10 },
-  mail: { addressDay: 12, emailDay: 12 },
+  mail: { addressDay: 20, emailDay: 12 },
 } as const;
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -67,15 +69,49 @@ export function limitKeyHash(secret: string, kind: "address" | "email", value: s
 }
 
 /**
- * The client's network address as Vercel reports it: the first entry of
+ * The key a network address is counted under: an IPv4 address as it is; an
+ * IPv6 address by its /64 ("2001:db8:abcd:12::/64"), the block one home or
+ * office holds whole, so a script cannot rotate through it; an IPv4-mapped
+ * IPv6 address as its IPv4 address. Anything else is kept as it is.
+ */
+export function networkKey(address: string): string {
+  let a = address.trim().toLowerCase();
+  if (a.startsWith("[") && a.includes("]")) a = a.slice(1, a.indexOf("]"));
+  const zone = a.indexOf("%");
+  if (zone !== -1) a = a.slice(0, zone);
+  if (!a.includes(":")) return a;
+  const mapped = a.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (mapped) return mapped[1];
+
+  const sides = a.split("::");
+  if (sides.length > 2) return a;
+  const head = sides[0] ? sides[0].split(":") : [];
+  let groups: string[];
+  if (sides.length === 2) {
+    const tail = sides[1] ? sides[1].split(":") : [];
+    const missing = 8 - head.length - tail.length;
+    if (missing < 1) return a;
+    groups = [...head, ...Array<string>(missing).fill("0"), ...tail];
+  } else {
+    groups = head;
+  }
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return a;
+  return `${groups
+    .slice(0, 4)
+    .map((g) => parseInt(g, 16).toString(16))
+    .join(":")}::/64`;
+}
+
+/**
+ * The client's network key as Vercel reports the address: the first entry of
  * x-forwarded-for (Vercel sets it from the connection), else x-real-ip, else
- * "unknown" — every such request then shares one bucket.
+ * "unknown" — every such request then shares one bucket. IPv6 by its /64.
  */
 export function clientAddress(headers: { get(name: string): string | null }): string {
   const forwarded = (headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim();
-  if (forwarded) return forwarded.toLowerCase();
+  if (forwarded) return networkKey(forwarded);
   const real = (headers.get("x-real-ip") ?? "").trim();
-  return real ? real.toLowerCase() : "unknown";
+  return real ? networkKey(real) : "unknown";
 }
 
 /**
