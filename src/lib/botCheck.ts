@@ -112,6 +112,9 @@ export function cleanText<T>(value: T, max: number): T | string {
   return typeof value === "string" ? value.trim().slice(0, max) : value;
 }
 
+/** The 400 a form route answers when the address fails isValidEmail. */
+export const INVALID_EMAIL_ERROR = "Please provide a valid email.";
+
 /** Same rule the booking route and both wizards already use. */
 export function isValidEmail(email: unknown): email is string {
   return (

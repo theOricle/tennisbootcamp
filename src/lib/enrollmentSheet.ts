@@ -1,6 +1,7 @@
 import "server-only";
 import { google, type sheets_v4 } from "googleapis";
 import { enrollmentRowsToFlip } from "@/lib/enrollGate";
+import { rowsInStatus } from "@/lib/stripeOutcome";
 
 // Additive write to the enrollments tab: the `assessment_credit` column (Q,
 // col 17) appended after the frozen 16-column layout that ends at `status` (P).
@@ -74,6 +75,48 @@ const STATUS_COL = "P";
 // A:U — the frozen columns plus the household block, whose `participant_id`
 // (col 21) scopes a flip to one player when the invite names one (#38).
 const READ_RANGE = "A:U";
+
+/**
+ * Move these rows' status (column P) out of one of `from` into `to`, and
+ * resolve to the rows moved (backlog #84). It reads the cells before it
+ * writes them, so a redelivered Stripe event — or a refund that already
+ * landed — moves nothing, and the webhook can tell. Null when Sheets is not
+ * configured (nothing could be checked). Errors propagate on purpose: the
+ * webhook then answers 500 and Stripe retries, which is safe because every
+ * move is guarded.
+ */
+export async function flipEnrollmentRows(
+  rowNumbers: readonly number[],
+  from: readonly string[],
+  to: string
+): Promise<number[] | null> {
+  const sheets = getSheets();
+  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return null;
+  const rows = [...new Set(rowNumbers.filter((n) => Number.isInteger(n) && n >= 2))];
+  if (rows.length === 0) return [];
+
+  const res = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId,
+    ranges: rows.map((n) => `${TAB}!${STATUS_COL}${n}`),
+  });
+  // valueRanges come back in the order asked; an empty cell has no values.
+  const statusByRow = new Map<number, string>();
+  (res.data.valueRanges ?? []).forEach((range, i) => {
+    if (i < rows.length) statusByRow.set(rows[i], String(range.values?.[0]?.[0] ?? "").trim());
+  });
+  const moved = rowsInStatus(statusByRow, from);
+  if (moved.length === 0) return [];
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: "RAW",
+      data: moved.map((n) => ({ range: `${TAB}!${STATUS_COL}${n}`, values: [[to]] })),
+    },
+  });
+  return moved;
+}
 
 /**
  * Flip every enrollment row for (cohort_id, contact_email) whose status is in

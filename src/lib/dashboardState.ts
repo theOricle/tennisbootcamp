@@ -159,6 +159,8 @@ export type EnrollmentState =
   | "test"
   | "etransfer-pending"
   | "payment-pending"
+  | "refunded"
+  | "disputed"
   | "cancelled"
   | "on-file";
 
@@ -173,6 +175,9 @@ export function enrollmentState(
   if (cohort?.dbStatus === "cancelled") return "cancelled";
   if (enrollment.status === "paid") return "enrolled";
   if (enrollment.status === "test_paid") return "test";
+  // A card payment that went back (backlog #84): the spot is released.
+  if (enrollment.status === "refunded") return "refunded";
+  if (enrollment.status === "disputed") return "disputed";
   if (enrollment.status === "pending" || enrollment.status === "pending_etransfer") {
     return cohort?.paymentMode === "etransfer" ? "etransfer-pending" : "payment-pending";
   }
@@ -190,6 +195,8 @@ export const ENROLLMENT_CHIP: Record<EnrollmentState, { label: string; tone: "li
   test: { label: "Test enrollment", tone: "neutral" },
   "etransfer-pending": { label: "E-transfer pending", tone: "warn" },
   "payment-pending": { label: "Payment pending", tone: "warn" },
+  refunded: { label: "Refunded", tone: "muted" },
+  disputed: { label: "Payment disputed", tone: "warn" },
   cancelled: { label: "Cancelled", tone: "muted" },
   "on-file": { label: "On file", tone: "neutral" },
 };
@@ -207,6 +214,10 @@ export function enrollmentNote(state: EnrollmentState): string | null {
       return "The card payment didn't complete. Email info@tennisbootcamp.ca if that looks wrong.";
     case "test":
       return "A test enrollment: no money was taken.";
+    case "refunded":
+      return "The payment was refunded, so this spot is no longer held.";
+    case "disputed":
+      return "The card payment is under dispute, so this spot is no longer held. Email info@tennisbootcamp.ca to sort it out.";
     default:
       return null;
   }

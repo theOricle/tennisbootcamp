@@ -10,7 +10,7 @@ import { isCohortRenderable } from "@/lib/cohortVisibility";
 import { approvalGateApplies, claimedInvite, resolveEnrollGate } from "@/lib/enrollGate";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { createClient } from "@/lib/supabase/server";
-import { findUnusedCredit } from "@/lib/assessmentCredit";
+import { findUnusedCredit, listUnusedCreditsForAccount } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
 import { INVITE_RESUME_COOKIE } from "@/lib/checkoutInvite";
 import { loginHref } from "@/lib/authFlow";
@@ -363,28 +363,39 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
     );
   }
 
-  // E-transfer cohorts (backlog #12): the payment step shows the amount after
-  // the $20 assessment credit, looked up by the invite email (or the signed-in
-  // player's). The server re-derives it when the player taps "I've sent it".
-  let etransfer: EtransferInfo | null = null;
-  if ((cohort.paymentMode ?? "card") === "etransfer") {
-    const creditEmail = inviteEmail ?? sessionEmail;
-    const credit = creditEmail ? await findUnusedCredit(creditEmail) : null;
-    etransfer = {
-      recipientEmail: etransferRecipient(),
-      creditCents: credit ? Math.min(credit.creditCents, cohort.priceCents) : 0,
-    };
-  }
-
   // Who the invitation names (migration 0007), and who on the signed-in
   // account is already in this cohort (owner, 2026-10-12).
   const invitedParticipantId = claimed?.participant_id ?? null;
   const claimingInviteId = claimed?.id ?? null;
   const user = await currentUser();
+  const participants = user ? await listParticipantsForAccount(user.id).catch(() => []) : [];
+
+  // E-transfer cohorts (backlog #12): the payment step shows the amount after
+  // the $20 assessment credit. Whose credit (backlog #84): the player the
+  // invitation names — the same booking the coach's "amount due" reads — else
+  // a signed-in account's own players'; never one found by an email. The
+  // server re-derives it when the player taps "I've sent it".
+  let etransfer: EtransferInfo | null = null;
+  if ((cohort.paymentMode ?? "card") === "etransfer") {
+    let creditCents = 0;
+    if (invitedParticipantId) {
+      creditCents = (await findUnusedCredit(invitedParticipantId))?.creditCents ?? 0;
+    } else if (participants.length > 0) {
+      const credits = await listUnusedCreditsForAccount({
+        email: "",
+        participantIds: participants.map((p) => p.id),
+      });
+      creditCents = credits[0]?.creditCents ?? 0;
+    }
+    etransfer = {
+      recipientEmail: etransferRecipient(),
+      creditCents: Math.min(creditCents, cohort.priceCents),
+    };
+  }
+
   let blocked: BlockedPlayer[] = [];
   let invited: InvitedPlayer | null = null;
   if (user) {
-    const participants = await listParticipantsForAccount(user.id).catch(() => []);
     const people = participants.map((p) => ({ id: p.id, name: p.full_name }));
     blocked = await blockedPlayers({
       accountId: user.id,
@@ -429,6 +440,7 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
       seatsRemaining={seatsRemaining}
       inviteToken={inviteToken}
       initialEmail={inviteEmail}
+      signedIn={Boolean(sessionEmail)}
       etransfer={etransfer}
       // Admitted by level: only the players inside the band can be enrolled
       // (the payment routes refuse anyone else), so only they are offered.

@@ -27,6 +27,19 @@ export const INVITE_STATUS_LABELS: Record<string, string> = {
   declined: "Declined",
 };
 
+/**
+ * A card payment on the cohort page (backlog #84): an enrollment row's
+ * status as the coach reads it. A test payment (Stripe test keys, or mock
+ * mode) took no money and holds no seat, and says so; a full refund or a
+ * dispute in Stripe released the seat.
+ */
+export const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  paid: "Paid",
+  test_paid: "Test payment",
+  refunded: "Refunded",
+  disputed: "Disputed",
+};
+
 export const BOOKING_STATUS_LABELS: Record<string, string> = {
   pending: "Awaiting payment",
   booked: "Booked",
@@ -35,6 +48,11 @@ export const BOOKING_STATUS_LABELS: Record<string, string> = {
   requested: "Requested",
   expired: "Expired",
   cancelled: "Cancelled",
+  // Backlog #84: a test-mode payment holds no slot; a full refund or a
+  // dispute in Stripe released the booking.
+  test: "Test booking",
+  refunded: "Refunded",
+  disputed: "Disputed",
 };
 
 /** A stored status in sentence case: the table's word, else the value tidied. */

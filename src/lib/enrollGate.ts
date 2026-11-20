@@ -440,6 +440,26 @@ export function claimCredit<T extends { bookingId: string }>(
   return found;
 }
 
+/**
+ * Whose $20 assessment credit a card checkout may look up, one entry per
+ * player (backlog #84, owner 2026-11-14): only a signed-in account's own
+ * players, by participant id. Signed out, nobody — a typed email is never a
+ * way to find a credit, so naming another family's address (or `%`) finds
+ * nothing. The players have already been through scrubParticipantIds, so
+ * every id still here belongs to the session's account. A player with no id
+ * gets no lookup, and never a sibling's credit.
+ */
+export function checkoutCreditParticipants(
+  signedIn: boolean,
+  players: readonly { participantId?: string | null }[]
+): (string | null)[] {
+  return players.map((p) => {
+    if (!signedIn) return null;
+    const id = (p.participantId ?? "").trim();
+    return id || null;
+  });
+}
+
 // ─── E-transfer rail: which invite row a player's transfer lands on ───────────
 
 export type EtransferRowPlan = "token" | "participant" | "email" | "reuse" | "create";

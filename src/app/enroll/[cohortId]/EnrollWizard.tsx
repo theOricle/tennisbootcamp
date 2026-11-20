@@ -47,6 +47,7 @@ import {
   type FieldIssue,
 } from "@/lib/formValidation";
 import { useFocusOnChange } from "@/lib/useFocusOnChange";
+import { useBotCheck } from "@/lib/useBotCheck";
 import {
   FieldError,
   FormAlert,
@@ -263,10 +264,16 @@ function OrderSummary({
   cohort,
   program,
   seatsRemaining,
+  creditAfterSignIn,
 }: {
   cohort: Cohort;
   program: Program | undefined;
   seatsRemaining: number | null;
+  /**
+   * Signed out, with no credit already on the invitation (backlog #84): the
+   * $20 comes off only for a signed-in account's own players.
+   */
+  creditAfterSignIn: boolean;
 }) {
   const price = formatCohortPrice(cohort);
   const location = locationForCohort(cohort);
@@ -359,8 +366,9 @@ function OrderSummary({
         )}
         {cohort.priceCents > 0 && (
           <p className="mt-1 text-xs text-white/60">
-            Completed your $20 assessment? It comes off this price automatically
-            at payment.
+            {creditAfterSignIn
+              ? "Completed your $20 assessment? Sign in first, and that $20 comes off this price at payment."
+              : "Completed your $20 assessment? It comes off this price automatically at payment."}
           </p>
         )}
         {seatsRemaining !== null && seatsRemaining <= 3 && (
@@ -839,6 +847,7 @@ export function EnrollWizard({
   seatsRemaining,
   inviteToken = null,
   initialEmail = null,
+  signedIn = false,
   etransfer = null,
   eligibleParticipantIds = null,
   blocked = [],
@@ -852,6 +861,12 @@ export function EnrollWizard({
   seatsRemaining: number | null;
   inviteToken?: string | null;
   initialEmail?: string | null;
+  /**
+   * Signed in, as the server read it (backlog #84). Card checkout takes the
+   * $20 credit off only for a signed-in account's own players, so a visitor
+   * who is signed out is told it comes off once they sign in.
+   */
+  signedIn?: boolean;
   etransfer?: EtransferInfo | null;
   /**
    * Set when the page admitted the holder by level (audit M27): the players
@@ -872,6 +887,10 @@ export function EnrollWizard({
     ...EMPTY_FORM,
     contactEmail: initialEmail ?? "",
   });
+
+  // The bot check every public form runs (backlog #84): the honeypot below
+  // and the fill time go with each of the three posts.
+  const bot = useBotCheck();
 
   // Who is this for? (backlog #11) One seat per player, one payment.
   const household = useHousehold();
@@ -1125,6 +1144,7 @@ export function EnrollWizard({
         consentSignedName: form.consentSignedName,
         consentAgreedAt,
         waiverVersion: WAIVER_VERSION,
+        ...bot.payload(),
       }),
     });
     await throwIfRefused(enrollRes);
@@ -1154,6 +1174,7 @@ export function EnrollWizard({
         inviteToken: inviteToken ?? undefined,
         enrollmentRowNumber: row.rowNumber,
         enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
+        ...bot.payload(),
       }),
     });
     await throwIfRefused(checkoutRes);
@@ -1165,11 +1186,12 @@ export function EnrollWizard({
 
   /**
    * A route that refused before anything was created (declined invite #34;
-   * the invite gate, a full cohort or a mismatched row #38) says why in its
-   * JSON. Show that instead of the generic "couldn't reach payment".
+   * the invite gate, a full cohort or a mismatched row #38; card payment
+   * unavailable, the records unreachable, or too many tries, #84) says why
+   * in its JSON. Show that instead of the generic "couldn't reach payment".
    */
   async function throwIfRefused(res: Response) {
-    if (res.status !== 400 && res.status !== 403 && res.status !== 409) return;
+    if (res.status !== 400 && res.status !== 403 && res.status !== 409 && res.status !== 429 && res.status !== 503) return;
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     if (body?.error) throw new Error(`refused:${body.error}`);
   }
@@ -1244,6 +1266,7 @@ export function EnrollWizard({
           programTitle: program?.title ?? cohort.programId,
           inviteToken: inviteToken ?? undefined,
           enrollmentMeta: enrollmentMeta(row.consentAgreedAt),
+          ...bot.payload(),
         }),
       });
       await throwIfRefused(res);
@@ -1369,6 +1392,7 @@ export function EnrollWizard({
               cohort={cohort}
               program={program}
               seatsRemaining={seatsRemaining}
+              creditAfterSignIn={!signedIn && !(etransfer && etransfer.creditCents > 0)}
             />
           )}
           {step === 1 && (
@@ -1448,6 +1472,10 @@ export function EnrollWizard({
               onPayByCard={() => void submit()}
             />
           )}
+
+          {/* The honeypot (backlog #84): off-screen, out of the tab order and
+              hidden from assistive tech; a person never fills it. */}
+          {bot.field}
 
           {/* Navigation */}
           <div className="mt-6 flex flex-col gap-2">

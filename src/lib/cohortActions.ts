@@ -47,6 +47,9 @@ import {
 import { setEnrollmentStatusByEmail, setEnrollmentCredit } from "@/lib/enrollmentSheet";
 import { DECLINED_INVITE_ERROR, type CheckoutInviteRow } from "@/lib/checkoutInvite";
 import { claimCredit, etransferRowPlan } from "@/lib/enrollGate";
+import { ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
+import { normalizeEmail } from "@/lib/supabase/adminUsers";
+import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
 
 // Server-side cohort operations (Phase 3): invite flow with expiring holds,
 // minimum-to-run confirmation, session generation, and cancellation → make-up
@@ -320,7 +323,8 @@ export async function createInvites(
 
     sent++;
 
-    const credit = await findUnusedCredit(email, { participantId });
+    // The invited player's own credit, the one the amount due reads (#84).
+    const credit = await findUnusedCredit(participantId);
     const enrollUrl = `${siteUrl()}/enroll/${cohortId}?invite=${token}`;
     try {
       await sendCohortInviteEmail({
@@ -494,10 +498,11 @@ export async function getInviteByToken(
 export type CohortMember = { email: string; participantName: string | null };
 
 /**
- * Members: paid invites plus paid/test-paid enrollments. One entry per player,
- * so a parent with two children in the same cohort gets one email per child.
+ * Members: paid invites plus paid enrollments. One entry per player, so a
+ * parent with two children in the same cohort gets one email per child.
  * De-duplicated on (email, player) — the same person from both sources is one
- * member.
+ * member. A test payment (test_paid) is no member (backlog #84): it never
+ * hears "confirmed", a cancellation or a make-up meant for the group.
  */
 export async function cohortMembers(cohortId: string): Promise<CohortMember[]> {
   const supabase = createServiceClient();
@@ -511,7 +516,7 @@ export async function cohortMembers(cohortId: string): Promise<CohortMember[]> {
       .from("enrollments")
       .select("contact_email, participant_name")
       .eq("cohort_id", cohortId)
-      .in("status", ["paid", "test_paid"]),
+      .eq("status", "paid"),
   ]);
 
   const participants = await listPlayers().catch(() => [] as PlayerRecord[]);
@@ -537,6 +542,52 @@ export async function cohortMembers(cohortId: string): Promise<CohortMember[]> {
     add(row.contact_email, row.participant_name);
   }
   return out;
+}
+
+/** One card payment on the cohort page (backlog #84). */
+export type CohortPayment = {
+  id: string;
+  participantName: string | null;
+  contactEmail: string | null;
+  /** The enrollment row's status: paid, test_paid (and, after a refund or a dispute, refunded or disputed). */
+  status: string;
+  createdAt: string | null;
+};
+
+/** The enrollment row statuses the cohort page lists as payments. */
+export const PAYMENT_ROW_STATUSES = ["paid", "test_paid", "refunded", "disputed"];
+
+/**
+ * The cohort's card payments, newest first, for the admin (backlog #84): so
+ * a test payment is labelled a test, never mistaken for a seat. Rows still
+ * pending (a checkout that was never finished) are not payments and are left
+ * out. A read that fails lists none.
+ */
+export async function cohortPayments(cohortId: string): Promise<CohortPayment[]> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("enrollments")
+    .select("id, participant_name, contact_email, status, created_at")
+    .eq("cohort_id", cohortId)
+    .in("status", PAYMENT_ROW_STATUSES)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("Cohort payments read failed (non-blocking):", error.message);
+    return [];
+  }
+  return ((data ?? []) as {
+    id: string;
+    participant_name: string | null;
+    contact_email: string | null;
+    status: string;
+    created_at: string | null;
+  }[]).map((r) => ({
+    id: r.id,
+    participantName: r.participant_name,
+    contactEmail: r.contact_email,
+    status: r.status,
+    createdAt: r.created_at,
+  }));
 }
 
 /** Distinct member emails (one per inbox, players collapsed). */
@@ -668,6 +719,8 @@ export async function markInvitePaidAndMaybeConfirm(params: {
   strict?: boolean;
 }): Promise<{ ok: boolean; error?: string; matched?: boolean; alreadyPaid?: boolean }> {
   const { cohortId, email, inviteToken, inviteId, participantId, payment } = params;
+  // Invites store the address lowercased (createInvites, recordEtransferIntent).
+  const address = normalizeEmail(email ?? "");
   const strict = params.strict ?? false;
   const supabase = createServiceClient();
 
@@ -704,12 +757,14 @@ export async function markInvitePaidAndMaybeConfirm(params: {
       : null;
     if (byParticipant?.data) {
       target = byParticipant.data as InviteRef;
-    } else if (email && !participantId) {
+    } else if (address && !participantId) {
+      // Invites store the address lowercased: an exact match, so a wildcard
+      // in a typed address lands on nobody else's invite (backlog #84).
       const { data } = await supabase
         .from("cohort_invites")
         .select("*")
         .eq("cohort_id", cohortId)
-        .ilike("email", email.trim())
+        .eq("email", address)
         .in("status", PAYABLE_STATUSES)
         .order("invited_at", { ascending: false })
         .limit(1)
@@ -768,7 +823,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
       .select("id")
       .eq("cohort_id", cohortId)
       .eq("status", "paid");
-    q = participantId ? q.eq("participant_id", participantId) : q.ilike("email", email!.trim());
+    q = participantId ? q.eq("participant_id", participantId) : q.eq("email", address);
     const { data } = await q.limit(1).maybeSingle();
     alreadyPaid = Boolean(data);
   }
@@ -793,14 +848,18 @@ export async function inviteAmountDueCents(
   return (await inviteAmountDue(invite, cohort)).amountDueCents;
 }
 
-/** inviteAmountDueCents, plus the booking whose $20 it takes off (if any). */
+/**
+ * inviteAmountDueCents, plus the booking whose $20 it takes off (if any).
+ * The credit is the invite's own player's — the participant the coach's
+ * invite (or a signed-in account) named — never one found by the invite's
+ * email (backlog #84). recordEtransferIntent tells the player the same
+ * amount, and settleEtransferEnrollment spends the same booking.
+ */
 export async function inviteAmountDue(
   invite: Pick<InviteRow, "email" | "participant_id">,
   cohort: Cohort
 ): Promise<{ amountDueCents: number; creditBookingId: string | null }> {
-  const credit = await findUnusedCredit(invite.email, {
-    participantId: invite.participant_id ?? null,
-  });
+  const credit = await findUnusedCredit(invite.participant_id ?? null);
   return {
     amountDueCents: amountDueCents(cohort.priceCents, credit?.creditCents ?? 0),
     creditBookingId: credit?.bookingId ?? null,
@@ -916,21 +975,58 @@ async function sendMarkPaidReceipt(
   }
 }
 
+/**
+ * This cohort's enrollment rows for one address, moved from `from` to `to`.
+ * The address is escaped for the ilike and every candidate is re-checked
+ * exactly (PostgREST reads `*` as `%`), so a wildcard in an address reaches
+ * no one else's row (backlog #84). The update is guarded on `from`.
+ */
+async function setEnrollmentRowsStatus(
+  cohortId: string,
+  email: string,
+  from: string,
+  to: string
+): Promise<void> {
+  const target = normalizeEmail(email);
+  if (!target) return;
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("enrollments")
+    .select("id, contact_email")
+    .eq("cohort_id", cohortId)
+    .eq("status", from)
+    .ilike("contact_email", ilikePattern(target));
+  if (error) {
+    console.error("Enrollment status read failed (non-blocking):", error.message);
+    return;
+  }
+  const ids = rowsWithEmail(
+    (data ?? []) as { id: string; contact_email: string | null }[],
+    target,
+    (r) => r.contact_email
+  ).map((r) => r.id);
+  if (ids.length === 0) return;
+  const { error: updateError } = await supabase
+    .from("enrollments")
+    .update({ status: to })
+    .in("id", ids)
+    .eq("status", from);
+  if (updateError) {
+    console.error("Enrollment status update failed (non-blocking):", updateError.message);
+  }
+}
+
 async function settleEtransferEnrollment(
   cohortId: string,
   email: string,
   participantId?: string | null
 ): Promise<void> {
-  const credit = await findUnusedCredit(email, { participantId });
+  // The invite's own player's credit — the one the amount due was worked
+  // out from — never one found by email (backlog #84).
+  const credit = await findUnusedCredit(participantId ?? null);
   if (credit) await markCreditApplied(credit.bookingId);
 
-  const supabase = createServiceClient();
-  await supabase
-    .from("enrollments")
-    .update({ status: "paid" })
-    .eq("cohort_id", cohortId)
-    .ilike("contact_email", email.trim())
-    .eq("status", "pending");
+  await setEnrollmentRowsStatus(cohortId, email, "pending", "paid");
 
   // The Sheet flip is scoped to this player when the invite names one; the
   // Supabase enrollments table has no participant column, so that update
@@ -979,12 +1075,7 @@ export async function adminMarkInviteUnpaid(
   if (!flipped) return { ok: false, error: "That invite changed state — refresh and try again." };
 
   if (invite.payment_method === "etransfer") {
-    await supabase
-      .from("enrollments")
-      .update({ status: "pending" })
-      .eq("cohort_id", cohortId)
-      .ilike("contact_email", invite.email.trim())
-      .eq("status", "paid");
+    await setEnrollmentRowsStatus(cohortId, invite.email, "paid", "pending");
     await setEnrollmentStatusByEmail({
       cohortId,
       email: invite.email,
@@ -1037,17 +1128,28 @@ export async function recordEtransferIntent(params: {
   claimedInviteIds?: string[];
   /** Assessment bookings earlier players on this request already used. */
   claimedCreditBookingIds?: string[];
+  /**
+   * The signed-in account, or null (backlog #84). It owns any invite created
+   * here; signed out, a new invite is nobody's and the email fallback only
+   * lands on an invite nobody owns — never one that belongs to the account
+   * that exists for the typed email.
+   */
+  accountId?: string | null;
 }): Promise<EtransferIntentResult> {
   const { cohortId, inviteToken } = params;
   const claimedInvites = params.claimedInviteIds ?? [];
+  const accountId = params.accountId ?? null;
   const plan = etransferRowPlan({
     hasToken: Boolean(inviteToken),
     participantId: params.participantId,
     playerIndex: params.playerIndex ?? 0,
   });
-  const email = params.contactEmail.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { ok: false, error: "Enter a valid email.", status: 400 };
+  const email = normalizeEmail(params.contactEmail);
+  // The same format check as every other form (backlog #84). It lets a `%`
+  // or `_` through, as an address may hold them, so every lookup below is
+  // an exact match on this normalized address.
+  if (!isValidEmail(email)) {
+    return { ok: false, error: INVALID_EMAIL_ERROR, status: 400 };
   }
 
   const cohort = await getCohortById(cohortId);
@@ -1092,12 +1194,16 @@ export async function recordEtransferIntent(params: {
     invite = (data as InviteRef | null) ?? null;
   }
   if (!invite && plan.includes("email")) {
-    const { data } = await supabase
+    let q = supabase
       .from("cohort_invites")
       .select("*")
       .eq("cohort_id", cohortId)
-      .ilike("email", email)
-      .in("status", ["invited", "paid"])
+      .eq("email", email)
+      .in("status", ["invited", "paid"]);
+    // Signed out (#84), only an invite nobody owns: a typed email never
+    // lands on the invite of the account that exists for it.
+    if (!accountId) q = q.is("user_id", null).is("participant_id", null);
+    const { data } = await q
       .order("invited_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -1106,16 +1212,18 @@ export async function recordEtransferIntent(params: {
   if (!invite && plan.includes("reuse")) {
     // A later player with no participant: a live e-transfer row for this
     // email that names nobody and that no earlier player on this request
-    // claimed — so "I've sent it" tapped twice adds no rows.
-    const { data } = await supabase
+    // claimed — so "I've sent it" tapped twice adds no rows. Signed out,
+    // only a row nobody owns (#84).
+    let q = supabase
       .from("cohort_invites")
       .select("*")
       .eq("cohort_id", cohortId)
-      .ilike("email", email)
+      .eq("email", email)
       .eq("status", "invited")
       .eq("payment_method", "etransfer")
-      .is("participant_id", null)
-      .order("invited_at", { ascending: true });
+      .is("participant_id", null);
+    if (!accountId) q = q.is("user_id", null);
+    const { data } = await q.order("invited_at", { ascending: true });
     const free = ((data as InviteRef[] | null) ?? []).find(
       (r) => !claimedInvites.includes(r.id)
     );
@@ -1126,7 +1234,8 @@ export async function recordEtransferIntent(params: {
     const row: Record<string, unknown> = {
       cohort_id: cohortId,
       email,
-      user_id: await findUserIdByEmail(email),
+      // The session's, or nobody's (#84): never looked up by the typed email.
+      user_id: accountId,
       token: newToken(),
       status: "invited",
       expires_at: new Date(Date.now() + holdHours * 3600 * 1000).toISOString(),
@@ -1156,12 +1265,15 @@ export async function recordEtransferIntent(params: {
     invite = data as InviteRef;
   }
 
-  // The $20 credit applies to at most one player: a booking an earlier
-  // player on this request already used is no credit for this one.
+  // The $20 credit is this player's own: the participant a signed-in account
+  // named (the route keeps only its own), else the one the invite names —
+  // never one found by the typed email (backlog #84). It is the same booking
+  // the coach's "amount due" and "mark paid" read (inviteAmountDue,
+  // settleEtransferEnrollment), so the amount told, the amount expected and
+  // the credit spent agree. A booking an earlier player on this request
+  // already used is no credit for this one.
   const credit = claimCredit(
-    await findUnusedCredit(email, {
-      participantId: params.participantId ?? invite.participant_id ?? null,
-    }),
+    await findUnusedCredit(params.participantId ?? invite.participant_id ?? null),
     params.claimedCreditBookingIds ?? []
   );
   const creditCents = Math.min(credit?.creditCents ?? 0, cohort.priceCents);

@@ -347,7 +347,9 @@ check("a bot drop answers ok with no cookie", drop.includes("NextResponse.json({
 check("the cookie is set after the Sheet append, on the real response", at(intakeRoute, "res.cookies.set(") > at(intakeRoute, "sheets.spreadsheets.values.append(") && intakeRoute.includes("quizFlagCookie(") && intakeRoute.includes("quizFlagFor({ playerCount: rows.length, ageBand: body.ageBand, selfLevel: body.level })"));
 check("the Sheet contract is untouched", intakeRoute.includes("buildIntakeRow(") && intakeRoute.includes("INTAKE_APPEND_RANGE_ALL") && read("src/lib/intakeRow.ts") === read("src/lib/intakeRow.ts"));
 const intakePage = read("src/app/intake/page.tsx");
-check("the quiz mirrors the flag after the route answered ok", at(intakePage, "rememberQuizTaken();") > at(intakePage, 'if (!res.ok) throw new Error("Submission failed");'));
+// The ok check throws through submitFailure since backlog #84 (review fix 8:
+// a refused try shows the route's own line); it still comes first.
+check("the quiz mirrors the flag after the route answered ok", at(intakePage, "rememberQuizTaken();") > at(intakePage, "if (!res.ok) throw await submitFailure(res);"));
 // Re-pinned for backlog #71: the panel's quiz-aware button read "See your
 // groups" for a signed-out browser that had sent the quiz. Only a signed-in
 // taker sees the panel now, so it reads "Open your dashboard".
@@ -493,18 +495,24 @@ check("every account the enrollment creates is created unconfirmed (players.ts),
 
 console.log("After the enrollment: one account email, once, retryable");
 const actions = read("src/lib/supabase/enrollmentActions.ts");
-check("a new address gets the set-up email through the invite branch", actions.includes("issueActivationLink(email, params.enrollmentId, setupMessage)") && actions.includes("sendAccountSetupEmail({"));
-check("an account never activated gets it through the magic-link branch, once per cohort", actions.includes("if (accountNeedsSetup(user)) {") && actions.includes("setupEmailSentFor(user?.user_metadata ?? null, cohortId)") && actions.includes("markSetupEmailSent("));
-check("an activated account gets You're enrolled, never a second set-password email", at(actions, "await sendEnrolledEmail({") > at(actions, "if (accountNeedsSetup(user)) {"));
+check("a new address gets the set-up email through the invite branch", actions.includes("issueActivationLink(email, setupMessage)") && actions.includes("sendAccountSetupEmail({") && actions.includes("accountExists: Boolean(userId)"));
+check("an account never activated gets it through the magic-link branch, once per cohort", actions.includes("needsSetup: accountNeedsSetup(user)") && actions.includes("setupEmailSentFor(user?.user_metadata ?? null, cohortId)") && actions.includes("markSetupEmailSent("));
+check("an activated account gets You're enrolled, never a second set-password email", at(actions, "await sendEnrolledEmail({") > at(actions, "if (plan === \"set-up\") {"));
 check("the admin can send it again on purpose", actions.includes("export async function resendAccountEmail") && actions.includes("force: true") && read("src/app/api/admin/cohorts/[id]/route.ts").includes('action === "account_link"') && read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx").includes("Send account email"));
 check("…only on an invite someone enrolled on: the button and the route both read accountEmailOffered", read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx").includes("{accountEmailOffered(invite) && mode === \"idle\" && (") && !read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx").includes('invite.status !== "declined" && mode === "idle"') && read("src/app/api/admin/cohorts/[id]/route.ts").includes("if (!accountEmailOffered(invite)) {") && read("src/app/api/admin/cohorts/[id]/route.ts").includes("ACCOUNT_EMAIL_NOT_OFFERED"));
 check("owner writes still only touch an unowned row", (actions.match(/\.update\(\{ user_id: \w+ \}\)[^;]*;/g) ?? []).every((w) => w.includes('.is("user_id", null)')));
-for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
+// The checkout submit sends no account email since backlog #84 (review fix
+// 7): the card payment's webhook does, on live money only.
+for (const route of ["src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
   const src = read(route);
   check(`${route}: passes the cohort and every player's name to the account email`, src.includes("cohortId,") && (src.includes("playerNames:") || src.includes("playerNames }")));
 }
+check("the checkout submit sends no account email", !read("src/app/api/checkout/route.ts").includes("notifyEnrollmentAccount("));
 check("the webhook reads the names from the rows it marked paid", read("src/app/api/webhooks/stripe/route.ts").includes("participantNamesOf(paidEnrollmentIds)"));
-check("the confirmation page tells a guest to check their email and what the dashboard shows", read("src/app/enroll/[cohortId]/confirmed/page.tsx").includes("Check your email for the link to set up your account: it names the players you enrolled") && read("src/app/enroll/[cohortId]/confirmed/page.tsx").includes("Your dashboard then shows this enrollment"));
+// The confirmation page's words live in src/lib/paymentConfirmation.ts since
+// backlog #84 (a test payment's page says it was a test, and test-paid-only.ts
+// renders every state); a live payment's words are unchanged.
+check("the confirmation page tells a guest to check their email and what the dashboard shows", read("src/lib/paymentConfirmation.ts").includes("Check your email for the link to set up your account: it names the players you enrolled") && read("src/lib/paymentConfirmation.ts").includes("Your dashboard then shows this enrollment") && read("src/app/enroll/[cohortId]/confirmed/page.tsx").includes("enrollConfirmation({"));
 check("this script is in the npm test chain", JSON.parse(read("package.json")).scripts.test.includes("src/scripts/test-quiz-state.ts"));
 
 if (failed > 0) {

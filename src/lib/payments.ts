@@ -1,16 +1,84 @@
 import Stripe from "stripe";
 
-const stripeKey = process.env.STRIPE_SECRET_KEY;
-export const isMockMode = !stripeKey;
+/**
+ * How card payments run (backlog #84, audit follow-up, owner 2026-11-14):
+ *   stripe  a Stripe key is set. Stripe's own keys decide test or live; the
+ *           webhook records a test-key payment as a test (src/lib/stripeOutcome.ts).
+ *   mock    no key, outside production (local development, a preview): no
+ *           money moves and every row it writes is a test row.
+ *   refuse  no key in production (VERCEL_ENV === "production"): checkout and
+ *           booking payment are refused with a plain line, before any row or
+ *           hold exists. Nothing in production is ever paid without Stripe.
+ * Read at call time, never at module load, so a deploy's env decides it.
+ */
+export type PaymentRail = "stripe" | "mock" | "refuse";
+
+export function paymentRail(
+  env: { stripeKey?: string; vercelEnv?: string } = {
+    stripeKey: process.env.STRIPE_SECRET_KEY,
+    vercelEnv: process.env.VERCEL_ENV,
+  }
+): PaymentRail {
+  if ((env.stripeKey ?? "").trim()) return "stripe";
+  return env.vercelEnv === "production" ? "refuse" : "mock";
+}
+
+/**
+ * Whether a card payment taken now is a test payment (backlog #84, review):
+ * mock mode, or a Stripe key that is not a live one (sk_test_, rk_test_).
+ * Every session a test key makes is livemode false, which the webhook records
+ * as a test (src/lib/stripeOutcome.ts): it holds no seat or slot and sends no
+ * email, so the page after it says so (src/lib/paymentConfirmation.ts). False
+ * when production refuses card payment: then no card payment is taken at all.
+ */
+export function cardPaymentIsTest(
+  env: { stripeKey?: string; vercelEnv?: string } = {
+    stripeKey: process.env.STRIPE_SECRET_KEY,
+    vercelEnv: process.env.VERCEL_ENV,
+  }
+): boolean {
+  const rail = paymentRail(env);
+  if (rail === "mock") return true;
+  if (rail === "refuse") return false;
+  return !/^(sk|rk)_live_/.test((env.stripeKey ?? "").trim());
+}
+
+/**
+ * The assessment's price in cents: ASSESSMENT_PRICE_CENTS when it is set to
+ * a price (0 makes the assessment free), else $20. One reading for the
+ * booking route and the page after it.
+ */
+export function assessmentPriceCents(
+  raw: string | undefined = process.env.ASSESSMENT_PRICE_CENTS
+): number {
+  const n = raw == null || raw === "" ? 2000 : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 2000;
+}
+
+/** The 503 checkout answers when production has no Stripe key. */
+export const CARD_PAYMENT_UNAVAILABLE =
+  "Card payment isn't available right now, and nothing was charged. Email info@tennisbootcamp.ca and our coaches will finish your enrollment with you.";
+
+/** The 503 the assessment booking answers when production has no Stripe key. */
+export const ASSESSMENT_PAYMENT_UNAVAILABLE =
+  "Card payment isn't available right now, and nothing was charged. Email info@tennisbootcamp.ca and we'll book your assessment with you.";
 
 let _stripe: Stripe | null = null;
 
 function getStripe(): Stripe {
   if (!_stripe) {
+    const stripeKey = (process.env.STRIPE_SECRET_KEY ?? "").trim();
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY not set");
     _stripe = new Stripe(stripeKey);
   }
   return _stripe;
+}
+
+/** Stripe is the only rail that may create a session; refuse and mock never reach it. */
+function assertNotRefused(): "stripe" | "mock" {
+  const rail = paymentRail();
+  if (rail === "refuse") throw new Error("Card payment refused: no Stripe key in production");
+  return rail;
 }
 
 export type EnrollmentCheckoutParams = {
@@ -67,6 +135,9 @@ export function enrollmentSessionParams(
   const { quantity, discountCents } = enrollmentCheckoutTotals(params);
   return {
     mode: "payment",
+    // Card only (backlog #84): the payment is settled when the session
+    // completes, so nothing can arrive later and "paid" means paid.
+    payment_method_types: ["card"],
     line_items: [
       {
         price_data: {
@@ -103,7 +174,7 @@ export function enrollmentSessionParams(
 export async function createCheckoutSession(
   params: EnrollmentCheckoutParams
 ): Promise<{ sessionUrl: string }> {
-  if (isMockMode) {
+  if (assertNotRefused() === "mock") {
     return { sessionUrl: params.successUrl };
   }
 
@@ -133,19 +204,22 @@ export async function createCheckoutSession(
 // Separate from enrollment checkout; the webhook distinguishes assessment
 // sessions by metadata.kind === "assessment".
 
-export async function createAssessmentCheckoutSession(params: {
+export type AssessmentCheckoutParams = {
   bookingId: string;
   priceCents: number;
   successUrl: string;
   cancelUrl: string;
   contactEmail?: string;
-}): Promise<{ sessionUrl: string; stripeSessionId: string | null }> {
-  if (isMockMode) {
-    return { sessionUrl: params.successUrl, stripeSessionId: null };
-  }
+};
 
-  const session = await getStripe().checkout.sessions.create({
+/** The assessment Checkout session, as Stripe is asked for it. Pure, for npm test. */
+export function assessmentSessionParams(
+  params: AssessmentCheckoutParams
+): Stripe.Checkout.SessionCreateParams {
+  return {
     mode: "payment",
+    // Card only (backlog #84), as for enrollments.
+    payment_method_types: ["card"],
     line_items: [
       {
         price_data: {
@@ -164,7 +238,17 @@ export async function createAssessmentCheckoutSession(params: {
     },
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,
-  });
+  };
+}
+
+export async function createAssessmentCheckoutSession(
+  params: AssessmentCheckoutParams
+): Promise<{ sessionUrl: string; stripeSessionId: string | null }> {
+  if (assertNotRefused() === "mock") {
+    return { sessionUrl: params.successUrl, stripeSessionId: null };
+  }
+
+  const session = await getStripe().checkout.sessions.create(assessmentSessionParams(params));
 
   if (!session.url) throw new Error("Stripe did not return a checkout URL");
   return { sessionUrl: session.url, stripeSessionId: session.id };

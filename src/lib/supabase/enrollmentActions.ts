@@ -3,8 +3,7 @@ import { sendAccountSetupEmail, sendEnrolledEmail, sendLinkEmail } from "@/lib/e
 import { findUserIdByEmail } from "@/lib/players";
 import {
   emailBelongsToAccount,
-  enrollmentNoticeKind,
-  enrollmentOwner,
+  enrollmentNoticePlan,
   enrollmentRowsToLink,
   ilikePattern,
 } from "@/lib/enrollmentLink";
@@ -29,11 +28,11 @@ export type EnrollmentPayload = {
   waiverVersion?: string;
   status: string;
   /**
-   * The account that owns this row (audit H5), from resolveEnrollmentUserId:
-   * the session's user, else the account that exists for contactEmail, else
-   * null until the activation invite creates one. The dashboard and /profile
-   * read enrollments by user_id under RLS, so a row saved without it is
-   * invisible to the player who paid for it.
+   * The account that owns this row (audit H5): the signed-in session's, from
+   * enrollmentOwner, else null (backlog #84) — never the account that exists
+   * for the typed contact email. The dashboard and /profile read enrollments
+   * by user_id under RLS; an unowned row joins its account when the address
+   * owner signs in through their own emailed link (linkEnrollmentsToAccount).
    */
   userId: string | null;
 };
@@ -49,29 +48,21 @@ function siteUrl(): string {
 }
 
 /**
- * The account an enrollment being saved belongs to — `enrollmentOwner`'s
- * rule (the signed-in user, else the auth user for the contact email, else
- * null) with the I/O around it. One call per request — the email lookup
- * pages the whole user list, and is skipped when the session already
- * answers — and the result goes on every row the request saves.
+ * Who owns these enrollment rows (backlog #84): the account they were saved
+ * under — a signed-in checkout's session — or null when none of them is
+ * owned. The Stripe webhook reads it instead of looking the payer's email up.
  */
-export async function resolveEnrollmentUserId(
-  contactEmail: string,
-  sessionUserId?: string | null
-): Promise<string | null> {
-  if (!supabaseConfigured()) return null;
-  const email = contactEmail.trim();
-  const lookup =
-    sessionUserId || !email
-      ? null
-      : await findUserIdByEmail(email).catch((err) => {
-          console.error(
-            "Enrollment owner lookup failed; row saved unowned (non-blocking):",
-            err instanceof Error ? err.message : err
-          );
-          return null;
-        });
-  return enrollmentOwner(sessionUserId, lookup);
+export async function enrollmentRowsOwner(ids: readonly string[]): Promise<string | null> {
+  const list = [...new Set(ids.filter(Boolean))];
+  if (!supabaseConfigured() || list.length === 0) return null;
+  const supabase = createServiceClient();
+  const { data, error } = await supabase.from("enrollments").select("user_id").in("id", list);
+  if (error) {
+    console.error("Enrollment owner read failed (non-blocking):", error.message);
+    return null;
+  }
+  const owned = ((data ?? []) as { user_id: string | null }[]).find((r) => r.user_id);
+  return owned?.user_id ?? null;
 }
 
 // Returns the Supabase enrollment UUID, or null if Supabase is not configured.
@@ -116,11 +107,44 @@ export async function saveEnrollmentToSupabase(
 }
 
 /**
+ * Move these enrollment rows out of one of `from` into `to`, and resolve to
+ * the ids moved (backlog #84). Guarded on `from`, in one statement: of two
+ * deliveries of one Stripe event, only one moves the rows, so the caller can
+ * tell which one sends the email, and a row that was refunded or disputed is
+ * never brought back. A failed write throws, so the webhook answers 500 and
+ * Stripe retries; Supabase unconfigured moves nothing.
+ */
+export async function setEnrollmentStatusByIds(
+  ids: readonly string[],
+  from: readonly string[],
+  to: string
+): Promise<string[]> {
+  const list = [...new Set(ids.filter(Boolean))];
+  if (!supabaseConfigured() || list.length === 0) return [];
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("enrollments")
+    .update({ status: to })
+    .in("id", list)
+    .in("status", [...from])
+    .select("id");
+  if (error) {
+    console.error("Enrollment status move failed:", error.code ?? "unknown");
+    throw new Error(`Enrollment status move failed: ${error.code ?? "unknown"}`);
+  }
+  return ((data ?? []) as { id: string }[]).map((r) => r.id);
+}
+
+/**
  * Every enrollment row for this email that no account owns yet becomes this
  * account's (audit H5) — provided the email is the account's own address.
  * Idempotent; a row that already has an owner is never touched. Resolves to
  * how many rows were linked. The same rule, applied to history, is
  * migration 0008.
+ *
+ * Called from one place (backlog #84): /auth/callback, once the address
+ * owner has signed in through their own emailed link. A form submitted while
+ * nobody is signed in never links anything, whatever email it names.
  */
 export async function linkEnrollmentsToAccount(userId: string, email: string): Promise<number> {
   if (!supabaseConfigured() || !userId) return 0;
@@ -188,12 +212,9 @@ function defaultActivationMessage(email: string, actionLabel: string): Activatio
  * Create the account for a brand-new email and send its set-password link.
  * Resolves to the new user's id, or null when the email already has an
  * account (Supabase refuses the invite) or the link could not be minted.
- * The send runs AFTER the account exists and `onCreated` has linked what it
- * must: a provider refusal throws, and the account must not be left orphaned.
  */
 async function inviteNewAccount(
   email: string,
-  onCreated?: (userId: string) => Promise<void>,
   message?: ActivationMessage
 ): Promise<{ userId: string | null; invited: boolean }> {
   const supabase = createServiceClient();
@@ -206,60 +227,38 @@ async function inviteNewAccount(
     return { userId: null, invited: false };
   }
   const userId = data.user?.id ?? null;
-  if (userId && onCreated) await onCreated(userId);
   const activationUrl =
     `${siteUrl()}/auth/callback?token_hash=${data.properties.hashed_token}&type=invite&next=/set-password`;
   await (message ?? defaultActivationMessage(email, "set your password"))(activationUrl);
   return { userId, invited: true };
 }
 
-// Mint an invite (new user) or magic link (returning user) and stub-log it.
-// Both branches link the account to every enrollment row for the email that
-// nobody owns yet (audit H5) — the invite branch also by the id it was given,
-// in case the row's contact_email was stored differently. Resolves to the
-// auth user id when Supabase reports one, otherwise null. `message` replaces
-// the plain link email with one of the caller's own (the enrollment set-up
-// email); the link is the same either way.
+/** What issueActivationLink did: the account, and whether its invite made it. */
+export type ActivationResult = { userId: string | null; created: boolean };
+
+// Mint an invite (new user) or magic link (returning user) and send it.
+// `created` is true only when the invite made the account just now: a caller
+// acting for a signed-out visitor writes into an account only then (backlog
+// #84). Nothing is linked here: an unowned row joins its account when the
+// address owner signs in through this link (/auth/callback). `message`
+// replaces the plain link email with one of the caller's own (the enrollment
+// set-up email); the link is the same either way.
 export async function issueActivationLink(
   email: string,
-  enrollmentId: string | null,
   message?: ActivationMessage
-): Promise<string | null> {
+): Promise<ActivationResult> {
   if (!supabaseConfigured()) {
-    console.log("[issueActivationLink] Supabase not configured — skipping invite for", email);
-    return null;
+    console.log("[issueActivationLink] Supabase not configured — skipping invite");
+    return { userId: null, created: false };
   }
 
   const supabase = createServiceClient();
 
   // Try invite first (creates user if new); fall back to magic link for existing users.
-  const invited = await inviteNewAccount(
-    email,
-    async (userId) => {
-      // Link the newly-created user BEFORE sending. The send throws on a
-      // provider refusal, and the auth user already exists by this point —
-      // leaving the rows unlinked would orphan the enrollment from the account
-      // that owns it, and no later link attempt would run. Only an unowned
-      // row: the session that saved it wins (enrollmentOwner), and a webhook
-      // whose email lookup came back empty must not move it to the address's
-      // brand-new account.
-      if (enrollmentId) {
-        await supabase
-          .from("enrollments")
-          .update({ user_id: userId })
-          .eq("id", enrollmentId)
-          .is("user_id", null);
-      }
-      await linkEnrollmentsToAccount(userId, email).catch((err) =>
-        console.error("Enrollment link after invite failed (non-blocking):", err)
-      );
-    },
-    message
-  );
-  if (invited.invited) return invited.userId;
+  const invited = await inviteNewAccount(email, message);
+  if (invited.invited) return { userId: invited.userId, created: Boolean(invited.userId) };
 
-  // User already exists — send a magic link instead. generateLink reports the
-  // existing user, so the rows are linked here too without a list walk.
+  // User already exists — send a magic link instead.
   const { data: magicData, error: magicError } =
     await supabase.auth.admin.generateLink({
       type: "magiclink",
@@ -268,19 +267,6 @@ export async function issueActivationLink(
     });
 
   const existingId = magicData?.user?.id ?? null;
-  if (existingId) {
-    if (enrollmentId) {
-      await supabase
-        .from("enrollments")
-        .update({ user_id: existingId })
-        .eq("id", enrollmentId)
-        .is("user_id", null);
-    }
-    await linkEnrollmentsToAccount(existingId, email).catch((err) =>
-      console.error("Enrollment link for existing account failed (non-blocking):", err)
-    );
-  }
-
   if (!magicError && magicData.properties?.hashed_token) {
     const magicUrl =
       `${siteUrl()}/auth/callback?token_hash=${magicData.properties.hashed_token}&type=magiclink&next=/set-password`;
@@ -288,16 +274,20 @@ export async function issueActivationLink(
   } else {
     console.error("Failed to generate activation link:", magicError?.message);
   }
-  return existingId;
+  return { userId: existingId, created: false };
 }
 
 export type EnrollmentNotice = {
   /** The account holder's address — the one the enrollment was saved under. */
   email: string;
-  /** The first row this request saved, for the by-id link on a fresh invite. */
+  /** The first row this request saved, whose player the email names when no names are given. */
   enrollmentId: string | null;
-  /** The owner resolveEnrollmentUserId found, so the list is not walked twice. */
-  userId: string | null;
+  /**
+   * The signed-in account that owns the rows (backlog #84), or null for a
+   * signed-out enrollment. It only saves a lookup: which email goes out is
+   * decided by the account the address has, and nothing is linked here.
+   */
+  ownerId: string | null;
   /** The cohort, so a retried submit sends no second set-up email for it. */
   cohortId?: string | null;
   /** An admin's deliberate resend: the once-per-cohort rule is skipped. */
@@ -331,12 +321,14 @@ export type EnrollmentNotice = {
  *   - an account someone has signed in to (or confirmed) gets "You're
  *     enrolled" with a dashboard link — never a second set-password email.
  *
- * Every unowned row for the email is linked to the account either way.
- * Never throws past its callers' `.catch`; resolves to the owning user id.
+ * Nothing is linked here (backlog #84): the rows a signed-out enrollment
+ * saved stay unowned until the address owner signs in through their own
+ * emailed link (/auth/callback). Never throws past its callers' `.catch`;
+ * resolves to the address's account id.
  */
 export async function notifyEnrollmentAccount(params: EnrollmentNotice): Promise<string | null> {
   if (!supabaseConfigured()) {
-    console.log("[notifyEnrollmentAccount] Supabase not configured — skipping for", params.email);
+    console.log("[notifyEnrollmentAccount] Supabase not configured — skipping");
     return null;
   }
   const email = params.email.trim();
@@ -360,34 +352,33 @@ export async function notifyEnrollmentAccount(params: EnrollmentNotice): Promise
       link,
     });
 
-  // `userId` is the save path's own resolution (one list walk per request):
-  // null means no account was found for the email.
-  const userId = params.userId;
-  if (!userId || enrollmentNoticeKind(Boolean(userId)) === "set-password") {
-    // The invite creates the account and links the rows; if the address
-    // turns out to exist after all, the magic-link branch links them too.
-    const created = await issueActivationLink(email, params.enrollmentId, setupMessage);
-    if (created && cohortId) await markSetupEmailSent(created, cohortId);
-    return created;
-  }
-
-  await linkEnrollmentsToAccount(userId, email).catch((err) =>
-    console.error("Enrollment link for existing account failed (non-blocking):", err)
-  );
-
+  // The address's account, for the choice of email only: the signed-in
+  // owner when there is one, else a lookup — which, run after the response
+  // (backlog #84), tells the visitor nothing.
+  const userId = params.ownerId ?? (await findUserIdByEmail(email).catch(() => null));
   const supabase = createServiceClient();
-  const { data: found } = await supabase.auth.admin.getUserById(userId);
-  const user = found?.user ?? null;
-  if (accountNeedsSetup(user)) {
-    // Never activated: the set-up email again, once per cohort.
-    if (!params.force && cohortId && setupEmailSentFor(user?.user_metadata ?? null, cohortId)) {
-      console.log("[notifyEnrollmentAccount] set-up email already sent for this cohort — not resent");
-      return userId;
-    }
-    await issueActivationLink(email, params.enrollmentId, setupMessage);
-    if (cohortId) await markSetupEmailSent(userId, cohortId);
+  const user = userId
+    ? ((await supabase.auth.admin.getUserById(userId)).data?.user ?? null)
+    : null;
+  const plan = enrollmentNoticePlan({
+    accountExists: Boolean(userId),
+    needsSetup: accountNeedsSetup(user),
+    setupSentForCohort: Boolean(cohortId && setupEmailSentFor(user?.user_metadata ?? null, cohortId)),
+    force: Boolean(params.force),
+  });
+  if (plan === "none") {
+    console.log("[notifyEnrollmentAccount] set-up email already sent for this cohort — not resent");
     return userId;
   }
+  if (plan === "set-up") {
+    // No account yet: the invite creates it. Never activated: the same
+    // set-up email through the magic-link branch.
+    const sent = await issueActivationLink(email, setupMessage);
+    const accountId = userId ?? sent.userId;
+    if (accountId && cohortId) await markSetupEmailSent(accountId, cohortId);
+    return accountId;
+  }
+  if (!userId) return null;
 
   const [{ data: profile }, participantName] = await Promise.all([
     supabase.from("profiles").select("full_name").eq("id", userId).maybeSingle(),
@@ -422,11 +413,10 @@ export async function resendAccountEmail(params: {
   paid: boolean;
 }): Promise<{ status: "sent" } | { status: "failed"; detail: string }> {
   try {
-    const userId = await findUserIdByEmail(params.email).catch(() => null);
     await notifyEnrollmentAccount({
       email: params.email,
       enrollmentId: null,
-      userId,
+      ownerId: null,
       cohortId: params.cohortId,
       force: true,
       enrolled: {

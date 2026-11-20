@@ -1,5 +1,12 @@
 import "server-only";
 import { google, type sheets_v4 } from "googleapis";
+import {
+  assessmentFrozenRewrite,
+  assessmentSheetRow,
+  type AssessmentSheetRow,
+} from "@/lib/sheetText";
+
+export type { AssessmentSheetRow };
 
 // Ops view for Sina — additive tab, never touches the frozen intake/enrollment tabs.
 // The `assessments` tab must be created manually in the Sheet before the first
@@ -71,49 +78,6 @@ async function ensureHeader(sheets: sheets_v4.Sheets, spreadsheetId: string) {
   }
 }
 
-export type AssessmentSheetRow = {
-  /** The player's name (col 2) — the participant, not the account holder. */
-  name: string;
-  /** The account holder's email (col 3) — where every email goes. */
-  email: string;
-  phone?: string | null;
-  slotDate: string;
-  slotStart: string;
-  status: string;
-  paid: boolean;
-  levelResult?: string | number | null;
-  coachNotes?: string | null;
-  creditStatus?: string;
-  // ── household columns (appended) ──
-  accountEmail?: string | null;
-  accountName?: string | null;
-  participantName?: string | null;
-  participantRelationship?: string | null;
-  participantId?: string | null;
-};
-
-function toRow(r: AssessmentSheetRow): string[] {
-  return [
-    new Date().toISOString(),
-    r.name ?? "",
-    r.email ?? "",
-    r.phone ?? "",
-    r.slotDate ?? "",
-    r.slotStart ?? "",
-    r.status ?? "",
-    r.paid ? "yes" : "no",
-    r.levelResult != null ? String(r.levelResult) : "",
-    r.coachNotes ?? "",
-    r.creditStatus ?? "unused",
-    // ── appended (household accounts) ──
-    r.accountEmail ?? r.email ?? "",
-    r.accountName ?? "",
-    r.participantName ?? r.name ?? "",
-    r.participantRelationship ?? "",
-    r.participantId ?? "",
-  ];
-}
-
 /** Append a booking row to the assessments tab. Best-effort — never throws. */
 export async function appendAssessmentRow(r: AssessmentSheetRow): Promise<void> {
   try {
@@ -125,7 +89,8 @@ export async function appendAssessmentRow(r: AssessmentSheetRow): Promise<void> 
       spreadsheetId,
       range: `${TAB}!${RANGE}`,
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: [toRow(r)] },
+      // Typed values are written formula-safe (backlog #33, #84).
+      requestBody: { values: [assessmentSheetRow(r, new Date().toISOString())] },
     });
   } catch (err) {
     console.error("appendAssessmentRow failed (non-blocking):", err);
@@ -182,13 +147,9 @@ export async function updateAssessmentRow(match: {
     if (target === -1) return;
 
     const rowNumber = target + 1; // 1-based sheet row
-    const existing = rows[target];
-    const updated = [...existing];
-    updated[6] = match.status;
-    if (match.paid != null) updated[7] = match.paid ? "yes" : "no";
-    if (match.levelResult != null) updated[8] = String(match.levelResult);
-    if (match.coachNotes != null) updated[9] = match.coachNotes;
-    if (match.creditStatus != null) updated[10] = match.creditStatus;
+    // Read back as Sheets shows it (no apostrophe), so the visitor's cells
+    // are made formula-safe again before the USER_ENTERED write (#84).
+    const updated = assessmentFrozenRewrite(rows[target], match);
 
     // Only the frozen block is rewritten in place; the appended household
     // columns were set at append time and are left exactly as they are.
@@ -196,7 +157,7 @@ export async function updateAssessmentRow(match: {
       spreadsheetId,
       range: `${TAB}!A${rowNumber}:${FROZEN_END_COL}${rowNumber}`,
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: [updated.slice(0, 11)] },
+      requestBody: { values: [updated] },
     });
   } catch (err) {
     console.error("updateAssessmentRow failed (non-blocking):", err);

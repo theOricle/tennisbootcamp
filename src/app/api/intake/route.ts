@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { google } from "googleapis";
 import { subscribeToMailerLite } from "@/lib/mailerlite";
 import { recommendPrograms } from "@/lib/recommend";
@@ -11,9 +11,12 @@ import {
   intakeAvailabilitySlots,
   intakeHeaderPatch,
 } from "@/lib/intakeRow";
-import { provisionIntakeAccount } from "@/lib/intakeAccount";
+import { provisionGuestIntake, provisionSessionIntake } from "@/lib/intakeAccount";
+import { guestPlayers } from "@/lib/guestAccount";
 import { bodyTooLarge, logBotDrop, REQUEST_TOO_LARGE } from "@/lib/botCheck";
 import { decideIntake } from "@/lib/intakeGuard";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 import { quizFlagCookie, quizFlagFor } from "@/lib/quizStatus";
 import {
   currentUser,
@@ -39,6 +42,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: decision.error }, { status: decision.status });
     }
     const body = decision.body;
+
+    // Repeated submissions (backlog #84): per network address and per email,
+    // before the Sheet, the account or any email. A plain 429, no detail.
+    if (!(await checkSubmissionLimit(req, "intake", body.email)).allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
+    }
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -162,19 +171,34 @@ export async function POST(req: NextRequest) {
 
     // Account + availability (backlog #13). Runs only after the Sheet append
     // succeeded, only when Supabase is configured, and can never fail the
-    // intake response — provisionIntakeAccount logs and swallows everything.
-    // The grid is written to every player the quiz was about.
-    if (holderEmail) {
-      await provisionIntakeAccount({
-        email: holderEmail,
+    // intake response — both paths log and swallow everything.
+    // Signed in, the grid lands on the session's own players. Signed out
+    // (backlog #84), the account work runs after the response, so the answer
+    // and its timing never say whether an account exists: a new address gets
+    // its account and set-password email, an existing one is left as it is.
+    if (signedIn) {
+      await provisionSessionIntake({
+        accountId: signedIn.id,
         name: holderName || null,
         phone: holderPhone,
         availability: body.availability,
         participantIds: people
           .map((p) => p.participantId)
           .filter((id): id is string => Boolean(id)),
-        forceInvite: people.some((p) => p.accountCreated),
       });
+    } else if (holderEmail) {
+      const players = guestPlayers((body.participants ?? null) as ParticipantInput[] | null, {
+        name: holderName,
+      });
+      after(() =>
+        provisionGuestIntake({
+          email: holderEmail,
+          name: holderName || null,
+          phone: holderPhone,
+          availability: body.availability,
+          players,
+        })
+      );
     }
 
     if (body.newsletter === true) {

@@ -13,6 +13,7 @@ import { accountEmailOffered } from "@/lib/enrollPlayers";
 import {
   COHORT_STATUS_LABELS,
   INVITE_STATUS_LABELS,
+  PAYMENT_STATUS_LABELS,
   programTitleFor,
   statusLabel,
 } from "@/lib/adminLabels";
@@ -47,6 +48,15 @@ type SessionRow = {
   makeup_for: string | null;
 };
 
+/** One card payment, as the cohort API lists it (backlog #84). */
+type PaymentRow = {
+  id: string;
+  participantName: string | null;
+  contactEmail: string | null;
+  status: string;
+  createdAt: string | null;
+};
+
 type Detail = {
   cohort: Cohort;
   invites: InviteRow[];
@@ -55,6 +65,8 @@ type Detail = {
   /** Paid players by name, for the Cancel cohort confirmation (audit M30). */
   paidPlayers?: string[];
   paidCount: number;
+  /** Card payments by state; absent from an older API response. */
+  payments?: PaymentRow[];
 };
 
 const inputClass =
@@ -66,6 +78,14 @@ const INVITE_STYLE: Record<string, string> = {
   paid: "bg-[#B4E655]/15 text-[#B4E655]",
   expired: "bg-white/10 text-white/60",
   declined: "bg-red-400/15 text-red-200",
+};
+
+/** A card payment's chip (backlog #84): only real money reads lime. */
+const PAYMENT_STYLE: Record<string, string> = {
+  paid: "bg-[#B4E655]/15 text-[#B4E655]",
+  test_paid: "bg-white/10 text-white/70",
+  refunded: "bg-white/10 text-white/60",
+  disputed: "bg-red-400/15 text-red-200",
 };
 
 const REASONS = [
@@ -110,6 +130,51 @@ const METHOD_LABEL: Record<PaymentMode, string> = {
   card: "card",
   etransfer: "e-transfer",
 };
+
+// ─── Card payments (backlog #84) ──────────────────────────────────────────────
+// What Stripe (or mock mode) recorded for this cohort, row by row. A test
+// payment took no money: it holds no seat and never counts toward the
+// minimum, and the chip says so.
+
+function CardPayments({ payments }: { payments: PaymentRow[] }) {
+  if (payments.length === 0) return null;
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
+        Card payments
+      </h2>
+      <p className="text-xs text-white/60">
+        A test payment took no money, holds no seat and never counts toward the
+        minimum. A full refund or a dispute in Stripe releases the seat.
+      </p>
+      <ul className="space-y-2">
+        {payments.map((p) => (
+          <li
+            key={p.id}
+            className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm text-white">
+                {p.participantName?.trim() || p.contactEmail || "Player"}
+              </p>
+              <p className="truncate text-xs text-white/60">
+                {p.contactEmail ?? ""}
+                {p.createdAt ? ` · ${fmtDateTime(p.createdAt)}` : ""}
+              </p>
+            </div>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                PAYMENT_STYLE[p.status] ?? "bg-white/10 text-white/60"
+              }`}
+            >
+              {statusLabel(PAYMENT_STATUS_LABELS, p.status)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 // ─── Invite row: status + mark paid / undo (e-transfer rail) ──────────────────
 
@@ -1045,6 +1110,8 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
         onClearSelection={() => setTicked(new Set())}
         onChanged={refresh}
       />
+
+      <CardPayments payments={detail.payments ?? []} />
 
       <PaymentSettings
         cohortId={cohortId}

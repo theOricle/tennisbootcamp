@@ -8,6 +8,7 @@ import { quizCatalogHref } from "@/lib/programFilters";
 import { trackEvent, trackAssessmentCtaClick } from "@/lib/analytics";
 import { useBotCheck } from "@/lib/useBotCheck";
 import { MIN_FILL_TIME_MS } from "@/lib/botCheck";
+import { FormRefusal, submitFailure } from "@/lib/formRefusal";
 import { LEAD_SOURCE_FIELD } from "@/lib/leadSource";
 import { storedFirstTouch } from "@/lib/firstTouchBrowser";
 import { provisionalTierFor, selfEstimateToLevel, type SelfLevel } from "@/lib/level";
@@ -799,7 +800,7 @@ function IntakePageInner() {
   const bot = useBotCheck();
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(false);
+  const [submitError, setSubmitError] = useState<boolean | string>(false);
   // One entry per player the quiz was about (backlog #14).
   const [results, setResults] = useState<PersonResult[]>([]);
   // Field ids whose problems are on screen: added when Next is pressed or a
@@ -1014,7 +1015,7 @@ function IntakePageInner() {
           ...bot.payload(),
         }),
       });
-      if (!res.ok) throw new Error("Submission failed");
+      if (!res.ok) throw await submitFailure(res);
       // Signed in, the route answers with the ids of the people this quiz was
       // about, including anyone just added (backlog #24). Fold them into the
       // household so "Book Your Assessment" starts with the new player
@@ -1040,7 +1041,7 @@ function IntakePageInner() {
       setSubmitted(true);
     } catch (err) {
       console.error("Intake submission error:", err);
-      setSubmitError(true);
+      setSubmitError(err instanceof FormRefusal ? err.message : true);
     } finally {
       setSubmitting(false);
     }
@@ -1318,7 +1319,10 @@ function IntakePageInner() {
             ) : null}
           </div>
 
-          {submitError && (
+          {typeof submitError === "string" && (
+            <FormAlert className="mt-6">{submitError}</FormAlert>
+          )}
+          {submitError === true && (
             <FormAlert className="mt-6">
               Something went wrong and your answers weren&apos;t sent. Try again, or email us at
               info@tennisbootcamp.ca.

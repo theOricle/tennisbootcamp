@@ -11,6 +11,7 @@ import {
   reopenCohort,
   ensureCohortSessions,
   cohortMembers,
+  cohortPayments,
   adminMarkInvitePaid,
   adminMarkInviteUnpaid,
   inviteAmountDueCents,
@@ -46,10 +47,11 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     await ensureCohortSessions(id);
   }
 
-  const [rawInvites, sessions, members] = await Promise.all([
+  const [rawInvites, sessions, members, payments] = await Promise.all([
     listInvites(id),
     listSessions(id),
     cohortMembers(id),
+    cohortPayments(id),
   ]);
 
   // Amount still owed per unpaid invite (price − assessment credit) so the
@@ -73,6 +75,9 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     // Who has paid, by name, for the Cancel cohort confirmation (audit M30).
     paidPlayers: members.map((m) => m.participantName || m.email),
     paidCount: invites.filter((i) => i.status === "paid").length,
+    // Card payments by their state (backlog #84): a test payment is labelled
+    // a test and holds no seat.
+    payments,
   });
 }
 
