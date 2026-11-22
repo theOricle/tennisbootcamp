@@ -31,9 +31,9 @@ import { OPEN_GROUPS_HEADING, OpenGroupsList } from "@/components/sections/OpenG
 /** The wizard card's chrome, as the quiz's result screens draw it: flat on phones (audit L10). */
 const PANEL_CARD = "md:rounded-3xl md:border md:border-white/10 md:bg-white/5 md:p-8";
 
-/** The two paths, when a group has dates: pick one and enroll now (its card's button), or our coaches place the player from the quiz. */
+/** The two paths, when a group has dates: pick one and enroll now (its card's button), or let our coaches place the player from the quiz. */
 export function twoPathsLine(whom: string): string {
-  return `Pick a group with dates and enroll now, or our coaches place ${whom} from your quiz answers.`;
+  return `Pick a group with dates and enroll now, or let our coaches place ${whom} from your quiz answers.`;
 }
 
 export function AlreadyTakenPanel({

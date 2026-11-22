@@ -64,7 +64,7 @@ export const NEWSLETTER_ANCHOR = "notify";
  * nothing more. "Cohort", not "block": one name per thing (voice.md rule 7).
  * With an open block the lead reads "Pick your group and enroll."
  */
-export const PROGRAMS_NO_DATES_LINE = "The next dates are coming. Choose Notify me and we'll email you when a new cohort opens.";
+export const PROGRAMS_NO_DATES_LINE = "Dates for the next cohort are coming. Choose Notify me and we'll email you when it opens.";
 
 export type NavLink = { href: string; label: string };
 

@@ -317,7 +317,7 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   const panel = (cards: readonly GroupCard[], playerCount = 1, players: AgePlayer[] = []) =>
     render(createElement(AlreadyTakenPanel, { playerCount, cards, players, onAdd: () => {}, onRetake: () => {} }));
   const withBlocks = panel(all);
-  check("the quiz panel with open blocks: one line with the two paths, then Groups with dates and the cards", twoPathsLine("you") === "Pick a group with dates and enroll now, or our coaches place you from your quiz answers." && withBlocks.includes(`>${twoPathsLine("you")}</p>`) && withBlocks.includes(`>${OPEN_GROUPS_HEADING}</h2>`) && count(withBlocks, "<article") === 1 && />Enroll</.test(linkTo(withBlocks, "/enroll/beg-sun")));
+  check("the quiz panel with open blocks: one line with the two paths, then Groups with dates and the cards", twoPathsLine("you") === "Pick a group with dates and enroll now, or let our coaches place you from your quiz answers." && withBlocks.includes(`>${twoPathsLine("you")}</p>`) && withBlocks.includes(`>${OPEN_GROUPS_HEADING}</h2>`) && count(withBlocks, "<article") === 1 && />Enroll</.test(linkTo(withBlocks, "/enroll/beg-sun")));
   check("…never the by-approval block", !withBlocks.includes("High Performance Youth Bootcamp") && !withBlocks.includes("/enroll/hp"));
   check("…no card inside a card: the panel drops its own card while it lists cards", !withBlocks.includes("md:rounded-3xl"));
   check("…Enroll leads: the dashboard button is an outline beside it", lime(linkTo(withBlocks, "/enroll/beg-sun")) && linkTo(withBlocks, "/intake") !== "" && !lime(linkTo(withBlocks, "/intake")));
@@ -436,8 +436,8 @@ console.log("Every heading, count, day list and next-start line reads the cards 
   // promising what the newsletter line promises and nothing more.
   const programsSrc = read("src/app/programs/page.tsx");
   check("/programs: with an open block the lead says Pick your group and enroll, as the card's button does; with none it says dates are coming", programsSrc.includes("const anyOpen = openBlockCards(cards).length > 0;") && programsSrc.includes('{anyOpen ? "Pick your group and enroll." : PROGRAMS_NO_DATES_LINE}'));
-  check("…in one plain line: the next dates are coming, and Notify me brings an email when a new cohort opens", PROGRAMS_NO_DATES_LINE === `The next dates are coming. Choose ${NOTIFY_LABEL} and we'll email you when a new cohort opens.`);
-  check("…in words for any screen, with no tap and no click, and a promise exactly as narrow as the newsletter line it leads to", !/\b(tap|click|press)\b/i.test(PROGRAMS_NO_DATES_LINE) && PROGRAMS_NO_DATES_LINE.endsWith(" when a new cohort opens.") && read("src/components/sections/EmailCapture.tsx").includes("Be first to know when a new cohort opens."));
+  check("…in one plain line: dates for the next cohort are coming, and Notify me brings an email when it opens", PROGRAMS_NO_DATES_LINE === `Dates for the next cohort are coming. Choose ${NOTIFY_LABEL} and we'll email you when it opens.`);
+  check("…in words for any screen, with no tap and no click, and a promise exactly as narrow as the newsletter line it leads to", !/\b(tap|click|press)\b/i.test(PROGRAMS_NO_DATES_LINE) && PROGRAMS_NO_DATES_LINE.startsWith("Dates for the next cohort are coming.") && PROGRAMS_NO_DATES_LINE.endsWith(" we'll email you when it opens.") && read("src/components/sections/EmailCapture.tsx").includes("Be first to know when a new cohort opens."));
   check("…naming the cohort, not the block, and promising no spot, no hold and no date", !/\bblock\b|spot|hold|first|guarantee|soon/i.test(PROGRAMS_NO_DATES_LINE));
   // The programs' own words never contradict the cards (fix round 2): no
   // weekday and no count of groups or levels in a description, a search
