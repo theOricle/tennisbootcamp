@@ -19,6 +19,7 @@ import { TrackedLink } from "@/components/ui/TrackedButton";
 import { CalendarIcon, ClockIcon, PersonIcon } from "@/components/ui/icons";
 import { PinIcon } from "@/components/locations/LocationLine";
 import { LevelTag } from "@/components/tiers";
+import { NotifyLink } from "./NotifyLink";
 import { StatusChip } from "./ProgramCard";
 
 // One group as its own card (owner, 2026-10-12; one level per group and a
@@ -39,9 +40,11 @@ import { StatusChip } from "./ProgramCard";
 // and the optional assessment are said once on the page, under "Good to
 // know". No photo: the program's photograph identifies the program.
 //
-// One interactive element, the button, named for its group for assistive
-// tech ("Enroll in the Beginner Adult Bootcamp"), and described by the card's
-// dates, so two blocks of one group read apart. The states (groupStatus and
+// One interactive element, the button. "Enroll" and "Ask to join" are named
+// for assistive tech with the group and its block's dates ("Enroll in the
+// Beginner Adult Bootcamp, Jan 10 – Feb 14"), so two blocks of one group
+// sound apart; "Notify me" for what it does ("Notify me when a new cohort
+// opens"), and it puts the focus in the newsletter form's email field. The states (groupStatus and
 // groupAction, src/lib/programCatalog.ts): an open block, a lime "Enroll" to
 // its sign-up page (/enroll/{cohortId}), signed in or not; down to its last
 // spots, the warn chip and "Enroll"; full, an outline "Notify me"; by approval
@@ -90,22 +93,23 @@ function GroupButton({
   action,
   block,
   notifyHref,
-  describedBy,
   quiet = false,
 }: {
   action: GroupAction;
   block: BlockFacts | null;
   notifyHref: string;
-  describedBy?: string;
   quiet?: boolean;
 }) {
-  const href = action.kind === "notify" || !block ? notifyHref : `/enroll/${block.cohortId}`;
+  const className = `${buttonClass(action.kind === "join" && !quiet ? "primary" : "secondary")} ${BUTTON_SHAPE}`;
+  if (action.kind === "notify" || !block) {
+    return (
+      <NotifyLink href={notifyHref} className={className}>
+        <ButtonLabel action={action} />
+      </NotifyLink>
+    );
+  }
   return (
-    <Link
-      href={href}
-      aria-describedby={describedBy}
-      className={`${buttonClass(action.kind === "join" && !quiet ? "primary" : "secondary")} ${BUTTON_SHAPE}`}
-    >
+    <Link href={`/enroll/${block.cohortId}`} className={className}>
       <ButtonLabel action={action} />
     </Link>
   );
@@ -169,6 +173,30 @@ function ClassDays({ text }: { text: string }) {
   );
 }
 
+/** A class's time range, "4–5pm", "11am–12pm", "4:30–5:30pm", as formatClassHours writes it. */
+const TIME_RANGE = /(\d{1,2}(?::\d{2})?(?:am|pm)?–\d{1,2}(?::\d{2})?(?:am|pm))/;
+
+/**
+ * A line with its class times kept whole, so a range never breaks at its
+ * dash ("6–" over "7pm"), as on the cards: the program page's schedule line
+ * ("… · Sundays 4–5pm, 5–6pm and 6–7pm · Wednesdays 4–5pm").
+ */
+export function TimesKeptWhole({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(TIME_RANGE).map((part, i) =>
+        i % 2 === 1 ? (
+          <span key={i} className="whitespace-nowrap">
+            {part}
+          </span>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
 export function ProgramGroupCard({
   group: g,
   block = null,
@@ -179,9 +207,8 @@ export function ProgramGroupCard({
   const Title = headingLevel === 2 ? "h2" : headingLevel === 4 ? "h4" : "h3";
   const dated = block !== null;
   const status = groupStatus(g, block?.seatsLeft, dated);
-  const action = groupAction(g, status, dated);
+  const action = groupAction(g, status, dated, block?.dates);
   const location = locationById(g.locationId);
-  const datesId = `${g.id}-dates`;
 
   return (
     <article
@@ -207,7 +234,7 @@ export function ProgramGroupCard({
           <PersonIcon className={FACT_GLYPH} />
           {groupWhoLabel(g)}
         </li>
-        <li id={datesId} className={`flex items-start gap-2 ${dated ? "font-medium text-white" : "text-white/60"}`}>
+        <li className={`flex items-start gap-2 ${dated ? "font-medium text-white" : "text-white/60"}`}>
           <CalendarIcon className={FACT_GLYPH} />
           {block ? <DateRange text={block.dates} /> : DATES_COMING_SOON}
         </li>
@@ -231,7 +258,6 @@ export function ProgramGroupCard({
           action={action}
           block={block}
           notifyHref={notifyHref}
-          describedBy={dated ? datesId : undefined}
           quiet={quiet}
         />
       </div>

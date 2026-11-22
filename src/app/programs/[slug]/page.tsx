@@ -7,7 +7,7 @@ import type { Program } from "@/types/program";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { GoodToKnow } from "@/components/sections/GoodToKnow";
 import { JoinClosing } from "@/components/sections/JoinClosing";
-import { ProgramGroupCard } from "@/components/sections/ProgramGroupCard";
+import { ProgramGroupCard, TimesKeptWhole } from "@/components/sections/ProgramGroupCard";
 import { CHIP_NEUTRAL } from "@/components/sections/ProgramCard";
 import { Container } from "@/components/layout/Container";
 import { Heading } from "@/components/ui/Heading";
@@ -245,7 +245,9 @@ export default async function ProgramDetailPage({ params }: PageProps) {
             {/* ── Price, next cohort, quiz ────────────────────────────────── */}
             <div className="mt-6 rounded-2xl border border-[#B4E655]/20 bg-[#B4E655]/5 p-5">
               {scheduleLine && (
-                <p className="text-xs text-white/60">{scheduleLine}</p>
+                <p className="text-xs text-white/60">
+                  <TimesKeptWhole text={scheduleLine} />
+                </p>
               )}
               {priceLine && (
                 <p className="mt-3 text-sm text-white">{priceLine}</p>
@@ -436,8 +438,10 @@ export default async function ProgramDetailPage({ params }: PageProps) {
           <>
             <div className="mt-12 border-t border-white/10" />
             <div className="mt-10">
-              <div>
-                <h2 id="cohorts" className="scroll-mt-24 text-xl font-semibold text-white">
+              {/* The anchor wraps the heading and the form, so a card's
+                  "Notify me" finds the email field under it (NotifyLink). */}
+              <div id="cohorts" className="scroll-mt-24">
+                <h2 className="text-xl font-semibold text-white">
                   Upcoming cohorts
                 </h2>
                 {/* The groups above are real and open to join; the dated

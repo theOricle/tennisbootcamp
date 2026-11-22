@@ -102,7 +102,11 @@ export type GroupAction = {
   kind: GroupActionKind;
   /** The button's words: "Enroll", "Ask to join", "Notify me", "Ask about lessons". */
   label: string;
-  /** The rest of its accessible name, after the label: " in the Beginner Junior Bootcamp" (Enroll), " the …" (Ask to join). */
+  /**
+   * The rest of its accessible name, after the label: " in the Beginner
+   * Junior Bootcamp, Jan 10 – Feb 14" (Enroll), " the …, Jan 9 – Feb 13" (Ask
+   * to join), " when a new cohort opens" (Notify me).
+   */
   nameSuffix: string;
 };
 
@@ -128,6 +132,14 @@ export const ASK_TO_JOIN_LABEL = "Ask to join";
 /** The outline button of a full block, and of a planned group with no open block. */
 export const NOTIFY_LABEL = "Notify me";
 
+/**
+ * The rest of "Notify me"'s accessible name. The button leads to the
+ * newsletter form, which records an email and no group, so its name promises
+ * what that form promises ("Be first to know when a new cohort opens.") and
+ * names no group, no spot and no date.
+ */
+export const NOTIFY_NAME_SUFFIX = " when a new cohort opens";
+
 /** "the Beginner Junior Bootcamp" · "the One-to-one coaching group". */
 function groupNamed(name: string): string {
   return `the ${name}${/bootcamp$/i.test(name) ? "" : " group"}`;
@@ -140,18 +152,20 @@ function groupNamed(name: string): string {
  * join" on the outline of a by-approval or invite-only block; an outline
  * "Notify me" for a full block, and for a planned group with no open block
  * (`dated` false); and "Ask about lessons" for a group with no fixed class.
- * Each is named for its group for assistive tech ("Enroll in the Beginner
- * Adult Bootcamp", "Ask to join the High Performance Youth Bootcamp").
+ * Each is named for assistive tech: "Enroll" and "Ask to join" for their
+ * group and its block's dates ("Enroll in the Beginner Adult Bootcamp, Jan 10
+ * – Feb 14"), so two blocks of one group sound apart; "Notify me" for what it
+ * does ("Notify me when a new cohort opens").
  */
 export function groupAction(
   g: Pick<ProgramGroup, "name" | "status">,
   status: ProgramStatus | null,
-  dated = true
+  dated = true,
+  dates?: string
 ): GroupAction {
-  const named = groupNamed(g.name);
+  const named = `${groupNamed(g.name)}${dates ? `, ${dates}` : ""}`;
   if (g.status === "arranged") return { kind: "ask", label: "Ask about lessons", nameSuffix: "" };
-  if (!dated) return { kind: "notify", label: NOTIFY_LABEL, nameSuffix: ` when ${named} has dates` };
-  if (status?.kind === "full") return { kind: "notify", label: NOTIFY_LABEL, nameSuffix: ` when ${named} has a spot` };
+  if (!dated || status?.kind === "full") return { kind: "notify", label: NOTIFY_LABEL, nameSuffix: NOTIFY_NAME_SUFFIX };
   if (status?.kind === "approval" || status?.kind === "invite-only") {
     return { kind: "ask", label: ASK_TO_JOIN_LABEL, nameSuffix: ` ${named}` };
   }
@@ -258,9 +272,14 @@ function agesLine(label: string): string {
   return /^\d/.test(label) && !label.includes("and up") ? `Ages ${label}` : label.replace(/^up to/, "Ages up to");
 }
 
-/** "Ages 7–10" · "16 and up" · "Any age": who a group is for, the first plain line on its card. */
+/**
+ * "Ages 7–10" · "Ages 16 and up" · "Any age": who a group is for, the first
+ * plain line on its card. Its icon is decoration, so the line says "Ages"
+ * itself, an open top included.
+ */
 export function groupWhoLabel(g: Pick<ProgramGroup, "ageMin" | "ageMax">): string {
-  return agesLine(groupAgeLabel(g));
+  const label = groupAgeLabel(g);
+  return /^\d/.test(label) ? `Ages ${label}` : agesLine(label);
 }
 
 /** "Ages 7–17" · "16 and up" · "Any age": who a program is for, from its groups. */

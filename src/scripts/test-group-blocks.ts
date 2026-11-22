@@ -92,7 +92,7 @@ import { approvalGateApplies, approvalRefusal } from "../lib/enrollGate";
 import { nextStepFor, type NextStepInput } from "../lib/dashboardState";
 import { tierById } from "../lib/tiers";
 import { PROGRAMS_DESCRIPTION, PROGRAMS_NO_DATES_LINE } from "../content/site";
-import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
+import { ProgramGroupCard, TimesKeptWhole } from "../components/sections/ProgramGroupCard";
 import { NO_DATES_LINE, OPEN_GROUPS_HEADING, OpenGroupsList, noOpenGroupLine } from "../components/sections/OpenGroups";
 import { AlreadyTakenPanel, twoPathsLine } from "../components/quiz/AlreadyTakenPanel";
 import type { Cohort, SessionSlot } from "../types/cohort";
@@ -191,7 +191,7 @@ check("a block with no price set says so, never $0", blockPrice(block({ id: "fre
   check("once a week and twice read in parallel: the same words, only the count apart", onceRest === `for ${COHORT_WEEKS} classes over ${cohortLengthFor(COHORT_WEEKS)}` && twiceRest === `for ${COHORT_WEEKS * 2} classes over ${cohortLengthFor(COHORT_WEEKS)}` && onceRest.replace(/\d+/, "N") === twiceRest.replace(/\d+/, "N"));
   const html = render(createElement(ProgramGroupCard, { group: g("adult-newer"), block: blockFacts(twiceLong) }));
   const [lead, rest] = priceParts(blockPrice(twiceLong));
-  check("the card shows the total in bold over the class count and length, never a per-session figure", rest === "for 16 classes over eight weeks" && html.includes(`>${lead}</span>`) && html.includes(`>${rest}</span>`) && !/a session|per session|a class\b|per class/i.test(html) && !html.includes(SESSION_PRICE_LABEL) && count(html, "$") === 1);
+  check("the card shows the total in bold over the class count and length, never a per-session figure", rest === "for 16 classes over eight weeks" && html.includes(`>${lead}</span>`) && html.includes(`>${rest}</span>`) && !/a session|per session|a class\b|per class/i.test(words(html)) &&!html.includes(SESSION_PRICE_LABEL) && count(html, "$") === 1);
 }
 
 // ── 1. One rule for which group a block belongs to ──────────────────────────
@@ -285,21 +285,29 @@ console.log("Each card state, rendered");
   const button = (html: string) => html.match(/<a [^>]*>[\s\S]*?<\/a>/)?.[0] ?? "";
 
   const open = card("adult-newer", block({ id: "open" }));
-  check("open: Open to join, and a lime Enroll to the block's sign-up page, named Enroll in the group", open.includes("Open to join</span>") && lime(button(open)) && /href="\/enroll\/open"/.test(button(open)) && />Enroll<span class="sr-only"> in the Beginner Adult Bootcamp<\/span><\/a>$/.test(button(open)));
-  check("open: its four lines read who, the dates, the class days, where", words(open).includes("16 and up Jan 10 – Feb 14 Sundays 4–5pm Newtonbrook Tennis Club"));
-  check("the dates are the strongest line, white and medium; who stays a step softer", open.includes('<li id="adult-newer-dates" class="flex items-start gap-2 font-medium text-white">') && open.includes('<li class="flex items-start gap-2 text-white/90">'));
+  check("open: Open to join, and a lime Enroll to the block's sign-up page, named Enroll in the group", open.includes("Open to join</span>") && lime(button(open)) && /href="\/enroll\/open"/.test(button(open)) && />Enroll<span class="sr-only"> in the Beginner Adult Bootcamp, Jan 10 – Feb 14<\/span><\/a>$/.test(button(open)));
+  check("open: its four lines read who, the dates, the class days, where", words(open).includes("Ages 16 and up Jan 10 – Feb 14 Sundays 4–5pm Newtonbrook Tennis Club"));
+  check("the dates are the strongest line, white and medium; who stays a step softer", open.includes('<li class="flex items-start gap-2 font-medium text-white">') && open.includes('<li class="flex items-start gap-2 text-white/90">'));
   const twice = card("adult-newer", block({ id: "twice", sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] }));
   check("twice a week: one card, both days on its days line, the class count with the price", words(twice).includes("Sundays and Wednesdays 4–5pm") && count(twice, "<li") === 4 && twice.includes(` classes over ${cohortLengthFor(COHORT_WEEKS)}</span>`));
   const low = card("youth-11-15", youthBlock({ id: "low", levelMin: 2, levelMax: 2.5, sessions: [{ day: "Sat", start: "13:00", end: "14:00" }] }), 2);
   check("last spots: the warn chip with the count, and Enroll", low.includes(">2 spots left</span>") && low.includes("text-yellow-200") && lime(button(low)) && />Enroll</.test(button(low)));
   const full = card("adult-intermediate", block({ id: "full", levelMin: 3, levelMax: 3.5 }), 0);
-  check("full: Full, and an outline Notify me to the newsletter line, never the sign-up page", full.includes(">Full</span>") && !lime(button(full)) && /href="#notify"/.test(button(full)) && />Notify me<span class="sr-only"> when the Intermediate Adult Bootcamp has a spot<\/span>/.test(button(full)) && !full.includes("/enroll"));
+  check("full: Full, and an outline Notify me to the newsletter line, never the sign-up page", full.includes(">Full</span>") && !lime(button(full)) && /href="#notify"/.test(button(full)) && />Notify me<span class="sr-only"> when a new cohort opens<\/span>/.test(button(full)) && !full.includes("/enroll"));
   const hp = card("high-performance", youthBlock({ id: "hp", levelMin: 5, levelMax: 7, sessions: [{ day: "Sat", start: "14:00", end: "15:00" }] }));
-  check("by approval: By approval, and an outline Ask to join to the same sign-up page", hp.includes("By approval</span>") && !lime(button(hp)) && /href="\/enroll\/hp"/.test(button(hp)) && />Ask to join<span class="sr-only"> the High Performance Youth Bootcamp<\/span>/.test(button(hp)));
+  check("by approval: By approval, and an outline Ask to join to the same sign-up page", hp.includes("By approval</span>") && !lime(button(hp)) && /href="\/enroll\/hp"/.test(button(hp)) && />Ask to join<span class="sr-only"> the High Performance Youth Bootcamp, Jan 9 – Feb 13<\/span>/.test(button(hp)));
   const dateless = card("youth-7-10", null);
   check("no open block: Dates coming soon where the dates go", DATES_COMING_SOON === "Dates coming soon" && dateless.includes(`</svg>${DATES_COMING_SOON}</li>`) && words(dateless).includes("Ages 7–10 Dates coming soon Saturdays 12–1pm Newtonbrook Tennis Club"));
-  check("…its button names the group and what it waits for", !lime(button(dateless)) && /href="#notify"/.test(button(dateless)) && />Notify me<span class="sr-only"> when the Beginner Junior Bootcamp has dates<\/span>/.test(button(dateless)) && !dateless.includes("Open to join") && !dateless.includes("/enroll"));
-  check("every button is named for its group and a dated one is described by its dates", /aria-describedby="adult-newer-dates"/.test(button(open)) && !/aria-describedby/.test(button(dateless)));
+  check("…its button says what it does: the newsletter, which records no group", !lime(button(dateless)) && /href="#notify"/.test(button(dateless)) && />Notify me<span class="sr-only"> when a new cohort opens<\/span>/.test(button(dateless)) && !dateless.includes("Open to join") && !dateless.includes("/enroll"));
+  check("a dated button carries its dates in its own name, so two blocks of one group sound apart", button(open).includes(", Jan 10 – Feb 14</span>") && button(twice).includes(", Jan 10 – Feb 17</span>") && words(button(open)) !== words(button(twice)), words(button(twice)));
+  check("…and no button carries a description or a dates id any more", [open, twice, low, full, hp, dateless].every((html) => !/aria-describedby|id="[^"]*-dates"/.test(html)));
+  // Fix round 4: "Notify me" lands where the visitor types. NotifyLink moves
+  // the focus into the email field of the form it points at, the footer's
+  // line or a program page's own; without scripts, or with no field there,
+  // it stays the plain jump.
+  const notifySrc = read("src/components/sections/NotifyLink.tsx");
+  check("Notify me puts the focus in the form's email field, the plain jump kept without scripts or a field", notifySrc.startsWith('"use client"') && notifySrc.includes(`querySelector<HTMLInputElement>('input[type="email"]')`) && notifySrc.includes("field.focus({ preventScroll: true })") && notifySrc.includes("event.preventDefault()") && notifySrc.includes("<a href={href}") && notifySrc.indexOf("if (!form || !field") < notifySrc.indexOf("event.preventDefault()"));
+  check("…every Notify me is that link, and each form it points at holds the email field", read("src/components/sections/ProgramGroupCard.tsx").includes("<NotifyLink href={notifyHref}") && read("src/components/layout/Footer.tsx").includes("id={NEWSLETTER_ANCHOR}") && /<div id="cohorts" className="scroll-mt-24">[\s\S]*?<EmailCapture /.test(read("src/app/programs/[slug]/page.tsx")) && read("src/components/sections/EmailCapture.tsx").includes('type="email"'));
   check("one link per card in every state", [open, twice, low, full, hp, dateless].every((html) => count(html, "<a ") === 1));
   const quiet = card("adult-newer", block({ id: "open" }), undefined, true);
   check("drawn quiet (the dashboard), Enroll is an outline, the same words to the same page", !lime(button(quiet)) && /href="\/enroll\/open"/.test(button(quiet)) && />Enroll</.test(button(quiet)));
@@ -403,13 +411,17 @@ console.log("Every heading, count, day list and next-start line reads the cards 
   const youthPlanned = programGroups.filter((x) => x.programSlug === "youth-programs");
   const adultPlanned = programGroups.filter((x) => x.programSlug === "bootcamps");
   const ordinaryYouth = groupCards(youthPlanned, []);
-  check("the ordinary lineup reads as before", cardsHeading(ordinaryYouth) === "Three groups on Saturdays" && cardsScheduleLine(ordinaryYouth) === `${COHORT_LENGTH_ADJ.charAt(0).toUpperCase()}${COHORT_LENGTH_ADJ.slice(1)} cohorts · Saturdays 12:00, 1:00 and 2:00` && cardsProgramLine(ordinaryYouth) === "Saturdays · ages 7–17" && cardsNextStart(ordinaryYouth) === null);
+  check("the ordinary lineup reads as before", cardsHeading(ordinaryYouth) === "Three groups on Saturdays" && cardsScheduleLine(ordinaryYouth) === `${COHORT_LENGTH_ADJ.charAt(0).toUpperCase()}${COHORT_LENGTH_ADJ.slice(1)} cohorts · Saturdays 12–1pm, 1–2pm and 2–3pm` && cardsProgramLine(ordinaryYouth) === "Saturdays · ages 7–17" && cardsNextStart(ordinaryYouth) === null);
   const intermediateYouth = youthBlock({ id: "int-youth", startDate: "2026-12-05", levelMin: 3, levelMax: 3.5, sessions: [{ day: "Sat", start: "15:00", end: "16:00" }, { day: "Wed", start: "18:00", end: "19:00" }] });
   const novice = youthBlock({ id: "nov", levelMin: 2, levelMax: 2.5, sessions: [{ day: "Sat", start: "13:00", end: "14:00" }] });
   const youth = groupCards(youthPlanned, [novice, intermediateYouth]);
   check("a block off the lineup counts, and its days join the list", cardsHeading(youth) === "Four groups on Saturdays and Wednesdays" && cardsDaysLabel(youth) === "Saturdays and Wednesdays" && cardsProgramLine(youth) === "Saturdays and Wednesdays · ages 7–17");
   check("the next start is the earliest first class the cards show", cardsNextStart(youth) === "2026-12-05");
-  check("the schedule line lists each day's starts, earliest first", cardsScheduleLine(youth).endsWith(" · Saturdays 12:00, 1:00, 2:00 and 3:00 · Wednesdays 6:00"), cardsScheduleLine(youth));
+  check("the schedule line lists each day's classes, earliest first, in the cards' own time style", cardsScheduleLine(youth).endsWith(" · Saturdays 12–1pm, 1–2pm, 2–3pm and 3–4pm · Wednesdays 6–7pm"), cardsScheduleLine(youth));
+  check("…the same words the cards use, so the box and the cards never read two styles", !/\b\d{1,2}:00\b/.test(cardsScheduleLine(youth)) && cardsScheduleLine(youth).includes(groupClassDays(g("youth-7-10")).replace("Saturdays ", "")));
+  // On a phone the box's line wraps, but a time range never breaks at its dash, as on the cards.
+  const keptWhole = render(createElement(TimesKeptWhole, { text: cardsScheduleLine(youth) }));
+  check("…and on a phone each class time stays whole, a range never broken at its dash", count(keptWhole, '<span class="whitespace-nowrap">') === 5 && keptWhole.replace(/<[^>]+>/g, "") === cardsScheduleLine(youth) && count(render(createElement(TimesKeptWhole, { text: "Sundays 11am–12pm, 4:30–5:30pm" })), '<span class="whitespace-nowrap">') === 2 && read("src/app/programs/[slug]/page.tsx").includes("<TimesKeptWhole text={scheduleLine} />"));
   check("the level tags follow the cards: a block at a level the lineup lacks adds its tag", JSON.stringify(cardsLevelTags(youth)) === "[1,2,3,5]" && JSON.stringify(cardsLevelTags(ordinaryYouth)) === "[1,2,5]");
   const adult = groupCards(adultPlanned, [block({ id: "a1" }), block({ id: "a2", startDate: "2027-02-21", sessions: [{ day: "Sun", start: "16:00", end: "17:00" }, { day: "Wed", start: "16:00", end: "17:00" }] })]);
   check("two blocks of one group are one group with two date options: three groups over four cards", adult.length === 4 && cardsHeading(adult) === "Three groups on Sundays and Wednesdays" && cardsNextStart(adult) === "2027-01-10");

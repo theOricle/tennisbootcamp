@@ -10,11 +10,11 @@ import {
   cohortMatchesGroup,
   formatBlockDates,
   formatClassDays,
+  formatClassHours,
   joinDays,
   programHeadingLine,
   programLevelTags,
   programWhoLabel,
-  twelveHourStart,
 } from "@/lib/programCatalog";
 import { tierById, type TierId } from "@/lib/tiers";
 import {
@@ -415,27 +415,30 @@ export function cardsNextStart(cards: readonly GroupCard[]): string | null {
 }
 
 /**
- * "{Length}-week cohorts · Saturdays 12:00, 1:00 and 2:00": a program's schedule
- * line, from its cards: each day their classes run on, in the order it first
- * comes, with that day's class starts, earliest first. The cohort length is
- * the setting's.
+ * "{Length}-week cohorts · Saturdays 12–1pm, 1–2pm and 2–3pm": a program's
+ * schedule line, from its cards: each day their classes run on, in the order
+ * it first comes, with that day's classes, earliest first, in the cards' own
+ * time style (formatClassHours). The cohort length is the setting's.
  */
 export function cardsScheduleLine(cards: readonly GroupCard[]): string {
-  const startsByDay = new Map<string, Set<string>>();
+  const classesByDay = new Map<string, Map<string, string>>();
   for (const card of cards) {
     const classes = card.block
-      ? card.block.weekly.map((s) => ({ day: classDayPlural(s.day), start: s.start }))
-      : card.group.day && card.group.start
-        ? [{ day: `${card.group.day}s`, start: card.group.start }]
+      ? card.block.weekly.map((s) => ({ day: classDayPlural(s.day), start: s.start, end: s.end }))
+      : card.group.day && card.group.start && card.group.end
+        ? [{ day: `${card.group.day}s`, start: card.group.start, end: card.group.end }]
         : [];
-    for (const { day, start } of classes) {
-      const starts = startsByDay.get(day) ?? new Set<string>();
-      starts.add(start.slice(0, 5));
-      startsByDay.set(day, starts);
+    for (const { day, start, end } of classes) {
+      const times = classesByDay.get(day) ?? new Map<string, string>();
+      times.set(`${start.slice(0, 5)}-${end.slice(0, 5)}`, formatClassHours(start, end));
+      classesByDay.set(day, times);
     }
   }
   const lead = `${COHORT_LENGTH_ADJ} cohorts`;
-  const days = [...startsByDay].map(([day, starts]) => `${day} ${joinDays([...starts].sort().map(twelveHourStart))}`);
+  const days = [...classesByDay].map(([day, times]) => {
+    const ordered = [...times].sort(([a], [b]) => a.localeCompare(b)).map(([, hours]) => hours);
+    return `${day} ${joinDays(ordered)}`;
+  });
   return [`${lead.charAt(0).toUpperCase()}${lead.slice(1)}`, ...days].join(" · ");
 }
 

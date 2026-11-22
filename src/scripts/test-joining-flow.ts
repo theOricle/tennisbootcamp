@@ -178,14 +178,14 @@ const openCard = cardFor(group("adult-newer"), sampleBlock("adult-beg-winter", "
 const datelessCard = cardFor(group("adult-newer"));
 check("no scheduled card carries the promise or a Week 1 row", scheduled.every((g) => !cardFor(g).includes(RIGHT_GROUP_PROMISE_SHORT) && !cardFor(g).includes(RIGHT_GROUP_PROMISE) && !cardFor(g).includes("Week 1")));
 check("no card carries a Join row or the approval line", scheduled.every((g) => !cardFor(g).includes(APPROVAL_LINE) && !cardFor(g).includes(APPROVAL_ASK_LINE) && !cardFor(g).includes("<dt")));
-check("High Performance: the By approval chip and an outline Ask to join, named for the group", hpCard.includes("By approval") && />Ask to join<span class="sr-only"> the High Performance Youth Bootcamp<\/span><\/a>/.test(hpCard) && !/<a [^>]*bg-\[#B4E655\]/.test(hpCard));
+check("High Performance: the By approval chip and an outline Ask to join, named for the group", hpCard.includes("By approval") && />Ask to join<span class="sr-only"> the High Performance Youth Bootcamp, Jan 9 – Feb 13<\/span><\/a>/.test(hpCard) && !/<a [^>]*bg-\[#B4E655\]/.test(hpCard));
 // Re-pinned for backlog #85 (owner, 2026-11-19): the open block's lime button
 // reads "Enroll" (owner, 2026-11-20; "Join" in the first pictures), with its
 // sign-up page and payment behind it (backlog #71 had it read "Ask to join"
 // while it opened the quiz).
-check("an open block: the Open to join chip and a lime Enroll, named for the group", openCard.includes("Open to join") && /<a [^>]*bg-\[#B4E655\][^>]*>Enroll<span class="sr-only"> in the Beginner Adult Bootcamp<\/span><\/a>/.test(openCard) && !openCard.includes(">Ask to join<"));
+check("an open block: the Open to join chip and a lime Enroll, named for the group", openCard.includes("Open to join") && /<a [^>]*bg-\[#B4E655\][^>]*>Enroll<span class="sr-only"> in the Beginner Adult Bootcamp, Jan 10 – Feb 14<\/span><\/a>/.test(openCard) && !openCard.includes(">Ask to join<"));
 check("still one link per card: Enroll and Ask to join open the block's sign-up page, where it is paid for or, by approval, asked for", count(hpCard, "<a ") === 1 && count(openCard, "<a ") === 1 && hpCard.includes('href="/enroll/hp-winter"') && openCard.includes('href="/enroll/adult-beg-winter"') && !hpCard.includes("/intake") && !openCard.includes("/intake"));
-check("a group with no open block: Dates coming soon and an outline Notify me (owner, 2026-11-20)", datelessCard.includes("Dates coming soon</li>") && /<a [^>]*href="#notify"[^>]*>Notify me<span class="sr-only"> when the Beginner Adult Bootcamp has dates<\/span><\/a>/.test(datelessCard) && !datelessCard.includes("/enroll") && !datelessCard.includes("Open to join"));
+check("a group with no open block: Dates coming soon and an outline Notify me (owner, 2026-11-20)", datelessCard.includes("Dates coming soon</li>") && /<a [^>]*href="#notify"[^>]*>Notify me<span class="sr-only"> when a new cohort opens<\/span><\/a>/.test(datelessCard) && !datelessCard.includes("/enroll") && !datelessCard.includes("Open to join"));
 // The line beside the High Performance row describes its button: the block's
 // sign-up page stops a walk-in with its approval step, which is the quiz.
 check("Good to know still says what asking is, beside the by-approval group: the quiz, then our coaches' approval", APPROVAL_ASK_LINE.startsWith("Ask to join: it is the 2-minute quiz") && hpCard.includes(">Ask to join<") && openCard.includes(">Enroll<"));
