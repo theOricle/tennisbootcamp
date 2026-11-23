@@ -42,6 +42,7 @@ import {
   type DashSession,
   type NextStepInput,
 } from "../lib/dashboardState";
+import { cardPaidNote, duplicatePaymentNote, duplicateReversedNote, reversalNote } from "../lib/stripeOutcome";
 import {
   BOOKING_STATUS_LABELS,
   COHORT_STATUS_LABELS,
@@ -372,6 +373,56 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
     "the holder's lapsed row and a newer row in their name count once",
     [holderTwice.headline, holderTwice.detail.startsWith(`${formatDollars(COHORT_TOTAL)} to`), holderTwice.detail.includes("“Dana Chen – Fall Saturday”")],
     ["Our coaches are confirming your e-transfer.", true, true]
+  );
+
+  // Backlog #84, fix round 2: a card payment and its refund write their own
+  // lines in front of the invite's note. They are never a player's name.
+  const refundedMark = reversalNote("refunded", cardPaidNote("cs_live_a1", null));
+  const markOnly = nextStepFor(
+    base({ roster: [parent], voice: "you", invites: [invite({ participant_id: null, payment_note: refundedMark, payment_method: "etransfer" })] })
+  );
+  check("the note a refunded card payment leaves is only marks", refundedMark, "Card payment refunded in Stripe · Paid by card (Stripe cs_live_a1)");
+  check("a refunded invite whose note is only the mark names nobody: it is the holder's", markOnly.headline, "Our coaches are confirming your e-transfer.");
+  check("…and no payment mark reaches the card or the memo", /Stripe|Paid by card|refunded|cs_live/.test(`${markOnly.headline} ${markOnly.detail}`), false);
+  check("…it reads exactly as a row with no note does", [markOnly.headline, markOnly.detail], [nameless.headline, nameless.detail]);
+  const paidMarkOnly = nextStepFor(
+    base({ roster: [parent], voice: "you", invites: [invite({ participant_id: null, payment_note: cardPaidNote("cs_live_a1", null), payment_method: "etransfer" })] })
+  );
+  check("the same for a note that is only the card payment's line", [paidMarkOnly.headline, paidMarkOnly.detail], [nameless.headline, nameless.detail]);
+  const markAndName = nextStepFor(
+    base({
+      roster: [parent],
+      voice: "you",
+      invites: [invite({ participant_id: null, payment_note: reversalNote("refunded", cardPaidNote("cs_live_a1", "Maya Chen")), payment_method: "etransfer" })],
+    })
+  );
+  check(
+    "a refunded invite with the mark and a name names that player, in the headline and the memo",
+    [markAndName.headline, markAndName.detail.includes("“Maya Chen – Fall Saturday”"), /Stripe|Paid by card|refunded|cs_live/.test(markAndName.detail)],
+    ["Our coaches are confirming the e-transfer for Maya.", true, false]
+  );
+  const secondPayment = nextStepFor(
+    base({
+      roster: [parent],
+      voice: "you",
+      invites: [invite({ participant_id: null, payment_note: duplicateReversedNote("refunded", "cs_live_b2", duplicatePaymentNote("cs_live_b2", "Leo Chen")), payment_method: "etransfer" })],
+    })
+  );
+  check("the second-payment lines are not a name either", [secondPayment.headline, secondPayment.detail.includes("“Leo Chen – Fall Saturday”")], ["Our coaches are confirming the e-transfer for Leo.", true]);
+  const markedAndPlain = nextStepFor(
+    base({
+      roster: [parent],
+      voice: "you",
+      invites: [
+        invite({ id: "inv_old", participant_id: null, payment_note: reversalNote("refunded", cardPaidNote("cs_live_a1", "Maya Chen")), status: "expired", expires_at: "2026-10-05T22:00:00.000Z", payment_method: "etransfer" }),
+        invite({ id: "inv_new", participant_id: null, payment_note: "Maya Chen", token: "tok789", payment_method: "etransfer" }),
+      ],
+    })
+  );
+  check(
+    "a marked row and a plain row for one player still count once",
+    [markedAndPlain.headline, markedAndPlain.detail.startsWith(`${formatDollars(COHORT_TOTAL)} to`)],
+    ["Our coaches are confirming the e-transfer for Maya.", true]
   );
   check("etransferTotalCents: a missing amount counts the cohort price", etransferTotalCents([{ amountDueCents: null }, { amountDueCents: PRICE - 2000 }], PRICE), PRICE * 2 - 2000);
   check(

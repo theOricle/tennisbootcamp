@@ -61,6 +61,7 @@ import {
   duplicateReversedNote,
   noteNamesDuplicate,
   noteSettledBy,
+  noteWithoutMarks,
   paidInviteHit,
   reversalNote,
   reversalReleasesInvite,
@@ -1433,6 +1434,49 @@ sections.push(async function round2RowMismatch() {
     check("records it cannot read still give the try back", /if \(sheet\.status === "error"\) \{\s*await ticket\.release\(\);/.test(route));
     check("a full cohort still gives the try back", /seatsRefuse\(seatsRemaining, players\.length\)\) \{\s*await ticket\.release\(\);/.test(route));
     check("a declined invite still gives the try back", /decision\.kind === "refuse"\) \{\s*await ticket\.release\(\);/.test(route));
+  }
+});
+
+//   R3. The dashboard never reads a payment mark as a player's name.
+
+sections.push(function round2NoteMarks() {
+  console.log("R3. noteWithoutMarks — what a payment note says once this module's own lines are out");
+  {
+    check("a name alone is the name", noteWithoutMarks("Maya Chen"), "Maya Chen");
+    check("spaces aside", noteWithoutMarks("  Maya Chen  "), "Maya Chen");
+    check("no note, or an empty one, names nobody", [noteWithoutMarks(null), noteWithoutMarks(undefined), noteWithoutMarks(""), noteWithoutMarks("   ")], [null, null, null, null]);
+
+    // Every writer, on an empty note and on a name: the reader takes out
+    // exactly what each one writes.
+    const writers: [string, (existing: string | null) => string][] = [
+      ["a card payment", (e) => cardPaidNote("cs_live_a1", e)],
+      ["a test card payment", (e) => cardPaidNote("cs_test_a1B2c3", e)],
+      ["a second card payment", (e) => duplicatePaymentNote("cs_live_b2", e)],
+      ["a second payment refunded", (e) => duplicateReversedNote("refunded", "cs_live_b2", duplicatePaymentNote("cs_live_b2", e))],
+      ["a second payment disputed", (e) => duplicateReversedNote("disputed", "cs_live_b2", duplicatePaymentNote("cs_live_b2", e))],
+      ["a second payment refunded, on a note that never named it", (e) => duplicateReversedNote("refunded", "cs_live_b2", e)],
+      ["a refund", (e) => reversalNote("refunded", e)],
+      ["a dispute", (e) => reversalNote("disputed", e)],
+      ["a card payment, then its refund", (e) => reversalNote("refunded", cardPaidNote("cs_live_a1", e))],
+      ["paid, refunded, paid again, a second payment and its refund", (e) => duplicateReversedNote("refunded", "cs_live_d4", duplicatePaymentNote("cs_live_d4", cardPaidNote("cs_live_c3", reversalNote("refunded", cardPaidNote("cs_live_a1", e)))))],
+    ];
+    for (const [what, write] of writers) {
+      check(`${what}: a note that is only the mark names nobody`, noteWithoutMarks(write(null)), null);
+      check(`${what}: with a name, the name is what is left`, noteWithoutMarks(write("Maya Chen")), "Maya Chen");
+    }
+    check("the coach's own words beside a name are kept as they are", noteWithoutMarks(cardPaidNote("cs_live_a1", "Maya Chen · sent Friday")), "Maya Chen · sent Friday");
+    check("only a whole line this module writes is removed", [noteWithoutMarks("Paid by card"), noteWithoutMarks("Paid by card (Stripe cs_live_a1) twice"), noteWithoutMarks("Card payment refunded in Stripe, says Dana")], ["Paid by card", "Paid by card (Stripe cs_live_a1) twice", "Card payment refunded in Stripe, says Dana"]);
+    check("the marks still do their own job on the same note", [noteSettledBy(cardPaidNote("cs_live_a1", "Maya Chen")), noteNamesDuplicate(duplicatePaymentNote("cs_live_b2", "Maya Chen"), "cs_live_b2")], ["cs_live_a1", true]);
+  }
+
+  console.log("R3. Source — the dashboard reads the name through the one helper, beside the writers");
+  {
+    const dash = read("src/lib/dashboardState.ts");
+    check("the waiting e-transfer card reads the note with the marks removed", dash.includes("const note = noteWithoutMarks(i.payment_note);"));
+    check("…and nowhere reads the raw note", (dash.match(/\.payment_note/g) ?? []).length, 1);
+    const outcome = read("src/lib/stripeOutcome.ts");
+    check("the helper sits with the code that writes the marks", outcome.includes("export function noteWithoutMarks(") && outcome.includes("export function cardPaidNote(") && outcome.includes("export function reversalNote("));
+    check("each line is built once, for its writer and for the reader", ["settledLine(sessionId)", "duplicateLine(sessionId)", "duplicateReversedLine(kind, sessionId)", "reversalLine(kind)", "settledLine(SESSION_SLOT)", "duplicateLine(SESSION_SLOT)", "duplicateReversedLine(kind, SESSION_SLOT), reversalLine(kind)"].every((use) => outcome.includes(use)));
   }
 });
 

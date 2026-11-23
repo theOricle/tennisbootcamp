@@ -295,16 +295,26 @@ export function throwOnFailedWrite(
 
 const STRIPE_SESSION = "cs_[A-Za-z0-9_]+";
 const SETTLED_MARK = new RegExp(`Paid by card \\(Stripe (${STRIPE_SESSION})\\)`);
+const NOTE_SEPARATOR = " · ";
+
+// The lines this module writes into a note, each built in one place: the
+// writers below put them there, and noteWithoutMarks takes exactly these out.
+const settledLine = (sessionId: string) => `Paid by card (Stripe ${sessionId})`;
 const duplicateMark = (sessionId: string) => `Second card payment on this invite (Stripe ${sessionId})`;
+const duplicateLine = (sessionId: string) => `${duplicateMark(sessionId)}: refund it in Stripe if it was a mistake`;
+const duplicateReversedLine = (kind: ReversalKind, sessionId: string) =>
+  `Second card payment ${kind} in Stripe (${sessionId})`;
+const reversalLine = (kind: ReversalKind) =>
+  kind === "refunded" ? "Card payment refunded in Stripe" : "Card payment disputed in Stripe";
 
 function noteWith(line: string, existing: string | null | undefined): string {
   const rest = (existing ?? "").trim();
-  return (rest ? `${line} · ${rest}` : line).slice(0, 500);
+  return (rest ? `${line}${NOTE_SEPARATOR}${rest}` : line).slice(0, 500);
 }
 
 /** The note a card payment writes with the flip that settles an invite. */
 export function cardPaidNote(sessionId: string, existing: string | null | undefined): string {
-  return noteWith(`Paid by card (Stripe ${sessionId})`, existing);
+  return noteWith(settledLine(sessionId), existing);
 }
 
 /** The Stripe session that last settled this invite by card, or null when its note names none. */
@@ -315,7 +325,7 @@ export function noteSettledBy(note: string | null | undefined): string | null {
 
 /** The note that tells the coach a second card payment came through a paid invite. */
 export function duplicatePaymentNote(sessionId: string, existing: string | null | undefined): string {
-  return noteWith(`${duplicateMark(sessionId)}: refund it in Stripe if it was a mistake`, existing);
+  return noteWith(duplicateLine(sessionId), existing);
 }
 
 /** Whether the note already names this session as a second payment. */
@@ -363,12 +373,12 @@ export function duplicateReversedNote(
   sessionId: string,
   existing: string | null | undefined
 ): string {
-  const line = `Second card payment ${kind} in Stripe (${sessionId})`;
+  const line = duplicateReversedLine(kind, sessionId);
   const note = existing ?? "";
   const start = note.indexOf(duplicateMark(sessionId));
   if (start === -1) return noteWith(line, note);
   // Replace that payment's own line, up to the next one.
-  const next = note.indexOf(" · ", start);
+  const next = note.indexOf(NOTE_SEPARATOR, start);
   return `${note.slice(0, start)}${line}${next === -1 ? "" : note.slice(next)}`.slice(0, 500);
 }
 
@@ -378,7 +388,36 @@ export function duplicateReversedNote(
  * coach's words), so nothing is lost. Capped like every payment note.
  */
 export function reversalNote(kind: ReversalKind, existing: string | null | undefined): string {
-  const line = kind === "refunded" ? "Card payment refunded in Stripe" : "Card payment disputed in Stripe";
-  const rest = (existing ?? "").trim();
-  return (rest ? `${line} · ${rest}` : line).slice(0, 500);
+  return noteWith(reversalLine(kind), existing);
+}
+
+/** A stand-in for the Stripe session while a line is turned into its pattern. */
+const SESSION_SLOT = "@@session@@";
+const REVERSAL_KINDS: readonly ReversalKind[] = ["refunded", "disputed"];
+
+/** Every line the writers above put into a note, each as a whole-line pattern. */
+const MARK_LINES: readonly RegExp[] = [
+  settledLine(SESSION_SLOT),
+  duplicateLine(SESSION_SLOT),
+  ...REVERSAL_KINDS.flatMap((kind) => [duplicateReversedLine(kind, SESSION_SLOT), reversalLine(kind)]),
+].map((line) => {
+  const literal = line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${literal.replace(SESSION_SLOT, STRIPE_SESSION)}$`);
+});
+
+/**
+ * A payment note with the lines above taken out: what the family or the
+ * coach wrote there (the player's name from an e-transfer intent, the coach's
+ * words), or null when the note holds nothing else. A reader that takes the
+ * note for a name reads it through here (fix round 2): a note that is only a
+ * payment mark names nobody, so "Paid by card (Stripe cs_…)" is never shown
+ * as a player or put in an e-transfer memo. Only whole lines this module
+ * writes are removed; anything else is kept as it is.
+ */
+export function noteWithoutMarks(note: string | null | undefined): string | null {
+  const kept = (note ?? "")
+    .split(NOTE_SEPARATOR)
+    .map((part) => part.trim())
+    .filter((part) => part && !MARK_LINES.some((mark) => mark.test(part)));
+  return kept.length > 0 ? kept.join(NOTE_SEPARATOR) : null;
 }

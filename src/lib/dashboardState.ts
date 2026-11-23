@@ -17,6 +17,7 @@ import type { Cohort } from "@/types/cohort";
 import { formatDollars, numberInWords } from "@/content/programs";
 import { dayNameForDate } from "@/lib/makeup";
 import { etransferMemo } from "@/lib/paymentTransitions";
+import { noteWithoutMarks } from "@/lib/stripeOutcome";
 import { formatTierSpan, hasLevel } from "@/lib/tiers";
 import { firstNameOf, namesList, possessive, type RosterPlayer } from "@/lib/householdView";
 
@@ -51,7 +52,9 @@ export type DashInvite = {
   participant_id?: string | null;
   /**
    * The player's name as the e-transfer intent wrote it (backlog #38), for an
-   * invite that names no participant (a signed-out enroll).
+   * invite that names no participant (a signed-out enroll). A card payment
+   * and its refund write their own lines in front of it; the name is read
+   * with those removed (noteWithoutMarks, src/lib/stripeOutcome.ts).
    */
   payment_note?: string | null;
   /** Price minus the player's unused $20, for an unpaid invite. */
@@ -420,7 +423,9 @@ export function nextStepFor(input: NextStepInput): NextStep {
     >();
     for (const i of waiting) {
       if (i.cohort_id !== cohort.id) continue;
-      const note = i.payment_note?.trim() || null;
+      // The name in the note, never a payment mark: a card payment and its
+      // refund write their own lines in front of it (noteWithoutMarks).
+      const note = noteWithoutMarks(i.payment_note);
       const player = playerFor(roster, { participantId: i.participant_id, name: note });
       const who = whose(input, player, note);
       // "self" only for a row tied to the holder by player or note. Two rows
