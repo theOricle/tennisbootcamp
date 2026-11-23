@@ -7,7 +7,10 @@ import { normTime, type BlockRow, type BookingRow } from "@/lib/assessments";
 import { planMarkUnpaid, type InviteStatus } from "@/lib/paymentTransitions";
 import {
   bookingReversalPatch,
+  duplicateReversedNote,
+  noteNamesDuplicate,
   reversalNote,
+  reversalReleasesInvite,
   reverseFrom,
   writeBookingState,
   type ReversalKind,
@@ -103,7 +106,8 @@ async function reverseEnrollment(
     cohortId,
     meta.inviteId ?? "",
     csv(meta.participantIds),
-    kind
+    kind,
+    { sessionId, livemode }
   );
 
   console.log(
@@ -124,14 +128,21 @@ type PaidInvite = {
  * paid, and never one paid by e-transfer (a card refund is not the coach's
  * mark). The hold comes back as invited while it still runs, else expired
  * (planMarkUnpaid), and the note says why.
+ *
+ * Only what its own payment settled (safety review; reversalReleasesInvite):
+ * the invite's note names the session that paid for it, so the refund of a
+ * second payment through the same invite leaves it paid, because the first
+ * payment stands, and only rewrites that payment's line for the coach. A
+ * test-mode event releases nothing: a test payment settles no invite.
  */
 async function releaseCardInvites(
   cohortId: string,
   inviteId: string,
   participantIds: string[],
-  kind: ReversalKind
+  kind: ReversalKind,
+  payment: { sessionId: string; livemode: boolean }
 ): Promise<number> {
-  if (!cohortId || !supabaseConfigured()) return 0;
+  if (!cohortId || !supabaseConfigured() || !payment.livemode) return 0;
   const supabase = createServiceClient();
   const paidByCard = () =>
     supabase
@@ -158,6 +169,16 @@ async function releaseCardInvites(
 
   let released = 0;
   for (const invite of targets) {
+    if (noteNamesDuplicate(invite.payment_note, payment.sessionId)) {
+      // The second payment went back; the invite stays paid by the first.
+      await supabase
+        .from("cohort_invites")
+        .update({ payment_note: duplicateReversedNote(kind, payment.sessionId, invite.payment_note) })
+        .eq("id", invite.id)
+        .eq("status", "paid");
+      continue;
+    }
+    if (!reversalReleasesInvite(invite.payment_note, payment.sessionId, payment.livemode)) continue;
     const plan = planMarkUnpaid(invite, new Date());
     if (!plan.ok) continue;
     const { data } = await supabase

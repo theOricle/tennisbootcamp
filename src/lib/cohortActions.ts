@@ -50,6 +50,13 @@ import { etransferRowPlan } from "@/lib/enrollGate";
 import { ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
 import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
+import {
+  cardPaidNote,
+  duplicatePaymentNote,
+  noteNamesDuplicate,
+  noteSettledBy,
+  paidInviteHit,
+} from "@/lib/stripeOutcome";
 
 // Server-side cohort operations (Phase 3): invite flow with expiring holds,
 // minimum-to-run confirmation, session generation, and cancellation → make-up
@@ -644,7 +651,14 @@ function sessionLine(s: SessionRow): string {
 
 type InviteRef = Pick<
   InviteRow,
-  "id" | "email" | "status" | "expires_at" | "payment_method" | "participant_id" | "user_id"
+  | "id"
+  | "email"
+  | "status"
+  | "expires_at"
+  | "payment_method"
+  | "payment_note"
+  | "participant_id"
+  | "user_id"
 >;
 
 async function findInviteById(cohortId: string, inviteId: string): Promise<InviteRef | null> {
@@ -723,8 +737,24 @@ export async function markInvitePaidAndMaybeConfirm(params: {
    * payment's enrollment rows read paid. Everyone else confirms here.
    */
   confirm?: boolean;
-}): Promise<{ ok: boolean; error?: string; matched?: boolean; alreadyPaid?: boolean }> {
+  /**
+   * The Stripe Checkout session behind a card payment (safety review). The
+   * flip that settles the invite writes it into the invite's note, so a
+   * refund gives back only an invite its own payment settled; and when the
+   * invite is already paid by something else, the answer names it as a
+   * second payment (`duplicateInviteId`) for the caller to flag.
+   */
+  cardSessionId?: string;
+}): Promise<{
+  ok: boolean;
+  error?: string;
+  matched?: boolean;
+  alreadyPaid?: boolean;
+  duplicateInviteId?: string;
+}> {
   const { cohortId, email, inviteToken, inviteId, participantId, payment } = params;
+  const cardSessionId = (params.cardSessionId ?? "").trim();
+  let duplicateInviteId: string | undefined;
   // Invites store the address lowercased (createInvites, recordEtransferIntent).
   const address = normalizeEmail(email ?? "");
   const strict = params.strict ?? false;
@@ -789,15 +819,36 @@ export async function markInvitePaidAndMaybeConfirm(params: {
       // Admin double-tap (or a paid invite re-hit by a duplicate webhook):
       // surface it to the admin, stay silent for the payment rails.
       if (strict) return { ok: false, error: plan.error };
+      // A card payment on an invite something else already paid for is a
+      // second payment; its own redelivery is not (safety review).
+      if (
+        cardSessionId &&
+        target.status === "paid" &&
+        paidInviteHit(target.payment_note, cardSessionId) === "duplicate"
+      ) {
+        duplicateInviteId = target.id;
+      }
     } else {
       const { status, ...details } = plan.patch;
-      const { data: flipped } = await supabase
-        .from("cohort_invites")
-        .update({ status })
-        .eq("id", target.id)
-        .in("status", PAYABLE_STATUSES)
-        .select("id")
-        .maybeSingle();
+      const flip = (patch: Record<string, unknown>) =>
+        supabase
+          .from("cohort_invites")
+          .update(patch)
+          .eq("id", target.id)
+          .in("status", PAYABLE_STATUSES)
+          .select("id")
+          .maybeSingle();
+      // A card payment's session goes into the note in the same statement as
+      // the flip, so no delivery ever sees the invite paid without it.
+      let { data: flipped, error: flipError } = await flip(
+        cardSessionId
+          ? { status, payment_note: cardPaidNote(cardSessionId, target.payment_note) }
+          : { status }
+      );
+      if (flipError && cardSessionId && /payment_note/i.test(flipError.message)) {
+        // Migration 0006 hasn't been pasted yet — flip on the status alone.
+        ({ data: flipped, error: flipError } = await flip({ status }));
+      }
       if (!flipped) {
         if (strict) {
           return { ok: false, error: "That invite changed state — refresh and try again." };
@@ -826,16 +877,64 @@ export async function markInvitePaidAndMaybeConfirm(params: {
   if (!target && !inviteId && !inviteToken && (participantId || email)) {
     let q = supabase
       .from("cohort_invites")
-      .select("id")
+      .select("*")
       .eq("cohort_id", cohortId)
       .eq("status", "paid");
     q = participantId ? q.eq("participant_id", participantId) : q.eq("email", address);
-    const { data } = await q.limit(1).maybeSingle();
-    alreadyPaid = Boolean(data);
+    const { data } = await q.order("paid_at", { ascending: false }).limit(1).maybeSingle();
+    const paid = (data as InviteRef | null) ?? null;
+    alreadyPaid = Boolean(paid);
+    // By the player's own id only: an invite found by the email could be a
+    // sibling's, so it is never called a second payment.
+    if (
+      paid &&
+      participantId &&
+      cardSessionId &&
+      paidInviteHit(paid.payment_note, cardSessionId) === "duplicate"
+    ) {
+      duplicateInviteId = paid.id;
+    }
   }
 
   if (params.confirm !== false) await maybeConfirmCohort(cohortId);
-  return { ok: true, matched: Boolean(target), alreadyPaid };
+  return { ok: true, matched: Boolean(target), alreadyPaid, duplicateInviteId };
+}
+
+/**
+ * Tell the coach a second card payment came through an invite that was
+ * already paid (safety review): one line in front of the invite's payment
+ * note, where the cohort page shows it, naming the Stripe session to look up.
+ * Guarded on the invite still being paid, and written once per session: the
+ * payment that settled the invite, or one already named, changes nothing.
+ * Never throws. Resolves to whether the note was written.
+ */
+export async function flagDuplicatePayment(
+  cohortId: string,
+  inviteId: string,
+  sessionId: string
+): Promise<boolean> {
+  try {
+    const invite = await findInviteById(cohortId, inviteId);
+    if (!invite || invite.status !== "paid") return false;
+    const note = invite.payment_note ?? null;
+    if (noteSettledBy(note) === sessionId || noteNamesDuplicate(note, sessionId)) return false;
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("cohort_invites")
+      .update({ payment_note: duplicatePaymentNote(sessionId, note) })
+      .eq("id", inviteId)
+      .eq("status", "paid")
+      .select("id")
+      .maybeSingle();
+    if (error) console.error("Second-payment note not written (non-blocking):", error.code ?? "unknown");
+    return Boolean(data);
+  } catch (err) {
+    console.error(
+      "Second-payment note not written (non-blocking):",
+      err instanceof Error ? err.name : typeof err
+    );
+    return false;
+  }
 }
 
 // ─── E-transfer rail (backlog #12) ────────────────────────────────────────────

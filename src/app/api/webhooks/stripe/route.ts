@@ -126,7 +126,9 @@ export async function POST(req: NextRequest) {
           : [];
 
     const { ASSESSMENT_CREDIT_CENTS, markCreditApplied } = await import("@/lib/assessmentCredit");
-    const { markInvitePaidAndMaybeConfirm, maybeConfirmCohort } = await import("@/lib/cohortActions");
+    const { flagDuplicatePayment, markInvitePaidAndMaybeConfirm, maybeConfirmCohort } = await import(
+      "@/lib/cohortActions"
+    );
     const { cohortRequiresInvite } = await import("@/lib/enrollGate");
     const { sendPaymentUnmatchedAdminEmail } = await import("@/lib/email");
 
@@ -152,10 +154,22 @@ export async function POST(req: NextRequest) {
         // The invite only: the cohort's confirmation is the last step, once
         // the enrollment rows read paid.
         settleInvite: (by) =>
-          markInvitePaidAndMaybeConfirm({ cohortId, ...by, confirm: false }).catch((err) => {
+          markInvitePaidAndMaybeConfirm({
+            cohortId,
+            ...by,
+            confirm: false,
+            // The flip records which payment settled the invite, so a refund
+            // gives back only its own, and a second payment is told apart.
+            cardSessionId: session.id,
+          }).catch((err) => {
             console.error("Invite confirmation failed (non-blocking):", err);
             return null;
           }),
+        // A second card payment through an already-paid invite: one line for
+        // the coach in the invite's note on the cohort page.
+        flagDuplicate: async (duplicateInviteId) => {
+          await flagDuplicatePayment(cohortId, duplicateInviteId, session.id);
+        },
         moveEnrollments: setEnrollmentStatusByIds,
         emailUnmatched: async ({ playerIndex, playerCount }) => {
           const cohort = await readCohort();

@@ -19,7 +19,8 @@
 //
 // Step 4 is also the record that the emails went: of two deliveries at the
 // same moment exactly one moves the rows, and only that one sends the account
-// email and tells the coach about a payment that matched no invite. A retry
+// email, tells the coach about a payment that matched no invite and notes a
+// second payment on an invite that was already paid. A retry
 // after the claim repeats steps 1–3 and 6, which change nothing twice, and
 // sends nothing. So a stop anywhere before the claim is finished by the
 // retry, email included; a stop between the claim and the send loses that
@@ -83,8 +84,16 @@ export type SettlementDeps = {
   recordSheetCredit(rowNumber: number, amount: string): Promise<void>;
   /** The cohort runs on invites (private), or could not be read. */
   requiresInvite(): Promise<boolean>;
-  /** Mark one player's invite paid; guarded. The confirmation is step 6. */
-  settleInvite(by: InviteLookupBy): Promise<{ matched?: boolean; alreadyPaid?: boolean } | null>;
+  /**
+   * Mark one player's invite paid; guarded. The confirmation is step 6.
+   * `duplicateInviteId`: the invite was already paid by something else, so
+   * this payment is a second one through it.
+   */
+  settleInvite(
+    by: InviteLookupBy
+  ): Promise<{ matched?: boolean; alreadyPaid?: boolean; duplicateInviteId?: string } | null>;
+  /** Note a second payment on an invite for the coach; guarded. Never throws. */
+  flagDuplicate(inviteId: string): Promise<void>;
   /** The claim: the rows this call moved out of `from`. */
   moveEnrollments(ids: readonly string[], from: readonly string[], to: string): Promise<string[]>;
   /** Tell the coach one player's payment settled onto no invite. Never throws. */
@@ -182,6 +191,9 @@ export async function settleEnrollmentPayment(
   // a private cohort. Once the first player has settled onto an invite row
   // by id or token, later players on the same session may use it.
   const unmatched: { playerIndex: number; playerCount: number }[] = [];
+  // Invites this payment found already paid by something else: a second
+  // payment, which the coach is told about once, in the invite's note.
+  const duplicates: string[] = [];
   if (plan.settleInvites && cohortId) {
     const requiresInvite = await deps.requiresInvite();
     const playerCount = Math.max(1, input.participantIds.length, input.sheetRows.length);
@@ -200,6 +212,9 @@ export async function settleEnrollmentPayment(
       const result = by ? await deps.settleInvite(by) : null;
       const matched = Boolean(result?.matched);
       if (settledByInvite(by, matched)) priorInviteProof = true;
+      if (result?.duplicateInviteId && !duplicates.includes(result.duplicateInviteId)) {
+        duplicates.push(result.duplicateInviteId);
+      }
       // The money is banked and the Sheet row is paid; only the invite needs
       // the coach's hand. PII-light here, the address in the inbox, and only
       // for a cohort that runs on invites, never for an invite already paid.
@@ -232,6 +247,7 @@ export async function settleEnrollmentPayment(
 
   // 5. What must not repeat, from the delivery that made the claim only.
   if (speaks) {
+    for (const inviteId of duplicates) await deps.flagDuplicate(inviteId);
     for (const player of unmatched) await deps.emailUnmatched(player);
     await deps.notifyAccount({ rowStatus: to, notify: plan.notifyAccount });
   } else {

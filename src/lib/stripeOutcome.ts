@@ -266,6 +266,94 @@ export function latePaymentPlan(status: string | null): "restore" | "nothing" | 
   return status === "expired" ? "restore" : "nothing";
 }
 
+// ─── Which payment an invite belongs to ───────────────────────────────────────
+// An invite has no column for the Stripe session that paid for it, so the
+// payment note, the admin's own place for such lines, carries it: the fact
+// first, the Stripe session beside it, then whatever the note already said.
+// A card payment marks the invite it settles; a second card payment through
+// an invite that is already paid is marked as that, for the coach; and a
+// refund or dispute gives back only an invite its own payment settled
+// (safety review).
+
+const STRIPE_SESSION = "cs_[A-Za-z0-9_]+";
+const SETTLED_MARK = new RegExp(`Paid by card \\(Stripe (${STRIPE_SESSION})\\)`);
+const duplicateMark = (sessionId: string) => `Second card payment on this invite (Stripe ${sessionId})`;
+
+function noteWith(line: string, existing: string | null | undefined): string {
+  const rest = (existing ?? "").trim();
+  return (rest ? `${line} · ${rest}` : line).slice(0, 500);
+}
+
+/** The note a card payment writes with the flip that settles an invite. */
+export function cardPaidNote(sessionId: string, existing: string | null | undefined): string {
+  return noteWith(`Paid by card (Stripe ${sessionId})`, existing);
+}
+
+/** The Stripe session that last settled this invite by card, or null when its note names none. */
+export function noteSettledBy(note: string | null | undefined): string | null {
+  // The newest mark is the leftmost: every mark is written in front.
+  return SETTLED_MARK.exec(note ?? "")?.[1] ?? null;
+}
+
+/** The note that tells the coach a second card payment came through a paid invite. */
+export function duplicatePaymentNote(sessionId: string, existing: string | null | undefined): string {
+  return noteWith(`${duplicateMark(sessionId)}: refund it in Stripe if it was a mistake`, existing);
+}
+
+/** Whether the note already names this session as a second payment. */
+export function noteNamesDuplicate(note: string | null | undefined, sessionId: string): boolean {
+  return Boolean(sessionId) && (note ?? "").includes(duplicateMark(sessionId));
+}
+
+/**
+ * What a card payment is to an invite that is already paid:
+ *   own        the payment that settled it, delivered again;
+ *   flagged    a second payment the note already names;
+ *   duplicate  a second payment nobody has been told about yet. That covers
+ *              an invite paid by e-transfer, or settled before the notes
+ *              carried a session: either way the money came twice.
+ */
+export function paidInviteHit(
+  note: string | null | undefined,
+  sessionId: string
+): "own" | "flagged" | "duplicate" {
+  if (noteSettledBy(note) === sessionId) return "own";
+  return noteNamesDuplicate(note, sessionId) ? "flagged" : "duplicate";
+}
+
+/**
+ * Whether a refund or dispute of this session gives the invite back. Only
+ * live money: a test payment settles no invite. Never a second payment: the
+ * first one stands. When the note names the session that settled the invite,
+ * only that session; an invite settled before the notes carried one is given
+ * back as before.
+ */
+export function reversalReleasesInvite(
+  note: string | null | undefined,
+  sessionId: string,
+  livemode: boolean
+): boolean {
+  if (!livemode) return false;
+  if (noteNamesDuplicate(note, sessionId)) return false;
+  const settledBy = noteSettledBy(note);
+  return settledBy === null || settledBy === sessionId;
+}
+
+/** The note once a second payment went back: the coach reads that it is dealt with. */
+export function duplicateReversedNote(
+  kind: ReversalKind,
+  sessionId: string,
+  existing: string | null | undefined
+): string {
+  const line = `Second card payment ${kind} in Stripe (${sessionId})`;
+  const note = existing ?? "";
+  const start = note.indexOf(duplicateMark(sessionId));
+  if (start === -1) return noteWith(line, note);
+  // Replace that payment's own line, up to the next one.
+  const next = note.indexOf(" · ", start);
+  return `${note.slice(0, start)}${line}${next === -1 ? "" : note.slice(next)}`.slice(0, 500);
+}
+
 /**
  * The line a released card invite carries in admin (its payment note): the
  * fact first, then whatever note it already had (the player's name, the

@@ -20,6 +20,9 @@
 //      try counts once for each player it emails for.
 //   5. A booking that links late never writes its old level over one the
 //      coach set by hand since.
+//   6. A refund gives back only an invite its own payment settled, and a
+//      second card payment through an already-paid invite is noted for the
+//      coach.
 //
 // Pure: it calls pure functions, drives in-memory stores and reads source
 // files. No network, no database, no env. Exits non-zero on any failure.
@@ -38,9 +41,18 @@ import {
   REVERSE_FROM_TEST,
   SETTLE_FROM,
   SETTLE_FROM_TEST,
+  cardPaidNote,
+  duplicatePaymentNote,
+  duplicateReversedNote,
+  noteNamesDuplicate,
+  noteSettledBy,
+  paidInviteHit,
+  reversalNote,
+  reversalReleasesInvite,
   reverseFrom,
   settleFrom,
 } from "../lib/stripeOutcome";
+import { planMarkUnpaid } from "../lib/paymentTransitions";
 import { seatsFromSnapshot } from "../lib/seatCount";
 import {
   ASSESSMENT_CREDIT_CENTS,
@@ -571,7 +583,9 @@ function settleWorld(over: { sheet?: string; row?: string; hasInvite?: boolean; 
     creditMarks: 0,
     sheetCredit: new Map<number, string>(),
     invite: "invited",
+    inviteNote: "Maya Chen" as string | null,
     inviteFlips: 0,
+    duplicateFlags: 0,
     cohort: "inviting",
     confirmedEmails: 0,
     accountEmails: 0,
@@ -580,7 +594,7 @@ function settleWorld(over: { sheet?: string; row?: string; hasInvite?: boolean; 
   };
   const hasInvite = over.hasInvite ?? true;
   /** The writes, each one guarded as the real one is. `killAfter`: the function dies once that many steps have landed. */
-  const deps = (killAfter?: number): SettlementDeps => {
+  const deps = (killAfter?: number, sessionId = "cs_1"): SettlementDeps => {
     let n = 0;
     const step = async <T>(name: string, fn: () => T): Promise<T> => {
       await Promise.resolve(); // let another delivery in between any two steps
@@ -610,10 +624,20 @@ function settleWorld(over: { sheet?: string; row?: string; hasInvite?: boolean; 
         step("settleInvite", () => {
           if (!hasInvite) return { matched: false, alreadyPaid: false };
           if (w.invite === "invited" || w.invite === "expired") {
+            // The flip and the note are one statement, as in cohortActions.
             w.invite = "paid";
+            w.inviteNote = cardPaidNote(sessionId, w.inviteNote);
             w.inviteFlips++;
+            return { matched: true, alreadyPaid: false };
           }
-          return { matched: true, alreadyPaid: false };
+          const second = w.invite === "paid" && paidInviteHit(w.inviteNote, sessionId) === "duplicate";
+          return { matched: true, alreadyPaid: false, duplicateInviteId: second ? "inv_1" : undefined };
+        }),
+      flagDuplicate: () =>
+        step("flagDuplicate", () => {
+          if (w.invite !== "paid" || paidInviteHit(w.inviteNote, sessionId) !== "duplicate") return;
+          w.inviteNote = duplicatePaymentNote(sessionId, w.inviteNote);
+          w.duplicateFlags++;
         }),
       moveEnrollments: (ids, from, to) =>
         step("moveEnrollments", () => {
@@ -637,7 +661,7 @@ function settleWorld(over: { sheet?: string; row?: string; hasInvite?: boolean; 
       warn: () => {},
     };
   };
-  const input = (outcome: "paid" | "test" = "paid"): SettlementInput => ({
+  const input = (outcome: "paid" | "test" = "paid", patch: Partial<SettlementInput> = {}): SettlementInput => ({
     sessionId: "cs_1",
     outcome,
     cohortId: "coh_1",
@@ -648,6 +672,7 @@ function settleWorld(over: { sheet?: string; row?: string; hasInvite?: boolean; 
     perCreditCents: 2000,
     inviteId: hasInvite ? "inv_1" : undefined,
     participantIds: [],
+    ...patch,
   });
   const state = () => ({
     sheet: w.sheet.get(5),
@@ -764,7 +789,7 @@ sections.push(async function point3() {
     check("a completed enrollment payment goes to settleEnrollmentPayment", hook.includes("await settleEnrollmentPayment("));
     check("the early return that left a payment half settled is gone", /if \(!firstDelivery\)|already settled: redelivery, nothing changed/.test(hook), false);
     check("the writes it hands over are the guarded ones", hook.includes("flipSheetRows: flipPaymentRows,") && hook.includes("applyCredit: markCreditApplied,") && hook.includes("moveEnrollments: setEnrollmentStatusByIds,") && hook.includes("readEnrollmentStatuses: enrollmentStatuses,"));
-    check("the invite is flipped without its confirmation, which is the last step", hook.includes("markInvitePaidAndMaybeConfirm({ cohortId, ...by, confirm: false })") && hook.includes("confirmCohort: () => maybeConfirmCohort(cohortId),"));
+    check("the invite is flipped without its confirmation, which is the last step", /markInvitePaidAndMaybeConfirm\(\{\s*cohortId,\s*\.\.\.by,\s*confirm: false,/.test(hook) && hook.includes("confirmCohort: () => maybeConfirmCohort(cohortId),"));
     const actions = read("src/lib/cohortActions.ts");
     check("everyone else still confirms where they always did", actions.includes("if (params.confirm !== false) await maybeConfirmCohort(cohortId);"));
     const settle = read("src/lib/paymentSettlement.ts");
@@ -963,6 +988,112 @@ sections.push(function point5() {
     check("the assessment's day comes from its block", body.includes('.select("id, block_date")') && body.includes("assessedOn.set(block.id, block.block_date)"));
     check("the level is written only when linkedLevelApplies says so", /if \(levelApplies\) \{\s*await setPlayerLevel\(participantId, \{/.test(body) && body.includes("const levelApplies = linkedLevelApplies({"));
     check("the availability keeps its own newer-wins rule, outside that check", body.indexOf("await setKnownPlayerAvailability(participantId, {") > body.indexOf("} else {") && body.includes("onlyIfOlderThan: booking.created_at"));
+  }
+});
+
+// ─── 6. A reversal releases only what its own payment settled ────────────────
+
+sections.push(async function point6() {
+  console.log("6. The invite's note names the payment that settled it");
+  {
+    const settled = cardPaidNote("cs_live_a1", "Maya Chen");
+    check("a card payment's flip writes its session in front of the note", settled, "Paid by card (Stripe cs_live_a1) · Maya Chen");
+    check("…and it is read back", [noteSettledBy(settled), noteSettledBy("Maya Chen"), noteSettledBy(null)], ["cs_live_a1", null, null]);
+    check("paid again after a refund, the newest payment is the one named", noteSettledBy(cardPaidNote("cs_live_c3", reversalNote("refunded", settled))), "cs_live_c3");
+    check("the same payment delivered again is its own", paidInviteHit(settled, "cs_live_a1"), "own");
+    check("another payment on that invite is a second one", paidInviteHit(settled, "cs_live_b2"), "duplicate");
+    check("…also on an invite paid by e-transfer, or settled before the notes carried a session", [paidInviteHit("E-transfer from Dana", "cs_live_b2"), paidInviteHit(null, "cs_live_b2")], ["duplicate", "duplicate"]);
+    const flagged = duplicatePaymentNote("cs_live_b2", settled);
+    check("the coach's line says what happened and what to do, with the Stripe session to look up", flagged, "Second card payment on this invite (Stripe cs_live_b2): refund it in Stripe if it was a mistake · Paid by card (Stripe cs_live_a1) · Maya Chen");
+    check("once named, it is not named again", [noteNamesDuplicate(flagged, "cs_live_b2"), paidInviteHit(flagged, "cs_live_b2"), noteNamesDuplicate(flagged, "cs_live_a1")], [true, "flagged", false]);
+    check("the first payment is still the one that settled it", [noteSettledBy(flagged), paidInviteHit(flagged, "cs_live_a1")], ["cs_live_a1", "own"]);
+    check("a note never grows past the column's 500", cardPaidNote("cs_live_a1", "x".repeat(900)).length, 500);
+  }
+
+  console.log("6. reversalReleasesInvite — only what its own payment settled");
+  {
+    const settled = cardPaidNote("cs_live_a1", "Maya Chen");
+    const flagged = duplicatePaymentNote("cs_live_b2", settled);
+    check("the payment that settled the invite gives it back", reversalReleasesInvite(settled, "cs_live_a1", true));
+    check("a second payment's refund does not: the first payment stands", reversalReleasesInvite(flagged, "cs_live_b2", true), false);
+    check("…named or not", reversalReleasesInvite(settled, "cs_live_b2", true), false);
+    check("the first payment's refund still gives it back, with the second one's line kept for the coach", [reversalReleasesInvite(flagged, "cs_live_a1", true), reversalNote("refunded", flagged).includes("Second card payment on this invite (Stripe cs_live_b2)")], [true, true]);
+    check("a test-mode refund or dispute gives back nothing", [reversalReleasesInvite(settled, "cs_live_a1", false), reversalReleasesInvite("Maya Chen", "cs_test_x", false)], [false, false]);
+    check("an invite settled before the notes carried a session is given back as before", reversalReleasesInvite("Maya Chen", "cs_live_old", true));
+    check("once the second payment went back, its line says so", duplicateReversedNote("refunded", "cs_live_b2", flagged), "Second card payment refunded in Stripe (cs_live_b2) · Paid by card (Stripe cs_live_a1) · Maya Chen");
+    check("…and a redelivered refund of it still releases nothing", reversalReleasesInvite(duplicateReversedNote("refunded", "cs_live_b2", flagged), "cs_live_b2", true), false);
+    check("a dispute reads as one", duplicateReversedNote("disputed", "cs_live_b2", flagged).startsWith("Second card payment disputed in Stripe (cs_live_b2)"));
+  }
+
+  console.log("6. Scenario — two card payments through one invite, then the second is refunded");
+  {
+    const { w, deps, input } = settleWorld();
+    // The first payment settles the invite.
+    await settleEnrollmentPayment(deps(undefined, "cs_1"), input("paid"));
+    check("the first payment settles the invite and is named on it", [w.invite, noteSettledBy(w.inviteNote), w.duplicateFlags], ["paid", "cs_1", 0]);
+    // A second payment through the same invite: its own rows, the same invite.
+    w.sheet.set(6, "pending");
+    w.rows.set("enr_2", "pending");
+    const second = input("paid", { sessionId: "cs_2", sheetRows: [6], enrollmentIds: ["enr_2"], creditBookingIds: [] });
+    await settleEnrollmentPayment(deps(undefined, "cs_2"), second);
+    check("the second payment tells the coach, in the invite's note", [w.duplicateFlags, noteNamesDuplicate(w.inviteNote, "cs_2"), w.inviteFlips], [1, true, 1]);
+    await settleEnrollmentPayment(deps(undefined, "cs_2"), second);
+    await settleEnrollmentPayment(deps(undefined, "cs_1"), input("paid"));
+    check("redelivered, either payment adds nothing to the note", [w.duplicateFlags, w.accountEmails], [1, 2]);
+
+    // The refunds, decided as releaseCardInvites decides them.
+    const refund = (sessionId: string) => {
+      if (w.invite !== "paid") return "nothing";
+      if (noteNamesDuplicate(w.inviteNote, sessionId)) {
+        w.inviteNote = duplicateReversedNote("refunded", sessionId, w.inviteNote);
+        return "kept";
+      }
+      if (!reversalReleasesInvite(w.inviteNote, sessionId, true)) return "kept";
+      const plan = planMarkUnpaid({ status: "paid", expires_at: "2099-01-01T00:00:00.000Z" }, new Date("2026-11-23T00:00:00.000Z"));
+      if (!plan.ok) return "nothing";
+      w.invite = plan.patch.status;
+      w.inviteNote = reversalNote("refunded", w.inviteNote);
+      return "released";
+    };
+    check("refunding the second payment leaves the invite paid", [refund("cs_2"), w.invite], ["kept", "paid"]);
+    check("…and the coach reads that it went back", (w.inviteNote ?? "").startsWith("Second card payment refunded in Stripe (cs_2)"));
+    check("a redelivered refund of it changes nothing", [refund("cs_2"), w.invite], ["kept", "paid"]);
+    check("refunding the first payment gives the invite back", [refund("cs_1"), w.invite], ["released", "invited"]);
+  }
+
+  console.log("6. Scenario — the same payment, stopped after its invite flip, is not called a second one");
+  {
+    const { w, deps, input } = settleWorld();
+    const flipStep = 6; // the invite flip, as the healthy run walked it
+    await settleEnrollmentPayment(deps(flipStep, "cs_1"), input()).catch(() => {});
+    check("the delivery stopped with the invite paid and the rows not yet claimed", [w.steps[w.steps.length - 1], w.invite, w.rows.get("enr_1")], ["settleInvite", "paid", "pending"]);
+    await settleEnrollmentPayment(deps(undefined, "cs_1"), input());
+    check("the retry claims and speaks, and tells the coach nothing about a second payment", [w.accountEmails, w.duplicateFlags, noteNamesDuplicate(w.inviteNote, "cs_1")], [1, 0, false]);
+  }
+
+  console.log("6. Source — the note is written with the flip, and the reversal asks before it releases");
+  {
+    const actions = read("src/lib/cohortActions.ts");
+    check("the session goes into the note in the same guarded statement as the flip", actions.includes("? { status, payment_note: cardPaidNote(cardSessionId, target.payment_note) }") && /const flip = \(patch: Record<string, unknown>\) =>\s*supabase\s*\.from\("cohort_invites"\)\s*\.update\(patch\)\s*\.eq\("id", target\.id\)\s*\.in\("status", PAYABLE_STATUSES\)/.test(actions));
+    check("an already-paid invite is reported as a second payment only when it is not this payment's own", (actions.match(/paidInviteHit\((target|paid)\.payment_note, cardSessionId\) === "duplicate"/g) ?? []).length, 2);
+    check("…and never one found by the email alone", actions.includes("paid &&\n      participantId &&\n      cardSessionId &&"));
+    const flag = actions.slice(actions.indexOf("export async function flagDuplicatePayment("));
+    const flagBody = flag.slice(0, flag.indexOf("\n}\n"));
+    check("the coach's note is written once, on an invite still paid", flagBody.includes('.eq("status", "paid")') && flagBody.includes("noteSettledBy(note) === sessionId || noteNamesDuplicate(note, sessionId)") && flagBody.includes("duplicatePaymentNote(sessionId, note)"));
+    check("…and sends no email of its own", /send[A-Z]\w*\(/.test(flagBody), false);
+    const hook = read("src/app/api/webhooks/stripe/route.ts");
+    check("the webhook names its session on the invite, and flags a second payment", hook.includes("cardSessionId: session.id,") && hook.includes("await flagDuplicatePayment(cohortId, duplicateInviteId, session.id);"));
+    const settle = read("src/lib/paymentSettlement.ts");
+    check("the flag is written by the delivery that made the claim", settle.indexOf("if (speaks) {") < settle.indexOf("await deps.flagDuplicate(inviteId)") && settle.indexOf("await deps.flagDuplicate(inviteId)") < settle.indexOf("} else {\n    deps.log("));
+    const reversal = read("src/lib/paymentReversal.ts");
+    const release = reversal.slice(reversal.indexOf("async function releaseCardInvites("));
+    const releaseBody = release.slice(0, release.indexOf("\n}\n"));
+    check("a test-mode reversal releases no invite", releaseBody.includes("if (!cohortId || !supabaseConfigured() || !payment.livemode) return 0;"));
+    check("an invite is released only when reversalReleasesInvite says it is this payment's", releaseBody.indexOf("if (!reversalReleasesInvite(invite.payment_note, payment.sessionId, payment.livemode)) continue;") !== -1 && releaseBody.indexOf("reversalReleasesInvite(") < releaseBody.indexOf("planMarkUnpaid("));
+    check("a second payment's refund rewrites its line and leaves the status alone", /if \(noteNamesDuplicate\(invite\.payment_note, payment\.sessionId\)\) \{[\s\S]*?\.update\(\{ payment_note: duplicateReversedNote\(kind, payment\.sessionId, invite\.payment_note\) \}\)[\s\S]*?continue;/.test(releaseBody));
+    check("the reversal is told which payment and which mode", reversal.includes("{ sessionId, livemode }"));
+    const admin = read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx");
+    check("the cohort page shows the invite's note, where these lines land", admin.includes("{invite.payment_note}"));
   }
 });
 
