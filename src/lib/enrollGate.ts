@@ -18,7 +18,7 @@
 import type { Cohort } from "@/types/cohort";
 import type { ProgramGroup } from "@/types/program";
 import { programGroups } from "@/content/programs";
-import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
+import { isCohortRenderable } from "@/lib/cohortVisibility";
 import { blockHasPrice, groupForBlock } from "@/lib/groupBlocks";
 import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
@@ -128,8 +128,9 @@ export function decideEnrollGate(input: {
   today?: string;
 }): EnrollGateDecision {
   const { cohort, tokenSent, lookup, playerLevel, playerLevels } = input;
-  const today = input.today ?? todayIso();
-  if (!cohort || !isCohortRenderable(cohort, today)) {
+  // Until its first class has started, in Toronto time (`today` is a moment,
+  // or a bare date read by the day; left out, it is now).
+  if (!cohort || !isCohortRenderable(cohort, input.today)) {
     return { allowed: false, status: 404 };
   }
   if (cohort.visibility !== "private") return { allowed: true, via: "public" };

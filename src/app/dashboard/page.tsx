@@ -252,7 +252,8 @@ async function DashboardContent({
   // 2026-11-19): not a block the account is already in, not a by-approval
   // one, and only those whose ages take one of its players (ages only, never
   // the level). Their seats are one sheet read, none while no block is open.
-  const publicBlocks = cohorts.filter((c) => isCohortPublic(c, today));
+  // Until its first class has started, in Toronto time (the rule's own clock).
+  const publicBlocks = cohorts.filter((c) => isCohortPublic(c));
   const [cohortSessions, tierMatches, blockSeats] = await Promise.all([
     getSessionsForCohorts(enrolledCohortIds),
     // Per player (audit M27): one numeric rule, the same one /enroll admits by.
