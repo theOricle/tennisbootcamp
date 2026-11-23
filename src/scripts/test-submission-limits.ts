@@ -480,7 +480,9 @@ async function main() {
       const src = read(file);
       const at = src.indexOf("checkBot(body)");
       check(`${file}: runs checkBot`, at !== -1);
-      check(`${file}: a bot is dropped silently, logged without the body`, src.includes("logBotDrop("));
+      // Since the safety round these three answer a tripped check with a
+      // plain refusal, never a success-shaped body (test-safety-round.ts).
+      check(`${file}: a tripped check is logged without the body and refused plainly`, src.includes("logBotDrop(") && src.includes("{ error: BOT_REFUSAL_ERROR }, { status: 400 }"));
       check(`${file}: …before its limits and its work`, at < src.indexOf("checkSubmissionLimit("));
     }
     const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");

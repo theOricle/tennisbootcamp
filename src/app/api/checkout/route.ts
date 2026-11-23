@@ -27,6 +27,7 @@ import {
   inviteResumeCookie,
 } from "@/lib/checkoutInvite";
 import {
+  BOT_REFUSAL_ERROR,
   INVALID_EMAIL_ERROR,
   REQUEST_TOO_LARGE,
   bodyTooLarge,
@@ -74,12 +75,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
     }
     const body = JSON.parse(raw);
-    // Bot protection (backlog #84, the same check as the other public forms):
-    // a tripped check gets a success-shaped answer and nothing is created.
+    // Bot protection (backlog #84, the same check as the other public forms).
+    // A tripped check creates nothing and answers a plain refusal the wizard
+    // shows (safety review), never a success-shaped answer.
     const verdict = checkBot(body);
     if (verdict.bot) {
       logBotDrop("checkout", verdict.reason);
-      return NextResponse.json({ sessionUrl: `/enroll/${encodeURIComponent(String(body?.cohortId ?? ""))}` });
+      return NextResponse.json({ error: BOT_REFUSAL_ERROR }, { status: 400 });
     }
     const {
       cohortId,

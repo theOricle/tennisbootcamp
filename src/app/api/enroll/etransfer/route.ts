@@ -22,6 +22,7 @@ import {
 import { setEnrollmentStatusByEmail } from "@/lib/enrollmentSheet";
 import { programs } from "@/content/programs";
 import {
+  BOT_REFUSAL_ERROR,
   INVALID_EMAIL_ERROR,
   REQUEST_TOO_LARGE,
   bodyTooLarge,
@@ -75,19 +76,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
     }
     const body = JSON.parse(raw);
-    // Bot protection (backlog #84, the same check as the other public forms):
-    // a tripped check gets a success-shaped answer and nothing is recorded.
+    // Bot protection (backlog #84, the same check as the other public forms).
+    // A tripped check records nothing and answers a plain refusal the wizard
+    // shows (safety review): the success-shaped answer it used to give sent a
+    // real person, wrongly flagged, to "Your spot is held" with no invite, no
+    // email and nothing for the coach to mark paid.
     const verdict = checkBot(body);
     if (verdict.bot) {
       logBotDrop("enroll/etransfer", verdict.reason);
-      return NextResponse.json({
-        ok: true,
-        alreadyPaid: false,
-        amountCents: 0,
-        creditCents: 0,
-        recipientEmail: "",
-        memo: "",
-      });
+      return NextResponse.json({ error: BOT_REFUSAL_ERROR }, { status: 400 });
     }
     const {
       cohortId,

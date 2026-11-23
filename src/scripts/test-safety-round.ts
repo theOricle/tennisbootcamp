@@ -25,6 +25,8 @@
 //      coach.
 //   7. Mock checkout marks its test rows through the same guarded flip.
 //   8. A test payment enrolls nobody: its row never reads "Already enrolled".
+//   9. On the sign-up routes a tripped bot check is a plain refusal the page
+//      shows, never a fake success.
 //
 // Pure: it calls pure functions, drives in-memory stores and reads source
 // files. No network, no database, no env. Exits non-zero on any failure.
@@ -80,7 +82,8 @@ import {
   type StoredHit,
 } from "../lib/submissionLimits";
 import { MAX_PARTICIPANTS_PER_ACCOUNT, tooManyPlayers } from "../lib/participantInput";
-import { MAX_BODY_BYTES, bodyTooLarge } from "../lib/botCheck";
+import { BOT_REFUSAL_ERROR, MAX_BODY_BYTES, bodyTooLarge, checkBot } from "../lib/botCheck";
+import { withHumanFallback } from "../lib/formValidation";
 import { linkedBookingPlayer, linkedLevelApplies } from "../lib/guestAccount";
 import { alreadyInCohortReason, enrollmentRowBlocks } from "../lib/enrollPlayers";
 import { creditLine } from "../lib/dashboardState";
@@ -1149,6 +1152,42 @@ sections.push(function point8() {
     const page = read("src/app/enroll/[cohortId]/page.tsx");
     check("the page reads each enrollment row through enrollmentRowBlocks", page.includes("const kind = enrollmentRowBlocks(row.status);") && page.includes("if (kind) out.set(player.id, alreadyInCohortReason(kind));"));
     check("…and no longer treats a test payment as a seat", page.includes('"test_paid"'), false);
+  }
+});
+
+// ─── 9. A tripped bot check on a sign-up route is said, not hidden ───────────
+
+sections.push(function point9() {
+  console.log("9. The refusal a wrongly flagged person reads");
+  {
+    check("a person can trip the check: a password manager fills the hidden field", checkBot({ tb_hp_x: "Dana", fillTime: 45000 }), { bot: true, reason: "honeypot" });
+    check("…or the page reports no fill time", checkBot({ cohortId: "coh_1" }), { bot: true, reason: "no_fill_time" });
+    check("the line says it did not go through, the way on, and the inbox", BOT_REFUSAL_ERROR.includes("didn't go through") && BOT_REFUSAL_ERROR.includes("Reload the page and try again") && BOT_REFUSAL_ERROR.includes("info@tennisbootcamp.ca"));
+    check("it blames nobody and names no robot, no exclamation mark", /!|bot\b|robot|spam|suspicious|you (did|must|failed)/i.test(BOT_REFUSAL_ERROR), false);
+    check("the wizard adds nothing to it: it already names the inbox", withHumanFallback(BOT_REFUSAL_ERROR), BOT_REFUSAL_ERROR);
+  }
+
+  console.log("9. Source — the three sign-up routes refuse; the page shows the line and goes nowhere");
+  {
+    for (const file of ["src/app/api/enroll/route.ts", "src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts"]) {
+      const src = read(file);
+      const at = src.indexOf("if (verdict.bot) {");
+      const block = src.slice(at, src.indexOf("\n    }\n", at));
+      check(`${file}: a tripped check answers the refusal with a 400`, at !== -1 && block.includes("return NextResponse.json({ error: BOT_REFUSAL_ERROR }, { status: 400 });"));
+      check(`${file}: …and nothing success-shaped`, /ok: true|sessionUrl|alreadyPaid|rowNumber/.test(block), false);
+      check(`${file}: …before anything is read, written or sent`, at < src.indexOf("resolveEnrollGate(") && at < src.indexOf("checkSubmissionLimit("));
+    }
+    const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
+    check("the wizard reads a 400's own line", wizard.includes("if (res.status !== 400 && res.status !== 403") && wizard.includes("if (body?.error) throw new Error(`refused:${body.error}`);"));
+    const send = wizard.slice(wizard.indexOf("async function sendEtransfer()"));
+    const sendBody = send.slice(0, send.indexOf("\n  }\n"));
+    check("a refused e-transfer never reaches the 'spot held' page", sendBody.indexOf("await throwIfRefused(res);") !== -1 && sendBody.indexOf("await throwIfRefused(res);") < sendBody.indexOf("window.location.href = `/enroll/${cohort.id}/confirmed"));
+    const save = wizard.slice(wizard.indexOf("async function saveEnrollment()"));
+    const saveBody = save.slice(0, save.indexOf("\n  }\n"));
+    check("a refused enrollment is not remembered as saved", saveBody.indexOf("await throwIfRefused(enrollRes);") < saveBody.indexOf("setSaved(result);"));
+    // The four forms that only collect a lead keep their silent drop.
+    const intake = read("src/app/api/intake/route.ts");
+    check("the quiz still drops silently", intake.includes('if (decision.action === "drop") {') && !intake.includes("BOT_REFUSAL_ERROR"));
   }
 });
 

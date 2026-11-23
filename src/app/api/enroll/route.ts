@@ -10,7 +10,13 @@ import { guestPlayer } from "@/lib/guestAccount";
 import { getCohortById } from "@/lib/cohortsDb";
 import { gateRefusal, requestedParticipantIds, resolveEnrollGate } from "@/lib/enrollGate";
 import { enrollmentSheetRow } from "@/lib/sheetText";
-import { REQUEST_TOO_LARGE, bodyTooLarge, checkBot, logBotDrop } from "@/lib/botCheck";
+import {
+  BOT_REFUSAL_ERROR,
+  REQUEST_TOO_LARGE,
+  bodyTooLarge,
+  checkBot,
+  logBotDrop,
+} from "@/lib/botCheck";
 import { tooManyPlayers } from "@/lib/participantInput";
 import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
 import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
@@ -70,12 +76,14 @@ export async function POST(req: NextRequest) {
     }
     const body = JSON.parse(raw);
 
-    // Bot protection (backlog #84, the same check as the other public forms):
-    // a tripped check gets a success-shaped answer and nothing is written.
+    // Bot protection (backlog #84, the same check as the other public forms).
+    // A tripped check writes nothing and answers a plain refusal the wizard
+    // shows (safety review): a success-shaped answer here walked a real
+    // person, wrongly flagged, on to "Your spot is held" with no row saved.
     const verdict = checkBot(body);
     if (verdict.bot) {
       logBotDrop("enroll", verdict.reason);
-      return NextResponse.json({ ok: true, rowNumber: null, rowNumbers: [], participants: [] });
+      return NextResponse.json({ error: BOT_REFUSAL_ERROR }, { status: 400 });
     }
     // No more players than one household holds, the most the wizard can send.
     if (tooManyPlayers(body.participants)) {

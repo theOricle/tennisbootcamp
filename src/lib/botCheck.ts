@@ -10,6 +10,12 @@
 // A tripped check is a silent drop: the route answers exactly as it would for
 // a real submission and writes and sends nothing. Pure module (no I/O, no
 // Next.js imports) so src/scripts/test-bot-check.ts can pin every rule.
+//
+// The three sign-up routes (enroll, checkout, e-transfer) are the exception
+// (backlog #84, safety review): there a silent drop tells a real person their
+// spot is held when nothing was recorded, so a tripped check answers a plain
+// refusal (BOT_REFUSAL_ERROR) the wizard shows as one. Nothing is written or
+// sent either way.
 
 /**
  * Request-body key of the honeypot. Deliberately meaningless: a name like
@@ -78,6 +84,15 @@ export function stripBotFields<T>(body: T): T {
   delete rest[FILL_TIME_FIELD];
   return rest as T;
 }
+
+/**
+ * The 400 the sign-up routes answer when the check trips. A person it flagged
+ * by mistake (a password manager filling the hidden field, a page restored
+ * from the browser's cache) reads what happened and the two ways on; nobody
+ * is told a spot is held or a payment started when nothing was recorded.
+ */
+export const BOT_REFUSAL_ERROR =
+  "We couldn't confirm that came from our sign-up page, so it didn't go through. Reload the page and try again, or email info@tennisbootcamp.ca.";
 
 /** One log line per dropped submission. Never includes the body. */
 export function logBotDrop(route: string, reason: BotReason): void {
