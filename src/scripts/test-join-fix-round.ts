@@ -2,6 +2,10 @@
 //
 // Pins the safety review's fix round on backlog #85 (join a group and pay).
 // One section per point; each check failed before its fix:
+//   1. by approval never depends on how the coach typed the level band: a
+//      Youth block is by approval when its band is blank or reaches the High
+//      Performance tier, on its card, on its sign-up page and on a direct
+//      request to either payment route (blockByApproval);
 //   3. one rule for the group a block trains in, planned or not: the card, the
 //      sign-up page and the payment routes' approval check all read
 //      groupForBlock, so a block off the planned lineup has its ages checked
@@ -12,7 +16,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { COHORT_TOTAL_CENTS, COHORT_WEEKS, programGroups } from "../content/programs";
-import { groupCards, groupForBlock, plannedGroupForBlock } from "../lib/groupBlocks";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { blockByApproval, blockFacts, groupCards, groupForBlock, plannedGroupForBlock, signedInOpenCards } from "../lib/groupBlocks";
+import { groupAction, groupStatus } from "../lib/programCatalog";
+import { APPROVAL_ONLY_ERROR, approvalGateApplies, approvalRefusal } from "../lib/enrollGate";
+import { tierById } from "../lib/tiers";
+import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { ageBandBlock, dobAgeError } from "../lib/enrollPlayers";
 import type { Cohort } from "../types/cohort";
 
@@ -56,6 +66,59 @@ const cardFor = (b: Cohort) => groupCards(programGroups, [b]).find((c) => c.bloc
 
 const enrollPage = read("src/app/enroll/[cohortId]/page.tsx");
 const gateSrc = read("src/lib/enrollGate.ts");
+
+// ── 1. By approval, however the band is typed ───────────────────────────────
+console.log("1. By approval never depends on how the level band is typed");
+{
+  const pub = { allowed: true as const, via: "public" as const };
+  const top = tierById(5).levelMin;
+  const routes = ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts"].map(read);
+  check("both payment routes run the approval check on the cohort they were sent, before anything is created", routes.every((r) => r.includes("approvalRefusal(cohort, gate)")) && routes[0].indexOf("approvalRefusal(cohort, gate)") < routes[0].indexOf("createCheckoutSession(") && routes[1].indexOf("approvalRefusal(cohort, gate)") < routes[1].indexOf("recordEtransferIntent("));
+  check("the sign-up page puts the approval step on the block's own group", enrollPage.includes("const group = groupForBlock(cohort);") && enrollPage.includes("if (group && approvalGateApplies({ group, decision: gate.decision, claimed }))"));
+
+  const byApproval: [string, number | null, number | null][] = [
+    ["its levels left blank (the admin form's default)", null, null],
+    ["4.0–7.0", 4, 7],
+    ["4.5–7.0", 4.5, 7],
+    ["1.0–7.0", 1, 7],
+    ["5.0–7.0", top, 7],
+    ["5.0 alone", top, null],
+    ["2.0–5.0", 2, top],
+    ["only a top level of 5.5", null, 5.5],
+  ];
+  for (const [name, levelMin, levelMax] of byApproval) {
+    const b = youthBlock({ id: "y", levelMin, levelMax });
+    const card = cardFor(b)!;
+    const status = groupStatus(card.group, card.block!.seatsLeft);
+    const html = renderToStaticMarkup(createElement(ProgramGroupCard, { group: card.group, block: blockFacts(b) }));
+    check(`a Youth block with ${name}: its card reads By approval and Ask to join, never Open to join or Enroll`, blockByApproval(b) && card.group.joining === "approval" && status?.label === "By approval" && groupAction(card.group, status).label === "Ask to join" && html.includes("By approval</span>") && />Ask to join</.test(html) && !html.includes("Open to join") && !/>Enroll</.test(html), `${card.group.name} ${card.group.joining}`);
+    check("…its sign-up page stops a walk-in at the approval step, and lets the invitee holding the link through", approvalGateApplies({ group: groupForBlock(b), decision: pub, claimed: null }) && !approvalGateApplies({ group: groupForBlock(b), decision: pub, claimed: { id: "inv" } }));
+    const refusal = approvalRefusal(b, { decision: pub, lookup: null });
+    check("…a direct request to /api/checkout or /api/enroll/etransfer is refused, 403, with the by-approval line", refusal?.status === 403 && refusal.error === APPROVAL_ONLY_ERROR && approvalRefusal(b, { decision: pub, lookup: { state: "valid", invite: { id: "inv", cohort_id: "y" } } }) === null);
+    check("…and no signed-in list offers it", signedInOpenCards(groupCards(programGroups, [b])).length === 0);
+  }
+
+  const open: [string, number | null, number | null][] = [
+    ["1.0–1.5", 1, 1.5],
+    ["2.0–2.5", 2, 2.5],
+    ["3.0–3.5", 3, 3.5],
+    ["4.0–4.5", 4, 4.5],
+    ["only a top level of 4.5", null, 4.5],
+  ];
+  for (const [name, levelMin, levelMax] of open) {
+    const b = youthBlock({ id: "y", levelMin, levelMax });
+    const card = cardFor(b)!;
+    check(`a Youth block at ${name}, below High Performance, stays open: Enroll, and no approval step anywhere`, !blockByApproval(b) && card.group.joining === "open" && groupAction(card.group, groupStatus(card.group)).label === "Enroll" && !approvalGateApplies({ group: groupForBlock(b), decision: pub, claimed: null }) && approvalRefusal(b, { decision: pub, lookup: null }) === null);
+  }
+  // The owner has not ruled on adults: an adult block at the High Performance
+  // tier, or with no band, stays open to join, as before this round.
+  for (const [name, levelMin, levelMax] of [["5.0–7.0", top, 7], ["its levels left blank", null, null], ["1.0–7.0", 1, 7]] as [string, number | null, number | null][]) {
+    const b = block({ id: "a", levelMin, levelMax });
+    check(`an adult block with ${name} is unchanged: open to join`, !blockByApproval(b) && cardFor(b)!.group.joining === "open" && approvalRefusal(b, { decision: pub, lookup: null }) === null);
+  }
+  check("the rule reads the lineup: a program is by approval from the lowest level of its by-approval group", !blockByApproval(youthBlock({ id: "y", levelMin: null, levelMax: null }), programGroups.filter((g) => g.joining !== "approval")) && blockByApproval(block({ id: "a", levelMin: 4, levelMax: 7 }), programGroups.map((g) => (g.id === "adult-advanced" ? { ...g, joining: "approval" as const } : g))));
+  check("a block of a program with no group bootcamps is nobody's to approve here", !blockByApproval(block({ id: "p", programId: "private-lessons", levelMin: null, levelMax: null })));
+}
 
 // ── 3. One rule for a block off the planned lineup ──────────────────────────
 console.log("3. One rule for the group a block trains in, on the planned lineup or off it");

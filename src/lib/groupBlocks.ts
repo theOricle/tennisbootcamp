@@ -16,7 +16,7 @@ import {
   programLevelTags,
   programWhoLabel,
 } from "@/lib/programCatalog";
-import { tierById, type TierId } from "@/lib/tiers";
+import { levelNumber, tierById, type TierId } from "@/lib/tiers";
 import {
   BOOTCAMP_AUDIENCE,
   COHORT_LENGTH_ADJ,
@@ -166,7 +166,7 @@ export function blockFacts(block: Cohort, seatsLeft?: number | null): BlockFacts
  * A group for a block that matches no planned group, built from its own
  * program and level: titled from them ("Intermediate Youth Bootcamp"), the
  * ages the program's groups take together, the program's location, and open
- * to join (by approval is the High Performance Youth Bootcamp's own rule).
+ * to join until groupForBlock says otherwise (blockByApproval).
  */
 function builtGroup(
   block: Pick<Cohort, "programId" | "levelMin" | "levelMax">,
@@ -194,6 +194,35 @@ function builtGroup(
 }
 
 /**
+ * Is this block joined by approval? (Safety review, #85.) A program whose
+ * lineup has a by-approval group (Youth Bootcamps: the High Performance
+ * Youth Bootcamp) takes no walk-in into any block that could seat a player
+ * of that group's level: one whose level band reaches that level, and one
+ * whose levels were left blank, which takes every level. It never depends on
+ * where the band starts, so a Youth block typed 4.0–7.0, 1.0–7.0 or with no
+ * levels at all is by approval, as a 5.0–7.0 one is. A program with no
+ * by-approval group (Adult Bootcamps) has none.
+ *
+ * The one rule for the approval step: the card's chip and button, the
+ * sign-up page and both payment routes read it through groupForBlock.
+ */
+export function blockByApproval(
+  block: Pick<Cohort, "programId" | "levelMin" | "levelMax">,
+  lineup: readonly ProgramGroup[] = programGroups
+): boolean {
+  const floors = lineup
+    .filter((g) => g.programSlug === block.programId && g.day !== null && g.joining === "approval")
+    .map((g) => (g.level === null ? Number.NEGATIVE_INFINITY : tierById(g.level).levelMin));
+  if (floors.length === 0) return false;
+  const lo = levelNumber(block.levelMin);
+  const hi = levelNumber(block.levelMax);
+  // No band at all: the block takes every level.
+  if (lo === null && hi === null) return true;
+  // A missing bound means min = max for a cohort (src/lib/tiers.ts).
+  return Math.max(lo ?? (hi as number), hi ?? (lo as number)) >= Math.min(...floors);
+}
+
+/**
  * The group a block trains in, on the planned lineup or off it (safety
  * review, #85): the planned group the one rule matches, else a group built
  * from the block's own program and level, with the ages its program's groups
@@ -201,14 +230,16 @@ function builtGroup(
  * approval step) and both payment routes (approvalRefusal,
  * src/lib/enrollGate.ts) read this one function, so a block never shows one
  * group on its card and another, or none, on the page that takes the money.
- * Null for a block of a program that runs no group bootcamps.
+ * Its joining rule is the block's own (blockByApproval), whichever group it
+ * is. Null for a block of a program that runs no group bootcamps.
  */
 export function groupForBlock(
   block: Pick<Cohort, "programId" | "levelMin" | "levelMax">,
   lineup: readonly ProgramGroup[] = programGroups
 ): ProgramGroup | null {
   if (!Object.prototype.hasOwnProperty.call(BOOTCAMP_AUDIENCE, block.programId)) return null;
-  return plannedGroupForBlock(block, lineup) ?? builtGroup(block, lineup);
+  const group = plannedGroupForBlock(block, lineup) ?? builtGroup(block, lineup);
+  return blockByApproval(block, lineup) && group.joining !== "approval" ? { ...group, joining: "approval" } : group;
 }
 
 /**
@@ -279,7 +310,10 @@ export function groupCards(
       placed.push({
         ...base,
         first,
-        card: { group: blockCardGroup(block, g, claim(g.id)), block: blockFacts(block, seats[block.id]) },
+        card: {
+          group: blockCardGroup(block, groupForBlock(block, lineup) ?? g, claim(g.id)),
+          block: blockFacts(block, seats[block.id]),
+        },
       });
     }
   });
