@@ -130,9 +130,11 @@ export function reverseFrom(livemode: boolean | null | undefined): readonly stri
 }
 
 /**
- * Whether this delivery of a completed payment is the one that settles it —
- * the only one that spends credits, settles invites and sends the account
- * email. When the session carries Supabase enrollment rows, their move
+ * Whether this delivery of a completed payment is the one that makes the
+ * claim — the only one that sends the account email and the coach's notes.
+ * (Credits, invites and the confirmation are guarded steps every delivery
+ * walks: src/lib/paymentSettlement.ts.) When the session carries Supabase
+ * enrollment rows, their move
  * decides: it is one guarded update, so of two deliveries at the same moment
  * exactly one moves them (the Sheet's read-then-write flip cannot tell them
  * apart). With no Supabase rows, the Sheet's flip decides; with nothing to

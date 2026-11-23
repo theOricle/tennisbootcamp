@@ -109,8 +109,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
     }
     // The same format check as every other form (backlog #84), before any
-    // row, credit or Stripe session. A body with no contact email saves
-    // nothing and passes, as before.
+    // row, credit or Stripe session. A body with no contact email saves no
+    // enrollment row; it also owns no Sheet row, so it is refused below once
+    // the Sheet is read (rowsNotPayable).
     const typedEmail = String(enrollmentMeta?.contactEmail ?? "").trim();
     if (typedEmail && !isValidEmail(typedEmail)) {
       return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
@@ -177,7 +178,7 @@ export async function POST(req: NextRequest) {
     // The rows save with the session as owner, so a body naming another
     // address would hand that address's history to this account — 400,
     // before any row, credit or Stripe session. A body with no contact
-    // email saves nothing and passes.
+    // email has nothing to compare here; the row check below refuses it.
     const mismatch = contactEmailRefusal(signedIn, enrollmentMeta?.contactEmail);
     if (mismatch) {
       return NextResponse.json({ error: mismatch.error }, { status: mismatch.status });

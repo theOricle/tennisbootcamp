@@ -65,10 +65,11 @@ export async function setEnrollmentCredit(
 }
 
 // ─── Status column helpers (e-transfer rail, backlog #12) ─────────────────────
-// The `status` column is P (col 16) in the frozen layout. Card payments write
-// it from the checkout/webhook routes by row number (carried in Stripe
-// metadata); the e-transfer path resolves rows by cohort + contact email
-// instead — never by a client-supplied row number. Best-effort.
+// The `status` column is P (col 16) in the frozen layout. Card payments move
+// it through flipPaymentRows: the row numbers carried in Stripe metadata came
+// from the browser, so each is re-read and moved only when it carries the
+// payment's own cohort and contact email. The e-transfer path resolves rows
+// by cohort + contact email — never by a client-supplied row number.
 
 const STATUS_COL = "P";
 // A:U — the frozen columns plus the household block, whose `participant_id`
