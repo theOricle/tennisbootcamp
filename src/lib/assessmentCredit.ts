@@ -8,6 +8,7 @@ import {
   ASSESSMENT_CREDIT_CENTS,
   accountCredits,
   decideCredits,
+  writeCreditApplied,
   type AccountCredit,
   type CreditBooking,
   type SeatCredit,
@@ -126,20 +127,28 @@ export async function accountCreditView(input: {
 
 /**
  * Mark a booking's credit applied (payment for a program succeeded) and mirror
- * it to the assessments Sheet tab. Best-effort on the Sheet side.
+ * it to the assessments Sheet tab.
+ *
+ * The database write is the credit itself, so its failure is a failure (fix
+ * round 2): an error from the update throws (writeCreditApplied) and is never
+ * read as "already applied", which would leave the $20 spendable with no
+ * retry coming. "No row updated" without an error still means already
+ * applied. The Sheet mirror after it stays best-effort.
  */
 export async function markCreditApplied(bookingId: string): Promise<void> {
-  try {
-    const supabase = createServiceClient();
-    const { data: booking } = await supabase
+  const supabase = createServiceClient();
+  const booking = await writeCreditApplied(() =>
+    supabase
       .from("assessment_bookings")
       .update({ credit_status: "applied" })
       .eq("id", bookingId)
       .eq("credit_status", "unused")
       .select("*")
-      .maybeSingle();
-    if (!booking) return; // already applied (duplicate webhook) — done
+      .maybeSingle()
+  );
+  if (!booking) return; // already applied (duplicate webhook) — done
 
+  try {
     const row = booking as BookingRow;
     if (!row.block_id) return;
     const { data: block } = await supabase
@@ -158,6 +167,6 @@ export async function markCreditApplied(bookingId: string): Promise<void> {
       creditStatus: "applied",
     });
   } catch (err) {
-    console.error("markCreditApplied failed (non-blocking):", err);
+    console.error("Credit Sheet mirror failed (non-blocking):", err);
   }
 }

@@ -20,6 +20,7 @@
 // src/scripts/test-safety-round.ts drives every story with bookings in memory.
 
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
+import { throwOnFailedWrite } from "@/lib/stripeOutcome";
 
 /** Locked value per the pricing decisions: the discount is the assessment fee. */
 export const ASSESSMENT_CREDIT_CENTS = 2000;
@@ -163,4 +164,31 @@ export function accountCredits(input: {
     (reach === "waiting" ? waiting : ready).push(credit);
   }
   return { ready, waiting };
+}
+
+/** What the guarded update that marks a credit used answers. */
+export type CreditWriteAnswer<T> = {
+  data: T | null;
+  error: { code?: string | null } | null;
+};
+
+/**
+ * Mark one credit used through the guarded update it is handed (only out of
+ * `unused`), and say what happened:
+ *   the booking  the update moved it: the credit is now applied;
+ *   null         it moved nothing and reported no error: the credit was
+ *                applied already (a second delivery, a second click). Done,
+ *                and quiet;
+ *   a throw      the update reported an error (fix round 2). That is not
+ *                "already applied": the $20 still reads unused and could be
+ *                spent again, so the caller must hear it. The webhook answers
+ *                Stripe with a failure and is delivered again, and its
+ *                guarded steps change nothing twice.
+ */
+export async function writeCreditApplied<T>(
+  update: () => PromiseLike<CreditWriteAnswer<T>>
+): Promise<T | null> {
+  const { data, error } = await update();
+  throwOnFailedWrite(error, "Credit write");
+  return data ?? null;
 }

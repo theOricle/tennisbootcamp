@@ -78,6 +78,7 @@ import {
   carriesCredit,
   creditReach,
   decideCredits,
+  writeCreditApplied,
   type CreditBooking,
 } from "../lib/creditRules";
 import {
@@ -1477,6 +1478,141 @@ sections.push(function round2NoteMarks() {
     const outcome = read("src/lib/stripeOutcome.ts");
     check("the helper sits with the code that writes the marks", outcome.includes("export function noteWithoutMarks(") && outcome.includes("export function cardPaidNote(") && outcome.includes("export function reversalNote("));
     check("each line is built once, for its writer and for the reader", ["settledLine(sessionId)", "duplicateLine(sessionId)", "duplicateReversedLine(kind, sessionId)", "reversalLine(kind)", "settledLine(SESSION_SLOT)", "duplicateLine(SESSION_SLOT)", "duplicateReversedLine(kind, SESSION_SLOT), reversalLine(kind)"].every((use) => outcome.includes(use)));
+  }
+});
+
+//   R4. A failed credit write is a failure, never "already applied".
+
+sections.push(async function round2CreditWrite() {
+  const thrown = async (fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  };
+  /** The bookings table as markCreditApplied's update sees it: guarded on unused, and able to fail. */
+  const creditStore = () => {
+    const booking = { id: "bk_1", credit_status: "unused" };
+    const s = {
+      booking,
+      down: false,
+      writes: 0,
+      update: async (id: string) => {
+        if (s.down) return { data: null, error: { code: "57014" } };
+        if (id !== booking.id || booking.credit_status !== "unused") return { data: null, error: null };
+        booking.credit_status = "applied";
+        s.writes++;
+        return { data: { ...booking }, error: null };
+      },
+    };
+    return s;
+  };
+
+  console.log("R4. writeCreditApplied — the update's answer, read three ways");
+  {
+    const store = creditStore();
+    store.down = true;
+    let reported: unknown = "nothing";
+    const failure = await thrown(async () => {
+      reported = await writeCreditApplied(() => store.update("bk_1"));
+    });
+    check("a store whose update fails: the error surfaces, by its code", failure, "Credit write failed: 57014");
+    check("…the credit is not reported applied, and still reads unused", [reported, store.booking.credit_status, store.writes], ["nothing", "unused", 0]);
+    check("…an error with no code surfaces too", await thrown(() => writeCreditApplied(async () => ({ data: null, error: {} }))), "Credit write failed: unknown");
+
+    store.down = false;
+    const first = await writeCreditApplied(() => store.update("bk_1"));
+    check("the store back up: the credit is applied, and the booking is handed back", [first?.credit_status, store.booking.credit_status, store.writes], ["applied", "applied", 1]);
+    let second: unknown = "nothing";
+    const quiet = await thrown(async () => {
+      second = await writeCreditApplied(() => store.update("bk_1"));
+    });
+    check("a second call after a success is a quiet no-op", [quiet, second, store.writes], [null, null, 1]);
+    check("no row updated and no error is 'already applied', never a failure", await thrown(() => writeCreditApplied(async () => ({ data: null, error: null }))), null);
+  }
+
+  console.log("R4. Scenario — the webhook's settlement meets a database error on the credit, then Stripe delivers again");
+  {
+    const { w, deps, input, state } = settleWorld();
+    const store = creditStore();
+    /** applyCredit as the webhook hands it over: markCreditApplied's database write. */
+    const withStore = (): SettlementDeps => ({
+      ...deps(),
+      applyCredit: async (bookingId) => {
+        const moved = await writeCreditApplied(() => store.update(bookingId));
+        w.steps.push("applyCredit");
+        if (moved) {
+          w.credit = "applied";
+          w.creditMarks++;
+        }
+      },
+    });
+    store.down = true;
+    let answered = 200;
+    await settleEnrollmentPayment(withStore(), input()).catch(() => {
+      answered = 500; // the webhook route lets it propagate
+    });
+    check("the first delivery answers 500", answered, 500);
+    check("…the credit still reads unused, and nothing after it ran: no claim, no email, no confirmation", [state().credit, state().sheetCredit, state().row, state().invite, state().cohort, w.accountEmails], ["unused", null, "pending", "invited", "inviting", 0]);
+    store.down = false;
+    const retry = await settleEnrollmentPayment(withStore(), input());
+    check("the retry finishes the job: the credit is spent once and everything is settled", [retry, state(), w.accountEmails, store.writes], [{ stage: "settled", spoke: true }, SETTLED, 1, 1]);
+    const again = await settleEnrollmentPayment(withStore(), input());
+    check("a further delivery changes nothing", [again, state(), w.accountEmails, store.writes], [{ stage: "redelivery", spoke: false }, SETTLED, 1, 1]);
+
+    // Before the fix the error read as "already applied": the delivery went
+    // on, answered 200, and no retry ever came for the credit.
+    const old = settleWorld();
+    const oldStore = creditStore();
+    oldStore.down = true;
+    const swallowed = await settleEnrollmentPayment({ ...old.deps(), applyCredit: async (id) => void (await oldStore.update(id)) }, old.input());
+    check("for contrast, swallowed: the payment settles and the $20 stays spendable", [swallowed.stage, old.state().row, oldStore.booking.credit_status], ["settled", "paid", "unused"]);
+  }
+
+  console.log("R4. Scenario — the coach's 'mark paid' meets the same error");
+  {
+    // settleEtransferEnrollment: the credit, then the rows. Nothing delivers
+    // a click again, so the error is logged and the rows are still marked.
+    const store = creditStore();
+    store.down = true;
+    const rows = { status: "pending_etransfer" };
+    const logged: string[] = [];
+    const markPaid = async () => {
+      await writeCreditApplied(() => store.update("bk_1")).catch((err) => logged.push(err instanceof Error ? err.message : "unknown"));
+      rows.status = "paid";
+    };
+    check("the click does not fail", await thrown(markPaid), null);
+    check("…the family's rows read paid, the error is logged, and the credit is not reported applied", [rows.status, logged, store.booking.credit_status], ["paid", ["Credit write failed: 57014"], "unused"]);
+  }
+
+  console.log("R4. Source — the write throws, the mirror stays best-effort, and each caller does what it says");
+  {
+    const credit = read("src/lib/assessmentCredit.ts");
+    const fn = credit.slice(credit.indexOf("export async function markCreditApplied("));
+    const body = fn.slice(0, fn.indexOf("\n}\n"));
+    const write = body.indexOf("await writeCreditApplied(() =>");
+    const tryAt = body.indexOf("try {");
+    check("the credit's own write goes through writeCreditApplied, outside any try", write !== -1 && tryAt !== -1 && write < tryAt && body.indexOf("createServiceClient()") < tryAt);
+    check("…still guarded on unused", /\.update\(\{ credit_status: "applied" \}\)\s*\.eq\("id", bookingId\)\s*\.eq\("credit_status", "unused"\)/.test(body));
+    check("…and its error is no longer dropped", /const \{ data: booking \} = await supabase/.test(body), false);
+    check("no row and no error is still 'already applied'", body.indexOf("if (!booking) return;") > write && body.indexOf("if (!booking) return;") < tryAt);
+    check("the Sheet mirror stays best-effort, after the write", tryAt < body.indexOf("await updateAssessmentRow(") && body.includes("(non-blocking)"));
+    const rules = read("src/lib/creditRules.ts");
+    check("writeCreditApplied throws through the same helper a refund's write does", rules.includes('throwOnFailedWrite(error, "Credit write");'));
+
+    const settle = read("src/lib/paymentSettlement.ts");
+    check("the settlement walk awaits the credit with no catch, before the claim", settle.includes("await deps.applyCredit(bookingId);") && !/deps\.applyCredit\([^;]*\)\s*\.catch\(/.test(settle) && settle.indexOf("await deps.applyCredit(bookingId);") < settle.indexOf("deps.moveEnrollments("));
+    const hook = read("src/app/api/webhooks/stripe/route.ts");
+    check("the webhook hands the writer over bare and lets the walk's throw reach Stripe", hook.includes("applyCredit: markCreditApplied,") && !/settleEnrollmentPayment\([\s\S]*?\n    \)\s*\.catch\(/.test(hook));
+
+    const actions = read("src/lib/cohortActions.ts");
+    const etransfer = actions.slice(actions.indexOf("async function settleEtransferEnrollment("));
+    const etransferBody = etransfer.slice(0, etransfer.indexOf("\n}\n"));
+    const caught = etransferBody.indexOf("await markCreditApplied(credit.bookingId).catch(");
+    check("the coach's 'mark paid' logs the failed credit and goes on to mark the rows paid", caught !== -1 && caught < etransferBody.indexOf('await setEnrollmentRowsStatus(cohortId, email, "pending", "paid");') && etransferBody.includes("Mark it applied by hand."));
+    check("the writer has these two callers and no other", [(hook.match(/markCreditApplied/g) ?? []).length, (actions.match(/markCreditApplied\(/g) ?? []).length], [2, 1]);
   }
 });
 

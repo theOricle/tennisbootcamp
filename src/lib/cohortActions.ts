@@ -1138,7 +1138,19 @@ async function settleEtransferEnrollment(
     accountId: accountId ?? null,
     seats: [participantId ?? null],
   });
-  if (credit) await markCreditApplied(credit.bookingId);
+  // A failed credit write throws (fix round 2). Nothing delivers the coach's
+  // click again, so here it is logged plainly and the rows below are still
+  // marked paid: the family paid the amount with the $20 off. The booking
+  // still reads unused until it is marked applied by hand.
+  if (credit) {
+    await markCreditApplied(credit.bookingId).catch((err) =>
+      console.error(
+        `E-transfer marked paid, but assessment booking ${credit.bookingId} was not marked used (${
+          err instanceof Error ? err.message : "unknown"
+        }): its $20 still reads unused. Mark it applied by hand.`
+      )
+    );
+  }
 
   await setEnrollmentRowsStatus(cohortId, email, "pending", "paid");
 

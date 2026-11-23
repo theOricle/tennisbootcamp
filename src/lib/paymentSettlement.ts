@@ -78,7 +78,7 @@ export type SettlementDeps = {
     from: readonly string[];
     to: string;
   }): Promise<{ moved: number[]; own: number[]; unresolved: number[] } | null>;
-  /** Mark one booking's $20 used; guarded on unused. */
+  /** Mark one booking's $20 used; guarded on unused. A write that fails throws, so the delivery is sent again. */
   applyCredit(bookingId: string): Promise<void>;
   /** Write the credit beside a Sheet row. */
   recordSheetCredit(rowNumber: number, amount: string): Promise<void>;
