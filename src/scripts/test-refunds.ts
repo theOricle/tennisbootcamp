@@ -238,13 +238,13 @@ console.log("Source — the webhook takes refunds and disputes");
       redeliveryAt < hook.indexOf("await notifyEnrollmentAccount(") &&
       redeliveryAt < hook.indexOf("sendPaymentUnmatchedAdminEmail(")
   );
-  check("…and only the row moves come before it", redeliveryAt > hook.indexOf("await flipEnrollmentRows(") && redeliveryAt > hook.indexOf("await setEnrollmentStatusByIds("));
-  check("rows settle only out of SETTLE_FROM", hook.includes("SETTLE_FROM"));
+  check("…and only the row moves come before it", redeliveryAt > hook.indexOf("await flipPaymentRows(") && redeliveryAt > hook.indexOf("await setEnrollmentStatusByIds("));
+  check("rows settle only out of the statuses settleFrom allows", hook.includes("const from = settleFrom(outcome);") && [...SETTLE_FROM].join() === "pending,pending_etransfer");
   // The decision is the tested helper's, fed by what this delivery moved —
   // never a value the route makes up.
   check(
     "firstDelivery is isFirstDelivery's answer, from the moves themselves",
-    /const firstDelivery = isFirstDelivery\(\{\s*dbRows: paidEnrollmentIds\.length,\s*dbMoved: dbMoved\.length,\s*sheetRows: paidRows\.length,\s*sheetMoved: sheetMoved === null \? null : sheetMoved\.length,\s*\}\);/.test(hook)
+    /const firstDelivery = isFirstDelivery\(\{\s*dbRows: paidEnrollmentIds\.length,\s*dbMoved: dbMoved\.length,\s*sheetRows: paidRows\.length,\s*sheetMoved: sheetMoved === null \? null : sheetMoved\.moved\.length,\s*\}\);/.test(hook)
   );
   const actions = read("src/lib/supabase/enrollmentActions.ts");
   const move = actions.slice(actions.indexOf("export async function setEnrollmentStatusByIds("));
@@ -258,7 +258,7 @@ console.log("Source — every reversal is a guarded move and sends no email");
 {
   const reversal = read("src/lib/paymentReversal.ts");
   check("the reversal module exists and is server-only", reversal.startsWith('import "server-only";'));
-  check("enrollment rows move only out of REVERSE_FROM", reversal.includes('.in("status", [...REVERSE_FROM])'));
+  check("enrollment rows move only out of the statuses reverseFrom allows", reversal.includes("const from = reverseFrom(livemode);") && reversal.includes('.in("status", [...from])'));
   check("invites move only from paid, card or unrecorded", reversal.includes('.eq("status", "paid")') && reversal.includes('.or("payment_method.is.null,payment_method.eq.card")'));
   check("the reversal never sends an email", /send[A-Z]\w*\(|notifyEnrollmentAccount|issueActivationLink/.test(reversal), false);
   const assessments = read("src/lib/assessments.ts");
@@ -269,7 +269,7 @@ console.log("Source — every reversal is a guarded move and sends no email");
   check("a taken slot is logged plainly for the coach", lateBody.includes("console.error(") && lateBody.includes("Refund it or book another time by hand"));
   check("…and sends no email", /send[A-Z]\w*\(/.test(lateBody), false);
   const sheet = read("src/lib/enrollmentSheet.ts");
-  check("the Sheet flip reads before it writes", sheet.includes("export async function flipEnrollmentRows(") && sheet.includes("rowsInStatus("));
+  check("the Sheet flip reads before it writes", sheet.includes("export async function flipPaymentRows(") && sheet.includes("paymentRowsToMove("));
 }
 
 // ─── Before migration 0012: cancelled stands in ───────────────────────────────

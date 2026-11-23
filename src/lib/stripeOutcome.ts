@@ -97,12 +97,37 @@ export function refundReversal(charge: {
 export const SETTLE_FROM = ["pending", "pending_etransfer"] as const;
 
 /**
+ * What a test-mode payment may settle (safety review): only a row still
+ * pending, the state its own checkout left it in. A test payment never moves
+ * a row that waits on a real e-transfer.
+ */
+export const SETTLE_FROM_TEST = ["pending"] as const;
+
+/** The statuses a completed payment moves a row out of, by outcome. */
+export function settleFrom(outcome: PaymentOutcome): readonly string[] {
+  return outcome === "paid" ? SETTLE_FROM : SETTLE_FROM_TEST;
+}
+
+/**
  * The enrollment statuses a reversal moves one of this session's rows out
  * of: paid, a test payment, or still pending (a refund that outran its own
  * completed event — that event then finds nothing to settle). A row already
  * refunded or disputed is left as it is, so a redelivery changes nothing.
  */
 export const REVERSE_FROM = ["pending", "paid", "test_paid"] as const;
+
+/**
+ * What a test-mode refund or dispute may reverse (safety review): a test
+ * payment's own rows, never a paid one. No test event moves a row that real
+ * money paid for.
+ */
+export const REVERSE_FROM_TEST = ["pending", "test_paid"] as const;
+
+/** The statuses a reversal moves a row out of: live money, or a test event. */
+export function reverseFrom(livemode: boolean | null | undefined): readonly string[] {
+  // Only an explicit `true` is live, as in paymentOutcome.
+  return livemode === true ? REVERSE_FROM : REVERSE_FROM_TEST;
+}
 
 /**
  * Whether this delivery of a completed payment is the one that settles it —

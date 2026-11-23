@@ -10,14 +10,14 @@ import {
 import { inviteLinkFromMetadata } from "@/lib/checkoutInvite";
 import { getCohortById } from "@/lib/cohortsDb";
 import { programs } from "@/content/programs";
-import { flipEnrollmentRows } from "@/lib/enrollmentSheet";
+import { flipPaymentRows } from "@/lib/enrollmentSheet";
 import { reverseCheckoutSession } from "@/lib/paymentReversal";
 import {
-  SETTLE_FROM,
   bookingPaid,
   isFirstDelivery,
   paymentOutcome,
   refundReversal,
+  settleFrom,
   settlementPlan,
   type ReversalKind,
 } from "@/lib/stripeOutcome";
@@ -127,8 +127,25 @@ export async function POST(req: NextRequest) {
     // count — then every player's Supabase row, not just the first (audit
     // M25). Either write that fails answers 500 and Stripe retries; every
     // move is guarded, so a retry finishes the job without doing it twice.
-    const sheetMoved = await flipEnrollmentRows(paidRows, SETTLE_FROM, rowStatus);
-    const dbMoved = await setEnrollmentStatusByIds(paidEnrollmentIds, SETTLE_FROM, rowStatus);
+    // The Sheet rows are remembered by number, and the number came from the
+    // browser: each is moved only when it still carries this payment's cohort
+    // and contact email and a status the payment expects (safety review). A
+    // test payment expects pending only, so it never moves a row that waits
+    // on a real e-transfer.
+    const from = settleFrom(outcome);
+    const sheetMoved = await flipPaymentRows({
+      rowNumbers: paidRows,
+      cohortId,
+      email: contactEmail,
+      from,
+      to: rowStatus,
+    });
+    if (sheetMoved && sheetMoved.unresolved.length > 0) {
+      console.error(
+        `[stripe webhook] session ${session.id}: ${sheetMoved.unresolved.length} Sheet row(s) do not carry this payment's cohort and email, so they were not moved`
+      );
+    }
+    const dbMoved = await setEnrollmentStatusByIds(paidEnrollmentIds, from, rowStatus);
     // Whether this delivery is the one that settles the payment: the
     // database's guarded move decides whenever the session has rows there,
     // so two deliveries at the same moment never both send the account
@@ -137,7 +154,7 @@ export async function POST(req: NextRequest) {
       dbRows: paidEnrollmentIds.length,
       dbMoved: dbMoved.length,
       sheetRows: paidRows.length,
-      sheetMoved: sheetMoved === null ? null : sheetMoved.length,
+      sheetMoved: sheetMoved === null ? null : sheetMoved.moved.length,
     });
     if (!firstDelivery) {
       console.log(`[stripe webhook] session ${session.id} already settled: redelivery, nothing changed`);
@@ -172,7 +189,8 @@ export async function POST(req: NextRequest) {
       for (let i = 0; i < creditBookings.length; i++) {
         await markCreditApplied(creditBookings[i]);
         const target = paidRows[i] ?? paidRows[0];
-        if (target) {
+        // Only onto a row the check above found to be this payment's own.
+        if (target && (sheetMoved === null || sheetMoved.own.includes(target))) {
           await setEnrollmentCredit(target, (perCredit / 100).toFixed(2));
         }
       }
@@ -320,7 +338,7 @@ export async function POST(req: NextRequest) {
       console.warn(`[stripe webhook] ${event.id}: ${kind} payment has no Checkout session here`);
       return NextResponse.json({ received: true });
     }
-    await reverseCheckoutSession(session, kind);
+    await reverseCheckoutSession(session, kind, { livemode: event.livemode === true });
   }
 
   return NextResponse.json({ received: true });

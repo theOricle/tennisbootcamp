@@ -23,6 +23,7 @@ import { cohortMatchesGroup } from "@/lib/programCatalog";
 import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 import { emailBelongsToAccount } from "@/lib/enrollmentLink";
+import { normalizeEmail } from "@/lib/supabase/adminUsers";
 
 /** What getInviteByToken reported, as far as the gate cares. */
 export type GateInviteLookup =
@@ -324,6 +325,125 @@ export function foreignRows(
     const row = snapshot.rows[n - 2];
     return !row || String(row[cohortCol] ?? "") !== cohortId;
   });
+}
+
+/** The status /api/enroll writes, and the only one a card checkout may pay for. */
+export const CHECKOUT_ROW_STATUS = "pending";
+
+/**
+ * Which of the row numbers a checkout names are NOT the payer's own to pay
+ * for (backlog #84, safety review). A row number arrives from the browser, so
+ * sitting under the right cohort is not enough: a stranger could name another
+ * family's row and have a payment event move it. A row passes only when the
+ * Sheet says all three: it sits under this cohort, its contact email is the
+ * one this checkout carries (trimmed, case aside), and it is still pending,
+ * the state /api/enroll left it in. A row already waiting on an e-transfer,
+ * paid, refunded or disputed is nobody's to pay for by card. No email on the
+ * checkout means no row can be its own.
+ */
+export function rowsNotPayable(
+  snapshot: EnrollmentSheetSnapshot,
+  params: { cohortId: string; email: string | null | undefined; rowNumbers: readonly number[] }
+): number[] {
+  const cohortCol = snapshot.header.indexOf("cohort_id");
+  const emailCol = snapshot.header.indexOf("contact_email");
+  const statusCol = snapshot.header.indexOf("status");
+  const payer = normalizeEmail(params.email ?? "");
+  if (cohortCol === -1 || emailCol === -1 || statusCol === -1 || !payer) {
+    return params.rowNumbers.slice();
+  }
+  return params.rowNumbers.filter((n) => {
+    if (!Number.isInteger(n) || n < 2) return true;
+    const row = snapshot.rows[n - 2];
+    return (
+      !row ||
+      String(row[cohortCol] ?? "") !== params.cohortId ||
+      normalizeEmail(String(row[emailCol] ?? "")) !== payer ||
+      String(row[statusCol] ?? "").trim() !== CHECKOUT_ROW_STATUS
+    );
+  });
+}
+
+/** What a payment event may do to the Sheet rows its session remembers. */
+export type PaymentRowPlan = {
+  /** The rows to move: this payment's own, in a status the move expects. */
+  rows: number[];
+  /** The remembered rows that are this payment's own, whatever their status. */
+  own: number[];
+  /** Remembered rows that are not this payment's and could not be found again. */
+  unresolved: number[];
+};
+
+/**
+ * The rows a payment event moves (backlog #84, safety review): a settled
+ * payment, a refund or a dispute. The session remembers row numbers, and a
+ * number alone proves nothing: it came from the browser, and weeks later
+ * another family's row may sit there. A remembered row is moved only when it
+ * still carries the payment's own cohort and contact email and its status is
+ * one the move expects (`from`).
+ *
+ * `relocate` is for a reversal, which can arrive long after the payment: when
+ * a remembered position no longer holds this payment's row, the row is looked
+ * for by the payment's cohort and email among rows already settled (never a
+ * row still pending, which an unfinished sign-up leaves behind). It is taken
+ * only when exactly as many are found as went missing; otherwise nothing is
+ * guessed and the position is reported for the coach.
+ */
+export function paymentRowsToMove(
+  snapshot: EnrollmentSheetSnapshot,
+  params: {
+    rowNumbers: readonly number[];
+    cohortId: string;
+    email: string | null | undefined;
+    from: readonly string[];
+    relocate?: boolean;
+  }
+): PaymentRowPlan {
+  const remembered = [...new Set(params.rowNumbers.filter((n) => Number.isInteger(n) && n >= 2))];
+  const cohortCol = snapshot.header.indexOf("cohort_id");
+  const emailCol = snapshot.header.indexOf("contact_email");
+  const statusCol = snapshot.header.indexOf("status");
+  const payer = normalizeEmail(params.email ?? "");
+  if (cohortCol === -1 || emailCol === -1 || statusCol === -1 || !payer || !params.cohortId) {
+    return { rows: [], own: [], unresolved: remembered };
+  }
+  const isOwn = (row: string[] | undefined) =>
+    Boolean(row) &&
+    String(row?.[cohortCol] ?? "") === params.cohortId &&
+    normalizeEmail(String(row?.[emailCol] ?? "")) === payer;
+  const statusOf = (row: string[] | undefined) => String(row?.[statusCol] ?? "").trim();
+
+  const rows: number[] = [];
+  const own: number[] = [];
+  const strays: number[] = [];
+  for (const n of remembered) {
+    const row = snapshot.rows[n - 2];
+    if (!isOwn(row)) {
+      strays.push(n);
+      continue;
+    }
+    own.push(n);
+    if (params.from.includes(statusOf(row))) rows.push(n);
+  }
+
+  let unresolved = strays;
+  if (strays.length > 0 && params.relocate) {
+    const found: number[] = [];
+    snapshot.rows.forEach((row, i) => {
+      const n = i + 2;
+      const status = statusOf(row);
+      if (isOwn(row) && !own.includes(n) && status !== CHECKOUT_ROW_STATUS && params.from.includes(status)) {
+        found.push(n);
+      }
+    });
+    if (found.length === strays.length) {
+      rows.push(...found);
+      own.push(...found);
+      unresolved = [];
+    }
+  }
+  const asc = (a: number, b: number) => a - b;
+  return { rows: rows.sort(asc), own: own.sort(asc), unresolved: unresolved.sort(asc) };
 }
 
 export type ResolvedEnrollGate = {

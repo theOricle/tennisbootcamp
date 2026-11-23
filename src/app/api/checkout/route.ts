@@ -12,10 +12,10 @@ import {
   approvalRefusal,
   checkoutCreditParticipants,
   contactEmailRefusal,
-  foreignRows,
   gateRefusal,
   requestedParticipantIds,
   resolveEnrollGate,
+  rowsNotPayable,
   scrubParticipantIds,
   seatsRefuse,
 } from "@/lib/enrollGate";
@@ -217,9 +217,12 @@ export async function POST(req: NextRequest) {
 
     // Backlog #38: one read of the enrollments tab answers two questions
     // before any money moves — is there a seat for every player (the page's
-    // own seat rule), and do the row numbers the browser sent sit under this
-    // cohort (they are what the webhook marks paid). Sheets unconfigured
-    // (local dev) skips both, exactly as the page skips its seat check.
+    // own seat rule), and are the row numbers the browser sent the payer's
+    // own (they are what the webhook marks paid): under this cohort, under
+    // this checkout's contact email, and still pending (safety review: the
+    // cohort alone let a stranger name another family's row). Sheets
+    // unconfigured (local dev) skips both, exactly as the page skips its
+    // seat check.
     const sheet = await readEnrollmentSheet();
     if (sheet.status === "error") {
       await ticket.release();
@@ -232,7 +235,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: COHORT_FULL_ERROR }, { status: 409 });
       }
       const toVerify = Array.from(new Set([enrollmentRowNumber, ...rowNumbers]));
-      if (foreignRows(sheet.snapshot, cohort.id, toVerify).length > 0) {
+      const notOwn = rowsNotPayable(sheet.snapshot, {
+        cohortId: cohort.id,
+        email: typedEmail,
+        rowNumbers: toVerify,
+      });
+      if (notOwn.length > 0) {
         await ticket.release();
         return NextResponse.json({ error: ROW_MISMATCH_ERROR }, { status: 400 });
       }

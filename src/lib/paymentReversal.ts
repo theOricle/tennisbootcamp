@@ -1,14 +1,14 @@
 import "server-only";
 import type Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/service";
-import { flipEnrollmentRows } from "@/lib/enrollmentSheet";
+import { flipPaymentRows } from "@/lib/enrollmentSheet";
 import { updateAssessmentRow } from "@/lib/assessmentSheet";
 import { normTime, type BlockRow, type BookingRow } from "@/lib/assessments";
 import { planMarkUnpaid, type InviteStatus } from "@/lib/paymentTransitions";
 import {
-  REVERSE_FROM,
   bookingReversalPatch,
   reversalNote,
+  reverseFrom,
   writeBookingState,
   type ReversalKind,
 } from "@/lib/stripeOutcome";
@@ -32,23 +32,29 @@ function supabaseConfigured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-/** Reverse whatever this Checkout session paid for: a booking, or enrollment seats. */
+/**
+ * Reverse whatever this Checkout session paid for: a booking, or enrollment
+ * seats. `livemode` is the event's own word: a test-mode refund or dispute
+ * reverses a test payment's rows and never a paid one (safety review).
+ */
 export async function reverseCheckoutSession(
   session: Pick<Stripe.Checkout.Session, "id" | "metadata">,
-  kind: ReversalKind
+  kind: ReversalKind,
+  opts: { livemode: boolean }
 ): Promise<void> {
   const meta = session.metadata ?? {};
   if (meta.kind === "assessment") {
     await reverseBooking(meta.bookingId ?? "", kind, session.id);
     return;
   }
-  await reverseEnrollment(meta, kind, session.id);
+  await reverseEnrollment(meta, kind, session.id, opts.livemode);
 }
 
 async function reverseEnrollment(
   meta: Stripe.Metadata,
   kind: ReversalKind,
-  sessionId: string
+  sessionId: string,
+  livemode: boolean
 ): Promise<void> {
   const cohortId = meta.cohortId ?? "";
   const rowNumbers = csv(meta.enrollmentRowNumbers)
@@ -60,7 +66,9 @@ async function reverseEnrollment(
   const ids = csv(meta.supabaseEnrollmentIds);
   const enrollmentIds = ids.length > 0 ? ids : csv(meta.supabaseEnrollmentId);
 
-  // The session's own rows, out of paid, test-paid or still pending.
+  // The session's own rows, out of paid, test-paid or still pending; a
+  // test-mode event never out of paid.
+  const from = reverseFrom(livemode);
   let rowsMoved = 0;
   if (enrollmentIds.length > 0 && supabaseConfigured()) {
     const supabase = createServiceClient();
@@ -68,14 +76,29 @@ async function reverseEnrollment(
       .from("enrollments")
       .update({ status: kind })
       .in("id", enrollmentIds)
-      .in("status", [...REVERSE_FROM])
+      .in("status", [...from])
       .select("id");
     if (error) console.error("Enrollment reversal failed (non-blocking):", error.message);
     rowsMoved = (data ?? []).length;
   }
   // The Sheet carries the seat count. Errors propagate: Stripe retries, and
-  // every move here is guarded.
-  const sheetMoved = (await flipEnrollmentRows(rows, REVERSE_FROM, kind)) ?? [];
+  // every move here is guarded. The row is found by the payment's own cohort
+  // and contact email, never by its remembered position alone: a refund can
+  // come weeks later, when another family's row sits at that number.
+  const sheet = await flipPaymentRows({
+    rowNumbers: rows,
+    cohortId,
+    email: meta.contactEmail ?? "",
+    from,
+    to: kind,
+    relocate: true,
+  });
+  const sheetMoved = sheet?.moved ?? [];
+  if (sheet && sheet.unresolved.length > 0) {
+    console.error(
+      `[stripe webhook] session ${sessionId} ${kind}: ${sheet.unresolved.length} Sheet row(s) no longer carry this payment's cohort and email and could not be found again. Mark the row ${kind} by hand.`
+    );
+  }
   const invitesReleased = await releaseCardInvites(
     cohortId,
     meta.inviteId ?? "",

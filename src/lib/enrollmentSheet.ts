@@ -1,7 +1,6 @@
 import "server-only";
 import { google, type sheets_v4 } from "googleapis";
-import { enrollmentRowsToFlip } from "@/lib/enrollGate";
-import { rowsInStatus } from "@/lib/stripeOutcome";
+import { enrollmentRowsToFlip, paymentRowsToMove } from "@/lib/enrollGate";
 
 // Additive write to the enrollments tab: the `assessment_credit` column (Q,
 // col 17) appended after the frozen 16-column layout that ends at `status` (P).
@@ -76,46 +75,58 @@ const STATUS_COL = "P";
 // (col 21) scopes a flip to one player when the invite names one (#38).
 const READ_RANGE = "A:U";
 
+/** What a payment event did to its Sheet rows. */
+export type PaymentRowsMoved = {
+  /** The rows whose status this call moved. */
+  moved: number[];
+  /** The remembered rows that are this payment's own, whatever their status. */
+  own: number[];
+  /** Remembered rows that are not this payment's own and were left alone. */
+  unresolved: number[];
+};
+
 /**
- * Move these rows' status (column P) out of one of `from` into `to`, and
- * resolve to the rows moved (backlog #84). It reads the cells before it
- * writes them, so a redelivered Stripe event — or a refund that already
- * landed — moves nothing, and the webhook can tell. Null when Sheets is not
- * configured (nothing could be checked). Errors propagate on purpose: the
- * webhook then answers 500 and Stripe retries, which is safe because every
- * move is guarded.
+ * Move a payment's own rows (column P) out of one of `from` into `to`
+ * (backlog #84, safety review). The row numbers came from the browser at
+ * checkout, so each one is read back first and moved only when it still
+ * carries the payment's cohort and contact email and a status the move
+ * expects (paymentRowsToMove, src/lib/enrollGate.ts): a redelivered event, a
+ * refund that already landed, or a number that names another family's row
+ * moves nothing. `relocate` lets a reversal find its row by cohort and email
+ * when the Sheet was re-sorted since. Null when Sheets is not configured
+ * (nothing could be checked). Errors propagate on purpose: the webhook then
+ * answers 500 and Stripe retries, which is safe because every move is guarded.
  */
-export async function flipEnrollmentRows(
-  rowNumbers: readonly number[],
-  from: readonly string[],
-  to: string
-): Promise<number[] | null> {
+export async function flipPaymentRows(params: {
+  rowNumbers: readonly number[];
+  cohortId: string;
+  email: string | null | undefined;
+  from: readonly string[];
+  to: string;
+  relocate?: boolean;
+}): Promise<PaymentRowsMoved | null> {
   const sheets = getSheets();
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
   if (!sheets || !spreadsheetId) return null;
-  const rows = [...new Set(rowNumbers.filter((n) => Number.isInteger(n) && n >= 2))];
-  if (rows.length === 0) return [];
+  if (params.rowNumbers.length === 0) return { moved: [], own: [], unresolved: [] };
 
-  const res = await sheets.spreadsheets.values.batchGet({
+  // A:P holds the three columns the check reads: cohort_id, contact_email, status.
+  const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    ranges: rows.map((n) => `${TAB}!${STATUS_COL}${n}`),
+    range: `${TAB}!A:P`,
   });
-  // valueRanges come back in the order asked; an empty cell has no values.
-  const statusByRow = new Map<number, string>();
-  (res.data.valueRanges ?? []).forEach((range, i) => {
-    if (i < rows.length) statusByRow.set(rows[i], String(range.values?.[0]?.[0] ?? "").trim());
-  });
-  const moved = rowsInStatus(statusByRow, from);
-  if (moved.length === 0) return [];
-
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      valueInputOption: "RAW",
-      data: moved.map((n) => ({ range: `${TAB}!${STATUS_COL}${n}`, values: [[to]] })),
-    },
-  });
-  return moved;
+  const all = (res.data.values ?? []) as string[][];
+  const plan = paymentRowsToMove({ header: all[0] ?? [], rows: all.slice(1) }, params);
+  if (plan.rows.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: plan.rows.map((n) => ({ range: `${TAB}!${STATUS_COL}${n}`, values: [[params.to]] })),
+      },
+    });
+  }
+  return { moved: plan.rows, own: plan.own, unresolved: plan.unresolved };
 }
 
 /**
