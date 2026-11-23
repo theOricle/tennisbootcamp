@@ -27,7 +27,15 @@ import {
   enrollReturnUrls,
   inviteResumeCookie,
 } from "@/lib/checkoutInvite";
-import { INVALID_EMAIL_ERROR, checkBot, isValidEmail, logBotDrop } from "@/lib/botCheck";
+import {
+  INVALID_EMAIL_ERROR,
+  REQUEST_TOO_LARGE,
+  bodyTooLarge,
+  checkBot,
+  isValidEmail,
+  logBotDrop,
+} from "@/lib/botCheck";
+import { tooManyPlayers } from "@/lib/participantInput";
 import { enrollmentOwner } from "@/lib/enrollmentLink";
 import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
 import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
@@ -85,7 +93,12 @@ type EnrollmentMeta = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // The size cap the other public forms have (safety review).
+    const raw = await req.text();
+    if (bodyTooLarge(raw, req.headers.get("content-length"))) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    const body = JSON.parse(raw);
     // Bot protection (backlog #84, the same check as the other public forms):
     // a tripped check gets a success-shaped answer and nothing is created.
     const verdict = checkBot(body);
@@ -114,6 +127,10 @@ export async function POST(req: NextRequest) {
         { error: "Missing required fields." },
         { status: 400 }
       );
+    }
+    // No more players than one household holds, the most the wizard can send.
+    if (tooManyPlayers(enrollmentMeta?.participants)) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
     }
     // The same format check as every other form (backlog #84), before any
     // row, credit or Stripe session. A body with no contact email saves

@@ -10,7 +10,8 @@ import { guestPlayer } from "@/lib/guestAccount";
 import { getCohortById } from "@/lib/cohortsDb";
 import { gateRefusal, requestedParticipantIds, resolveEnrollGate } from "@/lib/enrollGate";
 import { enrollmentSheetRow } from "@/lib/sheetText";
-import { checkBot, logBotDrop } from "@/lib/botCheck";
+import { REQUEST_TOO_LARGE, bodyTooLarge, checkBot, logBotDrop } from "@/lib/botCheck";
+import { tooManyPlayers } from "@/lib/participantInput";
 import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
 import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 
@@ -60,7 +61,14 @@ type EnrollParticipant = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // The size cap the other public forms have (safety review): one request
+    // appends one Sheet row for each player it names, so a body with no cap
+    // and no limit on its players could append thousands on one counted try.
+    const raw = await req.text();
+    if (bodyTooLarge(raw, req.headers.get("content-length"))) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    const body = JSON.parse(raw);
 
     // Bot protection (backlog #84, the same check as the other public forms):
     // a tripped check gets a success-shaped answer and nothing is written.
@@ -68,6 +76,10 @@ export async function POST(req: NextRequest) {
     if (verdict.bot) {
       logBotDrop("enroll", verdict.reason);
       return NextResponse.json({ ok: true, rowNumber: null, rowNumbers: [], participants: [] });
+    }
+    // No more players than one household holds, the most the wizard can send.
+    if (tooManyPlayers(body.participants)) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
     }
 
     // Backlog #38: the enroll page's gate, before any row is appended, so a

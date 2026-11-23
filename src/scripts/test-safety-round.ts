@@ -15,6 +15,9 @@
 //   3. A webhook delivery that stops half-way is finished by the next one:
 //      every delivery walks the guarded steps, and only the one whose row
 //      move landed sends the emails.
+//   4. The limits count what a request does, not only that it arrived: the
+//      three sign-up routes cap the body and the players, and an e-transfer
+//      try counts once for each player it emails for.
 //
 // Pure: it calls pure functions, drives in-memory stores and reads source
 // files. No network, no database, no env. Exits non-zero on any failure.
@@ -51,6 +54,17 @@ import {
   type SettlementDeps,
   type SettlementInput,
 } from "../lib/paymentSettlement";
+import {
+  LIMITS,
+  maxDailyEmailsPerAddress,
+  submissionWeight,
+  takeTicket,
+  type LimitScope,
+  type LimitStore,
+  type StoredHit,
+} from "../lib/submissionLimits";
+import { MAX_PARTICIPANTS_PER_ACCOUNT, tooManyPlayers } from "../lib/participantInput";
+import { MAX_BODY_BYTES, bodyTooLarge } from "../lib/botCheck";
 import { linkedBookingPlayer } from "../lib/guestAccount";
 import { creditLine } from "../lib/dashboardState";
 import { amountDueCents } from "../lib/paymentTransitions";
@@ -756,6 +770,143 @@ sections.push(async function point3() {
     const order = ["await deps.flipSheetRows(", "await deps.applyCredit(", "await deps.settleInvite(", "await deps.moveEnrollments(", "if (speaks) {", "await deps.emailUnmatched(", "await deps.notifyAccount(", "await deps.confirmCohort("].map(at);
     check("the steps are written in the order the test walked", order.every((n, i) => n !== -1 && (i === 0 || order[i - 1] < n)));
     check("it imports no service: the writes are handed in", /from "@\/lib\/(supabase|email|cohortActions|assessmentCredit|enrollmentSheet)|server-only|stripe"/.test(settle), false);
+  }
+});
+
+// ─── 4. The limits count rows and emails, not only requests ──────────────────
+
+/** Migration 0011's table in memory. */
+function limitTable(clock: () => number) {
+  const rows: StoredHit[] = [];
+  let n = 0;
+  const store: LimitStore = {
+    async insert(hits) {
+      const created_at = new Date(clock()).toISOString();
+      return hits.map((h) => {
+        const id = `hit_${++n}`;
+        rows.push({ id, key_hash: h.key_hash, scope: h.scope, created_at });
+        return id;
+      });
+    },
+    async readWindow(keys, since) {
+      return rows.filter((r) => keys.includes(r.key_hash) && r.created_at > since).map((r) => ({ ...r }));
+    },
+    async remove(ids) {
+      for (const id of ids) {
+        const i = rows.findIndex((r) => r.id === id);
+        if (i !== -1) rows.splice(i, 1);
+      }
+    },
+  };
+  return { rows, store };
+}
+
+sections.push(async function point4() {
+  const SECRET = "test-secret";
+  let now = Date.parse("2026-11-23T18:00:00.000Z");
+  const tick = (ms = 1000) => (now += ms);
+  /** One try, as a route makes it: an e-transfer is weighed by its players. */
+  const attempt = async (store: LimitStore, scope: LimitScope, address: string, email: string, players = 1) => {
+    tick();
+    const ticket = await takeTicket(store, { secret: SECRET, scope, address, email, now, weight: scope === "etransfer" ? players : 1 });
+    if (ticket === "missing") throw new Error("the table is always there");
+    return ticket;
+  };
+
+  console.log("4. One request carries one household at most");
+  {
+    const list = (n: number) => Array.from({ length: n }, (_, i) => ({ name: `Player ${i + 1}` }));
+    check("the cap is the household's own: 12 players", MAX_PARTICIPANTS_PER_ACCOUNT, 12);
+    check("a full household passes", tooManyPlayers(list(MAX_PARTICIPANTS_PER_ACCOUNT)), false);
+    check("one more is refused", tooManyPlayers(list(MAX_PARTICIPANTS_PER_ACCOUNT + 1)));
+    check("thousands are refused", tooManyPlayers(list(5000)));
+    check("a body that names no list names nobody", [tooManyPlayers(undefined), tooManyPlayers(null), tooManyPlayers("x"), tooManyPlayers({ length: 99 })], [false, false, false, false]);
+    const household = JSON.stringify({ cohortId: "coh_1", contactEmail: "dana@example.com", participants: Array.from({ length: 12 }, () => ({ name: "A long player name here", dob: "2015-06-01", isMinor: true, participantId: "2f6b1c4e-9a3d-4e8f-b7c2-1d5e6f7a8b9c", relationship: "child" })) });
+    check("a full household's request sits well under the body cap", bodyTooLarge(household, null), false);
+    check("a body past the cap is refused, whatever it holds", bodyTooLarge(JSON.stringify({ participants: list(2000) }), null) && MAX_BODY_BYTES === 20 * 1024);
+  }
+
+  console.log("4. An e-transfer try counts once for each player");
+  {
+    check("a try weighs one by default; an e-transfer its players; never more than a household", [submissionWeight(undefined), submissionWeight(1), submissionWeight(3), submissionWeight(500), submissionWeight(0), submissionWeight(-2), submissionWeight(Number.NaN), submissionWeight(2.9)], [1, 1, 3, 12, 1, 1, 1, 2]);
+    const { rows, store } = limitTable(() => now);
+    const ticket = await attempt(store, "etransfer", "203.0.113.7", "dana@example.com", 3);
+    check("three players: three hits under the address and three under the email", [ticket.allowed, rows.length, new Set(rows.map((r) => r.key_hash)).size], [true, 6, 2]);
+    await ticket.release();
+    check("a try the route then refuses gives every one of them back", rows.length, 0);
+    const quiz = await attempt(store, "intake", "203.0.113.7", "dana@example.com", 3);
+    check("any other form counts one, whatever it is handed", [quiz.allowed, rows.length], [true, 2]);
+  }
+
+  console.log("4. Scenario — families are not refused");
+  {
+    const two = limitTable(() => now);
+    const tries = [await attempt(two.store, "etransfer", "198.51.100.1", "dana@example.com", 2), await attempt(two.store, "etransfer", "198.51.100.1", "dana@example.com", 2)];
+    check("one e-transfer for two children, retried once: both go through", tries.map((t) => t.allowed), [true, true]);
+    const big = limitTable(() => now);
+    check("a household of twelve gets its e-transfer through on the first try", (await attempt(big.store, "etransfer", "198.51.100.2", "big@example.com", 12)).allowed);
+    const evening = limitTable(() => now);
+    const families = [];
+    for (let i = 0; i < 20; i++) {
+      tick(3 * 60 * 1000 - 1000);
+      families.push((await attempt(evening.store, "etransfer", "192.0.2.50", `family${i}@example.com`, 1)).allowed);
+    }
+    check("twenty one-player families on the club's Wi-Fi inside an hour: all through", families.every(Boolean));
+  }
+
+  console.log("4. Scenario — a script cannot spend the day's emails through e-transfers");
+  {
+    // The worst a script on one address can do: one-player tries until one
+    // short of the day's limit, then a full household on the last one.
+    const { store } = limitTable(() => now);
+    let emails = 0;
+    let through = 0;
+    for (let i = 0; i < 200; i++) {
+      const players = i < LIMITS.mail.addressDay - 1 ? 1 : 12;
+      const ticket = await attempt(store, "etransfer", "203.0.113.99", `fresh${i}@example.com`, players);
+      if (!ticket.allowed) continue;
+      through++;
+      emails += 2 * players + 1; // the instructions and the coach's notice for each player, one account email
+    }
+    check("tries that got through", through, LIMITS.mail.addressDay);
+    check("the emails they caused are the bound the module states", emails, maxDailyEmailsPerAddress());
+    check("…82, under the day's 100", [maxDailyEmailsPerAddress(), maxDailyEmailsPerAddress() < 100], [82, true]);
+
+    // Before the fix a try counted one whatever it carried: twenty tries of
+    // twelve players each got through.
+    const old = limitTable(() => now);
+    let oldEmails = 0;
+    for (let i = 0; i < 40; i++) {
+      tick();
+      const ticket = await takeTicket(old.store, { secret: SECRET, scope: "etransfer", address: "203.0.113.98", email: `fresh${i}@example.com`, now });
+      if (ticket !== "missing" && ticket.allowed) oldEmails += 2 * 12 + 1;
+    }
+    check("for contrast, counted per request the same script sent five times the day's emails", oldEmails, 500);
+  }
+
+  console.log("4. Source — the three sign-up routes cap the body and the players; the comment says what is true");
+  {
+    for (const [file, list, work] of [
+      ["src/app/api/enroll/route.ts", "tooManyPlayers(body.participants)", "values.append("],
+      ["src/app/api/checkout/route.ts", "tooManyPlayers(enrollmentMeta?.participants)", "createCheckoutSession("],
+      ["src/app/api/enroll/etransfer/route.ts", "tooManyPlayers(enrollmentMeta.participants)", "recordEtransferIntent("],
+    ] as const) {
+      const src = read(file);
+      const sizeAt = src.indexOf('bodyTooLarge(raw, req.headers.get("content-length"))');
+      const listAt = src.indexOf(list);
+      check(`${file}: the body-size check, before the body is parsed`, sizeAt !== -1 && sizeAt < src.indexOf("JSON.parse(raw)") && !src.includes("await req.json()"));
+      check(`${file}: the players cap, before the gate, the limits and any work`, listAt !== -1 && listAt < src.indexOf("resolveEnrollGate(") && listAt < src.indexOf("checkSubmissionLimit(") && listAt < src.indexOf(work));
+      check(`${file}: both answer a plain 400`, (src.match(/\{ error: REQUEST_TOO_LARGE \}, \{ status: 400 \}/g) ?? []).length, 2);
+    }
+    const etransfer = read("src/app/api/enroll/etransfer/route.ts");
+    check("the e-transfer try is weighed by its players", /checkSubmissionLimit\(\s*req,\s*"etransfer",\s*String\(enrollmentMeta\.contactEmail\),\s*sent\.length\s*\)/.test(etransfer));
+    const db = read("src/lib/submissionLimitsDb.ts");
+    check("the weight reaches the count", db.includes("weight = 1") && /takeTicket\(store, \{[\s\S]*?weight,\s*\}\)/.test(db));
+    const limits = read("src/lib/submissionLimits.ts");
+    const header = limits.slice(0, limits.indexOf("import "));
+    check("the comment says an e-transfer counts once for each player", header.includes("an e-transfer\n// try counts once for each player on it"));
+    check("…and states the bound the code computes", header.includes(`31 players, ${maxDailyEmailsPerAddress()} emails`) && header.includes("at most 12 players"));
+    check("…and no longer claims three emails a submission", header.includes("at most 3 emails each: 60"), false);
   }
 });
 

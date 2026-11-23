@@ -12,12 +12,21 @@
 //   - per email, per form: 5 an hour, 10 a day;
 //   - across the three forms that send our email (the quiz, the booking, the
 //     e-transfer), 20 a day per address and 12 a day per email.
+// What is counted is a try, with one exception (safety review): an e-transfer
+// try counts once for each player on it, because it sends two emails for each
+// player (the instructions, and the coach's notice) and one account email.
+// So every counted hit on an email form stands for at most three emails.
 // A family entering two children separately on every form and retrying each
 // once sends 4 per form: inside every limit, the 12 a day per email across
-// the email forms included. Twenty families on the club's one Wi-Fi can each
-// send their e-transfer inside one hour of a sign-up evening, so the eleventh
-// is never refused. A script on one address still gets only 20
-// email-sending submissions a day, at most 3 emails each: 60, under the 100.
+// the email forms included; one e-transfer for both children, retried once,
+// counts the same 4. Twenty families on the club's one Wi-Fi can each send a
+// one-player e-transfer inside one hour of a sign-up evening, so the eleventh
+// is never refused; a family paying for two players counts as two of the
+// twenty. A script on one address is refused once 20 hits are counted on the
+// email forms in a day, and one request carries at most 12 players (the
+// routes refuse a longer list, and a body over 20 KB), so the most that gets
+// through is 19 one-player tries and one of 12: 31 players, 82 emails, under
+// the 100. The same two caps keep one enroll try to 12 Sheet rows.
 // An IPv6 address counts by its /64, which one home or office holds whole.
 //
 // Pure: the counting and the hashing. The table reads and writes live in
@@ -25,6 +34,7 @@
 // the rules.
 
 import { createHmac } from "node:crypto";
+import { MAX_PARTICIPANTS_PER_ACCOUNT } from "@/lib/participantInput";
 
 export const LIMIT_SCOPES = [
   "intake",
@@ -174,6 +184,26 @@ export type LimitStore = {
   remove(ids: string[]): Promise<void>;
 };
 
+/**
+ * How many hits one try records: a whole number from 1 to the most players
+ * one request may carry. Anything else counts as one.
+ */
+export function submissionWeight(weight: number | null | undefined): number {
+  const n = Math.floor(Number(weight));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, MAX_PARTICIPANTS_PER_ACCOUNT);
+}
+
+/**
+ * The most transactional emails one network address can cause in a day
+ * through the email forms: every counted hit stands for at most three, and
+ * the last try let through may carry a full household.
+ */
+export function maxDailyEmailsPerAddress(): number {
+  const lastTry = 2 * MAX_PARTICIPANTS_PER_ACCOUNT + 1;
+  return (LIMITS.mail.addressDay - 1) * 3 + lastTry;
+}
+
 /** A try that was counted: whether it may go ahead, and how to take it back. */
 export type SubmissionTicket = {
   allowed: boolean;
@@ -191,6 +221,11 @@ export type SubmissionTicket = {
  * burst this can refuse a little early, never late: tries that go ahead never
  * exceed the limits. The address and the email reach the store only as
  * limitKeyHash values.
+ *
+ * `weight` is how many hits the try records under each key: one, except an
+ * e-transfer, which counts once for each player it covers (it emails for
+ * each). A try is weighed against what was counted before it, so a household
+ * of any size the routes accept gets its first try through.
  */
 export async function takeTicket(
   store: LimitStore,
@@ -200,6 +235,7 @@ export async function takeTicket(
     address: string;
     email: string | null | undefined;
     now: number;
+    weight?: number;
   }
 ): Promise<SubmissionTicket | "missing"> {
   const addressHash = limitKeyHash(input.secret, "address", input.address);
@@ -207,7 +243,10 @@ export async function takeTicket(
   const emailHash = email ? limitKeyHash(input.secret, "email", email) : null;
   const keys = emailHash ? [addressHash, emailHash] : [addressHash];
 
-  const ids = await store.insert(keys.map((key_hash) => ({ scope: input.scope, key_hash })));
+  const weight = submissionWeight(input.weight);
+  const ids = await store.insert(
+    keys.flatMap((key_hash) => Array.from({ length: weight }, () => ({ scope: input.scope, key_hash })))
+  );
   if (ids === "missing") return "missing";
   const own = new Set(ids);
   const release = () => store.remove(ids);

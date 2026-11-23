@@ -45,12 +45,15 @@ class LimitStoreError extends Error {
  * Count this try against its network address and its email, and say whether
  * it may go ahead. A refused try is not counted. The caller answers a refusal
  * with SUBMISSION_LIMIT_ERROR and a 429 before any work, and calls
- * `release()` when it then refuses the try for a reason of its own.
+ * `release()` when it then refuses the try for a reason of its own. `weight`
+ * is how many hits it counts as: one, except an e-transfer, which counts once
+ * for each player it covers.
  */
 export async function checkSubmissionLimit(
   req: { headers: { get(name: string): string | null } },
   scope: LimitScope,
-  email: string | null | undefined
+  email: string | null | undefined,
+  weight = 1
 ): Promise<SubmissionTicket> {
   const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !secret) return OPEN_TICKET;
@@ -89,6 +92,7 @@ export async function checkSubmissionLimit(
       address: clientAddress(req.headers),
       email,
       now,
+      weight,
     });
     if (ticket === "missing") {
       if (!warnedMissing) {

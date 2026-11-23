@@ -21,7 +21,15 @@ import {
 } from "@/lib/supabase/enrollmentActions";
 import { setEnrollmentStatusByEmail } from "@/lib/enrollmentSheet";
 import { programs } from "@/content/programs";
-import { INVALID_EMAIL_ERROR, checkBot, isValidEmail, logBotDrop } from "@/lib/botCheck";
+import {
+  INVALID_EMAIL_ERROR,
+  REQUEST_TOO_LARGE,
+  bodyTooLarge,
+  checkBot,
+  isValidEmail,
+  logBotDrop,
+} from "@/lib/botCheck";
+import { tooManyPlayers } from "@/lib/participantInput";
 import { enrollmentOwner } from "@/lib/enrollmentLink";
 import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
 import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
@@ -61,7 +69,12 @@ type EnrollmentMeta = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // The size cap the other public forms have (safety review).
+    const raw = await req.text();
+    if (bodyTooLarge(raw, req.headers.get("content-length"))) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    const body = JSON.parse(raw);
     // Bot protection (backlog #84, the same check as the other public forms):
     // a tripped check gets a success-shaped answer and nothing is recorded.
     const verdict = checkBot(body);
@@ -90,6 +103,11 @@ export async function POST(req: NextRequest) {
 
     if (!cohortId || !enrollmentMeta?.contactEmail) {
       return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+    }
+    // No more players than one household holds, the most the wizard can send:
+    // every player here is an invite row and two emails.
+    if (tooManyPlayers(enrollmentMeta.participants)) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
     }
     // The same format check as every other form (backlog #84), before any
     // invite row or Sheet write.
@@ -145,8 +163,9 @@ export async function POST(req: NextRequest) {
     // Repeated submissions (backlog #84): counted once the fields, the gate
     // and the contact check pass, before the records are read or any invite
     // row, Sheet write or email. A refusal of the route's own below gives
-    // the try back.
-    const ticket = await checkSubmissionLimit(req, "etransfer", String(enrollmentMeta.contactEmail));
+    // the try back. It counts once for each player (safety review): each one
+    // is two emails, so a try for a household is weighed as that many.
+    const ticket = await checkSubmissionLimit(req, "etransfer", String(enrollmentMeta.contactEmail), sent.length);
     if (!ticket.allowed) {
       return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
     }
