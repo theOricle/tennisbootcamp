@@ -13,6 +13,8 @@
 //      sign-up page and the payment routes' approval check all read
 //      groupForBlock, so a block off the planned lineup has its ages checked
 //      on its sign-up page as on its card.
+//   4. the sign-up page says what its card says: the class days and times,
+//      the dates from the first class to the last, and the group's ages;
 // Checks that read source text accept either line ending (`read`). Exits
 // non-zero on any failure. Never spells the cohort length or total.
 
@@ -26,6 +28,8 @@ import { groupAction, groupStatus } from "../lib/programCatalog";
 import { APPROVAL_ONLY_ERROR, approvalGateApplies, approvalRefusal, priceRefusal } from "../lib/enrollGate";
 import { tierById } from "../lib/tiers";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
+import { EnrollWizard } from "../app/enroll/[cohortId]/EnrollWizard";
+import { programs } from "../content/programs";
 import { ageBandBlock, dobAgeError } from "../lib/enrollPlayers";
 import type { Cohort } from "../types/cohort";
 
@@ -66,6 +70,12 @@ const block = (over: Partial<Cohort> & Pick<Cohort, "id">): Cohort => ({
 const youthBlock = (over: Partial<Cohort> & Pick<Cohort, "id">) =>
   block({ programId: "youth-programs", startDate: "2027-01-09", sessions: [{ day: "Sat", start: "15:00", end: "16:00" }], ...over });
 const cardFor = (b: Cohort) => groupCards(programGroups, [b]).find((c) => c.block?.cohortId === b.id);
+
+/** The words a piece of markup shows, in order. */
+const words = (html: string) => html.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+/** The sign-up page's first screen for a block, as a walk-in sees it. */
+const signUpPage = (b: Cohort) =>
+  words(renderToStaticMarkup(createElement(EnrollWizard, { cohort: b, program: programs.find((p) => p.id === b.programId), group: groupForBlock(b), seatsRemaining: null, signInHref: "/login" })));
 
 const enrollPage = read("src/app/enroll/[cohortId]/page.tsx");
 const gateSrc = read("src/lib/enrollGate.ts");
@@ -170,6 +180,27 @@ console.log("3. One rule for the group a block trains in, on the planned lineup 
   check("the sign-up page finds its group by that one rule", enrollPage.includes("const group = groupForBlock(cohort);") && !enrollPage.includes("cohortMatchesGroup"));
   check("…and so does the payment routes' approval check", gateSrc.includes("const group = groupForBlock(cohort, groups);") && !gateSrc.includes("groups.find((g) => cohortMatchesGroup"));
   check("the cards build an off-lineup block's group through it", read("src/lib/groupBlocks.ts").includes("groupForBlock(block, lineup)"));
+}
+
+// ── 4. The sign-up page and its card say the same ───────────────────────────
+console.log("4. The sign-up page reads its card's own dates, class days and ages");
+{
+  const twoTimes = youthBlock({ id: "two", startDate: "2027-01-09", levelMin: 2, levelMax: 2.5, sessions: [{ day: "Sat", start: "15:00", end: "16:00" }, { day: "Wed", start: "18:00", end: "19:00" }] });
+  const mondayStart = block({ id: "mon", startDate: "2027-01-11" });
+  const adult = block({ id: "adult" });
+  for (const [name, b] of [["two class times a week", twoTimes], ["a start date typed on a Monday", mondayStart], ["an adult block", adult]] as [string, Cohort][]) {
+    const card = cardFor(b)!;
+    const page = signUpPage(b);
+    const cardHtml = words(renderToStaticMarkup(createElement(ProgramGroupCard, { group: card.group, block: card.block })));
+    check(`${name}: the page shows the card's dates, word for word`, page.includes(`Dates ${card.block!.dates} `) && cardHtml.includes(card.block!.dates), page.slice(page.indexOf("Dates"), page.indexOf("Dates") + 60));
+    check("…the card's class days and times", page.includes(`Sessions ${card.block!.days} `) && cardHtml.includes(card.block!.days), page.slice(page.indexOf("Sessions"), page.indexOf("Sessions") + 70));
+  }
+  check("two class times read each day with its own time, never the first time for both", signUpPage(twoTimes).includes("Saturdays 3–4pm, Wednesdays 6–7pm") && !signUpPage(twoTimes).includes("Sat & Wed"));
+  check("a start date typed on a Monday reads from the first class, the Sunday after", signUpPage(mondayStart).includes("Jan 17 – Feb 21") && !signUpPage(mondayStart).includes("Jan 11"));
+  check("an adult group reads its own ages, 16 and up, as its card does", signUpPage(adult).includes("Ages 16 and up") && !signUpPage(adult).includes("18+") && words(renderToStaticMarkup(createElement(ProgramGroupCard, { group: cardFor(adult)!.group, block: cardFor(adult)!.block }))).includes("Ages 16 and up"));
+  check("a youth group reads its own ages too, never its program's whole range", signUpPage(twoTimes).includes("Ages 11–15") && !signUpPage(twoTimes).includes("7–17"));
+  const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
+  check("the page types no date or time format of its own: it reads the card's facts", wizard.includes("const facts = blockFacts(cohort);") && !wizard.includes("formatDateRange") && !wizard.includes("formatDaysTimes"));
 }
 
 if (failed > 0) {

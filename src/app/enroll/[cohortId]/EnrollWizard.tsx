@@ -5,7 +5,9 @@ import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import type { Program, ProgramGroup } from "@/types/program";
 import type { AgeBand } from "@/lib/ageBand";
-import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
+import { formatCohortPrice } from "@/lib/cohorts";
+import { blockFacts } from "@/lib/groupBlocks";
+import { agesChipLabel } from "@/lib/programCatalog";
 import { locationForCohort } from "@/content/locations";
 import { membershipNote } from "@/lib/membership";
 import { COOLING_OFF_DAYS } from "@/content/policies";
@@ -264,12 +266,15 @@ const EMPTY_FORM: FormState = {
 function OrderSummary({
   cohort,
   program,
+  group,
   seatsRemaining,
   creditAfterSignIn,
   creditWaitingNext,
 }: {
   cohort: Cohort;
   program: Program | undefined;
+  /** The group this cohort trains in: its ages are the ones its card shows. */
+  group: ProgramGroup | null;
   seatsRemaining: number | null;
   /**
    * Signed out, with no credit already on the invitation (backlog #84): the
@@ -286,6 +291,11 @@ function OrderSummary({
 }) {
   const price = formatCohortPrice(cohort);
   const location = locationForCohort(cohort);
+  // The dates, the class days and the ages read as the block's card reads
+  // them (safety review, #85): the first class to the last, each class day
+  // with its own time, and the group's own ages.
+  const facts = blockFacts(cohort);
+  const ages = group ? agesChipLabel([group]) : program?.ageGroup;
   return (
     <div className="space-y-5">
       {/* Where, first (owner, 2026-10-12: enrollment shows the location
@@ -334,9 +344,7 @@ function OrderSummary({
         <p className="mt-0.5 text-xl font-semibold text-white">
           {program?.title ?? cohort.programId}
         </p>
-        {program?.ageGroup && (
-          <p className="mt-0.5 text-sm text-white/60">{program.ageGroup}</p>
-        )}
+        {ages && <p className="mt-0.5 text-sm text-white/60">{ages}</p>}
         <TierRangeBadges
           levelMin={cohort.levelMin}
           levelMax={cohort.levelMax}
@@ -350,12 +358,12 @@ function OrderSummary({
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
           <p className="text-xs text-white/60 uppercase tracking-wide font-semibold">Dates</p>
-          <p className="mt-1 text-sm text-[#B4E655]">{formatDateRange(cohort)}</p>
+          <p className="mt-1 text-sm text-[#B4E655]">{facts.dates}</p>
           <p className="mt-0.5 text-xs text-white/60">{cohort.weeks} weeks</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
           <p className="text-xs text-white/60 uppercase tracking-wide font-semibold">Sessions</p>
-          <p className="mt-1 text-sm text-[#B4E655]">{formatDaysTimes(cohort)}</p>
+          <p className="mt-1 text-sm text-[#B4E655]">{facts.days}</p>
           <p className="mt-0.5 text-xs text-white/60">
             {cohort.capacityMin}–{cohort.capacityMax} players
           </p>
@@ -1416,6 +1424,7 @@ export function EnrollWizard({
             <OrderSummary
               cohort={cohort}
               program={program}
+              group={group}
               seatsRemaining={seatsRemaining}
               creditAfterSignIn={!signedIn && !(etransfer && etransfer.creditCents > 0)}
               creditWaitingNext={signedIn && creditWaiting ? signInLinkNext : null}
