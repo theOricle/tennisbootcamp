@@ -7,7 +7,7 @@ import { getAllCohorts } from "@/lib/cohortsDb";
 import { listParticipantsForAccount, type PlayerRecord } from "@/lib/players";
 import { listInvitesForAccount } from "@/lib/cohortActions";
 import { listUpcomingBookingsForAccount } from "@/lib/assessments";
-import { listUnusedCreditsForAccount } from "@/lib/assessmentCredit";
+import { accountCreditView } from "@/lib/assessmentCredit";
 import { todayIso } from "@/lib/cohortVisibility";
 import { placedSpanFor } from "@/lib/tiers";
 import { holderIsPlayer } from "@/lib/householdView";
@@ -153,7 +153,10 @@ async function ProfileContent({
       participantIds,
       today: todayIso(),
     }).catch(() => []),
-    listUnusedCreditsForAccount({ email: userEmail, participantIds }).catch(() => []),
+    accountCreditView({ accountId: userId, email: userEmail, participantIds }).then(
+      (view) => view.ready,
+      () => []
+    ),
   ]);
 
   // The RankCard (audit M24): the same card as the dashboard. A brand-new

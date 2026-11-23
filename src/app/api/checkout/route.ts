@@ -1,71 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import { google } from "googleapis";
-import { isMockMode, createCheckoutSession } from "@/lib/payments";
-import {
-  saveEnrollmentToSupabase,
-  notifyEnrollmentAccount,
-  resolveEnrollmentUserId,
-} from "@/lib/supabase/enrollmentActions";
+import { CARD_PAYMENT_UNAVAILABLE, createCheckoutSession, paymentRail } from "@/lib/payments";
+import { saveEnrollmentToSupabase } from "@/lib/supabase/enrollmentActions";
 import { getCohortById } from "@/lib/cohortsDb";
-import { programs } from "@/content/programs";
-import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
-import { setEnrollmentCredit } from "@/lib/enrollmentSheet";
-import {
-  findInviteRefByToken,
-  markInvitePaidAndMaybeConfirm,
-} from "@/lib/cohortActions";
+import { creditsForSeats } from "@/lib/assessmentCredit";
+import { findInviteRefByToken } from "@/lib/cohortActions";
 import {
   COHORT_FULL_ERROR,
   RECORDS_UNAVAILABLE_ERROR,
   ROW_MISMATCH_ERROR,
   approvalRefusal,
-  cohortRequiresInvite,
+  checkoutCreditParticipants,
   contactEmailRefusal,
-  foreignRows,
   gateRefusal,
-  inviteSettlement,
+  priceRefusal,
   requestedParticipantIds,
   resolveEnrollGate,
+  rowsNotPayable,
   scrubParticipantIds,
   seatsRefuse,
-  settledByInvite,
-  unmatchedSignal,
 } from "@/lib/enrollGate";
 import { readEnrollmentSheet, seatsFromSnapshot } from "@/lib/seatCount";
 import { currentUser } from "@/lib/household";
 import { listParticipantsForAccount } from "@/lib/players";
-import { sendPaymentUnmatchedAdminEmail } from "@/lib/email";
 import {
   checkoutInviteLink,
   enrollReturnUrls,
   inviteResumeCookie,
 } from "@/lib/checkoutInvite";
-
-const TAB = "enrollments";
-// "status" is column P (index 15, 1-based col 16)
-const STATUS_COL = "P";
-
-async function markEnrollmentStatus(rowNumber: number, status: string) {
-  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-  if (!spreadsheetId || !clientEmail || !rawKey) return;
-
-  const privateKey = rawKey.replace(/\\n/g, "\n").replace(/\r/g, "").trim();
-  const auth = new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-  const sheets = google.sheets({ version: "v4", auth });
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${TAB}!${STATUS_COL}${rowNumber}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [[status]] },
-  });
-}
+import {
+  BOT_REFUSAL_ERROR,
+  INVALID_EMAIL_ERROR,
+  REQUEST_TOO_LARGE,
+  bodyTooLarge,
+  checkBot,
+  isValidEmail,
+  logBotDrop,
+} from "@/lib/botCheck";
+import { tooManyPlayers } from "@/lib/participantInput";
+import { enrollmentOwner } from "@/lib/enrollmentLink";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
+import { flipPaymentRows } from "@/lib/enrollmentSheet";
+import { settleFrom } from "@/lib/stripeOutcome";
 
 type CheckoutParticipant = {
   name?: string;
@@ -94,18 +70,29 @@ type EnrollmentMeta = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // The size cap the other public forms have (safety review).
+    const raw = await req.text();
+    if (bodyTooLarge(raw, req.headers.get("content-length"))) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    const body = JSON.parse(raw);
+    // Bot protection (backlog #84, the same check as the other public forms).
+    // A tripped check creates nothing and answers a plain refusal the wizard
+    // shows (safety review), never a success-shaped answer.
+    const verdict = checkBot(body);
+    if (verdict.bot) {
+      logBotDrop("checkout", verdict.reason);
+      return NextResponse.json({ error: BOT_REFUSAL_ERROR }, { status: 400 });
+    }
     const {
       cohortId,
       programTitle,
-      priceCents,
       inviteToken,
       enrollmentRowNumber,
       enrollmentMeta,
     }: {
       cohortId: string;
       programTitle?: string;
-      priceCents?: number;
       inviteToken?: string;
       enrollmentRowNumber: number;
       enrollmentMeta?: EnrollmentMeta;
@@ -117,10 +104,31 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    // No more players than one household holds, the most the wizard can send.
+    if (tooManyPlayers(enrollmentMeta?.participants)) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    // The same format check as every other form (backlog #84), before any
+    // row, credit or Stripe session. A body with no contact email saves no
+    // enrollment row; it also owns no Sheet row, so it is refused below once
+    // the Sheet is read (rowsNotPayable).
+    const typedEmail = String(enrollmentMeta?.contactEmail ?? "").trim();
+    if (typedEmail && !isValidEmail(typedEmail)) {
+      return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
+    }
 
-    // The server's price wins over whatever the client sent.
+    // Backlog #84: in production, no Stripe key means no checkout — a plain
+    // line and a 503 before any row, credit or session exists. Mock mode
+    // (no key) runs only outside production, and its rows are test rows.
+    const rail = paymentRail();
+    if (rail === "refuse") {
+      return NextResponse.json({ error: CARD_PAYMENT_UNAVAILABLE }, { status: 503 });
+    }
+
+    // The server's price is the only one: whatever the browser sent is never
+    // read, and a cohort with no price is refused below (priceRefusal).
     const cohort = await getCohortById(cohortId);
-    const seatCents = cohort?.priceCents ?? priceCents ?? 0;
+    const seatCents = cohort?.priceCents ?? 0;
 
     // Backlog #38: the enroll page's gate, run again here before anything is
     // created. A cohort the page would not render is a 404; a private cohort
@@ -144,6 +152,12 @@ export async function POST(req: NextRequest) {
     if (byApproval) {
       return NextResponse.json({ error: byApproval.error }, { status: byApproval.status });
     }
+    // A cohort whose price is zero or missing takes no payment (safety
+    // review): refused before any row, credit, coupon or Stripe session.
+    const noPrice = priceRefusal(cohort);
+    if (noPrice) {
+      return NextResponse.json({ error: noPrice.error }, { status: noPrice.status });
+    }
 
     // Every player this payment covers. A body without the household field is
     // a single-player enrollment — one seat, exactly as before.
@@ -164,10 +178,21 @@ export async function POST(req: NextRequest) {
     // The rows save with the session as owner, so a body naming another
     // address would hand that address's history to this account — 400,
     // before any row, credit or Stripe session. A body with no contact
-    // email saves nothing and passes.
+    // email has nothing to compare here; the row check below refuses it.
     const mismatch = contactEmailRefusal(signedIn, enrollmentMeta?.contactEmail);
     if (mismatch) {
       return NextResponse.json({ error: mismatch.error }, { status: mismatch.status });
+    }
+    // Repeated submissions (backlog #84): counted once the fields, the gate
+    // and the contact check pass, before the records are read or any row,
+    // credit, coupon or Stripe session exists. A refusal of the route's own
+    // below (records unreachable, a full cohort, a declined invite) gives the
+    // try back. A row number that is not the payer's own does not: that try
+    // stays counted, so a script holding a family's email cannot walk the
+    // row numbers for free.
+    const ticket = await checkSubmissionLimit(req, "checkout", typedEmail);
+    if (!ticket.allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
     }
     const owned = signedIn
       ? new Set(
@@ -183,11 +208,11 @@ export async function POST(req: NextRequest) {
         )
       : null;
     const players = scrubParticipantIds(sent, owned);
-    // Audit H5: the account every row this request saves belongs to — the
-    // signed-in user, else the account that already exists for the email.
-    const ownerId = enrollmentMeta?.contactEmail
-      ? await resolveEnrollmentUserId(enrollmentMeta.contactEmail, signedIn?.id)
-      : null;
+    // Audit H5, backlog #84: the account every row this request saves belongs
+    // to — the signed-in user, else nobody. A typed email never makes a row
+    // the property of the account that exists for it; the row links when the
+    // address owner signs in through their own emailed link.
+    const ownerId = enrollmentOwner(signedIn?.id);
     const rowNumbers = players
       .map((p) => p.rowNumber ?? null)
       .filter((n): n is number => typeof n === "number" && n > 0);
@@ -195,41 +220,51 @@ export async function POST(req: NextRequest) {
 
     // Backlog #38: one read of the enrollments tab answers two questions
     // before any money moves — is there a seat for every player (the page's
-    // own seat rule), and do the row numbers the browser sent sit under this
-    // cohort (they are what the webhook marks paid). Sheets unconfigured
-    // (local dev) skips both, exactly as the page skips its seat check.
+    // own seat rule), and are the row numbers the browser sent the payer's
+    // own (they are what the webhook marks paid): under this cohort, under
+    // this checkout's contact email, and still pending (safety review: the
+    // cohort alone let a stranger name another family's row). Sheets
+    // unconfigured (local dev) skips both, exactly as the page skips its
+    // seat check.
     const sheet = await readEnrollmentSheet();
     if (sheet.status === "error") {
+      await ticket.release();
       return NextResponse.json({ error: RECORDS_UNAVAILABLE_ERROR }, { status: 503 });
     }
     if (sheet.status === "ok" && cohort) {
       const seatsRemaining = seatsFromSnapshot(sheet.snapshot, cohort.id, cohort.capacityMax);
       if (seatsRefuse(seatsRemaining, players.length)) {
+        await ticket.release();
         return NextResponse.json({ error: COHORT_FULL_ERROR }, { status: 409 });
       }
       const toVerify = Array.from(new Set([enrollmentRowNumber, ...rowNumbers]));
-      if (foreignRows(sheet.snapshot, cohort.id, toVerify).length > 0) {
+      const notOwn = rowsNotPayable(sheet.snapshot, {
+        cohortId: cohort.id,
+        email: typedEmail,
+        rowNumbers: toVerify,
+      });
+      if (notOwn.length > 0) {
+        // The try stays counted (see above): no ticket.release() here.
         return NextResponse.json({ error: ROW_MISMATCH_ERROR }, { status: 400 });
       }
     }
 
     // The $20 assessment credit is per player: two children assessed under one
-    // parent's email bring $40 off between them.
-    const credits: { rowNumber: number | null; bookingId: string; cents: number }[] = [];
-    if (enrollmentMeta?.contactEmail) {
-      for (const p of players) {
-        const found = await findUnusedCredit(enrollmentMeta.contactEmail, {
-          participantId: p.participantId ?? null,
-        });
-        if (found && !credits.some((c) => c.bookingId === found.bookingId)) {
-          credits.push({
-            rowNumber: p.rowNumber ?? null,
-            bookingId: found.bookingId,
-            cents: found.creditCents,
-          });
-        }
-      }
-    }
+    // parent's account bring $40 off between them. Only a signed-in account's
+    // own players, by participant id (backlog #84): signed out, no credit is
+    // looked up — a typed email never finds one — and the sign-up page says
+    // it applies once they sign in. Which booking each seat takes is the one
+    // rule every price reads (creditsForSeats, src/lib/creditRules.ts): a
+    // player's own, then one linked to this account but to no player, once.
+    const creditFor = checkoutCreditParticipants(Boolean(signedIn), players);
+    const decided = signedIn
+      ? await creditsForSeats({ accountId: signedIn.id, seats: creditFor })
+      : creditFor.map(() => null);
+    const credits = decided.flatMap((seat, i) =>
+      seat
+        ? [{ rowNumber: players[i].rowNumber ?? null, bookingId: seat.bookingId, cents: seat.creditCents }]
+        : []
+    );
     const discountCents = Math.min(
       credits.reduce((sum, c) => sum + c.cents, 0),
       chargeCents
@@ -257,6 +292,7 @@ export async function POST(req: NextRequest) {
           : await findInviteRefByToken(cohortId, inviteToken);
       const decision = checkoutInviteLink({ lookup, rowByToken });
       if (decision.kind === "refuse") {
+        await ticket.release();
         return NextResponse.json(
           { error: decision.error },
           { status: decision.status }
@@ -298,7 +334,7 @@ export async function POST(req: NextRequest) {
           consentSignedName: enrollmentMeta.consentSignedName,
           consentAgreedAt: enrollmentMeta.consentAgreedAt,
           waiverVersion: enrollmentMeta.waiverVersion,
-          status: isMockMode ? "test_paid" : "pending",
+          status: rail === "mock" ? "test_paid" : "pending",
           userId: ownerId,
         });
         if (!supabaseEnrollmentId) supabaseEnrollmentId = id;
@@ -328,89 +364,22 @@ export async function POST(req: NextRequest) {
       inviteId,
     });
 
-    if (isMockMode) {
-      // No webhook in mock mode — mark paid immediately in Sheets + issue invite
-      for (const rowNumber of rowNumbers.length > 0 ? rowNumbers : [enrollmentRowNumber]) {
-        await markEnrollmentStatus(rowNumber, "test_paid");
-      }
-      if (enrollmentMeta?.contactEmail) {
-        // Non-blocking: an uncaught refusal here would skip the credit and
-        // invite-confirmation tail below and turn a completed mock checkout
-        // into a 500 via this route's outer catch. A new email gets the
-        // set-password link; an existing account gets "You're enrolled" (H5).
-        await notifyEnrollmentAccount({
-          email: enrollmentMeta.contactEmail,
-          enrollmentId: supabaseEnrollmentId,
-          userId: ownerId,
-          cohortId,
-          enrolled: {
-            programTitle:
-              programs.find((p) => p.id === cohort?.programId)?.title ??
-              programTitle ??
-              "your program",
-            cohortLabel: cohort?.label ?? cohortId,
-            participantName: players[0]?.name ?? enrollmentMeta.participantName ?? null,
-            // Every player on the payment, for the set-up email (owner, 2026-10-12).
-            playerNames: players.map((p) => (p.name ?? "").trim()).filter(Boolean),
-            paid: true,
-          },
-        }).catch((err) =>
-          console.error("Activation link failed (non-blocking):", err)
-        );
-      }
-      // Mirror the webhook's Phase 3 tail: credit applied + invite paid +
-      // minimum-to-run confirmation — once per player.
-      for (const c of credits) {
-        await markCreditApplied(c.bookingId);
-        if (c.rowNumber) {
-          await setEnrollmentCredit(c.rowNumber, (c.cents / 100).toFixed(2));
-        }
-      }
-      // Same settlement rule as the webhook (backlog #38): invite id, else
-      // the named participant, else email only on a cohort anyone may join
-      // — or once the first player proved an invite in this cohort. A player
-      // that settles onto nothing is flagged to the inbox for a hand mark.
-      let priorInviteProof = false;
-      for (const [i, p] of players.entries()) {
-        const by = inviteSettlement({
-          inviteId,
-          participantId: p.participantId ?? undefined,
-          contactEmail: enrollmentMeta?.contactEmail,
-          requiresInvite: cohortRequiresInvite(cohort),
-          isFirstPlayer: i === 0,
-          priorInviteProof,
-        });
-        const result = by
-          ? await markInvitePaidAndMaybeConfirm({ cohortId, ...by }).catch((err) => {
-              console.error("Invite confirmation failed (non-blocking):", err);
-              return null;
-            })
-          : null;
-        const matched = Boolean(result?.matched);
-        if (settledByInvite(by, matched)) priorInviteProof = true;
-        const signal = unmatchedSignal({
-          matched,
-          alreadyPaid: Boolean(result?.alreadyPaid),
-          requiresInvite: cohortRequiresInvite(cohort),
-          byParticipant: Boolean(by?.participantId),
-          playerCount: players.length,
-        });
-        if (signal.warn) {
-          console.warn(
-            `Mock checkout settled to no invite: cohort=${cohortId} player=${i + 1}/${players.length}`
-          );
-        }
-        if (signal.email) {
-          await sendPaymentUnmatchedAdminEmail({
-            sessionId: "mock",
-            cohortLabel: cohort?.label ?? cohortId,
-            cohortId,
-            playerIndex: i + 1,
-            playerCount: players.length,
-            payerEmail: enrollmentMeta?.contactEmail ?? "",
-          });
-        }
-      }
+    if (rail === "mock") {
+      // Mock mode (no Stripe key, never in production; backlog #84): no money
+      // moved, so every row it writes is a test row. A test payment never
+      // counts toward the seats (they count "paid" rows only), the minimum or
+      // the confirmation, spends no credit (nothing is settled onto an
+      // invite) and sends no account email. The rows move through the same
+      // guarded flip a test payment's webhook uses (safety review): only this
+      // checkout's own rows, under its cohort and contact email, and only out
+      // of pending — never a row that is paid or waits on an e-transfer.
+      await flipPaymentRows({
+        rowNumbers: rowNumbers.length > 0 ? rowNumbers : [enrollmentRowNumber],
+        cohortId,
+        email: typedEmail,
+        from: settleFrom("test"),
+        to: "test_paid",
+      });
     }
 
     const res = NextResponse.json({ sessionUrl });

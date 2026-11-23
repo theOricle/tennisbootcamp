@@ -1,12 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { google } from "googleapis";
 import {
   currentUser,
   resolveSubmissionParticipant,
+  settleGuestSubmission,
   type ParticipantInput,
 } from "@/lib/household";
+import { guestPlayer } from "@/lib/guestAccount";
 import { getCohortById } from "@/lib/cohortsDb";
 import { gateRefusal, requestedParticipantIds, resolveEnrollGate } from "@/lib/enrollGate";
+import { enrollmentSheetRow } from "@/lib/sheetText";
+import {
+  BOT_REFUSAL_ERROR,
+  REQUEST_TOO_LARGE,
+  bodyTooLarge,
+  checkBot,
+  logBotDrop,
+} from "@/lib/botCheck";
+import { tooManyPlayers } from "@/lib/participantInput";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 
 const TAB = "enrollments";
 
@@ -54,7 +67,28 @@ type EnrollParticipant = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // The size cap the other public forms have (safety review): one request
+    // appends one Sheet row for each player it names, so a body with no cap
+    // and no limit on its players could append thousands on one counted try.
+    const raw = await req.text();
+    if (bodyTooLarge(raw, req.headers.get("content-length"))) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    const body = JSON.parse(raw);
+
+    // Bot protection (backlog #84, the same check as the other public forms).
+    // A tripped check writes nothing and answers a plain refusal the wizard
+    // shows (safety review): a success-shaped answer here walked a real
+    // person, wrongly flagged, on to "Your spot is held" with no row saved.
+    const verdict = checkBot(body);
+    if (verdict.bot) {
+      logBotDrop("enroll", verdict.reason);
+      return NextResponse.json({ error: BOT_REFUSAL_ERROR }, { status: 400 });
+    }
+    // No more players than one household holds, the most the wizard can send.
+    if (tooManyPlayers(body.participants)) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
 
     // Backlog #38: the enroll page's gate, before any row is appended, so a
     // private cohort never collects stray pending rows from a bare POST.
@@ -71,6 +105,13 @@ export async function POST(req: NextRequest) {
     const refused = gateRefusal(gate);
     if (refused) {
       return NextResponse.json({ error: refused.error }, { status: refused.status });
+    }
+
+    // Repeated submissions (backlog #84): counted once the gate admits the
+    // try (a refused one costs the family nothing), before any row.
+    const limitEmail = typeof body?.contactEmail === "string" ? body.contactEmail : null;
+    if (!(await checkSubmissionLimit(req, "enroll", limitEmail)).allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
     }
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -163,31 +204,31 @@ export async function POST(req: NextRequest) {
         who?.participantName || String(p.name ?? body.participantName ?? "");
       const isMinor = p.isMinor === true;
 
-      rows.push([
-        timestamp,
-        body.cohortId ?? "",
-        body.program ?? "",
-        body.location ?? "",
-        playerName,
-        p.dob ?? body.participantDob ?? "",
-        isMinor ? "yes" : "no",
-        body.contactEmail ?? "",
-        body.contactPhone ?? "",
-        body.guardianName ?? "",
-        body.guardianEmail ?? "",
-        body.guardianPhone ?? "",
-        body.consentSignedName ?? "",
-        body.consentAgreedAt ?? "",
-        body.waiverVersion ?? "",
-        "pending",
-        // col 17 — set later by the payment path when a credit applies
-        "",
-        // ── household block ──
-        who?.accountEmail ?? body.contactEmail ?? "",
-        who?.accountName ?? holderName,
-        who?.relationship ?? "",
-        who?.participantId ?? "",
-      ]);
+      // Every value the request typed is written formula-safe (backlog
+      // #33, #84); the columns and their order are unchanged.
+      rows.push(
+        enrollmentSheetRow({
+          timestamp,
+          cohortId: body.cohortId,
+          program: body.program,
+          location: body.location,
+          playerName,
+          dob: p.dob ?? body.participantDob,
+          isMinor,
+          contactEmail: body.contactEmail,
+          contactPhone: body.contactPhone,
+          guardianName: body.guardianName,
+          guardianEmail: body.guardianEmail,
+          guardianPhone: body.guardianPhone,
+          consentSignedName: body.consentSignedName,
+          consentAgreedAt: body.consentAgreedAt,
+          waiverVersion: body.waiverVersion,
+          accountEmail: who?.accountEmail ?? body.contactEmail,
+          accountName: who?.accountName ?? holderName,
+          relationship: who?.relationship,
+          participantId: who?.participantId,
+        })
+      );
       resolved.push({
         name: playerName,
         participantId: who?.participantId ?? null,
@@ -201,6 +242,24 @@ export async function POST(req: NextRequest) {
       valueInputOption: "USER_ENTERED",
       requestBody: { values: rows },
     });
+
+    // Signed out (backlog #84): the rows above are the typed blocks, owned by
+    // nobody. After the response, a brand-new address booking someone other
+    // than the holder gets its account and those players, as before; an
+    // address that already has an account is left exactly as it is, and the
+    // answer never says which.
+    if (!signedIn && holderEmail) {
+      const players = incoming.map((p) =>
+        guestPlayer(
+          { name: p.name, relationship: p.relationship, isMinor: p.isMinor } as ParticipantInput,
+          { name: holderName, defaultName: String(p.name ?? body.participantName ?? "").trim() }
+        )
+      );
+      const holderPhone = body.contactPhone ? String(body.contactPhone) : null;
+      after(() =>
+        settleGuestSubmission({ email: holderEmail, holderName, holderPhone, players })
+      );
+    }
 
     // Parse the appended row numbers from the updated range
     // (e.g. "enrollments!A5:U6" → [5, 6]).

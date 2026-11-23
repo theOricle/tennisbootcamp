@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { recordEtransferIntent } from "@/lib/cohortActions";
 import { getCohortById } from "@/lib/cohortsDb";
 import {
@@ -7,6 +7,7 @@ import {
   approvalRefusal,
   contactEmailRefusal,
   gateRefusal,
+  priceRefusal,
   requestedParticipantIds,
   resolveEnrollGate,
   scrubParticipantIds,
@@ -18,10 +19,22 @@ import { listParticipantsForAccount } from "@/lib/players";
 import {
   saveEnrollmentToSupabase,
   notifyEnrollmentAccount,
-  resolveEnrollmentUserId,
 } from "@/lib/supabase/enrollmentActions";
 import { setEnrollmentStatusByEmail } from "@/lib/enrollmentSheet";
 import { programs } from "@/content/programs";
+import {
+  BOT_REFUSAL_ERROR,
+  INVALID_EMAIL_ERROR,
+  REQUEST_TOO_LARGE,
+  bodyTooLarge,
+  checkBot,
+  isValidEmail,
+  logBotDrop,
+} from "@/lib/botCheck";
+import { tooManyPlayers } from "@/lib/participantInput";
+import { enrollmentOwner } from "@/lib/enrollmentLink";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 
 // "I've sent it" on an e-transfer cohort (backlog #12). Mirrors what the card
 // path does at checkout — Supabase enrollment row + activation link — but no
@@ -58,7 +71,22 @@ type EnrollmentMeta = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // The size cap the other public forms have (safety review).
+    const raw = await req.text();
+    if (bodyTooLarge(raw, req.headers.get("content-length"))) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    const body = JSON.parse(raw);
+    // Bot protection (backlog #84, the same check as the other public forms).
+    // A tripped check records nothing and answers a plain refusal the wizard
+    // shows (safety review): the success-shaped answer it used to give sent a
+    // real person, wrongly flagged, to "Your spot is held" with no invite, no
+    // email and nothing for the coach to mark paid.
+    const verdict = checkBot(body);
+    if (verdict.bot) {
+      logBotDrop("enroll/etransfer", verdict.reason);
+      return NextResponse.json({ error: BOT_REFUSAL_ERROR }, { status: 400 });
+    }
     const {
       cohortId,
       programTitle,
@@ -73,6 +101,16 @@ export async function POST(req: NextRequest) {
 
     if (!cohortId || !enrollmentMeta?.contactEmail) {
       return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+    }
+    // No more players than one household holds, the most the wizard can send:
+    // every player here is an invite row and two emails.
+    if (tooManyPlayers(enrollmentMeta.participants)) {
+      return NextResponse.json({ error: REQUEST_TOO_LARGE }, { status: 400 });
+    }
+    // The same format check as every other form (backlog #84), before any
+    // invite row or Sheet write.
+    if (!isValidEmail(String(enrollmentMeta.contactEmail).trim())) {
+      return NextResponse.json({ error: INVALID_EMAIL_ERROR }, { status: 400 });
     }
 
     // Backlog #38: the enroll page's gate, run again here before any invite
@@ -93,6 +131,13 @@ export async function POST(req: NextRequest) {
     const byApproval = approvalRefusal(cohort, gate);
     if (byApproval) {
       return NextResponse.json({ error: byApproval.error }, { status: byApproval.status });
+    }
+    // A cohort whose price is zero or missing takes no payment (safety
+    // review): refused before any invite row, Sheet write or email asks the
+    // player for "$0".
+    const noPrice = priceRefusal(cohort);
+    if (noPrice) {
+      return NextResponse.json({ error: noPrice.error }, { status: noPrice.status });
     }
 
     // One player per invite: a parent sending one transfer for two children
@@ -120,6 +165,15 @@ export async function POST(req: NextRequest) {
     if (mismatch) {
       return NextResponse.json({ error: mismatch.error }, { status: mismatch.status });
     }
+    // Repeated submissions (backlog #84): counted once the fields, the gate
+    // and the contact check pass, before the records are read or any invite
+    // row, Sheet write or email. A refusal of the route's own below gives
+    // the try back. It counts once for each player (safety review): each one
+    // is two emails, so a try for a household is weighed as that many.
+    const ticket = await checkSubmissionLimit(req, "etransfer", String(enrollmentMeta.contactEmail), sent.length);
+    if (!ticket.allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
+    }
     const owned = signedIn
       ? new Set(
           (
@@ -134,18 +188,21 @@ export async function POST(req: NextRequest) {
         )
       : null;
     const players = scrubParticipantIds(sent, owned);
-    // Audit H5: the account every row this request saves belongs to — the
-    // signed-in user, else the account that already exists for the email.
-    const ownerId = await resolveEnrollmentUserId(enrollmentMeta.contactEmail, signedIn?.id);
+    // Audit H5, backlog #84: the account every row this request saves belongs
+    // to — the signed-in user, else nobody. A typed email never makes a row
+    // (or the invite below) the property of the account that exists for it.
+    const ownerId = enrollmentOwner(signedIn?.id);
 
     // Backlog #38: the page's seat rule, for every player on this transfer.
     const sheet = await readEnrollmentSheet();
     if (sheet.status === "error") {
+      await ticket.release();
       return NextResponse.json({ error: RECORDS_UNAVAILABLE_ERROR }, { status: 503 });
     }
     if (sheet.status === "ok" && cohort) {
       const seatsRemaining = seatsFromSnapshot(sheet.snapshot, cohort.id, cohort.capacityMax);
       if (seatsRefuse(seatsRemaining, players.length)) {
+        await ticket.release();
         return NextResponse.json({ error: COHORT_FULL_ERROR }, { status: 409 });
       }
     }
@@ -171,8 +228,15 @@ export async function POST(req: NextRequest) {
         playerIndex: i,
         claimedInviteIds,
         claimedCreditBookingIds,
+        // The invite's owner, and whose invites the email fallback may land
+        // on: the session's, or (signed out) only ones nobody owns (#84).
+        accountId: ownerId,
       });
+      // Refused before anything was recorded for this transfer: the try is
+      // given back. A later player's refusal keeps it counted, since the
+      // first player's invite and emails already went.
       if (!result.ok) {
+        if (i === 0) await ticket.release();
         return NextResponse.json({ error: result.error }, { status: result.status });
       }
       claimedInviteIds.push(result.inviteId);
@@ -207,11 +271,12 @@ export async function POST(req: NextRequest) {
           // gets "Your spot is on your account" with the dashboard link (H5).
           // The e-transfer instructions themselves went out in
           // recordEtransferIntent. One account email per cohort, whatever
-          // is retried.
-          await notifyEnrollmentAccount({
+          // is retried. After the response (#84), so its timing never says
+          // whether the email has an account.
+          const notice = {
             email: enrollmentMeta.contactEmail,
             enrollmentId,
-            userId: ownerId,
+            ownerId,
             cohortId,
             enrolled: {
               programTitle:
@@ -225,10 +290,13 @@ export async function POST(req: NextRequest) {
                 .filter(Boolean),
               paid: false,
             },
-          }).catch((err) =>
-            console.error(
-              "Activation link after e-transfer intent failed (non-blocking):",
-              err
+          };
+          after(() =>
+            notifyEnrollmentAccount(notice).catch((err) =>
+              console.error(
+                "Activation link after e-transfer intent failed (non-blocking):",
+                err
+              )
             )
           );
         }

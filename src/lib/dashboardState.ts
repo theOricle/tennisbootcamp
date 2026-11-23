@@ -17,6 +17,7 @@ import type { Cohort } from "@/types/cohort";
 import { formatDollars, numberInWords } from "@/content/programs";
 import { dayNameForDate } from "@/lib/makeup";
 import { etransferMemo } from "@/lib/paymentTransitions";
+import { noteWithoutMarks } from "@/lib/stripeOutcome";
 import { formatTierSpan, hasLevel } from "@/lib/tiers";
 import { firstNameOf, namesList, possessive, type RosterPlayer } from "@/lib/householdView";
 
@@ -51,7 +52,9 @@ export type DashInvite = {
   participant_id?: string | null;
   /**
    * The player's name as the e-transfer intent wrote it (backlog #38), for an
-   * invite that names no participant (a signed-out enroll).
+   * invite that names no participant (a signed-out enroll). A card payment
+   * and its refund write their own lines in front of it; the name is read
+   * with those removed (noteWithoutMarks, src/lib/stripeOutcome.ts).
    */
   payment_note?: string | null;
   /** Price minus the player's unused $20, for an unpaid invite. */
@@ -159,6 +162,8 @@ export type EnrollmentState =
   | "test"
   | "etransfer-pending"
   | "payment-pending"
+  | "refunded"
+  | "disputed"
   | "cancelled"
   | "on-file";
 
@@ -173,6 +178,9 @@ export function enrollmentState(
   if (cohort?.dbStatus === "cancelled") return "cancelled";
   if (enrollment.status === "paid") return "enrolled";
   if (enrollment.status === "test_paid") return "test";
+  // A card payment that went back (backlog #84): the spot is released.
+  if (enrollment.status === "refunded") return "refunded";
+  if (enrollment.status === "disputed") return "disputed";
   if (enrollment.status === "pending" || enrollment.status === "pending_etransfer") {
     return cohort?.paymentMode === "etransfer" ? "etransfer-pending" : "payment-pending";
   }
@@ -190,6 +198,8 @@ export const ENROLLMENT_CHIP: Record<EnrollmentState, { label: string; tone: "li
   test: { label: "Test enrollment", tone: "neutral" },
   "etransfer-pending": { label: "E-transfer pending", tone: "warn" },
   "payment-pending": { label: "Payment pending", tone: "warn" },
+  refunded: { label: "Refunded", tone: "muted" },
+  disputed: { label: "Payment disputed", tone: "warn" },
   cancelled: { label: "Cancelled", tone: "muted" },
   "on-file": { label: "On file", tone: "neutral" },
 };
@@ -207,6 +217,10 @@ export function enrollmentNote(state: EnrollmentState): string | null {
       return "The card payment didn't complete. Email info@tennisbootcamp.ca if that looks wrong.";
     case "test":
       return "A test enrollment: no money was taken.";
+    case "refunded":
+      return "The payment was refunded, so this spot is no longer held.";
+    case "disputed":
+      return "The card payment is under dispute, so this spot is no longer held. Email info@tennisbootcamp.ca to sort it out.";
     default:
       return null;
   }
@@ -409,7 +423,9 @@ export function nextStepFor(input: NextStepInput): NextStep {
     >();
     for (const i of waiting) {
       if (i.cohort_id !== cohort.id) continue;
-      const note = i.payment_note?.trim() || null;
+      // The name in the note, never a payment mark: a card payment and its
+      // refund write their own lines in front of it (noteWithoutMarks).
+      const note = noteWithoutMarks(i.payment_note);
       const player = playerFor(roster, { participantId: i.participant_id, name: note });
       const who = whose(input, player, note);
       // "self" only for a row tied to the holder by player or note. Two rows
@@ -602,6 +618,9 @@ export function creditLine(
 ): string | null {
   if (credits.length === 0) return null;
   const owners = credits.map((c) => {
+    // Linked to the account but to no player: it comes off the account's
+    // next enrollment, whoever it is for (src/lib/creditRules.ts).
+    if (!c.participantId) return "you";
     const player = playerFor(roster, { participantId: c.participantId, name: c.playerName });
     if (player && player.id === selfId) return "you";
     return firstNameOf(player?.full_name ?? c.playerName) || "your player";

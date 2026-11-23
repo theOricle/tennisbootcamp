@@ -1,6 +1,6 @@
 import "server-only";
 import { google, type sheets_v4 } from "googleapis";
-import { enrollmentRowsToFlip } from "@/lib/enrollGate";
+import { enrollmentRowsToFlip, paymentRowsToMove } from "@/lib/enrollGate";
 
 // Additive write to the enrollments tab: the `assessment_credit` column (Q,
 // col 17) appended after the frozen 16-column layout that ends at `status` (P).
@@ -65,15 +65,70 @@ export async function setEnrollmentCredit(
 }
 
 // ─── Status column helpers (e-transfer rail, backlog #12) ─────────────────────
-// The `status` column is P (col 16) in the frozen layout. Card payments write
-// it from the checkout/webhook routes by row number (carried in Stripe
-// metadata); the e-transfer path resolves rows by cohort + contact email
-// instead — never by a client-supplied row number. Best-effort.
+// The `status` column is P (col 16) in the frozen layout. Card payments move
+// it through flipPaymentRows: the row numbers carried in Stripe metadata came
+// from the browser, so each is re-read and moved only when it carries the
+// payment's own cohort and contact email. The e-transfer path resolves rows
+// by cohort + contact email — never by a client-supplied row number.
 
 const STATUS_COL = "P";
 // A:U — the frozen columns plus the household block, whose `participant_id`
 // (col 21) scopes a flip to one player when the invite names one (#38).
 const READ_RANGE = "A:U";
+
+/** What a payment event did to its Sheet rows. */
+export type PaymentRowsMoved = {
+  /** The rows whose status this call moved. */
+  moved: number[];
+  /** The remembered rows that are this payment's own, whatever their status. */
+  own: number[];
+  /** Remembered rows that are not this payment's own and were left alone. */
+  unresolved: number[];
+};
+
+/**
+ * Move a payment's own rows (column P) out of one of `from` into `to`
+ * (backlog #84, safety review). The row numbers came from the browser at
+ * checkout, so each one is read back first and moved only when it still
+ * carries the payment's cohort and contact email and a status the move
+ * expects (paymentRowsToMove, src/lib/enrollGate.ts): a redelivered event, a
+ * refund that already landed, or a number that names another family's row
+ * moves nothing. `relocate` lets a reversal find its row by cohort and email
+ * when the Sheet was re-sorted since. Null when Sheets is not configured
+ * (nothing could be checked). Errors propagate on purpose: the webhook then
+ * answers 500 and Stripe retries, which is safe because every move is guarded.
+ */
+export async function flipPaymentRows(params: {
+  rowNumbers: readonly number[];
+  cohortId: string;
+  email: string | null | undefined;
+  from: readonly string[];
+  to: string;
+  relocate?: boolean;
+}): Promise<PaymentRowsMoved | null> {
+  const sheets = getSheets();
+  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return null;
+  if (params.rowNumbers.length === 0) return { moved: [], own: [], unresolved: [] };
+
+  // A:P holds the three columns the check reads: cohort_id, contact_email, status.
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${TAB}!A:P`,
+  });
+  const all = (res.data.values ?? []) as string[][];
+  const plan = paymentRowsToMove({ header: all[0] ?? [], rows: all.slice(1) }, params);
+  if (plan.rows.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: plan.rows.map((n) => ({ range: `${TAB}!${STATUS_COL}${n}`, values: [[params.to]] })),
+      },
+    });
+  }
+  return { moved: plan.rows, own: plan.own, unresolved: plan.unresolved };
+}
 
 /**
  * Flip every enrollment row for (cohort_id, contact_email) whose status is in

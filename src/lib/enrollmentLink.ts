@@ -10,16 +10,15 @@
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
 
 /**
- * The owner of a row being saved: the signed-in account when there is one
- * (the person at the keyboard paid), else the account that already exists
- * for the contact email, else nobody yet — the invite that creates the
- * account links the row the moment the account exists.
+ * The owner of a row being saved: the signed-in account (the person at the
+ * keyboard), else nobody (backlog #84, owner 2026-11-14). A typed email proves
+ * nothing, so a signed-out row is never owned by the account that exists for
+ * that email: it stays unowned, and links when the address owner signs in
+ * through their own emailed link (linkEnrollmentsToAccount, from
+ * /auth/callback, which re-checks the address).
  */
-export function enrollmentOwner(
-  sessionUserId: string | null | undefined,
-  lookupUserId: string | null | undefined
-): string | null {
-  return sessionUserId || lookupUserId || null;
+export function enrollmentOwner(sessionUserId: string | null | undefined): string | null {
+  return sessionUserId || null;
 }
 
 /**
@@ -47,6 +46,22 @@ export function emailBelongsToAccount(
  */
 export function ilikePattern(literal: string): string {
   return literal.replace(/[\\%_]/g, "\\$&");
+}
+
+/**
+ * The re-check every `ilike` read on an email needs (backlog #84): PostgREST
+ * reads `*` as `%`, which ilikePattern leaves alone, so a candidate row is
+ * kept only when its address is exactly `email` (trimmed, case folded). A
+ * `%`, `_` or `*` in a typed address then matches nothing but itself.
+ */
+export function rowsWithEmail<T>(
+  rows: readonly T[],
+  email: string,
+  addressOf: (row: T) => string | null | undefined
+): T[] {
+  const target = normalizeEmail(email);
+  if (!target) return [];
+  return rows.filter((row) => normalizeEmail(addressOf(row) ?? "") === target);
 }
 
 export type UnownedEnrollmentRow = {
@@ -79,4 +94,25 @@ export type EnrollmentNoticeKind = "set-password" | "enrolled";
 
 export function enrollmentNoticeKind(accountExists: boolean): EnrollmentNoticeKind {
   return accountExists ? "enrolled" : "set-password";
+}
+
+/**
+ * Which email an enrollment sends (owner, 2026-10-12; backlog #84):
+ *   set-up    no account for the address (the invite creates it, with the
+ *             set-password link), or an account never signed in to — once
+ *             per cohort, unless the coach resends on purpose;
+ *   enrolled  an account in use: "You're enrolled" and the dashboard link;
+ *   none      the set-up email for this cohort already went out.
+ * Choosing the email links nothing: rows link only when the address owner
+ * signs in through their own emailed link.
+ */
+export function enrollmentNoticePlan(input: {
+  accountExists: boolean;
+  needsSetup: boolean;
+  setupSentForCohort: boolean;
+  force: boolean;
+}): "set-up" | "enrolled" | "none" {
+  if (!input.accountExists) return "set-up";
+  if (!input.needsSetup) return "enrolled";
+  return input.setupSentForCohort && !input.force ? "none" : "set-up";
 }

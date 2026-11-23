@@ -231,9 +231,14 @@ console.log("approvalRefusal — the page's by-approval gate, run again by both 
     { error: APPROVAL_ONLY_ERROR, status: 403 }
   );
   check(
-    "a hold that ran out between page load and paying still pays (fix round 3): getInviteByToken only reports expired for this cohort's row, and the routes' payable grace (#30/#34) settles onto it",
+    "a token whose hold ran out no longer pays on a direct request (#84 safety round): the approval it stood for is spent, as the page already says",
     approvalRefusal(inGroup(hp), { decision: pub, lookup: { state: "expired" } }),
-    null
+    { error: APPROVAL_ONLY_ERROR, status: 403 }
+  );
+  check(
+    "…nor does a token whose invite is already paid: it was approval for one spot",
+    approvalRefusal(inGroup(hp), { decision: pub, lookup: { state: "valid", invite: { id: INVITE_ID, cohort_id: "coh_high-performance", status: "paid" } } }),
+    { error: APPROVAL_ONLY_ERROR, status: 403 }
   );
   check(
     "…the same expired token on a private High Performance cohort pays through the invite path, as before",

@@ -22,6 +22,13 @@ import {
   plannedAdditions,
   type ParticipantInput,
 } from "@/lib/participantInput";
+import {
+  guestPlayer,
+  settleGuestPlayers,
+  type GuestAccountStore,
+  type GuestPlayer,
+  type GuestSettlement,
+} from "@/lib/guestAccount";
 
 // "Who is this for?" resolved on the server (backlog #11).
 //
@@ -34,11 +41,13 @@ import {
 //   • A signed-in holder may also add someone (backlog #24): a typed block
 //     becomes a participant under the session's account — the same create
 //     the guest path uses, and never an account the request body names.
-//   • A guest booking for themselves behaves exactly as it did before — the
-//     participant is resolved (or created) when their account is provisioned.
-//   • A guest booking for someone else needs an account to hang that person
-//     off, so one is created silently here. No email is sent from this module;
-//     each flow keeps its own "set your password" moment.
+//   • A guest (nobody signed in) is the typed block and nothing more: no
+//     account is read or written while the request is answered (backlog #84).
+//     After the response, settleGuestSubmission gives a brand-new address its
+//     account — silently, with the people it named when they are someone
+//     other than the holder — and leaves an address that already has an
+//     account exactly as it is. No email is sent from this module; each flow
+//     keeps its own "set your password" moment.
 
 export type { ParticipantInput };
 
@@ -254,79 +263,85 @@ export async function resolveSubmissionParticipant(input: {
 
   if (!holderEmail) return fallback;
 
-  // ── Signed out ────────────────────────────────────────────────────────────
-  const isHolder =
-    !blockRelationship ||
-    blockRelationship === "self" ||
-    (!!blockName && blockName.toLowerCase() === holderName.toLowerCase());
-
-  let accountId = await findUserIdByEmail(holderEmail).catch(() => null);
-
-  if (isHolder) {
-    // With no account yet, the row rides on the email and the participant is
-    // resolved when the account lands (the pre-household behaviour).
-    if (!accountId) return { ...fallback, participantName: blockName || holderName };
-    const self = await ensureSelfParticipant(accountId, {
-      fullName: holderName || blockName,
-    }).catch(() => null);
-    // Nobody is signed in, so typing an account's email proves nothing: the
-    // answers only fill what the holder's row leaves blank, like
-    // ensureSelfParticipant's name and fillPlayerContact. An age band, a
-    // self-estimate or `is_minor` already on file stays as it is.
-    await rememberAnswers(self?.id, { ageBand, selfLevel }, { fillOnly: true });
-    const account = await getAccount(accountId).catch(() => null);
-    return {
-      accountId,
-      participantId: self?.id ?? null,
-      participantName: self?.full_name?.trim() || blockName || holderName,
-      relationship: "self",
-      accountName: account?.name?.trim() || holderName,
-      accountEmail: account?.email || holderEmail,
-      selfLevel,
-      ...own,
-      accountCreated: false,
-    };
-  }
-
-  // Registering someone else: we need an account to hang them off.
-  let accountCreated = false;
-  if (!accountId) {
-    const ensured = await ensureAccountForEmail(holderEmail);
-    accountId = ensured.id;
-    accountCreated = ensured.created;
-  }
-  if (!accountId) return fallback;
-
-  await fillPlayerContact(accountId, {
-    fullName: holderName || null,
-    phone: input.holderPhone ?? null,
-  }).catch(() => undefined);
-  await ensureSelfParticipant(accountId, { fullName: holderName }).catch(() => null);
-
-  // The same create the signed-in add uses (backlog #24); the name fallback
-  // and the account it lands on are exactly what they were.
-  const created = await createParticipant(
-    newParticipantInput(accountId, { ...block, name: blockName || "Player" }) ?? {
-      accountId,
-      fullName: blockName || "Player",
-      relationship: blockRelationship,
-      isMinor: block?.isMinor === true,
-    }
-  );
-  if (created.ok) await rememberAnswers(created.participant.id, { ageBand, selfLevel });
-  const account = await getAccount(accountId).catch(() => null);
-
+  // ── Signed out (backlog #84; owner, 2026-11-14) ───────────────────────────
+  // A typed email proves nothing, so nothing here reads or writes the account
+  // that may exist for it: the answer is the typed block, unowned, and its
+  // timing is the same either way. A brand-new address gets its account and
+  // its people after the response (settleGuestSubmission); an existing one is
+  // left exactly as it is, and its rows link when its owner signs in through
+  // their own emailed link.
+  const typed = guestPlayer(block, { name: holderName, defaultName: input.defaultName });
   return {
-    accountId,
-    participantId: created.ok ? created.participant.id : null,
-    participantName: blockName || holderName,
-    relationship: blockRelationship,
-    accountName: account?.name?.trim() || holderName,
-    accountEmail: account?.email || holderEmail,
-    selfLevel,
-    ...own,
-    accountCreated,
+    ...fallback,
+    participantName: typed.participantName,
+    relationship: typed.relationship,
   };
+}
+
+/**
+ * The account store a signed-out submission's after-response work uses
+ * (src/lib/guestAccount.ts): it creates an account only for an address that
+ * has none, and adds the typed people to that new account with the same
+ * create and the same remembered answers as before.
+ */
+export function guestAccountStore(): GuestAccountStore {
+  return {
+    findAccountId: (email) => findUserIdByEmail(email).catch(() => null),
+    async createAccount(email) {
+      const ensured = await ensureAccountForEmail(email);
+      // Only an account this call made: one that existed is never written.
+      return ensured.created ? ensured.id : null;
+    },
+    async fillContact(accountId, contact) {
+      await fillPlayerContact(accountId, contact).catch(() => undefined);
+    },
+    async ensureSelf(accountId, fullName) {
+      const self = await ensureSelfParticipant(accountId, { fullName }).catch(() => null);
+      return self?.id ?? null;
+    },
+    async addPlayer(accountId, player) {
+      const block = player.block;
+      const relationship = isRelationship(block?.relationship) ? block.relationship : null;
+      // The same create the signed-in add uses (backlog #24); the name
+      // fallback and the account it lands on are exactly what they were.
+      const created = await createParticipant(
+        newParticipantInput(accountId, { ...block, name: player.participantName || "Player" }) ?? {
+          accountId,
+          fullName: player.participantName || "Player",
+          relationship: relationship && relationship !== "self" ? relationship : "other",
+          isMinor: block?.isMinor === true,
+        }
+      ).catch(() => null);
+      if (!created?.ok) return null;
+      await rememberAnswers(created.participant.id, {
+        ageBand: block?.ageBand,
+        selfLevel: player.selfLevel,
+      });
+      return created.participant.id;
+    },
+  };
+}
+
+/**
+ * The after-response account work for a signed-out submission (backlog #84):
+ * an address with no account gets one, with the submission's people on it;
+ * an address that already has one is left exactly as it is.
+ */
+export async function settleGuestSubmission(input: {
+  email: string;
+  holderName: string;
+  holderPhone: string | null;
+  players: GuestPlayer[];
+}): Promise<GuestSettlement> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return { kind: "skipped" };
+  }
+  try {
+    return await settleGuestPlayers(guestAccountStore(), input);
+  } catch (err) {
+    console.error("Signed-out account step failed (non-blocking):", err instanceof Error ? err.message : err);
+    return { kind: "skipped" };
+  }
 }
 
 /**

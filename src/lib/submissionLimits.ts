@@ -1,0 +1,264 @@
+// Limits on repeated submissions to the public forms (backlog #84, part 6;
+// audit follow-up, owner 2026-11-14).
+//
+// The bot check (src/lib/botCheck.ts) trusts the browser: a script that sends
+// an empty honeypot and a fill time passes it. These limits count what
+// actually arrived, per network address and per email, so a script cannot
+// fill the Sheet, hold every slot or spend the day's 100 transactional
+// emails, and nobody can bury one inbox.
+//
+// The numbers, and why (stated in the pull request too):
+//   - per address, per form: 20 an hour, 30 a day;
+//   - per email, per form: 5 an hour, 10 a day;
+//   - across the three forms that send our email (the quiz, the booking, the
+//     e-transfer), 20 a day per address and 12 a day per email.
+// What is counted is a try, with one exception (safety review): an e-transfer
+// try counts once for each player on it, because it sends two emails for each
+// player (the instructions, and the coach's notice) and one account email.
+// So every counted hit on an email form stands for at most three emails.
+// A family entering two children separately on every form and retrying each
+// once sends 4 per form: inside every limit, the 12 a day per email across
+// the email forms included; one e-transfer for both children, retried once,
+// counts the same 4. Twenty families on the club's one Wi-Fi can each send a
+// one-player e-transfer inside one hour of a sign-up evening, so the eleventh
+// is never refused; a family paying for two players counts as two of the
+// twenty. A script on one address is refused once 20 hits are counted on the
+// email forms in a day, and one request carries at most 12 players (the
+// routes refuse a longer list, and a body over 20 KB), so the most that gets
+// through is 19 one-player tries and one of 12: 31 players, 82 emails, under
+// the 100. The same two caps keep one enroll try to 12 Sheet rows.
+// An IPv6 address counts by its /64, which one home or office holds whole.
+//
+// Pure: the counting and the hashing. The table reads and writes live in
+// src/lib/submissionLimitsDb.ts; src/scripts/test-submission-limits.ts pins
+// the rules.
+
+import { createHmac } from "node:crypto";
+import { MAX_PARTICIPANTS_PER_ACCOUNT } from "@/lib/participantInput";
+
+export const LIMIT_SCOPES = [
+  "intake",
+  "book",
+  "enroll",
+  "checkout",
+  "etransfer",
+  "newsletter",
+  "interest",
+] as const;
+export type LimitScope = (typeof LIMIT_SCOPES)[number];
+
+/** The forms whose submissions send our own (transactional) email. */
+export const MAIL_SCOPES: readonly LimitScope[] = ["intake", "book", "etransfer"];
+
+export const LIMITS = {
+  perAddress: { hour: 20, day: 30 },
+  perEmail: { hour: 5, day: 10 },
+  mail: { addressDay: 20, emailDay: 12 },
+} as const;
+
+const HOUR_MS = 60 * 60 * 1000;
+export const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * The 429 a refused submission answers: what to do, and the inbox — never
+ * which limit, how many, or when it lifts. Written once, in the client-safe
+ * module the forms read it from (review fix 8).
+ */
+export { SUBMISSION_LIMIT_ERROR } from "@/lib/formRefusal";
+
+/** One counted submission, as stored: a keyed hash, the form, the time. */
+export type LimitHit = { keyHash: string; scope: LimitScope | string; createdAt: string };
+
+/**
+ * The keyed hash stored for a network address or an email: HMAC-SHA256 with
+ * a secret the server already holds, over the kind and the value. Neither the
+ * address nor the email is ever stored; the same value always gives the same
+ * hash, so it can be counted.
+ */
+export function limitKeyHash(secret: string, kind: "address" | "email", value: string): string {
+  return createHmac("sha256", secret).update(`tb-submission-limits:v1:${kind}:${value}`).digest("hex");
+}
+
+/**
+ * The key a network address is counted under: an IPv4 address as it is; an
+ * IPv6 address by its /64 ("2001:db8:abcd:12::/64"), the block one home or
+ * office holds whole, so a script cannot rotate through it; an IPv4-mapped
+ * IPv6 address as its IPv4 address. Anything else is kept as it is.
+ */
+export function networkKey(address: string): string {
+  let a = address.trim().toLowerCase();
+  if (a.startsWith("[") && a.includes("]")) a = a.slice(1, a.indexOf("]"));
+  const zone = a.indexOf("%");
+  if (zone !== -1) a = a.slice(0, zone);
+  if (!a.includes(":")) return a;
+  const mapped = a.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (mapped) return mapped[1];
+
+  const sides = a.split("::");
+  if (sides.length > 2) return a;
+  const head = sides[0] ? sides[0].split(":") : [];
+  let groups: string[];
+  if (sides.length === 2) {
+    const tail = sides[1] ? sides[1].split(":") : [];
+    const missing = 8 - head.length - tail.length;
+    if (missing < 1) return a;
+    groups = [...head, ...Array<string>(missing).fill("0"), ...tail];
+  } else {
+    groups = head;
+  }
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return a;
+  return `${groups
+    .slice(0, 4)
+    .map((g) => parseInt(g, 16).toString(16))
+    .join(":")}::/64`;
+}
+
+/**
+ * The client's network key as Vercel reports the address: the first entry of
+ * x-forwarded-for (Vercel sets it from the connection), else x-real-ip, else
+ * "unknown" — every such request then shares one bucket. IPv6 by its /64.
+ */
+export function clientAddress(headers: { get(name: string): string | null }): string {
+  const forwarded = (headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim();
+  if (forwarded) return networkKey(forwarded);
+  const real = (headers.get("x-real-ip") ?? "").trim();
+  return real ? networkKey(real) : "unknown";
+}
+
+/**
+ * Whether one more submission to `scope` fits, given the hits recorded for
+ * its two keys over the last day. A refusal is never recorded, so retrying
+ * while refused never pushes the end of the wait further out.
+ */
+export function limitVerdict(input: {
+  scope: LimitScope;
+  addressHash: string;
+  emailHash: string | null;
+  hits: readonly LimitHit[];
+  now: number;
+}): { allowed: boolean } {
+  const hourAgo = input.now - HOUR_MS;
+  const dayAgo = input.now - DAY_MS;
+  const count = (hash: string, scopes: readonly string[], since: number) =>
+    input.hits.filter(
+      (h) => h.keyHash === hash && scopes.includes(h.scope) && Date.parse(h.createdAt) > since
+    ).length;
+
+  const own = [input.scope];
+  if (count(input.addressHash, own, hourAgo) >= LIMITS.perAddress.hour) return { allowed: false };
+  if (count(input.addressHash, own, dayAgo) >= LIMITS.perAddress.day) return { allowed: false };
+  if (input.emailHash) {
+    if (count(input.emailHash, own, hourAgo) >= LIMITS.perEmail.hour) return { allowed: false };
+    if (count(input.emailHash, own, dayAgo) >= LIMITS.perEmail.day) return { allowed: false };
+  }
+  if (MAIL_SCOPES.includes(input.scope)) {
+    if (count(input.addressHash, MAIL_SCOPES, dayAgo) >= LIMITS.mail.addressDay) return { allowed: false };
+    if (input.emailHash && count(input.emailHash, MAIL_SCOPES, dayAgo) >= LIMITS.mail.emailDay) {
+      return { allowed: false };
+    }
+  }
+  return { allowed: true };
+}
+
+/** The table is not there yet: migration 0011 has not run. */
+export function isMissingTable(error: { code?: string | null; message?: string | null } | null | undefined): boolean {
+  if (!error) return false;
+  return error.code === "PGRST205" || error.code === "42P01";
+}
+
+// ─── The count, atomic ────────────────────────────────────────────────────────
+
+/** One row of the table, as read back. */
+export type StoredHit = { id: string; key_hash: string; scope: string; created_at: string };
+
+/**
+ * Where the hits are kept: migration 0011's table (src/lib/submissionLimitsDb.ts)
+ * or an in-memory fake in npm test. It is handed keyed hashes only.
+ */
+export type LimitStore = {
+  /** Record these hits; their ids, or "missing" when the table is not there yet. */
+  insert(hits: { scope: LimitScope; key_hash: string }[]): Promise<string[] | "missing">;
+  /** Every hit for these keys newer than `since` (ISO), the caller's own included. */
+  readWindow(keys: string[], since: string): Promise<StoredHit[]>;
+  /** Take these hits back. */
+  remove(ids: string[]): Promise<void>;
+};
+
+/**
+ * How many hits one try records: a whole number from 1 to the most players
+ * one request may carry. Anything else counts as one.
+ */
+export function submissionWeight(weight: number | null | undefined): number {
+  const n = Math.floor(Number(weight));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, MAX_PARTICIPANTS_PER_ACCOUNT);
+}
+
+/**
+ * The most transactional emails one network address can cause in a day
+ * through the email forms: every counted hit stands for at most three, and
+ * the last try let through may carry a full household.
+ */
+export function maxDailyEmailsPerAddress(): number {
+  const lastTry = 2 * MAX_PARTICIPANTS_PER_ACCOUNT + 1;
+  return (LIMITS.mail.addressDay - 1) * 3 + lastTry;
+}
+
+/** A try that was counted: whether it may go ahead, and how to take it back. */
+export type SubmissionTicket = {
+  allowed: boolean;
+  /**
+   * Take the try back: a route that then refuses it for a reason of its own
+   * (a slot just taken, a full cohort) leaves the family's limit as it was.
+   */
+  release(): Promise<void>;
+};
+
+/**
+ * Count one try, atomically: its hits are recorded first, then the window is
+ * read — so of any two tries at the same moment, at least one sees the other
+ * — and a try over a limit takes its own hits back and is refused. Under a
+ * burst this can refuse a little early, never late: tries that go ahead never
+ * exceed the limits. The address and the email reach the store only as
+ * limitKeyHash values.
+ *
+ * `weight` is how many hits the try records under each key: one, except an
+ * e-transfer, which counts once for each player it covers (it emails for
+ * each). A try is weighed against what was counted before it, so a household
+ * of any size the routes accept gets its first try through.
+ */
+export async function takeTicket(
+  store: LimitStore,
+  input: {
+    secret: string;
+    scope: LimitScope;
+    address: string;
+    email: string | null | undefined;
+    now: number;
+    weight?: number;
+  }
+): Promise<SubmissionTicket | "missing"> {
+  const addressHash = limitKeyHash(input.secret, "address", input.address);
+  const email = (input.email ?? "").trim().toLowerCase();
+  const emailHash = email ? limitKeyHash(input.secret, "email", email) : null;
+  const keys = emailHash ? [addressHash, emailHash] : [addressHash];
+
+  const weight = submissionWeight(input.weight);
+  const ids = await store.insert(
+    keys.flatMap((key_hash) => Array.from({ length: weight }, () => ({ scope: input.scope, key_hash })))
+  );
+  if (ids === "missing") return "missing";
+  const own = new Set(ids);
+  const release = () => store.remove(ids);
+
+  const window = await store.readWindow(keys, new Date(input.now - DAY_MS).toISOString());
+  const others = window
+    .filter((h) => !own.has(h.id))
+    .map((h) => ({ keyHash: h.key_hash, scope: h.scope, createdAt: h.created_at }));
+  const verdict = limitVerdict({ scope: input.scope, addressHash, emailHash, hits: others, now: input.now });
+  if (!verdict.allowed) {
+    await release();
+    return { allowed: false, release: async () => {} };
+  }
+  return { allowed: true, release };
+}

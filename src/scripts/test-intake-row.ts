@@ -406,9 +406,62 @@ const poisoned = buildIntakeRow(
 );
 check("a formula-leading campaign tag is stored as text", poisoned[24], "'=IMPORTXML(\"https://evil.example\",\"//a\")");
 check(
-  "cells 1–22 are untouched by the lead-cell escape (notes col 10 is as it always was)",
+  "cells 1–22 are untouched by the lead-cell escape (notes col 10 carries its own, the same with or without a lead)",
   poisoned.slice(0, 22),
   buildIntakeRow({ ...wizard, name: "Maya Chen", notes: "=1+1" }, TS, HOUSEHOLD)
+);
+
+// ─── Formula-safe cells 1–22 (backlog #33, built in #84) ─────────────────────
+// The append is USER_ENTERED: a value a visitor typed that starts with
+// = + - @, a tab or a carriage return gets a leading apostrophe, which Sheets
+// stores as text and never shows. The columns, their order, names and meaning
+// do not change, and an ordinary value is written exactly as before.
+
+console.log("formula-safe cells (backlog #33)");
+const typedRow = buildIntakeRow(
+  {
+    ...wizard,
+    name: "=1+1",
+    phone: "+1 416 555 0100",
+    notes: "@SUM(A1:A9)",
+    area: "-balliol",
+    goals: ["=HYPERLINK(\"https://evil.example\")"],
+    recommendedProgram: "\tbootcamps",
+  },
+  TS,
+  { ...HOUSEHOLD, accountName: "=IMAGE(\"https://evil.example/x.png\")", participantName: "\r=1" },
+  INSTAGRAM
+);
+check("a name of =1+1 lands as '=1+1", typedRow[1], "'=1+1");
+check("a phone +1 416… stays readable: the number as typed, stored as text", typedRow[3], "'+1 416 555 0100");
+check("Sheets shows the phone without the apostrophe, digits intact", String(typedRow[3]).slice(1), "+1 416 555 0100");
+check("notes starting with @ are text", typedRow[9], "'@SUM(A1:A9)");
+check("an area starting with - is text", typedRow[8], "'-balliol");
+check("a joined list starting with = is text", typedRow[6], "'=HYPERLINK(\"https://evil.example\")");
+check("a leading tab is text", typedRow[16], "'\tbootcamps");
+check("household cells a visitor typed are text too (col 19)", typedRow[18], "'=IMAGE(\"https://evil.example/x.png\")");
+check("a leading carriage return is text (col 20)", typedRow[19], "'\r=1");
+check("the row still has 29 columns", typedRow.length, 29);
+check("…in the same order: the header row is unchanged", [...INTAKE_ALL_HEADERS].length === 29 && INTAKE_ALL_HEADERS[1] === "name" && INTAKE_ALL_HEADERS[3] === "phone" && INTAKE_ALL_HEADERS[28] === "first_seen", true);
+check(
+  "values the app writes stay as they are (timestamp, newsletter, score, lead type, follow-up, participant id)",
+  [typedRow[0], typedRow[10], typedRow[11], typedRow[12], typedRow[13], typedRow[21]],
+  [TS, "yes", "1", "standard", "new", HOUSEHOLD.participantId]
+);
+check(
+  "ordinary values are unchanged: the wizard row is the frozen contract, cell for cell",
+  buildIntakeRow(wizard, TS),
+  row
+);
+check(
+  "a value with = or + inside it, not at the start, is unchanged",
+  [buildIntakeRow({ ...wizard, name: "Ana=Bo", phone: "416+555" }, TS)[1], buildIntakeRow({ ...wizard, name: "Ana=Bo", phone: "416+555" }, TS)[3]],
+  ["Ana=Bo", "416+555"]
+);
+check(
+  "a value that is not a string passes through as the route always passed it",
+  buildIntakeRow({ ...wizard, name: 42 }, TS)[1],
+  42
 );
 
 // Two players, one submission: the same lead block on each row.

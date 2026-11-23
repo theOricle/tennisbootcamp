@@ -127,6 +127,16 @@ export function participantCapReached(count: number): boolean {
   return count >= MAX_PARTICIPANTS_PER_ACCOUNT;
 }
 
+/**
+ * True when a request names more players than one household can hold
+ * (safety review): the sign-up wizard cannot build such a list, so the
+ * enroll, checkout and e-transfer routes refuse it before any row, invite or
+ * email. Anything that is not a list names nobody.
+ */
+export function tooManyPlayers(players: unknown): boolean {
+  return Array.isArray(players) && players.length > MAX_PARTICIPANTS_PER_ACCOUNT;
+}
+
 /** What createParticipant reports at the cap; the routes map it to a 409. */
 export const PARTICIPANT_CAP_ERROR = `An account can hold up to ${MAX_PARTICIPANTS_PER_ACCOUNT} players. Email info@tennisbootcamp.ca to add more.`;
 

@@ -2,141 +2,153 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/service";
 import { updateAssessmentRow } from "@/lib/assessmentSheet";
 import { normTime, type BookingRow, type BlockRow } from "@/lib/assessments";
+import { ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
+import { normalizeEmail } from "@/lib/supabase/adminUsers";
+import {
+  ASSESSMENT_CREDIT_CENTS,
+  accountCredits,
+  decideCredits,
+  writeCreditApplied,
+  type AccountCredit,
+  type CreditBooking,
+  type SeatCredit,
+} from "@/lib/creditRules";
 
 // The $20 assessment credit: a completed + paid assessment with an unused
 // credit comes off the price of the player's first program checkout. Locked
 // value per the pricing decisions — the discount is always the assessment fee.
+//
+// Whose price it comes off is one rule, src/lib/creditRules.ts (backlog #84,
+// safety review). This file only reads the bookings that rule is given and
+// marks a credit used. Every read that can take money off a price is by an
+// id — a player's, or an account somebody proved — never by an email.
 
-export const ASSESSMENT_CREDIT_CENTS = 2000;
+export { ASSESSMENT_CREDIT_CENTS };
+export type { AccountCredit, SeatCredit };
 
-export type UnusedCredit = { bookingId: string; creditCents: number };
+function configured(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+/** Every booking that still carries its $20: completed, paid, unused. */
+function unusedCredits() {
+  return createServiceClient()
+    .from("assessment_bookings")
+    .select("*")
+    .eq("status", "completed")
+    .eq("paid", true)
+    .eq("credit_status", "unused");
+}
 
 /**
- * An unused assessment credit, if any: the most recent completed + paid
- * booking with credit_status = 'unused'.
- *
- * The credit is per participant (backlog #11): two children assessed under one
- * parent's email each carry their own $20, so a participant id narrows the
- * lookup. Without one — or before migration 0007 adds the column — it falls
- * back to the account email exactly as before.
+ * The bookings whose $20 could come off a price for these players or this
+ * account: the players' own, by participant id, and the ones linked to the
+ * account but to no player, by account id. Nothing here reads an email. A
+ * read that fails finds no credit.
  */
-export async function findUnusedCredit(
-  email: string,
-  opts: { participantId?: string | null } = {}
-): Promise<UnusedCredit | null> {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return null;
-  }
+export async function loadCreditBookings(input: {
+  accountId: string | null;
+  participantIds: readonly string[];
+}): Promise<CreditBooking[]> {
+  if (!configured()) return [];
+  const ids = [...new Set(input.participantIds.map((id) => id.trim()).filter(Boolean))];
   try {
-    const supabase = createServiceClient();
-    const base = () =>
-      supabase
-        .from("assessment_bookings")
-        .select("id")
-        .eq("status", "completed")
-        .eq("paid", true)
-        .eq("credit_status", "unused")
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-    let data: unknown = null;
-    if (opts.participantId) {
-      const res = await base().eq("participant_id", opts.participantId).maybeSingle();
-      if (res.error && !/participant_id/i.test(res.error.message ?? "")) {
-        console.error("findUnusedCredit failed:", res.error.message);
-        return null;
-      }
-      // A participant with no credit of their own has no credit — don't fall
-      // back to a sibling's. Only a missing column falls through to email.
-      if (!res.error) {
-        data = res.data;
-        if (!data) return null;
-      }
+    const reads = [
+      ids.length > 0 ? unusedCredits().in("participant_id", ids) : null,
+      input.accountId ? unusedCredits().eq("user_id", input.accountId).is("participant_id", null) : null,
+    ];
+    const results = await Promise.all(reads.map((q) => (q ? q.then((r) => r, () => null) : null)));
+    const byId = new Map<string, CreditBooking>();
+    for (const result of results) {
+      if (result?.error) console.error("Credit read failed:", result.error.code ?? "unknown");
+      for (const row of ((result?.data as BookingRow[] | null) ?? [])) byId.set(row.id, row);
     }
-    if (!data) {
-      const res = await base().ilike("email", email.trim()).maybeSingle();
-      data = res.data;
-    }
-    if (!data) return null;
-    return {
-      bookingId: (data as { id: string }).id,
-      creditCents: ASSESSMENT_CREDIT_CENTS,
-    };
+    return [...byId.values()];
   } catch (err) {
-    console.error("findUnusedCredit failed:", err);
-    return null;
+    console.error("Credit read failed:", err instanceof Error ? err.name : typeof err);
+    return [];
   }
 }
 
-/** One unused $20 on an account, and whose it is (audit M25). */
-export type AccountCredit = {
-  bookingId: string;
-  participantId: string | null;
-  /** The player's name on the booking. */
-  playerName: string;
-  creditCents: number;
-};
+/**
+ * The $20 each seat of an enrollment takes off, in seat order (null: none):
+ * decideCredits over the bookings this account and these players can reach.
+ * Card checkout, the e-transfer amount, the coach's invite and the sign-up
+ * page all ask here, so the amount shown, the amount charged and the credit
+ * marked used are the same booking.
+ */
+export async function creditsForSeats(input: {
+  /** An account somebody proved: the session's, or the one an invitation was made for. */
+  accountId: string | null;
+  /** The player in each seat; null for a typed player with no record. */
+  seats: readonly (string | null | undefined)[];
+  /** Bookings something else on this request already used. */
+  claimed?: Iterable<string>;
+}): Promise<(SeatCredit | null)[]> {
+  const participantIds = input.seats.map((seat) => (seat ?? "").trim()).filter(Boolean);
+  if (!input.accountId && participantIds.length === 0) return input.seats.map(() => null);
+  const bookings = await loadCreditBookings({ accountId: input.accountId, participantIds });
+  return decideCredits({ ...input, bookings });
+}
 
 /**
- * Every unused assessment credit on one account — by the account's email
- * (exact, case folded) and by its players' ids — so the dashboard can say
- * whose $20 comes off which price. Read only; an unreadable table reads as
- * none.
+ * What a signed-in account's pages say about its credits (the dashboard, the
+ * profile, the sign-up page): `ready` is what an enrollment by this account
+ * would take off; `waiting` is a credit booked under the account's own address
+ * while nobody was signed in, which is on the account only once its owner
+ * signs in through an emailed link. `email` is the session's own address,
+ * never a typed one; it is escaped and then re-checked exactly (PostgREST
+ * reads `*` as `%`), and it only ever finds `waiting`.
  */
-export async function listUnusedCreditsForAccount(input: {
+export async function accountCreditView(input: {
+  accountId: string;
   email: string;
-  participantIds: string[];
-}): Promise<AccountCredit[]> {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return [];
-  }
-  try {
-    const supabase = createServiceClient();
-    const base = () =>
-      supabase
-        .from("assessment_bookings")
-        .select("*")
-        .eq("status", "completed")
-        .eq("paid", true)
-        .eq("credit_status", "unused");
-    const email = input.email.trim().replace(/[\\%_]/g, (c) => "\\" + c);
-    const reads = [
-      email ? base().ilike("email", email) : null,
-      input.participantIds.length > 0 ? base().in("participant_id", input.participantIds) : null,
-    ];
-    const results = await Promise.all(reads.map((q) => (q ? q.then((r) => r, () => null) : null)));
-    const byId = new Map<string, BookingRow>();
-    for (const r of results) {
-      for (const row of ((r?.data as BookingRow[] | null) ?? [])) byId.set(row.id, row);
+  participantIds: readonly string[];
+}): Promise<{ ready: AccountCredit[]; waiting: AccountCredit[] }> {
+  if (!configured()) return { ready: [], waiting: [] };
+  const bookings = await loadCreditBookings(input);
+  const own = normalizeEmail(input.email);
+  if (own) {
+    try {
+      const { data, error } = await unusedCredits().is("user_id", null).ilike("email", ilikePattern(own));
+      if (error) console.error("Waiting credit read failed:", error.code ?? "unknown");
+      bookings.push(...rowsWithEmail((data as BookingRow[] | null) ?? [], own, (b) => b.email));
+    } catch (err) {
+      console.error("Waiting credit read failed:", err instanceof Error ? err.name : typeof err);
     }
-    return [...byId.values()].map((b) => ({
-      bookingId: b.id,
-      participantId: b.participant_id ?? null,
-      playerName: b.name,
-      creditCents: ASSESSMENT_CREDIT_CENTS,
-    }));
-  } catch (err) {
-    console.error("listUnusedCreditsForAccount failed:", err);
-    return [];
   }
+  return accountCredits({
+    accountId: input.accountId,
+    email: own,
+    playerIds: input.participantIds,
+    bookings,
+  });
 }
 
 /**
  * Mark a booking's credit applied (payment for a program succeeded) and mirror
- * it to the assessments Sheet tab. Best-effort on the Sheet side.
+ * it to the assessments Sheet tab.
+ *
+ * The database write is the credit itself, so its failure is a failure (fix
+ * round 2): an error from the update throws (writeCreditApplied) and is never
+ * read as "already applied", which would leave the $20 spendable with no
+ * retry coming. "No row updated" without an error still means already
+ * applied. The Sheet mirror after it stays best-effort.
  */
 export async function markCreditApplied(bookingId: string): Promise<void> {
-  try {
-    const supabase = createServiceClient();
-    const { data: booking } = await supabase
+  const supabase = createServiceClient();
+  const booking = await writeCreditApplied(() =>
+    supabase
       .from("assessment_bookings")
       .update({ credit_status: "applied" })
       .eq("id", bookingId)
       .eq("credit_status", "unused")
       .select("*")
-      .maybeSingle();
-    if (!booking) return; // already applied (duplicate webhook) — done
+      .maybeSingle()
+  );
+  if (!booking) return; // already applied (duplicate webhook) — done
 
+  try {
     const row = booking as BookingRow;
     if (!row.block_id) return;
     const { data: block } = await supabase
@@ -155,6 +167,6 @@ export async function markCreditApplied(bookingId: string): Promise<void> {
       creditStatus: "applied",
     });
   } catch (err) {
-    console.error("markCreditApplied failed (non-blocking):", err);
+    console.error("Credit Sheet mirror failed (non-blocking):", err);
   }
 }
