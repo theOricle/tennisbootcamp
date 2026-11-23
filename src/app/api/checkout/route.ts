@@ -12,6 +12,7 @@ import {
   checkoutCreditParticipants,
   contactEmailRefusal,
   gateRefusal,
+  priceRefusal,
   requestedParticipantIds,
   resolveEnrollGate,
   rowsNotPayable,
@@ -86,14 +87,12 @@ export async function POST(req: NextRequest) {
     const {
       cohortId,
       programTitle,
-      priceCents,
       inviteToken,
       enrollmentRowNumber,
       enrollmentMeta,
     }: {
       cohortId: string;
       programTitle?: string;
-      priceCents?: number;
       inviteToken?: string;
       enrollmentRowNumber: number;
       enrollmentMeta?: EnrollmentMeta;
@@ -125,9 +124,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: CARD_PAYMENT_UNAVAILABLE }, { status: 503 });
     }
 
-    // The server's price wins over whatever the client sent.
+    // The server's price is the only one: whatever the browser sent is never
+    // read, and a cohort with no price is refused below (priceRefusal).
     const cohort = await getCohortById(cohortId);
-    const seatCents = cohort?.priceCents ?? priceCents ?? 0;
+    const seatCents = cohort?.priceCents ?? 0;
 
     // Backlog #38: the enroll page's gate, run again here before anything is
     // created. A cohort the page would not render is a 404; a private cohort
@@ -150,6 +150,12 @@ export async function POST(req: NextRequest) {
     const byApproval = approvalRefusal(cohort, gate);
     if (byApproval) {
       return NextResponse.json({ error: byApproval.error }, { status: byApproval.status });
+    }
+    // A cohort whose price is zero or missing takes no payment (safety
+    // review): refused before any row, credit, coupon or Stripe session.
+    const noPrice = priceRefusal(cohort);
+    if (noPrice) {
+      return NextResponse.json({ error: noPrice.error }, { status: noPrice.status });
     }
 
     // Every player this payment covers. A body without the household field is

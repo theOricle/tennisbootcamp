@@ -7,6 +7,7 @@ import {
   approvalRefusal,
   contactEmailRefusal,
   gateRefusal,
+  priceRefusal,
   requestedParticipantIds,
   resolveEnrollGate,
   scrubParticipantIds,
@@ -130,6 +131,13 @@ export async function POST(req: NextRequest) {
     const byApproval = approvalRefusal(cohort, gate);
     if (byApproval) {
       return NextResponse.json({ error: byApproval.error }, { status: byApproval.status });
+    }
+    // A cohort whose price is zero or missing takes no payment (safety
+    // review): refused before any invite row, Sheet write or email asks the
+    // player for "$0".
+    const noPrice = priceRefusal(cohort);
+    if (noPrice) {
+      return NextResponse.json({ error: noPrice.error }, { status: noPrice.status });
     }
 
     // One player per invite: a parent sending one transfer for two children

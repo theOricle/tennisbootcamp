@@ -112,6 +112,17 @@ export type EnrollmentCheckoutParams = {
   supabaseEnrollmentIds?: string[];
 };
 
+/**
+ * A session is never built without a price (safety review). The routes refuse
+ * a cohort with none first (priceRefusal, src/lib/enrollGate.ts); this is the
+ * last line, so Stripe is never asked for a made-up amount.
+ */
+function assertPriced(priceCents: number): void {
+  if (!(Number.isFinite(priceCents) && priceCents > 0)) {
+    throw new Error("Enrollment checkout refused: the cohort has no price");
+  }
+}
+
 /** The seat count and the discount Stripe is asked for, after clamping. */
 export function enrollmentCheckoutTotals(params: EnrollmentCheckoutParams): {
   quantity: number;
@@ -132,6 +143,7 @@ export function enrollmentSessionParams(
   params: EnrollmentCheckoutParams,
   discounts?: { coupon: string }[]
 ): Stripe.Checkout.SessionCreateParams {
+  assertPriced(params.priceCents);
   const { quantity, discountCents } = enrollmentCheckoutTotals(params);
   return {
     mode: "payment",
@@ -143,8 +155,8 @@ export function enrollmentSessionParams(
         price_data: {
           currency: "cad",
           product_data: { name: params.programTitle },
-          // Stripe requires a positive integer; use 1 CAD as placeholder when price not yet set
-          unit_amount: params.priceCents > 0 ? params.priceCents : 100,
+          // The cohort's own price, never a placeholder.
+          unit_amount: params.priceCents,
         },
         quantity,
       },
@@ -174,6 +186,8 @@ export function enrollmentSessionParams(
 export async function createCheckoutSession(
   params: EnrollmentCheckoutParams
 ): Promise<{ sessionUrl: string }> {
+  // Before the mock branch too: a test run refuses what a live one would.
+  assertPriced(params.priceCents);
   if (assertNotRefused() === "mock") {
     return { sessionUrl: params.successUrl };
   }

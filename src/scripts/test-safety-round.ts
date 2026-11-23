@@ -28,6 +28,8 @@
 //   9. On the sign-up routes a tripped bot check is a plain refusal the page
 //      shows, never a fake success.
 //  10. A refund whose database write fails throws, so Stripe delivers again.
+//  11. A cohort with no price takes no payment; and only a live invitation
+//      passes the by-approval check on a direct request.
 //
 // Pure: it calls pure functions, drives in-memory stores and reads source
 // files. No network, no database, no env. Exits non-zero on any failure.
@@ -35,12 +37,20 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  APPROVAL_ONLY_ERROR,
   CHECKOUT_ROW_STATUS,
+  PRICE_NOT_SET_ERROR,
+  approvalRefusal,
   foreignRows,
   paymentRowsToMove,
+  priceRefusal,
   rowsNotPayable,
   type EnrollmentSheetSnapshot,
+  type GateInviteLookup,
 } from "../lib/enrollGate";
+import { enrollmentCheckoutTotals, enrollmentSessionParams } from "../lib/payments";
+import { groupById } from "../content/programs";
+import type { Cohort } from "../types/cohort";
 import {
   REVERSE_FROM,
   REVERSE_FROM_TEST,
@@ -1271,6 +1281,90 @@ function thrown10(fn: () => void): string | null {
     return err instanceof Error ? err.message : String(err);
   }
 }
+
+// ─── 11. No price, no payment; only a live invitation is approval ────────────
+
+sections.push(function point11() {
+  console.log("11a. priceRefusal — a cohort with no price takes no payment");
+  {
+    const refused = { error: PRICE_NOT_SET_ERROR, status: 409 };
+    check("a priced cohort passes", priceRefusal({ priceCents: 21000 }), null);
+    check("a price of zero is refused", priceRefusal({ priceCents: 0 }), refused);
+    check("a missing, negative or unreadable price is refused", [priceRefusal({ priceCents: undefined as unknown as number }), priceRefusal({ priceCents: -500 }), priceRefusal({ priceCents: Number.NaN }), priceRefusal(null), priceRefusal(undefined)], [refused, refused, refused, refused, refused]);
+    check("the line says why, and who finishes the enrollment", PRICE_NOT_SET_ERROR.includes("price isn't set yet") && PRICE_NOT_SET_ERROR.includes("info@tennisbootcamp.ca") && PRICE_NOT_SET_ERROR.includes("our coaches") && !PRICE_NOT_SET_ERROR.includes("!"));
+    const session = (priceCents: number) =>
+      enrollmentSessionParams({ cohortId: "coh_1", programTitle: "Adult Bootcamps", priceCents, enrollmentRowNumber: 3, successUrl: "https://x/ok", cancelUrl: "https://x/back" });
+    const thrown = (fn: () => unknown) => {
+      try {
+        fn();
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    };
+    check("Stripe is asked for the cohort's own price", session(21000).line_items?.[0]?.price_data?.unit_amount, 21000);
+    check("…and never for a one-dollar placeholder: no session is built without a price", [thrown(() => session(0)), thrown(() => session(Number.NaN))], ["Enrollment checkout refused: the cohort has no price", "Enrollment checkout refused: the cohort has no price"]);
+    check("a discount is still clamped to the total", enrollmentCheckoutTotals({ cohortId: "c", programTitle: "p", priceCents: 21000, enrollmentRowNumber: 3, successUrl: "s", cancelUrl: "c", discountCents: 99999 }).discountCents, 21000);
+  }
+
+  console.log("11a. Source — both payment routes refuse before anything is created");
+  {
+    for (const [file, created] of [
+      ["src/app/api/checkout/route.ts", ["checkSubmissionLimit(", "saveEnrollmentToSupabase(", "creditsForSeats(", "createCheckoutSession("]],
+      ["src/app/api/enroll/etransfer/route.ts", ["checkSubmissionLimit(", "recordEtransferIntent(", "saveEnrollmentToSupabase(", "setEnrollmentStatusByEmail("]],
+    ] as const) {
+      const src = read(file);
+      const at = src.indexOf("const noPrice = priceRefusal(cohort);");
+      check(`${file}: asks priceRefusal, after the gates`, at !== -1 && src.indexOf("approvalRefusal(cohort, gate)") < at);
+      check(`${file}: …and answers it before anything is counted, created or sent`, created.every((needle) => src.indexOf(needle) !== -1 && at < src.indexOf(needle)));
+      check(`${file}: …with its own status`, src.includes("{ error: noPrice.error }, { status: noPrice.status }"));
+    }
+    const checkout = read("src/app/api/checkout/route.ts");
+    check("checkout reads no price from the browser", /priceCents\??: number|\?\? priceCents/.test(checkout), false);
+    const payments = read("src/lib/payments.ts");
+    check("the placeholder amount is gone", /: 100,|placeholder when price not yet set/.test(payments.slice(payments.indexOf("export function enrollmentSessionParams("), payments.indexOf("export async function createCheckoutSession("))), false);
+    check("a mock run refuses an unpriced cohort too", payments.indexOf("assertPriced(params.priceCents);\n  if (assertNotRefused() === \"mock\")") !== -1);
+    const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
+    check("the wizard shows a 409's own line", wizard.includes("res.status !== 409"));
+  }
+
+  console.log("11b. approvalRefusal — on a direct request only a live invitation is approval");
+  {
+    const hp = groupById("high-performance")!;
+    const cohort: Cohort = {
+      id: "coh_hp",
+      programId: hp.programSlug,
+      locationId: "",
+      label: "Winter",
+      startDate: "2027-01-09",
+      endDate: "2027-02-13",
+      weeks: 6,
+      sessions: [{ day: hp.day!.slice(0, 3) as Cohort["sessions"][number]["day"], start: hp.start!, end: hp.end! }],
+      capacityMin: 4,
+      capacityMax: 8,
+      priceCents: 21000,
+      currency: "CAD",
+      status: "open",
+      visibility: "public",
+      dbStatus: "inviting",
+    };
+    const privateCohort: Cohort = { ...cohort, visibility: "private" };
+    const pub = { allowed: true as const, via: "public" as const };
+    const refused = { error: APPROVAL_ONLY_ERROR, status: 403 };
+    const invite = (status?: string): GateInviteLookup => ({ state: "valid", invite: { id: "inv_1", cohort_id: "coh_hp", status } });
+    check("the group is by approval", hp.joining, "approval");
+    check("a live invitation pays", [approvalRefusal(cohort, { decision: pub, lookup: invite("invited") }), approvalRefusal(cohort, { decision: pub, lookup: invite() })], [null, null]);
+    check("an expired invitation does not pass", approvalRefusal(cohort, { decision: pub, lookup: { state: "expired" } }), refused);
+    check("a used one, already paid, does not pass", approvalRefusal(cohort, { decision: pub, lookup: invite("paid") }), refused);
+    check("no token, or a foreign one, does not pass", [approvalRefusal(cohort, { decision: pub, lookup: null }), approvalRefusal(cohort, { decision: pub, lookup: { state: "invalid" } })], [refused, refused]);
+    check("a private by-approval cohort is still decided by its own invite gate", approvalRefusal(privateCohort, { decision: { allowed: true, via: "invite" }, lookup: { state: "expired" } }), null);
+    const gate = read("src/lib/enrollGate.ts");
+    const fn = gate.slice(gate.indexOf("export function approvalRefusal("));
+    const body = fn.slice(0, fn.indexOf("\n}\n"));
+    check("the expired pass-through is gone from the rule", body.includes('state === "expired"'), false);
+    check("a paid invite is not taken for a live one", body.includes('const live = claimed && claimed.status !== "paid" ? claimed : null;'));
+  }
+});
 
 // ─── Run ──────────────────────────────────────────────────────────────────────
 

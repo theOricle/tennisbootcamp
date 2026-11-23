@@ -37,6 +37,8 @@ export type GateInviteLookup =
         participant_id?: string | null;
         /** The account the invitation was made for, when it has one. */
         user_id?: string | null;
+        /** The row's status: getInviteByToken answers "valid" for a paid one too. */
+        status?: string;
       };
     }
   | { state: "expired" | "invalid" };
@@ -485,15 +487,15 @@ export const APPROVAL_ONLY_ERROR =
  * (`claimedInvite`), so an invitee holding the link on a public cohort still
  * pays. Null when nothing stands in the way, or the cohort trains in no group.
  *
- * One difference from the page (fix round 3): a token whose 48h hold ran out
- * between loading the wizard and paying (`lookup.state === "expired"`, which
- * getInviteByToken only reports for a row in this cohort) is this cohort's
- * invitation too. The routes already admit it through decideEnrollGate's
- * `payable` grace (backlog #30/#34) and the payment settles onto that row,
- * so this wall stands aside for it as well — else a coach-approved invitee
- * is told to open the link they just came from, or refused after the
- * e-transfer has already been sent. The page keeps sending an expired token
- * to ApprovalGate (`claimedInvite` is null there), as before.
+ * Only a live invitation walks through (safety review): one still inside its
+ * hold and not yet paid for. A token whose hold ran out
+ * (`lookup.state === "expired"`) no longer passes on a direct request: the
+ * spot it held went back to the coaches, so the approval it stood for is
+ * spent, as the page already says by sending an expired token to
+ * ApprovalGate. A token whose invite is already paid does not pass either:
+ * getInviteByToken answers "valid" for it so the payer can revisit their
+ * confirmation, but it was approval for one spot, and that spot is taken.
+ * (A private by-approval cohort is decided by its own invite gate, above.)
  */
 export function approvalRefusal(
   cohort: Pick<Cohort, "programId" | "sessions"> | null | undefined,
@@ -503,10 +505,30 @@ export function approvalRefusal(
   if (!cohort) return null;
   const group = groups.find((g) => cohortMatchesGroup(cohort, g));
   if (!group) return null;
-  if (gate.lookup?.state === "expired") return null;
-  return approvalGateApplies({ group, decision: gate.decision, claimed: claimedInvite(gate.lookup) })
+  const claimed = claimedInvite(gate.lookup);
+  const live = claimed && claimed.status !== "paid" ? claimed : null;
+  return approvalGateApplies({ group, decision: gate.decision, claimed: live })
     ? { error: APPROVAL_ONLY_ERROR, status: 403 }
     : null;
+}
+
+/** Sent back with a 409 when the cohort has no price to charge. */
+export const PRICE_NOT_SET_ERROR =
+  "This cohort's price isn't set yet, so we can't take payment for it. Email info@tennisbootcamp.ca and our coaches will finish your enrollment with you.";
+
+/**
+ * A cohort whose price is zero or missing takes no payment (safety review):
+ * both payment routes refuse before anything is created. Card checkout used
+ * to send Stripe a one-dollar placeholder in its place, and the e-transfer
+ * route would have asked the player for "$0".
+ */
+export function priceRefusal(
+  cohort: Pick<Cohort, "priceCents"> | null | undefined
+): { error: string; status: 409 } | null {
+  const cents = cohort?.priceCents;
+  return typeof cents === "number" && Number.isFinite(cents) && cents > 0
+    ? null
+    : { error: PRICE_NOT_SET_ERROR, status: 409 };
 }
 
 /**
