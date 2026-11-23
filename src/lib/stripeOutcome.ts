@@ -266,6 +266,22 @@ export function latePaymentPlan(status: string | null): "restore" | "nothing" | 
   return status === "expired" ? "restore" : "nothing";
 }
 
+/**
+ * A reversal's database write that failed must not pass for done (safety
+ * review): logged only, the row stayed paid and Stripe was told all was well.
+ * Throwing answers the webhook's delivery with a 500, so Stripe sends it
+ * again, as the settle path already does; every move is guarded, so the retry
+ * finishes the job without doing any of it twice. The message carries the
+ * error's code, never its text (Supabase echoes values).
+ */
+export function throwOnFailedWrite(
+  error: { code?: string | null } | null | undefined,
+  what: string
+): void {
+  if (!error) return;
+  throw new Error(`${what} failed: ${error.code ?? "unknown"}`);
+}
+
 // ─── Which payment an invite belongs to ───────────────────────────────────────
 // An invite has no column for the Stripe session that paid for it, so the
 // payment note, the admin's own place for such lines, carries it: the fact

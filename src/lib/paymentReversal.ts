@@ -12,6 +12,7 @@ import {
   reversalNote,
   reversalReleasesInvite,
   reverseFrom,
+  throwOnFailedWrite,
   writeBookingState,
   type ReversalKind,
 } from "@/lib/stripeOutcome";
@@ -23,7 +24,8 @@ import {
 // charge belongs to and hands it here.
 //
 // Every write is a guarded move out of the state it expects, so a redelivered
-// event changes nothing twice. Nothing here sends an email. Two things are
+// event changes nothing twice, and a database write that fails throws, so
+// Stripe delivers the event again. Nothing here sends an email. Two things are
 // left alone on purpose, as on the coach's own "mark unpaid": a cohort that
 // confirmed stays confirmed (its schedule emails went out), and a $20 credit
 // the payment used is not handed back.
@@ -81,7 +83,9 @@ async function reverseEnrollment(
       .in("id", enrollmentIds)
       .in("status", [...from])
       .select("id");
-    if (error) console.error("Enrollment reversal failed (non-blocking):", error.message);
+    // A write that failed leaves the rows paid: throw, so Stripe retries.
+    if (error) console.error(`[stripe webhook] session ${sessionId} ${kind}: enrollment rows not moved (${error.code ?? "unknown"})`);
+    throwOnFailedWrite(error, "Enrollment reversal");
     rowsMoved = (data ?? []).length;
   }
   // The Sheet carries the seat count. Errors propagate: Stripe retries, and
@@ -231,7 +235,11 @@ async function reverseBooking(bookingId: string, kind: ReversalKind, sessionId: 
   // writeBookingState writes "cancelled", which also frees the slot, in their
   // place, so a refund never leaves the booking booked and paid.
   const { data: moved, error } = await writeBookingState(move, patch);
+  // A write that failed leaves the booking booked and paid: throw, so Stripe
+  // retries (a refused new state before migration 0012 is not a failure:
+  // writeBookingState already wrote "cancelled" in its place).
   if (error) console.error(`[stripe webhook] booking ${bookingId} ${kind}: not released (${error.code ?? "unknown"})`);
+  throwOnFailedWrite(error, "Booking reversal");
   if (!moved) return; // changed underneath us; the next delivery decides
 
   if (booking.block_id && booking.slot_start) {

@@ -27,6 +27,7 @@
 //   8. A test payment enrolls nobody: its row never reads "Already enrolled".
 //   9. On the sign-up routes a tripped bot check is a plain refusal the page
 //      shows, never a fake success.
+//  10. A refund whose database write fails throws, so Stripe delivers again.
 //
 // Pure: it calls pure functions, drives in-memory stores and reads source
 // files. No network, no database, no env. Exits non-zero on any failure.
@@ -55,6 +56,8 @@ import {
   reversalReleasesInvite,
   reverseFrom,
   settleFrom,
+  throwOnFailedWrite,
+  writeBookingState,
 } from "../lib/stripeOutcome";
 import { planMarkUnpaid } from "../lib/paymentTransitions";
 import { seatsFromSnapshot } from "../lib/seatCount";
@@ -1190,6 +1193,84 @@ sections.push(function point9() {
     check("the quiz still drops silently", intake.includes('if (decision.action === "drop") {') && !intake.includes("BOT_REFUSAL_ERROR"));
   }
 });
+
+// ─── 10. A reversal's failed write is not swallowed ──────────────────────────
+
+sections.push(async function point10() {
+  console.log("10. throwOnFailedWrite — a failed write answers Stripe with a failure");
+  {
+    const thrown = (fn: () => void) => {
+      try {
+        fn();
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    };
+    check("a write that went through throws nothing", [thrown(() => throwOnFailedWrite(null, "Enrollment reversal")), thrown(() => throwOnFailedWrite(undefined, "Enrollment reversal"))], [null, null]);
+    check("a failed write throws, with the code and never the message", thrown(() => throwOnFailedWrite({ code: "57014" }, "Enrollment reversal")), "Enrollment reversal failed: 57014");
+    check("…also when the error carries no code", thrown(() => throwOnFailedWrite({}, "Booking reversal")), "Booking reversal failed: unknown");
+  }
+
+  console.log("10. Scenario — a refund hits a database that is down, then Stripe delivers it again");
+  {
+    // The enrollment row behind a refunded payment, and a table that fails once.
+    const row = { status: "paid" };
+    let down = true;
+    const update = (to: string) => {
+      if (down) return { data: null, error: { code: "57014" } };
+      const moved = row.status === "paid";
+      if (moved) row.status = to;
+      return { data: moved ? [{ id: "enr_1" }] : [], error: null };
+    };
+    const deliver = () => {
+      const { data, error } = update("refunded");
+      throwOnFailedWrite(error, "Enrollment reversal");
+      return (data ?? []).length;
+    };
+    let answered = 200;
+    try {
+      deliver();
+    } catch {
+      answered = 500; // the webhook route lets it propagate
+    }
+    check("the first delivery answers 500 and the row is still paid", [answered, row.status], [500, "paid"]);
+    down = false;
+    check("the retry moves the row", [deliver(), row.status], [1, "refunded"]);
+    check("a further retry moves nothing", [deliver(), row.status], [0, "refunded"]);
+
+    // Before migration 0012 the table refuses "refunded" on a booking: that
+    // is not a failed write, because "cancelled" was written in its place.
+    const refusal = await writeBookingState(async (patch) => (patch.status === "refunded" ? { data: null, error: { code: "23514" } } : { data: { id: "bk_1" }, error: null }), { status: "refunded", paid: false });
+    check("a booking state refused before 0012 falls back and throws nothing", [refusal.data !== null, thrown10(() => throwOnFailedWrite(refusal.error, "Booking reversal"))], [true, null]);
+    const broken = await writeBookingState(async () => ({ data: null, error: { code: "57014" } }), { status: "refunded", paid: false });
+    check("any other failure on the booking throws", thrown10(() => throwOnFailedWrite(broken.error, "Booking reversal")), "Booking reversal failed: 57014");
+  }
+
+  console.log("10. Source — both reversal writes throw on failure");
+  {
+    const reversal = read("src/lib/paymentReversal.ts");
+    const enroll = reversal.slice(reversal.indexOf("async function reverseEnrollment("));
+    const enrollBody = enroll.slice(0, enroll.indexOf("\n}\n"));
+    check("the enrollment rows' move throws before the Sheet or the invites are touched", enrollBody.indexOf('throwOnFailedWrite(error, "Enrollment reversal");') !== -1 && enrollBody.indexOf("throwOnFailedWrite(") < enrollBody.indexOf("await flipPaymentRows(") && enrollBody.indexOf("throwOnFailedWrite(") < enrollBody.indexOf("await releaseCardInvites("));
+    check("…and is no longer only logged", enrollBody.includes("(non-blocking)"), false);
+    const booking = reversal.slice(reversal.indexOf("async function reverseBooking("));
+    const bookingBody = booking.slice(0, booking.indexOf("\n}\n"));
+    check("the booking's move throws too, after the pre-0012 fallback had its turn", bookingBody.indexOf("await writeBookingState(move, patch)") < bookingBody.indexOf('throwOnFailedWrite(error, "Booking reversal");') && bookingBody.indexOf("throwOnFailedWrite(") < bookingBody.indexOf("if (!moved) return;"));
+    const hook = read("src/app/api/webhooks/stripe/route.ts");
+    const call = hook.indexOf("await reverseCheckoutSession(session, kind,");
+    check("the webhook lets a reversal's throw reach Stripe", call !== -1 && !/reverseCheckoutSession\([^;]*\)\s*\.catch\(/.test(hook));
+  }
+});
+
+function thrown10(fn: () => void): string | null {
+  try {
+    fn();
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
 
 // ─── Run ──────────────────────────────────────────────────────────────────────
 
