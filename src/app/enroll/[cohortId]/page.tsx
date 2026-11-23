@@ -18,7 +18,12 @@ import { cohortMatchesGroup } from "@/lib/programCatalog";
 import { currentUser } from "@/lib/household";
 import { getParticipant, listParticipantsForAccount } from "@/lib/players";
 import { listInvitesForAccount } from "@/lib/cohortActions";
-import { alreadyInCohortReason, matchingPlayer, type BlockedPlayer } from "@/lib/enrollPlayers";
+import {
+  alreadyInCohortReason,
+  enrollmentRowBlocks,
+  matchingPlayer,
+  type BlockedPlayer,
+} from "@/lib/enrollPlayers";
 import { isAgeBand } from "@/lib/ageBand";
 import { TrackedButton } from "@/components/ui/TrackedButton";
 import { EnrollWizard, type EtransferInfo, type InvitedPlayer } from "./EnrollWizard";
@@ -278,11 +283,9 @@ async function blockedPlayers(input: {
     for (const row of (data ?? []) as { participant_name: string | null; status: string }[]) {
       const player = matchingPlayer(input.participants, row.participant_name ?? "");
       if (!player || out.has(player.id)) continue;
-      if (row.status === "paid" || row.status === "test_paid") {
-        out.set(player.id, alreadyInCohortReason("enrolled"));
-      } else if (row.status === "pending_etransfer") {
-        out.set(player.id, alreadyInCohortReason("pending"));
-      }
+      // A test payment enrolls nobody: only a paid row reads "Already enrolled".
+      const kind = enrollmentRowBlocks(row.status);
+      if (kind) out.set(player.id, alreadyInCohortReason(kind));
     }
   } catch {
     // Same: fail open here, closed at payment.

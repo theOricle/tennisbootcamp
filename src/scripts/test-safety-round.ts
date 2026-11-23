@@ -24,6 +24,7 @@
 //      second card payment through an already-paid invite is noted for the
 //      coach.
 //   7. Mock checkout marks its test rows through the same guarded flip.
+//   8. A test payment enrolls nobody: its row never reads "Already enrolled".
 //
 // Pure: it calls pure functions, drives in-memory stores and reads source
 // files. No network, no database, no env. Exits non-zero on any failure.
@@ -81,6 +82,7 @@ import {
 import { MAX_PARTICIPANTS_PER_ACCOUNT, tooManyPlayers } from "../lib/participantInput";
 import { MAX_BODY_BYTES, bodyTooLarge } from "../lib/botCheck";
 import { linkedBookingPlayer, linkedLevelApplies } from "../lib/guestAccount";
+import { alreadyInCohortReason, enrollmentRowBlocks } from "../lib/enrollPlayers";
 import { creditLine } from "../lib/dashboardState";
 import { amountDueCents } from "../lib/paymentTransitions";
 import { rowsWithEmail } from "../lib/enrollmentLink";
@@ -1128,6 +1130,25 @@ sections.push(function point7() {
     const mockTail = checkout.slice(mockAt, checkout.indexOf("const res = NextResponse.json({ sessionUrl })"));
     check("the tail moves its rows through the guarded flip", /await flipPaymentRows\(\{\s*rowNumbers: rowNumbers\.length > 0 \? rowNumbers : \[enrollmentRowNumber\],\s*cohortId,\s*email: typedEmail,\s*from: settleFrom\("test"\),\s*to: "test_paid",\s*\}\);/.test(mockTail));
     check("the write by row number alone is gone, with its Sheets client", /markEnrollmentStatus|values\.update\(|googleapis/.test(checkout), false);
+  }
+});
+
+// ─── 8. A test payment enrolls nobody ────────────────────────────────────────
+
+sections.push(function point8() {
+  console.log("8. enrollmentRowBlocks — what a row in a player's name means on the sign-up page");
+  {
+    check("a paid row: already enrolled", [enrollmentRowBlocks("paid"), alreadyInCohortReason("enrolled")], ["enrolled", "Already enrolled in this group"]);
+    check("an e-transfer on its way: a spot held", enrollmentRowBlocks("pending_etransfer"), "pending");
+    check("a test payment enrolls nobody: the player can still be chosen", enrollmentRowBlocks("test_paid"), null);
+    check("a refunded, disputed or unfinished row blocks nobody either", ["refunded", "disputed", "pending", "", null, undefined].map((s) => enrollmentRowBlocks(s)), [null, null, null, null, null, null]);
+  }
+
+  console.log("8. Source — the sign-up page asks it for every row");
+  {
+    const page = read("src/app/enroll/[cohortId]/page.tsx");
+    check("the page reads each enrollment row through enrollmentRowBlocks", page.includes("const kind = enrollmentRowBlocks(row.status);") && page.includes("if (kind) out.set(player.id, alreadyInCohortReason(kind));"));
+    check("…and no longer treats a test payment as a seat", page.includes('"test_paid"'), false);
   }
 });
 
