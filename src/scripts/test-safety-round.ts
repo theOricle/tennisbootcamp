@@ -23,6 +23,7 @@
 //   6. A refund gives back only an invite its own payment settled, and a
 //      second card payment through an already-paid invite is noted for the
 //      coach.
+//   7. Mock checkout marks its test rows through the same guarded flip.
 //
 // Pure: it calls pure functions, drives in-memory stores and reads source
 // files. No network, no database, no env. Exits non-zero on any failure.
@@ -1094,6 +1095,39 @@ sections.push(async function point6() {
     check("the reversal is told which payment and which mode", reversal.includes("{ sessionId, livemode }"));
     const admin = read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx");
     check("the cohort page shows the invite's note, where these lines land", admin.includes("{invite.payment_note}"));
+  }
+});
+
+// ─── 7. Mock checkout never overwrites a row that is not its own ─────────────
+
+sections.push(function point7() {
+  console.log("7. The mock path's flip, on the rows a mock checkout could be handed");
+  {
+    const sheet = sheetOf([
+      ["coh_1", "rui@example.org", "paid"], // 2: a paid seat
+      ["coh_1", "dana@example.com", "pending_etransfer"], // 3: waiting on an e-transfer
+      ["coh_1", "sam@example.net", "pending"], // 4: this checkout's own
+      ["coh_1", "sam@example.net", "paid"], // 5: the same family's seat, already paid
+    ]);
+    const mock = (rowNumbers: number[]) => {
+      const plan = paymentRowsToMove(sheet, { rowNumbers, cohortId: "coh_1", email: "sam@example.net", from: settleFrom("test") });
+      sheet.apply(plan.rows, "test_paid");
+      return plan.rows;
+    };
+    check("its own pending row becomes a test row", [mock([4]), sheet.status(4)], [[4], "test_paid"]);
+    check("a paid row of the cohort is left paid: the old write turned it into a test row", [mock([2]), sheet.status(2)], [[], "paid"]);
+    check("…its own paid row too", [mock([5]), sheet.status(5)], [[], "paid"]);
+    check("a row waiting on an e-transfer is left waiting", [mock([3]), sheet.status(3)], [[], "pending_etransfer"]);
+    check("the seat count never moved", seatsFromSnapshot(sheet, "coh_1", 8), 6);
+  }
+
+  console.log("7. Source — the mock tail writes through flipPaymentRows");
+  {
+    const checkout = read("src/app/api/checkout/route.ts");
+    const mockAt = checkout.indexOf('if (rail === "mock") {');
+    const mockTail = checkout.slice(mockAt, checkout.indexOf("const res = NextResponse.json({ sessionUrl })"));
+    check("the tail moves its rows through the guarded flip", /await flipPaymentRows\(\{\s*rowNumbers: rowNumbers\.length > 0 \? rowNumbers : \[enrollmentRowNumber\],\s*cohortId,\s*email: typedEmail,\s*from: settleFrom\("test"\),\s*to: "test_paid",\s*\}\);/.test(mockTail));
+    check("the write by row number alone is gone, with its Sheets client", /markEnrollmentStatus|values\.update\(|googleapis/.test(checkout), false);
   }
 });
 

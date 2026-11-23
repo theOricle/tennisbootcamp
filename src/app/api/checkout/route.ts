@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { google } from "googleapis";
 import { CARD_PAYMENT_UNAVAILABLE, createCheckoutSession, paymentRail } from "@/lib/payments";
 import { saveEnrollmentToSupabase } from "@/lib/supabase/enrollmentActions";
 import { getCohortById } from "@/lib/cohortsDb";
@@ -39,32 +38,8 @@ import { tooManyPlayers } from "@/lib/participantInput";
 import { enrollmentOwner } from "@/lib/enrollmentLink";
 import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
 import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
-
-const TAB = "enrollments";
-// "status" is column P (index 15, 1-based col 16)
-const STATUS_COL = "P";
-
-async function markEnrollmentStatus(rowNumber: number, status: string) {
-  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-  if (!spreadsheetId || !clientEmail || !rawKey) return;
-
-  const privateKey = rawKey.replace(/\\n/g, "\n").replace(/\r/g, "").trim();
-  const auth = new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-  const sheets = google.sheets({ version: "v4", auth });
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${TAB}!${STATUS_COL}${rowNumber}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [[status]] },
-  });
-}
+import { flipPaymentRows } from "@/lib/enrollmentSheet";
+import { settleFrom } from "@/lib/stripeOutcome";
 
 type CheckoutParticipant = {
   name?: string;
@@ -383,10 +358,17 @@ export async function POST(req: NextRequest) {
       // moved, so every row it writes is a test row. A test payment never
       // counts toward the seats (they count "paid" rows only), the minimum or
       // the confirmation, spends no credit (nothing is settled onto an
-      // invite) and sends no account email.
-      for (const rowNumber of rowNumbers.length > 0 ? rowNumbers : [enrollmentRowNumber]) {
-        await markEnrollmentStatus(rowNumber, "test_paid");
-      }
+      // invite) and sends no account email. The rows move through the same
+      // guarded flip a test payment's webhook uses (safety review): only this
+      // checkout's own rows, under its cohort and contact email, and only out
+      // of pending — never a row that is paid or waits on an e-transfer.
+      await flipPaymentRows({
+        rowNumbers: rowNumbers.length > 0 ? rowNumbers : [enrollmentRowNumber],
+        cohortId,
+        email: typedEmail,
+        from: settleFrom("test"),
+        to: "test_paid",
+      });
     }
 
     const res = NextResponse.json({ sessionUrl });
