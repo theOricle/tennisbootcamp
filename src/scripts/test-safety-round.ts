@@ -1372,6 +1372,70 @@ sections.push(function point11() {
   }
 });
 
+// ─── Fix round 2 (the cold delta review of the round above) ──────────────────
+//
+//   R2. A row-number mismatch at card checkout keeps its try.
+
+sections.push(async function round2RowMismatch() {
+  console.log("R2. Scenario — a script holding a family's email walks the row numbers");
+  {
+    const SECRET = "test-secret";
+    let now = Date.parse("2026-11-23T18:00:00.000Z");
+    // Dana's own pending row is row 9; the rows before it are other families'.
+    const sheet = sheetOf([
+      ["coh_1", "rui@example.org", "pending"],
+      ["coh_1", "sam@example.net", "paid"],
+      ["coh_1", "ana@example.org", "pending"],
+      ["coh_1", "lee@example.net", "pending_etransfer"],
+      ["coh_1", "kim@example.org", "pending"],
+      ["coh_1", "joe@example.net", "pending"],
+      ["coh_1", "eva@example.org", "paid"],
+      ["coh_1", "dana@example.com", "pending"],
+    ]);
+    /** The route's order: the try is counted, then the row is checked. */
+    const checkout = async (store: LimitStore, address: string, row: number, mismatchKeepsTry: boolean) => {
+      now += 1000;
+      const ticket = await takeTicket(store, { secret: SECRET, scope: "checkout", address, email: "dana@example.com", now });
+      if (ticket === "missing") throw new Error("the table is always there");
+      if (!ticket.allowed) return 429;
+      if (rowsNotPayable(sheet, { cohortId: "coh_1", email: "dana@example.com", rowNumbers: [row] }).length > 0) {
+        if (!mismatchKeepsTry) await ticket.release();
+        return 400;
+      }
+      return 200;
+    };
+    /** Row 2 upward, a fresh network address each time: only the email is held. */
+    const walk = async (mismatchKeepsTry: boolean) => {
+      const { store, rows } = limitTable(() => now);
+      const answers: number[] = [];
+      for (let row = 2; row <= 9; row++) answers.push(await checkout(store, `203.0.113.${row}`, row, mismatchKeepsTry));
+      return { answers, counted: rows.length };
+    };
+    const before = await walk(false);
+    check("the hole: with the try given back, the walk is free and reaches the family's row", [before.answers, before.counted], [[400, 400, 400, 400, 400, 400, 400, 200], 2]);
+    const after = await walk(true);
+    check("kept: five mismatches under one email reach the hour's limit, and the rest are refused", after.answers, [400, 400, 400, 400, 400, 429, 429, 429]);
+    check("…the limit it reaches is the email's own", after.answers.filter((a) => a === 400).length, LIMITS.perEmail.hour);
+    check("…and the family's row is never reached", after.answers.includes(200), false);
+
+    const honest = limitTable(() => now);
+    check("an honest first checkout goes through", await checkout(honest.store, "198.51.100.20", 9, true), 200);
+    check("…and counts once, under its address and its email", honest.rows.length, 2);
+    const stale = limitTable(() => now);
+    check("a family with one stale row number still pays on its next try", [await checkout(stale.store, "198.51.100.21", 4, true), await checkout(stale.store, "198.51.100.21", 9, true)], [400, 200]);
+  }
+
+  console.log("R2. Source — the mismatch refusal keeps the try; the other give-backs stay");
+  {
+    const route = read("src/app/api/checkout/route.ts");
+    const block = route.slice(route.indexOf("if (notOwn.length > 0) {"), route.indexOf("{ error: ROW_MISMATCH_ERROR }"));
+    check("no release between the row check and its 400", block.length > 0 && !/ticket\.release\(\)\s*;/.test(block.replace(/\/\/.*/g, "")));
+    check("records it cannot read still give the try back", /if \(sheet\.status === "error"\) \{\s*await ticket\.release\(\);/.test(route));
+    check("a full cohort still gives the try back", /seatsRefuse\(seatsRemaining, players\.length\)\) \{\s*await ticket\.release\(\);/.test(route));
+    check("a declined invite still gives the try back", /decision\.kind === "refuse"\) \{\s*await ticket\.release\(\);/.test(route));
+  }
+});
+
 // ─── Run ──────────────────────────────────────────────────────────────────────
 
 async function main() {

@@ -447,7 +447,11 @@ async function main() {
       check(`${file}: records it cannot read take the try back`, /if \(sheet\.status === "error"\) \{\s*await ticket\.release\(\);/.test(src));
     }
     const checkout = read("src/app/api/checkout/route.ts");
-    check("checkout: rows that are not the payer's own take the try back", /if \(notOwn\.length > 0\) \{\s*await ticket\.release\(\);/.test(checkout));
+    // Fix round 2: a row-number mismatch keeps its try, so a script holding a
+    // family's email cannot walk the row numbers for free.
+    const mismatch = checkout.slice(checkout.indexOf("if (notOwn.length > 0) {"), checkout.indexOf("{ error: ROW_MISMATCH_ERROR }"));
+    check("checkout: rows that are not the payer's own keep the try", mismatch.length > 0 && !/ticket\.release\(\)\s*;/.test(mismatch.replace(/\/\/.*/g, "")));
+    check("checkout: its three other refusals are the only give-backs", (checkout.match(/await ticket\.release\(\);/g) ?? []).length, 3);
     check("checkout: a declined invite takes the try back", /decision\.kind === "refuse"\) \{\s*await ticket\.release\(\);/.test(checkout));
     const etransfer = read("src/app/api/enroll/etransfer/route.ts");
     check("e-transfer: a first player refused before anything is recorded takes the try back", /if \(!result\.ok\) \{\s*if \(i === 0\) await ticket\.release\(\);/.test(etransfer));

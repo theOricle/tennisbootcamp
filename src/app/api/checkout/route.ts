@@ -186,8 +186,10 @@ export async function POST(req: NextRequest) {
     // Repeated submissions (backlog #84): counted once the fields, the gate
     // and the contact check pass, before the records are read or any row,
     // credit, coupon or Stripe session exists. A refusal of the route's own
-    // below (records unreachable, a full cohort, a foreign row, a declined
-    // invite) gives the try back.
+    // below (records unreachable, a full cohort, a declined invite) gives the
+    // try back. A row number that is not the payer's own does not: that try
+    // stays counted, so a script holding a family's email cannot walk the
+    // row numbers for free.
     const ticket = await checkSubmissionLimit(req, "checkout", typedEmail);
     if (!ticket.allowed) {
       return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
@@ -242,7 +244,7 @@ export async function POST(req: NextRequest) {
         rowNumbers: toVerify,
       });
       if (notOwn.length > 0) {
-        await ticket.release();
+        // The try stays counted (see above): no ticket.release() here.
         return NextResponse.json({ error: ROW_MISMATCH_ERROR }, { status: 400 });
       }
     }
