@@ -535,7 +535,7 @@ console.log("sources");
 
   const webhook = read("src", "app", "api", "webhooks", "stripe", "route.ts");
   // Every player's row, moved through the guarded helper (backlog #84).
-  ok("a household card payment marks every Supabase row paid", webhook.includes("setEnrollmentStatusByIds(paidEnrollmentIds, from, rowStatus)"));
+  ok("a household card payment marks every Supabase row paid", webhook.includes("moveEnrollments: setEnrollmentStatusByIds,") && webhook.includes("enrollmentIds: paidEnrollmentIds,") && read("src", "lib", "paymentSettlement.ts").includes("deps.moveEnrollments(input.enrollmentIds, from, to)"));
 
   const sql = read("supabase", "migrations", "0009_participants_age_band_self_level.sql");
   ok("0009 is additive and guarded", sql.includes("add column if not exists age_band") && sql.includes("add column if not exists self_level") && !/\bdrop\b/i.test(sql.replace(/--.*$/gm, "")));

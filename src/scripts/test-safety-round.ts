@@ -12,6 +12,9 @@
 //      never promises what a charge will not apply. A booking linked to an
 //      account but to no player still comes off, once. A booking not on the
 //      account yet is named, with the sign-in link that puts it there.
+//   3. A webhook delivery that stops half-way is finished by the next one:
+//      every delivery walks the guarded steps, and only the one whose row
+//      move landed sends the emails.
 //
 // Pure: it calls pure functions, drives in-memory stores and reads source
 // files. No network, no database, no env. Exits non-zero on any failure.
@@ -42,6 +45,12 @@ import {
   decideCredits,
   type CreditBooking,
 } from "../lib/creditRules";
+import {
+  settleEnrollmentPayment,
+  settlementStage,
+  type SettlementDeps,
+  type SettlementInput,
+} from "../lib/paymentSettlement";
 import { linkedBookingPlayer } from "../lib/guestAccount";
 import { creditLine } from "../lib/dashboardState";
 import { amountDueCents } from "../lib/paymentTransitions";
@@ -264,9 +273,11 @@ sections.push(function point1() {
     check("no flip by row number alone is left", sheetSrc.includes("flipEnrollmentRows"), false);
 
     const hook = read("src/app/api/webhooks/stripe/route.ts");
-    check("the webhook settles through the guarded flip, with the session's cohort and email", /flipPaymentRows\(\{\s*rowNumbers: paidRows,\s*cohortId,\s*email: contactEmail,\s*from,\s*to: rowStatus,\s*\}\)/.test(hook));
-    check("…out of the statuses its outcome allows", hook.includes("const from = settleFrom(outcome);") && hook.includes("setEnrollmentStatusByIds(paidEnrollmentIds, from, rowStatus)"));
-    check("…and writes the credit only onto a row of its own", hook.includes("sheetMoved.own.includes(target)"));
+    // The settle steps live in src/lib/paymentSettlement.ts since point 3.
+    const settle = read("src/lib/paymentSettlement.ts");
+    check("the webhook settles through the guarded flip, with the session's cohort and email", hook.includes("flipSheetRows: flipPaymentRows,") && hook.includes("sheetRows: paidRows,") && /deps\.flipSheetRows\(\{\s*rowNumbers: input\.sheetRows,\s*cohortId,\s*email: input\.contactEmail,\s*from,\s*to,\s*\}\)/.test(settle));
+    check("…out of the statuses its outcome allows", settle.includes("const from = settleFrom(input.outcome);") && settle.includes("deps.moveEnrollments(input.enrollmentIds, from, to)"));
+    check("…and writes the credit only onto a row of its own", settle.includes("sheet.own.includes(target)"));
     check("the webhook tells a reversal whether the event is live", hook.includes("reverseCheckoutSession(session, kind, { livemode: event.livemode === true })"));
 
     const reversal = read("src/lib/paymentReversal.ts");
@@ -528,6 +539,223 @@ sections.push(function point2() {
     for (const file of ["src/app/dashboard/page.tsx", "src/app/enroll/[cohortId]/page.tsx", "src/app/login/page.tsx", "src/app/api/checkout/route.ts"]) {
       check(`${file}: a password session links nothing`, read(file).includes("linkBookingsToAccount"), false);
     }
+  }
+});
+
+// ─── 3. A delivery that stops half-way is finished by the next one ───────────
+
+class Killed extends Error {}
+
+/** One paid enrollment in memory: a Sheet row, an enrollment row, a $20 credit, an invite, a cohort one payment short of its minimum. */
+function settleWorld(over: { sheet?: string; row?: string; hasInvite?: boolean; hasRows?: boolean } = {}) {
+  const w = {
+    sheet: new Map<number, string>([[5, over.sheet ?? "pending"]]),
+    rows: new Map<string, string>(over.hasRows === false ? [] : [["enr_1", over.row ?? "pending"]]),
+    credit: "unused",
+    creditMarks: 0,
+    sheetCredit: new Map<number, string>(),
+    invite: "invited",
+    inviteFlips: 0,
+    cohort: "inviting",
+    confirmedEmails: 0,
+    accountEmails: 0,
+    unmatchedEmails: 0,
+    steps: [] as string[],
+  };
+  const hasInvite = over.hasInvite ?? true;
+  /** The writes, each one guarded as the real one is. `killAfter`: the function dies once that many steps have landed. */
+  const deps = (killAfter?: number): SettlementDeps => {
+    let n = 0;
+    const step = async <T>(name: string, fn: () => T): Promise<T> => {
+      await Promise.resolve(); // let another delivery in between any two steps
+      const out = fn();
+      w.steps.push(name);
+      if (++n === killAfter) throw new Killed(name);
+      return out;
+    };
+    return {
+      readEnrollmentStatuses: (ids) => step("readEnrollmentStatuses", () => ids.map((id) => w.rows.get(id) ?? "")),
+      flipSheetRows: ({ rowNumbers, from, to }) =>
+        step("flipSheetRows", () => {
+          const moved = rowNumbers.filter((r) => from.includes(w.sheet.get(r) ?? ""));
+          moved.forEach((r) => w.sheet.set(r, to));
+          return { moved, own: [...rowNumbers], unresolved: [] };
+        }),
+      applyCredit: () =>
+        step("applyCredit", () => {
+          if (w.credit === "unused") {
+            w.credit = "applied";
+            w.creditMarks++;
+          }
+        }),
+      recordSheetCredit: (row, amount) => step("recordSheetCredit", () => void w.sheetCredit.set(row, amount)),
+      requiresInvite: () => step("requiresInvite", () => true),
+      settleInvite: () =>
+        step("settleInvite", () => {
+          if (!hasInvite) return { matched: false, alreadyPaid: false };
+          if (w.invite === "invited" || w.invite === "expired") {
+            w.invite = "paid";
+            w.inviteFlips++;
+          }
+          return { matched: true, alreadyPaid: false };
+        }),
+      moveEnrollments: (ids, from, to) =>
+        step("moveEnrollments", () => {
+          const moved = ids.filter((id) => from.includes(w.rows.get(id) ?? ""));
+          moved.forEach((id) => w.rows.set(id, to));
+          return moved;
+        }),
+      emailUnmatched: () => step("emailUnmatched", () => void w.unmatchedEmails++),
+      notifyAccount: ({ notify }) =>
+        step("notifyAccount", () => {
+          if (notify) w.accountEmails++;
+        }),
+      confirmCohort: () =>
+        step("confirmCohort", () => {
+          if (w.cohort === "inviting" && w.invite === "paid") {
+            w.cohort = "confirmed";
+            w.confirmedEmails++;
+          }
+        }),
+      log: () => {},
+      warn: () => {},
+    };
+  };
+  const input = (outcome: "paid" | "test" = "paid"): SettlementInput => ({
+    sessionId: "cs_1",
+    outcome,
+    cohortId: "coh_1",
+    contactEmail: "dana@example.com",
+    sheetRows: [5],
+    enrollmentIds: over.hasRows === false ? [] : ["enr_1"],
+    creditBookingIds: ["bk_1"],
+    perCreditCents: 2000,
+    inviteId: hasInvite ? "inv_1" : undefined,
+    participantIds: [],
+  });
+  const state = () => ({
+    sheet: w.sheet.get(5),
+    row: w.rows.get("enr_1") ?? null,
+    credit: w.credit,
+    creditMarks: w.creditMarks,
+    sheetCredit: w.sheetCredit.get(5) ?? null,
+    invite: w.invite,
+    inviteFlips: w.inviteFlips,
+    cohort: w.cohort,
+    confirmedEmails: w.confirmedEmails,
+  });
+  return { w, deps, input, state };
+}
+
+const SETTLED = {
+  sheet: "paid",
+  row: "paid",
+  credit: "applied",
+  creditMarks: 1,
+  sheetCredit: "20.00",
+  invite: "paid",
+  inviteFlips: 1,
+  cohort: "confirmed",
+  confirmedEmails: 1,
+};
+
+sections.push(async function point3() {
+  console.log("3. settlementStage — where a payment stands before a delivery touches it");
+  {
+    const live = { from: ["pending", "pending_etransfer"], to: "paid" };
+    check("rows still waiting → settle", settlementStage({ statuses: ["pending", "pending"], ...live }), "settle");
+    check("rows already paid (a retry finishing the job) → settle", settlementStage({ statuses: ["paid", "paid"], ...live }), "settle");
+    check("a refund got there first → reversed", settlementStage({ statuses: ["refunded"], ...live }), "reversed");
+    check("a dispute got there first → reversed", settlementStage({ statuses: ["paid", "disputed"], ...live }), "reversed");
+    check("no rows to read: the Sheet decides", settlementStage({ statuses: [], ...live }), "settle");
+    check("a test payment never takes a paid row for its own", settlementStage({ statuses: ["paid"], from: ["pending"], to: "test_paid" }), "reversed");
+  }
+
+  console.log("3. One healthy delivery, then a redelivery");
+  let claimStep = 0;
+  let stepCount = 0;
+  {
+    const { w, deps, input, state } = settleWorld();
+    const first = await settleEnrollmentPayment(deps(), input());
+    stepCount = w.steps.length;
+    claimStep = w.steps.indexOf("moveEnrollments") + 1;
+    check("the order: Sheet, credit, invite, the claim, the account email, the confirmation", w.steps, ["readEnrollmentStatuses", "flipSheetRows", "applyCredit", "recordSheetCredit", "requiresInvite", "settleInvite", "moveEnrollments", "notifyAccount", "confirmCohort"]);
+    check("everything is settled, once", [first, state(), w.accountEmails], [{ stage: "settled", spoke: true }, SETTLED, 1]);
+    const again = await settleEnrollmentPayment(deps(), input());
+    check("redelivered: nothing changes and nothing is sent twice", [again, state(), w.accountEmails], [{ stage: "redelivery", spoke: false }, SETTLED, 1]);
+  }
+
+  console.log("3. Stopped after each step, then delivered again");
+  for (let k = 1; k <= stepCount; k++) {
+    const { w, deps, input, state } = settleWorld();
+    let died = "";
+    await settleEnrollmentPayment(deps(k), input()).catch((err) => {
+      if (!(err instanceof Killed)) throw err;
+      died = err.message;
+    });
+    await settleEnrollmentPayment(deps(), input());
+    await settleEnrollmentPayment(deps(), input()); // and once more, for good measure
+    check(`stopped after ${died}: the end state is complete, and nothing was done twice`, state(), SETTLED);
+    // The claim is the record that the email went. A stop between the claim
+    // and the send loses that one email; it is never sent twice.
+    check(k === claimStep ? "…the account email is the one thing a stop right after the claim loses: never sent twice" : "…and the account email went exactly once", w.accountEmails, k === claimStep ? 0 : 1);
+  }
+  check("the stops covered every step of a delivery", stepCount, 9);
+
+  console.log("3. Two deliveries at the same moment");
+  {
+    const { w, deps, input, state } = settleWorld();
+    const both = await Promise.all([settleEnrollmentPayment(deps(), input()), settleEnrollmentPayment(deps(), input())]);
+    check("exactly one makes the claim and speaks", both.filter((r) => r.spoke).length, 1);
+    check("one account email, one credit, one invite, one confirmation", [state(), w.accountEmails], [SETTLED, 1]);
+  }
+
+  console.log("3. A payment that matched no invite tells the coach once");
+  {
+    const { w, deps, input } = settleWorld({ hasInvite: false });
+    await settleEnrollmentPayment(deps(), input());
+    await settleEnrollmentPayment(deps(), input());
+    check("one email to the coach, however often it is delivered", w.unmatchedEmails, 1);
+    const stopped = settleWorld({ hasInvite: false });
+    await settleEnrollmentPayment(stopped.deps(4), stopped.input()).catch(() => {});
+    await settleEnrollmentPayment(stopped.deps(), stopped.input());
+    check("…and a delivery stopped before the claim still gets it out, once", [stopped.w.unmatchedEmails, stopped.w.accountEmails], [1, 1]);
+  }
+
+  console.log("3. What a delivery must leave alone");
+  {
+    const reversed = settleWorld({ row: "refunded", sheet: "refunded" });
+    const result = await settleEnrollmentPayment(reversed.deps(), reversed.input());
+    check("a payment refunded before its own event arrived: nothing is settled, spent or sent", [result, reversed.state(), reversed.w.accountEmails], [{ stage: "reversed", spoke: false }, { sheet: "refunded", row: "refunded", credit: "unused", creditMarks: 0, sheetCredit: null, invite: "invited", inviteFlips: 0, cohort: "inviting", confirmedEmails: 0 }, 0]);
+
+    const test = settleWorld();
+    await settleEnrollmentPayment(test.deps(), test.input("test"));
+    await settleEnrollmentPayment(test.deps(), test.input("test"));
+    check("a test payment: test rows, and no credit, invite, confirmation or email, however often", [test.state(), test.w.accountEmails], [{ sheet: "test_paid", row: "test_paid", credit: "unused", creditMarks: 0, sheetCredit: null, invite: "invited", inviteFlips: 0, cohort: "inviting", confirmedEmails: 0 }, 0]);
+    const waiting = settleWorld({ sheet: "pending_etransfer" });
+    await settleEnrollmentPayment(waiting.deps(), waiting.input("test"));
+    check("a test payment leaves a row that waits on an e-transfer", waiting.w.sheet.get(5), "pending_etransfer");
+
+    const bare = settleWorld({ hasRows: false });
+    const first = await settleEnrollmentPayment(bare.deps(), bare.input());
+    const second = await settleEnrollmentPayment(bare.deps(), bare.input());
+    check("a checkout that saved no enrollment rows: the Sheet decides, as before", [first.spoke, second, bare.w.accountEmails, bare.w.creditMarks], [true, { stage: "redelivery", spoke: false }, 1, 1]);
+  }
+
+  console.log("3. Source — the webhook walks the steps; a redelivery no longer returns early");
+  {
+    const hook = read("src/app/api/webhooks/stripe/route.ts");
+    check("a completed enrollment payment goes to settleEnrollmentPayment", hook.includes("await settleEnrollmentPayment("));
+    check("the early return that left a payment half settled is gone", /if \(!firstDelivery\)|already settled: redelivery, nothing changed/.test(hook), false);
+    check("the writes it hands over are the guarded ones", hook.includes("flipSheetRows: flipPaymentRows,") && hook.includes("applyCredit: markCreditApplied,") && hook.includes("moveEnrollments: setEnrollmentStatusByIds,") && hook.includes("readEnrollmentStatuses: enrollmentStatuses,"));
+    check("the invite is flipped without its confirmation, which is the last step", hook.includes("markInvitePaidAndMaybeConfirm({ cohortId, ...by, confirm: false })") && hook.includes("confirmCohort: () => maybeConfirmCohort(cohortId),"));
+    const actions = read("src/lib/cohortActions.ts");
+    check("everyone else still confirms where they always did", actions.includes("if (params.confirm !== false) await maybeConfirmCohort(cohortId);"));
+    const settle = read("src/lib/paymentSettlement.ts");
+    const at = (needle: string) => settle.indexOf(needle);
+    const order = ["await deps.flipSheetRows(", "await deps.applyCredit(", "await deps.settleInvite(", "await deps.moveEnrollments(", "if (speaks) {", "await deps.emailUnmatched(", "await deps.notifyAccount(", "await deps.confirmCohort("].map(at);
+    check("the steps are written in the order the test walked", order.every((n, i) => n !== -1 && (i === 0 || order[i - 1] < n)));
+    check("it imports no service: the writes are handed in", /from "@\/lib\/(supabase|email|cohortActions|assessmentCredit|enrollmentSheet)|server-only|stripe"/.test(settle), false);
   }
 });
 

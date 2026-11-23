@@ -211,11 +211,14 @@ console.log("Source — the webhook reads Stripe's word before it writes");
   const hook = read("src/app/api/webhooks/stripe/route.ts");
   check("the outcome comes from livemode and payment_status", hook.includes("paymentOutcome({ livemode: event.livemode, paymentStatus: session.payment_status })"));
   const unpaidAt = hook.indexOf('outcome === "unpaid"');
-  check("an unpaid session returns before any booking or row is touched", unpaidAt !== -1 && unpaidAt < hook.indexOf("await confirmBooking(") && unpaidAt < hook.indexOf("await flipPaymentRows("));
+  check("an unpaid session returns before any booking or row is touched", unpaidAt !== -1 && unpaidAt < hook.indexOf("await confirmBooking(") && unpaidAt < hook.indexOf("await settleEnrollmentPayment("));
   check("a booking is confirmed with Stripe's word on the money", hook.includes("const paid = bookingPaid(outcome);") && hook.includes("{ stripeSessionId: session.id, paid }"));
-  check("credits are spent only on the plan's word", hook.includes("plan.applyCredits"));
-  check("invites settle only on the plan's word", hook.includes("plan.settleInvites"));
-  check("rows take the plan's status", hook.includes("plan.rowStatus"));
+  // The plan is read where the steps run (src/lib/paymentSettlement.ts).
+  const settle = read("src/lib/paymentSettlement.ts");
+  check("the settle steps get Stripe's word", /await settleEnrollmentPayment\([\s\S]*?\n        outcome,\n/.test(hook) && settle.includes("const plan = settlementPlan(input.outcome);"));
+  check("credits are spent only on the plan's word", settle.includes("if (plan.applyCredits) {"));
+  check("invites settle only on the plan's word", settle.includes("if (plan.settleInvites && cohortId) {"));
+  check("rows take the plan's status", settle.includes('const to = plan.rowStatus ?? "paid";'));
 }
 
 console.log("Source — a test payment is no member and no paid booking");

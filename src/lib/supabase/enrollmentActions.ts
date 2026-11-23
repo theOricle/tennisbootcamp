@@ -65,6 +65,24 @@ export async function enrollmentRowsOwner(ids: readonly string[]): Promise<strin
   return owned?.user_id ?? null;
 }
 
+/**
+ * The statuses these enrollment rows read now (safety review): how the Stripe
+ * webhook tells a payment still to settle, or one a retry is finishing, from
+ * one a refund or dispute reversed first. A failed read throws, so the webhook
+ * answers 500 and Stripe retries; Supabase unconfigured reads none.
+ */
+export async function enrollmentStatuses(ids: readonly string[]): Promise<string[]> {
+  const list = [...new Set(ids.filter(Boolean))];
+  if (!supabaseConfigured() || list.length === 0) return [];
+  const supabase = createServiceClient();
+  const { data, error } = await supabase.from("enrollments").select("status").in("id", list);
+  if (error) {
+    console.error("Enrollment status read failed:", error.code ?? "unknown");
+    throw new Error(`Enrollment status read failed: ${error.code ?? "unknown"}`);
+  }
+  return ((data ?? []) as { status: string | null }[]).map((r) => r.status ?? "");
+}
+
 // Returns the Supabase enrollment UUID, or null if Supabase is not configured.
 export async function saveEnrollmentToSupabase(
   data: EnrollmentPayload

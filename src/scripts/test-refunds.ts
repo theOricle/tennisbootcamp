@@ -229,22 +229,34 @@ console.log("Source — the webhook takes refunds and disputes");
   check("charge.dispute.created is handled", hook.includes('event.type === "charge.dispute.created"'));
   check("a partial refund stops at refundReversal", hook.includes("refundReversal("));
   check("the session is found by its payment", hook.includes("checkout.sessions.list({ payment_intent:"));
-  const redeliveryAt = hook.indexOf("if (!firstDelivery) {");
+  // Since the safety round the steps live in settleEnrollmentPayment
+  // (src/lib/paymentSettlement.ts). A redelivery no longer returns before the
+  // credit and the invite: it walks the guarded steps again, which change
+  // nothing twice, and only the emails wait on the delivery whose row move
+  // landed (test-safety-round.ts stops a delivery after every step).
+  const settle = read("src/lib/paymentSettlement.ts");
+  const claimAt = settle.indexOf("await deps.moveEnrollments(");
+  const speaksAt = settle.indexOf("if (speaks) {");
+  check("the webhook hands a completed payment to settleEnrollmentPayment", hook.includes("await settleEnrollmentPayment("));
   check(
-    "a redelivery returns before any credit, invite or email",
-    redeliveryAt !== -1 &&
-      redeliveryAt < hook.indexOf("markCreditApplied(") &&
-      redeliveryAt < hook.indexOf("markInvitePaidAndMaybeConfirm(") &&
-      redeliveryAt < hook.indexOf("await notifyEnrollmentAccount(") &&
-      redeliveryAt < hook.indexOf("sendPaymentUnmatchedAdminEmail(")
+    "a redelivery sends no email: both sit behind the delivery whose row move landed",
+    claimAt !== -1 &&
+      claimAt < speaksAt &&
+      speaksAt < settle.indexOf("await deps.emailUnmatched(") &&
+      speaksAt < settle.indexOf("await deps.notifyAccount(")
   );
-  check("…and only the row moves come before it", redeliveryAt > hook.indexOf("await flipPaymentRows(") && redeliveryAt > hook.indexOf("await setEnrollmentStatusByIds("));
-  check("rows settle only out of the statuses settleFrom allows", hook.includes("const from = settleFrom(outcome);") && [...SETTLE_FROM].join() === "pending,pending_etransfer");
+  check(
+    "…while the guarded steps run on every delivery, before that move",
+    settle.indexOf("await deps.flipSheetRows(") < claimAt &&
+      settle.indexOf("await deps.applyCredit(") < claimAt &&
+      settle.indexOf("await deps.settleInvite(") < claimAt
+  );
+  check("rows settle only out of the statuses settleFrom allows", settle.includes("const from = settleFrom(input.outcome);") && [...SETTLE_FROM].join() === "pending,pending_etransfer");
   // The decision is the tested helper's, fed by what this delivery moved —
   // never a value the route makes up.
   check(
-    "firstDelivery is isFirstDelivery's answer, from the moves themselves",
-    /const firstDelivery = isFirstDelivery\(\{\s*dbRows: paidEnrollmentIds\.length,\s*dbMoved: dbMoved\.length,\s*sheetRows: paidRows\.length,\s*sheetMoved: sheetMoved === null \? null : sheetMoved\.moved\.length,\s*\}\);/.test(hook)
+    "whether a delivery speaks is isFirstDelivery's answer, from the moves themselves",
+    /const speaks = isFirstDelivery\(\{\s*dbRows: input\.enrollmentIds\.length,\s*dbMoved: dbMoved\.length,\s*sheetRows: input\.sheetRows\.length,\s*sheetMoved,\s*\}\);/.test(settle)
   );
   const actions = read("src/lib/supabase/enrollmentActions.ts");
   const move = actions.slice(actions.indexOf("export async function setEnrollmentStatusByIds("));

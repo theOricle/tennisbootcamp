@@ -717,6 +717,12 @@ export async function markInvitePaidAndMaybeConfirm(params: {
    * up by token (backlog #30).
    */
   strict?: boolean;
+  /**
+   * False leaves the minimum-to-run check to the caller (safety review): the
+   * Stripe webhook runs maybeConfirmCohort itself, as its last step, once the
+   * payment's enrollment rows read paid. Everyone else confirms here.
+   */
+  confirm?: boolean;
 }): Promise<{ ok: boolean; error?: string; matched?: boolean; alreadyPaid?: boolean }> {
   const { cohortId, email, inviteToken, inviteId, participantId, payment } = params;
   // Invites store the address lowercased (createInvites, recordEtransferIntent).
@@ -828,7 +834,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
     alreadyPaid = Boolean(data);
   }
 
-  await maybeConfirmCohort(cohortId);
+  if (params.confirm !== false) await maybeConfirmCohort(cohortId);
   return { ok: true, matched: Boolean(target), alreadyPaid };
 }
 
