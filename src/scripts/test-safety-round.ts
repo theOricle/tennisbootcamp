@@ -18,6 +18,8 @@
 //   4. The limits count what a request does, not only that it arrived: the
 //      three sign-up routes cap the body and the players, and an e-transfer
 //      try counts once for each player it emails for.
+//   5. A booking that links late never writes its old level over one the
+//      coach set by hand since.
 //
 // Pure: it calls pure functions, drives in-memory stores and reads source
 // files. No network, no database, no env. Exits non-zero on any failure.
@@ -65,7 +67,7 @@ import {
 } from "../lib/submissionLimits";
 import { MAX_PARTICIPANTS_PER_ACCOUNT, tooManyPlayers } from "../lib/participantInput";
 import { MAX_BODY_BYTES, bodyTooLarge } from "../lib/botCheck";
-import { linkedBookingPlayer } from "../lib/guestAccount";
+import { linkedBookingPlayer, linkedLevelApplies } from "../lib/guestAccount";
 import { creditLine } from "../lib/dashboardState";
 import { amountDueCents } from "../lib/paymentTransitions";
 import { rowsWithEmail } from "../lib/enrollmentLink";
@@ -907,6 +909,60 @@ sections.push(async function point4() {
     check("the comment says an e-transfer counts once for each player", header.includes("an e-transfer\n// try counts once for each player on it"));
     check("…and states the bound the code computes", header.includes(`31 players, ${maxDailyEmailsPerAddress()} emails`) && header.includes("at most 12 players"));
     check("…and no longer claims three emails a submission", header.includes("at most 3 emails each: 60"), false);
+  }
+});
+
+// ─── 5. An old booking never overwrites a newer level ────────────────────────
+
+sections.push(function point5() {
+  console.log("5. linkedLevelApplies — the booking's level against the one the coach left");
+  {
+    const assessedOn = "2026-10-03";
+    check("a player with no level takes the booking's", linkedLevelApplies({ playerHasLevel: false, playerLevelSetAt: null, assessedOn }));
+    check("a level set by hand weeks after the assessment stays", linkedLevelApplies({ playerHasLevel: true, playerLevelSetAt: "2026-11-10T16:00:00.000Z", assessedOn }), false);
+    check("a level set the day after the assessment stays", linkedLevelApplies({ playerHasLevel: true, playerLevelSetAt: "2026-10-04T15:00:00.000Z", assessedOn }), false);
+    check("a level from before the assessment gives way to its result", linkedLevelApplies({ playerHasLevel: true, playerLevelSetAt: "2026-09-20T15:00:00.000Z", assessedOn }));
+    check("the day is Toronto's: 10:30 pm on the assessment day is not a later day, though it is one in UTC", linkedLevelApplies({ playerHasLevel: true, playerLevelSetAt: "2026-10-04T02:30:00.000Z", assessedOn }));
+    check("…and just past midnight in Toronto is", linkedLevelApplies({ playerHasLevel: true, playerLevelSetAt: "2026-10-04T04:30:00.000Z", assessedOn }), false);
+    check("a level with no date on it gives way, as before", linkedLevelApplies({ playerHasLevel: true, playerLevelSetAt: null, assessedOn }));
+    check("an assessment day that cannot be read overwrites nothing that is dated", [linkedLevelApplies({ playerHasLevel: true, playerLevelSetAt: "2026-11-10T16:00:00.000Z", assessedOn: null }), linkedLevelApplies({ playerHasLevel: true, playerLevelSetAt: "2026-11-10T16:00:00.000Z", assessedOn: "soon" })], [false, false]);
+  }
+
+  console.log("5. Scenario — two bookings link at once, around a level the coach set by hand");
+  {
+    // Maya was assessed on Oct 3 (2.5) and again on Nov 20 (3.5); between the
+    // two the coach set 3.0 by hand, on Nov 10. Both bookings link on Nov 23.
+    const levelBefore = { hasLevel: true, setAt: "2026-11-10T16:00:00.000Z" };
+    let level = 3.0;
+    const linked = [
+      { level_result: 2.5, assessedOn: "2026-10-03" },
+      { level_result: 3.5, assessedOn: "2026-11-20" },
+    ]; // oldest first, as the link walks them
+    const written: number[] = [];
+    for (const booking of linked) {
+      if (linkedLevelApplies({ playerHasLevel: levelBefore.hasLevel, playerLevelSetAt: levelBefore.setAt, assessedOn: booking.assessedOn })) {
+        level = booking.level_result;
+        written.push(booking.level_result);
+      }
+    }
+    check("the October result does not replace the coach's November level; the later assessment does", [written, level], [[3.5], 3.5]);
+    // Weighed against the level as it stood before the link, the first write
+    // (stamped now) cannot block the second.
+    const fresh = { hasLevel: false, setAt: null as string | null };
+    check("with no level before the link, both results are walked and the latest is kept", linked.filter((b) => linkedLevelApplies({ playerHasLevel: fresh.hasLevel, playerLevelSetAt: fresh.setAt, assessedOn: b.assessedOn })).map((b) => b.level_result), [2.5, 3.5]);
+  }
+
+  console.log("5. Source — the link asks before it writes a level");
+  {
+    const assessments = read("src/lib/assessments.ts");
+    const link = assessments.slice(assessments.indexOf("export async function linkBookingsToAccount("));
+    const body = link.slice(0, link.indexOf("\n}\n"));
+    const snapshotAt = body.indexOf("const levelBefore = new Map(");
+    const loopAt = body.indexOf("for (const booking of linked) {");
+    check("the players' levels are read once, before the loop writes anything", snapshotAt !== -1 && snapshotAt < loopAt && body.indexOf("setPlayerLevel(") > loopAt);
+    check("the assessment's day comes from its block", body.includes('.select("id, block_date")') && body.includes("assessedOn.set(block.id, block.block_date)"));
+    check("the level is written only when linkedLevelApplies says so", /if \(levelApplies\) \{\s*await setPlayerLevel\(participantId, \{/.test(body) && body.includes("const levelApplies = linkedLevelApplies({"));
+    check("the availability keeps its own newer-wins rule, outside that check", body.indexOf("await setKnownPlayerAvailability(participantId, {") > body.indexOf("} else {") && body.includes("onlyIfOlderThan: booking.created_at"));
   }
 });
 

@@ -15,7 +15,7 @@ import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
 import { emailBelongsToAccount, ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
 import { bookingPaymentPlan, latePaymentPlan, writeBookingState } from "@/lib/stripeOutcome";
-import { guestPlayer, linkedBookingPlayer } from "@/lib/guestAccount";
+import { guestPlayer, linkedBookingPlayer, linkedLevelApplies } from "@/lib/guestAccount";
 import { settleGuestSubmission } from "@/lib/household";
 import type { ParticipantInput } from "@/lib/participantInput";
 import {
@@ -337,6 +337,30 @@ export async function linkBookingsToAccount(userId: string, email: string): Prom
     );
 
     let players = await listParticipantsForAccount(userId).catch(() => [] as PlayerRecord[]);
+    // Each player's level as the coach left it, read before anything below
+    // writes: an old booking's result never replaces a level set since
+    // (safety review). The assessment's own day stands in for when it was
+    // completed (linkedLevelApplies).
+    const levelBefore = new Map(
+      players.map((p) => [p.id, { hasLevel: p.level != null, setAt: p.level_assessed_at }])
+    );
+    const assessedOn = new Map<string, string>();
+    const blockIds = [
+      ...new Set(
+        linked
+          .filter((b) => b.status === "completed" && b.level_result != null && b.block_id)
+          .map((b) => b.block_id as string)
+      ),
+    ];
+    if (blockIds.length > 0) {
+      const { data: blocks } = await supabase
+        .from("assessment_blocks")
+        .select("id, block_date")
+        .in("id", blockIds);
+      for (const block of (blocks ?? []) as Pick<BlockRow, "id" | "block_date">[]) {
+        assessedOn.set(block.id, block.block_date);
+      }
+    }
     for (const booking of linked) {
       let participantId = linkedBookingPlayer(
         { participantId: booking.participant_id ?? null, name: booking.name },
@@ -356,10 +380,20 @@ export async function linkBookingsToAccount(userId: string, email: string): Prom
           .is("participant_id", null);
       }
       if (booking.status === "completed" && booking.level_result != null) {
-        await setPlayerLevel(participantId, {
-          level: Number(booking.level_result),
-          notes: booking.coach_notes ?? "",
-        }).catch(() => console.error("Linked booking level not written (non-blocking)"));
+        const was = levelBefore.get(participantId);
+        const levelApplies = linkedLevelApplies({
+          playerHasLevel: was?.hasLevel ?? false,
+          playerLevelSetAt: was?.setAt ?? null,
+          assessedOn: booking.block_id ? assessedOn.get(booking.block_id) ?? null : null,
+        });
+        if (levelApplies) {
+          await setPlayerLevel(participantId, {
+            level: Number(booking.level_result),
+            notes: booking.coach_notes ?? "",
+          }).catch(() => console.error("Linked booking level not written (non-blocking)"));
+        } else {
+          console.log("Linked booking level kept on the booking: the player's level was set since (non-blocking)");
+        }
         await setKnownPlayerAvailability(participantId, {
           availability: booking.availability,
           source: "assessment",

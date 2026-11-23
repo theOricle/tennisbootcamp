@@ -149,6 +149,43 @@ export async function settleGuestPlayers(
   return { kind: "new", accountId, playerIds };
 }
 
+/** The calendar day an instant falls on in Toronto, "YYYY-MM-DD"; null when it cannot be read. */
+function torontoDay(iso: string | null | undefined): string | null {
+  const at = Date.parse(iso ?? "");
+  if (Number.isNaN(at)) return null;
+  return new Date(at).toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
+}
+
+/**
+ * Whether a linked booking's level may be written onto its player (safety
+ * review). A booking can link long after it was completed, and the coach may
+ * have set the player's level by hand since: that newer level stays, and the
+ * old result stays on the booking.
+ *
+ * The booking row records no time of completion, so the day of the assessment
+ * (its slot's date) stands in for it, the earliest the result can be: a level
+ * set on a later day than the assessment is kept. A player with no level, or
+ * one whose level carries no date, takes the booking's. When the assessment
+ * day cannot be read, a dated level is kept: nothing is overwritten on a guess.
+ *
+ * `playerLevelSetAt` is the player's level_assessed_at as read before the
+ * link wrote anything, so two bookings linking at once are both weighed
+ * against the level the coach left, never against each other's write.
+ */
+export function linkedLevelApplies(input: {
+  playerHasLevel: boolean;
+  playerLevelSetAt: string | null | undefined;
+  /** The assessment's own day, "YYYY-MM-DD" (assessment_blocks.block_date). */
+  assessedOn: string | null | undefined;
+}): boolean {
+  if (!input.playerHasLevel) return true;
+  const levelDay = torontoDay(input.playerLevelSetAt);
+  if (!levelDay) return true;
+  const assessedOn = (input.assessedOn ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(assessedOn)) return false;
+  return levelDay <= assessedOn;
+}
+
 /**
  * Whose player a booking's result reaches once the booking links to an
  * account (its owner signed in through their own emailed link; backlog #84):
