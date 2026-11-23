@@ -19,7 +19,7 @@ import type { Cohort } from "@/types/cohort";
 import type { ProgramGroup } from "@/types/program";
 import { programGroups } from "@/content/programs";
 import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
-import { cohortMatchesGroup } from "@/lib/programCatalog";
+import { groupForBlock } from "@/lib/groupBlocks";
 import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 import { emailBelongsToAccount } from "@/lib/enrollmentLink";
@@ -483,7 +483,7 @@ export const APPROVAL_ONLY_ERROR =
  * direct POST to /api/checkout or /api/enroll/etransfer must meet the same
  * wall, else a Stripe session or an e-transfer row exists for a spot the
  * coaches never approved. Reads the cohort's group the way the page does
- * (`cohortMatchesGroup`) and the request's invitation the way the page does
+ * (`groupForBlock`) and the request's invitation the way the page does
  * (`claimedInvite`), so an invitee holding the link on a public cohort still
  * pays. Null when nothing stands in the way, or the cohort trains in no group.
  *
@@ -503,7 +503,7 @@ export function approvalRefusal(
   groups: readonly ProgramGroup[] = programGroups
 ): { error: string; status: 403 } | null {
   if (!cohort) return null;
-  const group = groups.find((g) => cohortMatchesGroup(cohort, g));
+  const group = groupForBlock(cohort, groups);
   if (!group) return null;
   const claimed = claimedInvite(gate.lookup);
   const live = claimed && claimed.status !== "paid" ? claimed : null;

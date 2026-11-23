@@ -67,6 +67,7 @@ import {
   cardsProgramLine,
   cardsScheduleLine,
   groupCards,
+  groupForBlock,
   groupTakesPlayerAge,
   isBootcampBlock,
   openBlockCards,
@@ -205,11 +206,11 @@ check("private lessons, a group with no fixed class, never match", !programGroup
 check("only the bootcamp programs' blocks with a class show as cards", isBootcampBlock(block({ id: "a" })) && isBootcampBlock(youthBlock({ id: "y" })) && !isBootcampBlock(block({ id: "p", programId: "private-lessons" })) && !isBootcampBlock(block({ id: "r", programId: "high-performance" })) && !isBootcampBlock(block({ id: "s", sessions: [] })) && !isBootcampBlock(block({ id: "t", programId: "toString" })));
 {
   // The sign-up page (src/app/enroll/[cohortId]/page.tsx) finds a cohort's
-  // group with programGroups.find((g) => cohortMatchesGroup(cohort, g)), and
-  // both payment routes run approvalRefusal (src/lib/enrollGate.ts) with it.
-  // Each block below must read the same group on its card and its page.
+  // group with groupForBlock(cohort), and both payment routes run
+  // approvalRefusal (src/lib/enrollGate.ts) with it. Each block below must
+  // read the same group on its card and its page.
   const pub = { allowed: true as const, via: "public" as const };
-  const pageGroup = (b: Cohort) => programGroups.find((x) => cohortMatchesGroup(b, x)) ?? null;
+  const pageGroup = (b: Cohort) => groupForBlock(b);
   const cardFor = (b: Cohort) => groupCards(programGroups, [b]).find((c) => c.block?.cohortId === b.id)!;
   const hp = { levelMin: 5, levelMax: 7 };
   const samples: [string, Cohort][] = [
@@ -229,9 +230,9 @@ check("only the bootcamp programs' blocks with a class show as cards", isBootcam
     const page = pageGroup(b);
     const card = cardFor(b).group;
     const planned = plannedGroupForBlock(b, programGroups) ?? null;
-    // The same group, so the same ages; a block that matches no planned
-    // group has none on its page either, so no other group's ages or step.
-    const same = (page?.id ?? null) === (planned?.id ?? null) && (page === null || (card.name === page.name && card.ageMin === page.ageMin && card.ageMax === page.ageMax && card.joining === page.joining));
+    // The same group, so the same ages and the same step; a block that
+    // matches no planned group has the one built from its program and level.
+    const same = page !== null && (planned === null || planned.id === page.id) && card.name === page.name && card.ageMin === page.ageMin && card.ageMax === page.ageMax && card.joining === page.joining;
     check(`${name}: the card and the sign-up page find the same group, with the same ages`, same, `page ${page?.id ?? "none"}, card ${card.name} ${card.ageMin}–${card.ageMax}`);
     const byApproval = card.joining === "approval";
     const atPayment = approvalRefusal(b, { decision: pub, lookup: null }) !== null;

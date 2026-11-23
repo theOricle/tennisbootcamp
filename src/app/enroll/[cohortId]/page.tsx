@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { APPROVAL_LINE, programGroups, programs } from "@/content/programs";
+import { APPROVAL_LINE, programs } from "@/content/programs";
 import type { ProgramGroup } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
 import { getCohortById } from "@/lib/cohortsDb";
@@ -14,7 +14,7 @@ import { accountCreditView, creditsForSeats } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
 import { INVITE_RESUME_COOKIE } from "@/lib/checkoutInvite";
 import { loginHref } from "@/lib/authFlow";
-import { cohortMatchesGroup } from "@/lib/programCatalog";
+import { groupForBlock } from "@/lib/groupBlocks";
 import { currentUser } from "@/lib/household";
 import { getParticipant, listParticipantsForAccount } from "@/lib/players";
 import { listInvitesForAccount } from "@/lib/cohortActions";
@@ -347,8 +347,10 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
 
   // The group this cohort trains in (owner, 2026-10-12): its ages decide who
   // fits, and a by-approval group (High Performance) takes no walk-in — but
-  // the player holding the invitation link is never sent back to it.
-  const group = programGroups.find((g) => cohortMatchesGroup(cohort, g)) ?? null;
+  // the player holding the invitation link is never sent back to it. One
+  // rule with the card (groupForBlock): a block off the planned lineup has a
+  // group too, so its ages are checked here as its card shows them.
+  const group = groupForBlock(cohort);
   if (group && approvalGateApplies({ group, decision: gate.decision, claimed })) {
     return (
       <ApprovalGate group={group} programSlug={program?.slug ?? group.programSlug} signInHref={signInHref} />

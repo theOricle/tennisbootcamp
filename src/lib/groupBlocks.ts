@@ -27,6 +27,7 @@ import {
   formatDollars,
   numberInWords,
   priceSummaryFor,
+  programGroups,
 } from "@/content/programs";
 import { defaultLocation, locationForCohort } from "@/content/locations";
 
@@ -167,7 +168,10 @@ export function blockFacts(block: Cohort, seatsLeft?: number | null): BlockFacts
  * ages the program's groups take together, the program's location, and open
  * to join (by approval is the High Performance Youth Bootcamp's own rule).
  */
-function builtGroup(block: Cohort, lineup: readonly ProgramGroup[]): ProgramGroup {
+function builtGroup(
+  block: Pick<Cohort, "programId" | "levelMin" | "levelMax">,
+  lineup: readonly ProgramGroup[]
+): ProgramGroup {
   const level: TierId | null = blockLevel(block);
   const siblings = lineup.filter((g) => g.programSlug === block.programId);
   const mins = siblings.map((g) => g.ageMin);
@@ -187,6 +191,24 @@ function builtGroup(block: Cohort, lineup: readonly ProgramGroup[]): ProgramGrou
     status: "forming",
     joining: "open",
   };
+}
+
+/**
+ * The group a block trains in, on the planned lineup or off it (safety
+ * review, #85): the planned group the one rule matches, else a group built
+ * from the block's own program and level, with the ages its program's groups
+ * take together. The card, the sign-up page (the ages it checks, and its
+ * approval step) and both payment routes (approvalRefusal,
+ * src/lib/enrollGate.ts) read this one function, so a block never shows one
+ * group on its card and another, or none, on the page that takes the money.
+ * Null for a block of a program that runs no group bootcamps.
+ */
+export function groupForBlock(
+  block: Pick<Cohort, "programId" | "levelMin" | "levelMax">,
+  lineup: readonly ProgramGroup[] = programGroups
+): ProgramGroup | null {
+  if (!Object.prototype.hasOwnProperty.call(BOOTCAMP_AUDIENCE, block.programId)) return null;
+  return plannedGroupForBlock(block, lineup) ?? builtGroup(block, lineup);
 }
 
 /**
@@ -264,7 +286,8 @@ export function groupCards(
 
   for (const { block, first } of blocks) {
     if (plannedGroupForBlock(block, lineup)) continue;
-    const built = builtGroup(block, lineup);
+    const built = groupForBlock(block, lineup);
+    if (!built) continue;
     placed.push({
       program: rank(block.programId),
       level: built.level ?? Number.MAX_SAFE_INTEGER,
