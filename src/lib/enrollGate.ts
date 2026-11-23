@@ -19,7 +19,7 @@ import type { Cohort } from "@/types/cohort";
 import type { ProgramGroup } from "@/types/program";
 import { programGroups } from "@/content/programs";
 import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
-import { groupForBlock } from "@/lib/groupBlocks";
+import { blockHasPrice, groupForBlock } from "@/lib/groupBlocks";
 import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 import { emailBelongsToAccount } from "@/lib/enrollmentLink";
@@ -525,10 +525,7 @@ export const PRICE_NOT_SET_ERROR =
 export function priceRefusal(
   cohort: Pick<Cohort, "priceCents"> | null | undefined
 ): { error: string; status: 409 } | null {
-  const cents = cohort?.priceCents;
-  return typeof cents === "number" && Number.isFinite(cents) && cents > 0
-    ? null
-    : { error: PRICE_NOT_SET_ERROR, status: 409 };
+  return cohort && blockHasPrice(cohort) ? null : { error: PRICE_NOT_SET_ERROR, status: 409 };
 }
 
 /**

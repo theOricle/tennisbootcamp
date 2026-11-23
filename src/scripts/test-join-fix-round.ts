@@ -6,6 +6,9 @@
 //      Youth block is by approval when its band is blank or reaches the High
 //      Performance tier, on its card, on its sign-up page and on a direct
 //      request to either payment route (blockByApproval);
+//   2. a block with no price is nobody's to enroll in: no card, so its group
+//      falls back to "Dates coming soon" and "Notify me", and its sign-up
+//      page refuses plainly (payment already refused it);
 //   3. one rule for the group a block trains in, planned or not: the card, the
 //      sign-up page and the payment routes' approval check all read
 //      groupForBlock, so a block off the planned lineup has its ages checked
@@ -18,9 +21,9 @@ import { join } from "node:path";
 import { COHORT_TOTAL_CENTS, COHORT_WEEKS, programGroups } from "../content/programs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { blockByApproval, blockFacts, groupCards, groupForBlock, plannedGroupForBlock, signedInOpenCards } from "../lib/groupBlocks";
+import { accountOpenCards, blockByApproval, blockFacts, blockHasPrice, groupCards, groupForBlock, openBlockCards, plannedGroupForBlock, signedInOpenCards } from "../lib/groupBlocks";
 import { groupAction, groupStatus } from "../lib/programCatalog";
-import { APPROVAL_ONLY_ERROR, approvalGateApplies, approvalRefusal } from "../lib/enrollGate";
+import { APPROVAL_ONLY_ERROR, approvalGateApplies, approvalRefusal, priceRefusal } from "../lib/enrollGate";
 import { tierById } from "../lib/tiers";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { ageBandBlock, dobAgeError } from "../lib/enrollPlayers";
@@ -118,6 +121,33 @@ console.log("1. By approval never depends on how the level band is typed");
   }
   check("the rule reads the lineup: a program is by approval from the lowest level of its by-approval group", !blockByApproval(youthBlock({ id: "y", levelMin: null, levelMax: null }), programGroups.filter((g) => g.joining !== "approval")) && blockByApproval(block({ id: "a", levelMin: 4, levelMax: 7 }), programGroups.map((g) => (g.id === "adult-advanced" ? { ...g, joining: "approval" as const } : g))));
   check("a block of a program with no group bootcamps is nobody's to approve here", !blockByApproval(block({ id: "p", programId: "private-lessons", levelMin: null, levelMax: null })));
+}
+
+// ── 2. A block with no price ────────────────────────────────────────────────
+console.log("2. A block with no price offers no Enroll");
+{
+  const unpriced: [string, Cohort][] = [
+    ["a price of zero", block({ id: "free", priceCents: 0 })],
+    ["no price at all", block({ id: "none", priceCents: undefined as unknown as number })],
+    ["a price that is not a number", block({ id: "nan", priceCents: Number.NaN })],
+    ["a price below zero", block({ id: "neg", priceCents: -100 })],
+  ];
+  for (const [name, b] of unpriced) {
+    const cards = groupCards(programGroups, [b]);
+    const own = cards.find((c) => c.group.id === "adult-newer");
+    const html = own ? renderToStaticMarkup(createElement(ProgramGroupCard, { group: own.group, block: own.block })) : "";
+    check(`a block with ${name} is no card: its group reads Dates coming soon and Notify me, never Enroll`, !blockHasPrice(b) && !cards.some((c) => c.block?.cohortId === b.id) && openBlockCards(cards).length === 0 && !!own && own.block === null && html.includes("Dates coming soon") && />Notify me</.test(html) && !/>Enroll</.test(html) && !html.includes("/enroll/") && !html.includes("Pricing TBA"));
+    check("…no signed-in list offers it", accountOpenCards(cards, { enrolledCohortIds: [], players: [] }).length === 0);
+    check("…and payment refuses it by the same rule, 409", priceRefusal(b)?.status === 409);
+  }
+  const offLineup = groupCards(programGroups, [youthBlock({ id: "int", levelMin: 3, levelMax: 3.5, priceCents: 0 })]);
+  check("off the planned lineup, a block with no price shows nowhere", offLineup.length === programGroups.length && offLineup.every((c) => c.block === null));
+  const priced = block({ id: "priced" });
+  check("a priced block keeps its card and Enroll, beside an unpriced one of the same group", blockHasPrice(priced) && priceRefusal(priced) === null && openBlockCards(groupCards(programGroups, [priced, unpriced[0][1]])).map((c) => c.block!.cohortId).join() === "priced");
+  const gateAt = enrollPage.indexOf("if (priceRefusal(cohort))");
+  check("the sign-up page refuses a block with no price before the wizard, by payment's own rule", gateAt !== -1 && gateAt < enrollPage.indexOf("<EnrollWizard") && enrollPage.indexOf("resolveEnrollGate(cohort, tokenParam)") < gateAt && enrollPage.includes("<PriceGate"));
+  const gate = enrollPage.slice(enrollPage.indexOf("function PriceGate"), enrollPage.indexOf("/** The signed-in player's email"));
+  check("…plainly: what is true, and the way out, with no amount and no promise of one", gate.includes("Enrollment isn&apos;t open for this group yet") && gate.includes("Its price isn&apos;t set, so we can&apos;t take payment for it.") && gate.includes("mailto:info@tennisbootcamp.ca") && gate.includes("Browse Programs") && !/\$\d|soon|!/.test(gate));
 }
 
 // ── 3. One rule for a block off the planned lineup ──────────────────────────

@@ -7,7 +7,7 @@ import type { ProgramGroup } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
 import { getCohortById } from "@/lib/cohortsDb";
 import { isCohortRenderable } from "@/lib/cohortVisibility";
-import { approvalGateApplies, claimedInvite, resolveEnrollGate } from "@/lib/enrollGate";
+import { approvalGateApplies, claimedInvite, priceRefusal, resolveEnrollGate } from "@/lib/enrollGate";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { createClient } from "@/lib/supabase/server";
 import { accountCreditView, creditsForSeats } from "@/lib/assessmentCredit";
@@ -223,6 +223,29 @@ function ApprovalGate({
   );
 }
 
+// A block with no price takes no enrollment (safety review, #85): its card
+// offers none, both payment routes refuse it, and a visitor who reaches this
+// page by its address is told so here, before the wizard asks for anything.
+function PriceGate({ eyebrow }: { eyebrow: string }) {
+  return (
+    <GateShell eyebrow={eyebrow}>
+      <h1 className="mt-3 text-2xl font-semibold">Enrollment isn&apos;t open for this group yet</h1>
+      <p className="mt-3 text-sm leading-relaxed text-white/65">
+        Its price isn&apos;t set, so we can&apos;t take payment for it. Email info@tennisbootcamp.ca and
+        our coaches will finish your enrollment with you.
+      </p>
+      <div className="mt-6 flex flex-wrap justify-center gap-3">
+        <a href="mailto:info@tennisbootcamp.ca" className={primaryButton}>
+          Email us →
+        </a>
+        <Link href="/programs" className={secondaryButton}>
+          Browse Programs
+        </Link>
+      </div>
+    </GateShell>
+  );
+}
+
 /** The signed-in player's email, or null. Never throws — a guest enrolls too. */
 async function signedInEmail(): Promise<string | null> {
   try {
@@ -355,6 +378,11 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
     return (
       <ApprovalGate group={group} programSlug={program?.slug ?? group.programSlug} signInHref={signInHref} />
     );
+  }
+
+  // No price, no enrollment: the same test both payment routes refuse by.
+  if (priceRefusal(cohort)) {
+    return <PriceGate eyebrow={group?.name ?? program?.title ?? cohort.label} />;
   }
 
   const seatsRemaining = await getSeatsRemaining(cohort.id, cohort.capacityMax);

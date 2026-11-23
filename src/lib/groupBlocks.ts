@@ -124,6 +124,18 @@ export function isBootcampBlock(block: Pick<Cohort, "programId" | "sessions">): 
 }
 
 /**
+ * Does the block have a price to charge? (Safety review, #85.) One with none,
+ * or zero, is nobody's to enroll in: it is no group card (its group falls
+ * back to "Dates coming soon" and "Notify me"), its sign-up page refuses,
+ * and both payment routes refuse it by the same test (priceRefusal,
+ * src/lib/enrollGate.ts).
+ */
+export function blockHasPrice(block: Pick<Cohort, "priceCents">): boolean {
+  const cents = block.priceCents;
+  return typeof cents === "number" && Number.isFinite(cents) && cents > 0;
+}
+
+/**
  * The planned group a block trains in: the first in lineup order that the
  * one rule matches (cohortMatchesGroup: the same program and level, never
  * the day or time). Undefined when the lineup has no group at that level.
@@ -265,7 +277,8 @@ function blockCardGroup(block: Cohort, base: ProgramGroup, id: string): ProgramG
  * Every group card, in lineup order (owner, 2026-11-19): a planned group
  * with open blocks shows one card per block, the earliest first; one with
  * none keeps its own card ("Dates coming soon"); a block that matches no
- * planned group shows in its program's run by level; a group with no fixed
+ * planned group shows in its program's run by level; a block with no price
+ * is no card at all (blockHasPrice), since nobody can enroll in it; a group with no fixed
  * class (private lessons) keeps its row. Card ids are unique on a page: the
  * first card of a planned group keeps the group's id (so
  * /programs/youth-programs#high-performance still lands), the next ones add
@@ -279,7 +292,7 @@ export function groupCards(
   seats: Readonly<Record<string, number | null | undefined>> = {}
 ): GroupCard[] {
   const blocks = publicBlocks
-    .filter(isBootcampBlock)
+    .filter((block) => isBootcampBlock(block) && blockHasPrice(block))
     .map((block) => ({ block, first: blockClassDates(block).first }))
     .sort((a, b) => a.first.localeCompare(b.first) || a.block.id.localeCompare(b.block.id));
 
