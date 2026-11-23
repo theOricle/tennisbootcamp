@@ -35,6 +35,8 @@ export type GateInviteLookup =
         cohort_id?: string;
         /** The player the invitation names (migration 0007), when it names one. */
         participant_id?: string | null;
+        /** The account the invitation was made for, when it has one. */
+        user_id?: string | null;
       };
     }
   | { state: "expired" | "invalid" };

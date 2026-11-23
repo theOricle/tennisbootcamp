@@ -222,15 +222,17 @@ console.log("Scenario — the e-transfer route with `%@%.%` lands on no one's in
 
 // ─── Source: the wiring the rules depend on ───────────────────────────────────
 
-console.log("Source — findUnusedCredit reads by participant, never by email");
+console.log("Source — the credit reads that take money off are by id, never by email");
 {
+  // Since the safety round the lookup is loadCreditBookings, behind the one
+  // rule in src/lib/creditRules.ts (test-safety-round.ts pins the rule).
   const src = read("src/lib/assessmentCredit.ts");
-  const start = src.indexOf("export async function findUnusedCredit(");
+  const start = src.indexOf("export async function loadCreditBookings(");
   const end = src.indexOf("\n}\n", start);
   const body = start === -1 ? "" : src.slice(start, end);
-  check("findUnusedCredit exists", start !== -1);
-  check("it takes one participant id", /export async function findUnusedCredit\(\s*participantId: string \| null \| undefined\s*\)/.test(src));
-  check("it filters by participant_id", body.includes('.eq("participant_id", id)'));
+  check("loadCreditBookings exists", start !== -1);
+  check("it takes an account id and participant ids, and no email", /export async function loadCreditBookings\(input: \{\s*accountId: string \| null;\s*participantIds: readonly string\[\];\s*\}\)/.test(src));
+  check("it filters by participant_id", body.includes('.in("participant_id", ids)'));
   check("it never reads by email", /\.ilike\(|"email"/.test(body), false);
 }
 
@@ -238,7 +240,7 @@ console.log("Source — checkout looks a credit up only for a signed-in account'
 {
   const route = read("src/app/api/checkout/route.ts");
   check("the route asks checkoutCreditParticipants who to look up", route.includes("checkoutCreditParticipants(Boolean(signedIn), players)"));
-  check("findUnusedCredit gets a participant id, never the contact email", /findUnusedCredit\(enrollmentMeta|findUnusedCredit\([^)]*contactEmail/.test(route), false);
+  check("the credit lookup gets the session's account and scrubbed ids, never the contact email", /creditsForSeats\(\{[^}]*(contactEmail|typedEmail|enrollmentMeta)/.test(route), false);
   check("the ownership scrub runs before the credit lookup", route.indexOf("scrubParticipantIds(") < route.indexOf("checkoutCreditParticipants("));
 }
 
@@ -282,7 +284,7 @@ console.log("Source — checkout and e-transfer check the email's format");
 console.log("Source — the sign-up page: the credit for the visitor's own players, one plain line signed out");
 {
   const page = read("src/app/enroll/[cohortId]/page.tsx");
-  check("the page never looks a credit up by an email", /findUnusedCredit\(\s*(creditEmail|inviteEmail|sessionEmail)/.test(page), false);
+  check("the page never looks a credit up by a typed or invited email", /creditsForSeats\(\{[^}]*(creditEmail|inviteEmail|sessionEmail)/.test(page), false);
   check("the page passes whether someone is signed in", page.includes("signedIn={Boolean(sessionEmail)}"));
   const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
   check("signed out, the summary says the $20 comes off once they sign in", wizard.includes("Completed your $20 assessment? Sign in first, and that $20 comes off this price at payment."));

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { CreditWaitingNote } from "@/components/account/CreditWaitingNote";
 import type { Cohort } from "@/types/cohort";
 import type { Program } from "@/types/program";
 import type { CohortSessionRow } from "@/lib/cohortsDb";
@@ -72,6 +73,11 @@ export type DashboardViewProps = {
   nextStep: NextStep;
   /** The unused $20 assessment line, when one exists (audit M25). */
   creditLine: string | null;
+  /**
+   * A paid assessment booked under this address while signed out, not on the
+   * account yet (safety review): named, with the link that puts it there.
+   */
+  creditWaiting?: boolean;
   enrollments: DashboardEnrollment[];
   /** Every cohort (enrollment lookups + the public ones for suggestion cards). */
   cohorts: Cohort[];
@@ -413,6 +419,7 @@ export function DashboardView(props: DashboardViewProps) {
     voice,
     nextStep: step,
     creditLine,
+    creditWaiting = false,
     enrollments,
     cohorts,
     sessionsByCohort,
@@ -472,6 +479,13 @@ export function DashboardView(props: DashboardViewProps) {
               <p className="mt-3 border-t border-white/10 pt-3 text-sm leading-relaxed text-white/75">
                 {creditLine}
               </p>
+            )}
+            {creditWaiting && (
+              <CreditWaitingNote
+                page="dashboard"
+                next="/dashboard"
+                className="mt-3 border-t border-white/10 pt-3"
+              />
             )}
             {(step.primary || step.secondary) && (
               <div className="mt-5 flex flex-wrap gap-3">

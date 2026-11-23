@@ -3,7 +3,7 @@ import { google } from "googleapis";
 import { CARD_PAYMENT_UNAVAILABLE, createCheckoutSession, paymentRail } from "@/lib/payments";
 import { saveEnrollmentToSupabase } from "@/lib/supabase/enrollmentActions";
 import { getCohortById } from "@/lib/cohortsDb";
-import { findUnusedCredit } from "@/lib/assessmentCredit";
+import { creditsForSeats } from "@/lib/assessmentCredit";
 import { findInviteRefByToken } from "@/lib/cohortActions";
 import {
   COHORT_FULL_ERROR,
@@ -250,19 +250,18 @@ export async function POST(req: NextRequest) {
     // parent's account bring $40 off between them. Only a signed-in account's
     // own players, by participant id (backlog #84): signed out, no credit is
     // looked up — a typed email never finds one — and the sign-up page says
-    // it applies once they sign in.
-    const credits: { rowNumber: number | null; bookingId: string; cents: number }[] = [];
+    // it applies once they sign in. Which booking each seat takes is the one
+    // rule every price reads (creditsForSeats, src/lib/creditRules.ts): a
+    // player's own, then one linked to this account but to no player, once.
     const creditFor = checkoutCreditParticipants(Boolean(signedIn), players);
-    for (const [i, p] of players.entries()) {
-      const found = await findUnusedCredit(creditFor[i]);
-      if (found && !credits.some((c) => c.bookingId === found.bookingId)) {
-        credits.push({
-          rowNumber: p.rowNumber ?? null,
-          bookingId: found.bookingId,
-          cents: found.creditCents,
-        });
-      }
-    }
+    const decided = signedIn
+      ? await creditsForSeats({ accountId: signedIn.id, seats: creditFor })
+      : creditFor.map(() => null);
+    const credits = decided.flatMap((seat, i) =>
+      seat
+        ? [{ rowNumber: players[i].rowNumber ?? null, bookingId: seat.bookingId, cents: seat.creditCents }]
+        : []
+    );
     const discountCents = Math.min(
       credits.reduce((sum, c) => sum + c.cents, 0),
       chargeCents

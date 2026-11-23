@@ -10,7 +10,7 @@ import { isCohortRenderable } from "@/lib/cohortVisibility";
 import { approvalGateApplies, claimedInvite, resolveEnrollGate } from "@/lib/enrollGate";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { createClient } from "@/lib/supabase/server";
-import { findUnusedCredit, listUnusedCreditsForAccount } from "@/lib/assessmentCredit";
+import { accountCreditView, creditsForSeats } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
 import { INVITE_RESUME_COOKIE } from "@/lib/checkoutInvite";
 import { loginHref } from "@/lib/authFlow";
@@ -370,22 +370,34 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
   const user = await currentUser();
   const participants = user ? await listParticipantsForAccount(user.id).catch(() => []) : [];
 
+  // What this account's credits are, by the one rule every price reads
+  // (src/lib/creditRules.ts): the $20s an enrollment would take off, and any
+  // booked under its own address while signed out, which waits on a sign-in
+  // through an emailed link and is said so on the price (safety review).
+  const creditView = user
+    ? await accountCreditView({
+        accountId: user.id,
+        email: user.email,
+        participantIds: participants.map((p) => p.id),
+      }).catch(() => null)
+    : null;
+
   // E-transfer cohorts (backlog #12): the payment step shows the amount after
-  // the $20 assessment credit. Whose credit (backlog #84): the player the
-  // invitation names — the same booking the coach's "amount due" reads — else
-  // a signed-in account's own players'; never one found by an email. The
-  // server re-derives it when the player taps "I've sent it".
+  // the $20 assessment credit. Whose credit (backlog #84): the one the
+  // invitation reaches — the same booking the coach's "amount due" reads —
+  // else a signed-in account's own; never one found by an email. The server
+  // re-derives it when the player taps "I've sent it".
   let etransfer: EtransferInfo | null = null;
   if ((cohort.paymentMode ?? "card") === "etransfer") {
     let creditCents = 0;
-    if (invitedParticipantId) {
-      creditCents = (await findUnusedCredit(invitedParticipantId))?.creditCents ?? 0;
-    } else if (participants.length > 0) {
-      const credits = await listUnusedCreditsForAccount({
-        email: "",
-        participantIds: participants.map((p) => p.id),
+    if (claimed && (claimed.participant_id || claimed.user_id)) {
+      const [credit] = await creditsForSeats({
+        accountId: claimed.user_id ?? null,
+        seats: [claimed.participant_id ?? null],
       });
-      creditCents = credits[0]?.creditCents ?? 0;
+      creditCents = credit?.creditCents ?? 0;
+    } else if (creditView) {
+      creditCents = creditView.ready[0]?.creditCents ?? 0;
     }
     etransfer = {
       recipientEmail: etransferRecipient(),
@@ -450,6 +462,8 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
       blocked={blocked}
       invited={invited}
       signInHref={signInHref}
+      creditWaiting={Boolean(creditView && creditView.waiting.length > 0)}
+      signInLinkNext={thisPage}
     />
   );
 }

@@ -184,7 +184,7 @@ console.log("Source — the routes refuse without a key in production, before an
     "checkout refuses before any enrollment row, credit or Stripe session",
     refuse !== -1 &&
       refuse < checkout.indexOf("saveEnrollmentToSupabase(") &&
-      refuse < checkout.indexOf("findUnusedCredit(") &&
+      refuse < checkout.indexOf("creditsForSeats(") &&
       refuse < checkout.indexOf("createCheckoutSession(")
   );
   check("checkout no longer reads isMockMode", checkout.includes("isMockMode"), false);

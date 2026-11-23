@@ -613,6 +613,9 @@ export function creditLine(
 ): string | null {
   if (credits.length === 0) return null;
   const owners = credits.map((c) => {
+    // Linked to the account but to no player: it comes off the account's
+    // next enrollment, whoever it is for (src/lib/creditRules.ts).
+    if (!c.participantId) return "you";
     const player = playerFor(roster, { participantId: c.participantId, name: c.playerName });
     if (player && player.id === selfId) return "you";
     return firstNameOf(player?.full_name ?? c.playerName) || "your player";

@@ -61,6 +61,7 @@ import {
 } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { TEXT_LINK_LIME, TEXT_LINK_MUTED, TextLink } from "@/components/ui/TextLink";
+import { CreditWaitingNote } from "@/components/account/CreditWaitingNote";
 import { MapLink } from "@/components/locations/LocationLine";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -265,6 +266,7 @@ function OrderSummary({
   program,
   seatsRemaining,
   creditAfterSignIn,
+  creditWaitingNext,
 }: {
   cohort: Cohort;
   program: Program | undefined;
@@ -274,6 +276,13 @@ function OrderSummary({
    * $20 comes off only for a signed-in account's own players.
    */
   creditAfterSignIn: boolean;
+  /**
+   * Signed in, with a paid assessment booked under this address while signed
+   * out (safety review): it is not on the account yet, so the price says so
+   * and sends the sign-in link that links it, landing back here. Null when
+   * no such credit waits.
+   */
+  creditWaitingNext: string | null;
 }) {
   const price = formatCohortPrice(cohort);
   const location = locationForCohort(cohort);
@@ -364,12 +373,19 @@ function OrderSummary({
             Price will be confirmed before payment is collected.
           </p>
         )}
-        {cohort.priceCents > 0 && (
+        {cohort.priceCents > 0 && creditWaitingNext === null && (
           <p className="mt-1 text-xs text-white/60">
             {creditAfterSignIn
               ? "Completed your $20 assessment? Sign in first, and that $20 comes off this price at payment."
               : "Completed your $20 assessment? It comes off this price automatically at payment."}
           </p>
+        )}
+        {cohort.priceCents > 0 && creditWaitingNext !== null && (
+          <CreditWaitingNote
+            page="enroll"
+            next={creditWaitingNext}
+            className="mt-3 border-t border-white/10 pt-3"
+          />
         )}
         {seatsRemaining !== null && seatsRemaining <= 3 && (
           <p className="mt-2 text-xs font-medium text-yellow-200">
@@ -853,6 +869,8 @@ export function EnrollWizard({
   blocked = [],
   invited = null,
   signInHref,
+  creditWaiting = false,
+  signInLinkNext = "/dashboard",
 }: {
   cohort: Cohort;
   program: Program | undefined;
@@ -880,6 +898,13 @@ export function EnrollWizard({
   invited?: InvitedPlayer | null;
   /** Where "Sign in to choose your player" goes: back here, token kept. */
   signInHref: string;
+  /**
+   * The signed-in account has a paid assessment booked under its address
+   * while signed out, not on the account yet (safety review).
+   */
+  creditWaiting?: boolean;
+  /** Where the emailed sign-in link lands: this page, token kept. */
+  signInLinkNext?: string;
 }) {
   const totalSteps = etransfer ? ETRANSFER_STEPS : CARD_STEPS;
   const [step, setStep] = useState(0);
@@ -1393,6 +1418,7 @@ export function EnrollWizard({
               program={program}
               seatsRemaining={seatsRemaining}
               creditAfterSignIn={!signedIn && !(etransfer && etransfer.creditCents > 0)}
+              creditWaitingNext={signedIn && creditWaiting ? signInLinkNext : null}
             />
           )}
           {step === 1 && (

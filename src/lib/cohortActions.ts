@@ -22,7 +22,7 @@ import {
 } from "@/lib/players";
 import { programs } from "@/content/programs";
 import { cohortWhereLine } from "@/lib/locationCatalog";
-import { findUnusedCredit, markCreditApplied } from "@/lib/assessmentCredit";
+import { creditsForSeats, markCreditApplied } from "@/lib/assessmentCredit";
 import { tierRangeForLevels } from "@/lib/tiers";
 import {
   emailConfigured,
@@ -46,7 +46,7 @@ import {
 } from "@/lib/paymentTransitions";
 import { setEnrollmentStatusByEmail, setEnrollmentCredit } from "@/lib/enrollmentSheet";
 import { DECLINED_INVITE_ERROR, type CheckoutInviteRow } from "@/lib/checkoutInvite";
-import { claimCredit, etransferRowPlan } from "@/lib/enrollGate";
+import { etransferRowPlan } from "@/lib/enrollGate";
 import { ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
 import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
@@ -323,8 +323,8 @@ export async function createInvites(
 
     sent++;
 
-    // The invited player's own credit, the one the amount due reads (#84).
-    const credit = await findUnusedCredit(participantId);
+    // The invited player's credit, by the rule the amount due reads (#84).
+    const [credit] = await creditsForSeats({ accountId: userId, seats: [participantId] });
     const enrollUrl = `${siteUrl()}/enroll/${cohortId}?invite=${token}`;
     try {
       await sendCohortInviteEmail({
@@ -644,7 +644,7 @@ function sessionLine(s: SessionRow): string {
 
 type InviteRef = Pick<
   InviteRow,
-  "id" | "email" | "status" | "expires_at" | "payment_method" | "participant_id"
+  "id" | "email" | "status" | "expires_at" | "payment_method" | "participant_id" | "user_id"
 >;
 
 async function findInviteById(cohortId: string, inviteId: string): Promise<InviteRef | null> {
@@ -842,7 +842,7 @@ export async function markInvitePaidAndMaybeConfirm(params: {
 
 /** The invite's price after the assessment credit (for admin display). */
 export async function inviteAmountDueCents(
-  invite: Pick<InviteRow, "email" | "participant_id">,
+  invite: Pick<InviteRow, "email" | "participant_id" | "user_id">,
   cohort: Cohort
 ): Promise<number> {
   return (await inviteAmountDue(invite, cohort)).amountDueCents;
@@ -850,16 +850,21 @@ export async function inviteAmountDueCents(
 
 /**
  * inviteAmountDueCents, plus the booking whose $20 it takes off (if any).
- * The credit is the invite's own player's — the participant the coach's
- * invite (or a signed-in account) named — never one found by the invite's
- * email (backlog #84). recordEtransferIntent tells the player the same
- * amount, and settleEtransferEnrollment spends the same booking.
+ * The credit is the one the invite row itself reaches: its player's own, else
+ * one linked to its account but to no player (creditsForSeats) — the
+ * participant and the account the coach's invite (or a signed-in session)
+ * named, never one found by the invite's email (backlog #84).
+ * recordEtransferIntent tells the player the same amount, and
+ * settleEtransferEnrollment spends the same booking.
  */
 export async function inviteAmountDue(
-  invite: Pick<InviteRow, "email" | "participant_id">,
+  invite: Pick<InviteRow, "email" | "participant_id" | "user_id">,
   cohort: Cohort
 ): Promise<{ amountDueCents: number; creditBookingId: string | null }> {
-  const credit = await findUnusedCredit(invite.participant_id ?? null);
+  const [credit] = await creditsForSeats({
+    accountId: invite.user_id ?? null,
+    seats: [invite.participant_id ?? null],
+  });
   return {
     amountDueCents: amountDueCents(cohort.priceCents, credit?.creditCents ?? 0),
     creditBookingId: credit?.bookingId ?? null,
@@ -911,7 +916,7 @@ export async function adminMarkInvitePaid(
     ? await inviteAmountDueCents(invite, cohortBefore).catch(() => null)
     : null;
 
-  await settleEtransferEnrollment(cohortId, invite.email, invite.participant_id).catch((err) =>
+  await settleEtransferEnrollment(cohortId, invite.email, invite.participant_id, invite.user_id).catch((err) =>
     console.error("E-transfer settlement bookkeeping failed (non-blocking):", err)
   );
 
@@ -1019,11 +1024,15 @@ async function setEnrollmentRowsStatus(
 async function settleEtransferEnrollment(
   cohortId: string,
   email: string,
-  participantId?: string | null
+  participantId?: string | null,
+  accountId?: string | null
 ): Promise<void> {
-  // The invite's own player's credit — the one the amount due was worked
-  // out from — never one found by email (backlog #84).
-  const credit = await findUnusedCredit(participantId ?? null);
+  // The credit the invite row reaches — the one the amount due was worked
+  // out from (inviteAmountDue) — never one found by email (backlog #84).
+  const [credit] = await creditsForSeats({
+    accountId: accountId ?? null,
+    seats: [participantId ?? null],
+  });
   if (credit) await markCreditApplied(credit.bookingId);
 
   await setEnrollmentRowsStatus(cohortId, email, "pending", "paid");
@@ -1266,16 +1275,19 @@ export async function recordEtransferIntent(params: {
   }
 
   // The $20 credit is this player's own: the participant a signed-in account
-  // named (the route keeps only its own), else the one the invite names —
-  // never one found by the typed email (backlog #84). It is the same booking
-  // the coach's "amount due" and "mark paid" read (inviteAmountDue,
+  // named (the route keeps only its own), else the one the invite names; or
+  // one linked to the invite's account but to no player — never one found by
+  // the typed email (backlog #84). The account is the invite row's own: the
+  // one the coach invited, or the session that made the row above. It is the
+  // same rule the coach's "amount due" and "mark paid" read (inviteAmountDue,
   // settleEtransferEnrollment), so the amount told, the amount expected and
   // the credit spent agree. A booking an earlier player on this request
   // already used is no credit for this one.
-  const credit = claimCredit(
-    await findUnusedCredit(params.participantId ?? invite.participant_id ?? null),
-    params.claimedCreditBookingIds ?? []
-  );
+  const [credit] = await creditsForSeats({
+    accountId: invite.user_id ?? null,
+    seats: [params.participantId ?? invite.participant_id ?? null],
+    claimed: params.claimedCreditBookingIds ?? [],
+  });
   const creditCents = Math.min(credit?.creditCents ?? 0, cohort.priceCents);
   const amountCents = amountDueCents(cohort.priceCents, creditCents);
   const recipientEmail = etransferRecipient();
