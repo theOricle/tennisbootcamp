@@ -15,13 +15,13 @@
 
 /** Why the $20 is not on the account yet. */
 export const CREDIT_WAITING_LEAD =
-  "Your $20 assessment was booked with this email while you were signed out, so it isn't on your account yet.";
+  "Your $20 assessment was booked under your email address while you were signed out, so it isn't on your account yet.";
 
 /** What to do about it, by page: the dashboard, and the sign-up page's price. */
 export const CREDIT_WAITING_STEP = {
   dashboard:
-    "Open a sign-in link from your inbox and that $20 comes off the price when you enroll in a program.",
-  enroll: "Open a sign-in link from your inbox and that $20 comes off this price at payment.",
+    "Open the sign-in link we email you, and that $20 comes off the price when you enroll in a program.",
+  enroll: "Open the sign-in link we email you, and that $20 comes off this price at payment.",
 } as const;
 
 export type CreditWaitingPage = keyof typeof CREDIT_WAITING_STEP;

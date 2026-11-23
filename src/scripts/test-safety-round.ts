@@ -516,6 +516,12 @@ sections.push(function point2() {
     const words = [CREDIT_WAITING_LEAD, CREDIT_WAITING_STEP.dashboard, CREDIT_WAITING_STEP.enroll, SIGN_IN_LINK_BUTTON, SIGN_IN_LINK_SENT, SIGN_IN_LINK_FAILED, SIGN_IN_LINK_SUBJECT];
     check("the line says the number, why it is not applied and what puts it there", CREDIT_WAITING_LEAD.includes("$20 assessment") && CREDIT_WAITING_LEAD.includes("isn't on your account yet") && CREDIT_WAITING_STEP.dashboard.includes("sign-in link") && CREDIT_WAITING_STEP.dashboard.includes("that $20 comes off the price when you enroll in a program"));
     check("on the sign-up page it names that page's price", CREDIT_WAITING_STEP.enroll.includes("that $20 comes off this price at payment"));
+    // Fix round 2: before the button is pressed no link is in any inbox, and
+    // "with this email" could be read as a message.
+    check("the lead says whose address the booking is under", CREDIT_WAITING_LEAD, "Your $20 assessment was booked under your email address while you were signed out, so it isn't on your account yet.");
+    check("the dashboard's step names the link the button sends", CREDIT_WAITING_STEP.dashboard, "Open the sign-in link we email you, and that $20 comes off the price when you enroll in a program.");
+    check("the sign-up page's step does too", CREDIT_WAITING_STEP.enroll, "Open the sign-in link we email you, and that $20 comes off this price at payment.");
+    check("no step sends the family to an inbox the link has not reached yet", [CREDIT_WAITING_LEAD, CREDIT_WAITING_STEP.dashboard, CREDIT_WAITING_STEP.enroll].some((w) => /from your inbox|with this email/.test(w)), false);
     check("a failed send names the inbox", SIGN_IN_LINK_FAILED.includes("info@tennisbootcamp.ca"));
     check("no exclamation mark, no 'credited', no dash", words.some((w) => /!|credited|—|–/.test(w)), false);
 
