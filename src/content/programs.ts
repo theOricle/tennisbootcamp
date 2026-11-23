@@ -416,7 +416,9 @@ export const programs: Program[] = [
     longDescription:
       `${CLASS_LINE} ` +
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}. ` +
-      "The groups go by age and level: the Beginner Junior Bootcamp (ages 7–10), the Novice Youth Bootcamp (ages 11–15), and the High Performance Youth Bootcamp for players 12–17 who compete, or are training to. Each group below shows its dates and class times. " +
+      // No list of the groups (backlog #85, safety review): a block off the
+      // planned lineup adds a card, and the heading over the cards counts it.
+      "The groups go by age and level, from juniors in their first season to the competitive track for players who compete, or are training to. Each group below shows its dates and class times. " +
       PLACEMENT_LINE,
     type: "Group bootcamp",
     comingSoon: false,

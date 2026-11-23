@@ -593,9 +593,13 @@ for (const p of [youth, adults]) {
 }
 // Re-pinned for backlog #85 (fix round): the programs' own words name no
 // count of groups and no weekday; the cards show each group's dates and days.
+// Re-pinned for backlog #85 (safety review): the paragraph listed three
+// groups under a heading that counts the cards, "Four groups" with a block
+// off the planned lineup. It says how the groups go and names none.
 check(
-  "Youth Bootcamps keeps its groups and their ages, and its week-one line in the list",
-  ["The groups go by age and level: the Beginner Junior Bootcamp (ages 7–10)", "the Novice Youth Bootcamp (ages 11–15)", "the High Performance Youth Bootcamp for players 12–17 who compete, or are training to"].every((fact) => youth.longDescription.includes(fact)) &&
+  "Youth Bootcamps says how its groups go, names no list of them, and keeps its week-one line in the list",
+  youth.longDescription.includes("The groups go by age and level, from juniors in their first season to the competitive track for players who compete, or are training to.") &&
+    !/Junior Bootcamp|Youth Bootcamp|ages [0-9]/.test(youth.longDescription) &&
     youth.description.endsWith("groups for ages 7–17, by age and level.") &&
     (youth.levelNote ?? "").startsWith("Groups by age and level") &&
     youth.includes?.[5] === "One level per group, confirmed on court in week one"

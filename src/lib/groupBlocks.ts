@@ -7,6 +7,8 @@ import { generateSessionDates } from "@/lib/makeup";
 import {
   blockLevel,
   classDayPlural,
+  groupAction,
+  groupStatus,
   cohortMatchesGroup,
   formatBlockDates,
   formatClassDays,
@@ -347,6 +349,18 @@ export function groupCards(
   return placed
     .sort((a, b) => a.program - b.program || a.level - b.level || a.lineup - b.lineup || a.first.localeCompare(b.first))
     .map((p) => p.card);
+}
+
+/**
+ * Can a visitor enroll from this card now? Its button is "Enroll": an open
+ * block with room, by the card's own rule (groupStatus, groupAction). A Full
+ * card ("Notify me"), a by-approval one ("Ask to join") and a group with no
+ * open block cannot. The dashboard's next step reads this before it says
+ * "Or pick a group with dates below."
+ */
+export function cardTakesEnrollment(card: GroupCard): boolean {
+  if (card.block === null) return false;
+  return groupAction(card.group, groupStatus(card.group, card.block.seatsLeft)).kind === "join";
 }
 
 /** The cards that show an open block, in page order. */

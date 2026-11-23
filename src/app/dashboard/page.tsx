@@ -13,6 +13,7 @@ import {
 import { isCohortPublic, todayIso } from "@/lib/cohortVisibility";
 import {
   accountOpenCards,
+  cardTakesEnrollment,
   groupCards,
   openBlockCards,
   privateTierMatches,
@@ -326,8 +327,9 @@ async function DashboardContent({
     recipientEmail: etransferRecipient(),
     today,
     now: new Date().toISOString(),
-    // "Or pick a group with dates below." only when the list below shows one.
-    groupsBelow: openGroups.length > 0,
+    // "Or pick a group with dates below." only when the list below shows one
+    // a player can enroll in: a Full card alone is nothing to pick.
+    groupsBelow: openGroups.some(cardTakesEnrollment),
   });
   const returning =
     rows.length > 0 || invites.length > 0 || bookings.length > 0 || roster.some((p) => hasLevel(p.level));

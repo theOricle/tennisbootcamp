@@ -379,7 +379,7 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
 
   const dashPage = read("src/app/dashboard/page.tsx");
   check("the dashboard page: the account's open blocks, by its enrollments and its players", dashPage.includes("const allOpenGroups = openBlockCards(groupCards(programGroups, publicBlocks, blockSeats));") && dashPage.includes("accountOpenCards(allOpenGroups, {") && dashPage.includes("    enrolledCohortIds,") && dashPage.includes("players: roster.length > 0 ? roster : players,"));
-  check("…whether any block is open at all, for the line with none listed, and whether the list shows one, for the next step", dashPage.includes("anyGroupOpen={allOpenGroups.length > 0}") && dashPage.includes("groupsBelow: openGroups.length > 0,"));
+  check("…whether any block is open at all, for the line with none listed, and whether the list shows one, for the next step", dashPage.includes("anyGroupOpen={allOpenGroups.length > 0}") && dashPage.includes("groupsBelow: openGroups.some(cardTakesEnrollment),"));
   const view = read("src/app/dashboard/DashboardView.tsx");
   check("the dashboard view draws them quiet under Groups with dates, under My programs", view.includes('<SectionHeading id="open-groups" title={OPEN_GROUPS_HEADING} />') && /<OpenGroupsList\s+cards=\{openGroups\}\s+quiet\s+blocksOpen=\{anyGroupOpen\}\s+whom=\{several \? "your players" : \(names\[0\] \?\? "you"\)\}\s+\/>/.test(view) && at(view, 'id="my-programs"') < at(view, 'id="open-groups"') && at(view, 'id="open-groups"') < at(view, 'id="open-for-tier"'));
 
@@ -449,8 +449,8 @@ console.log("Every heading, count, day list and next-start line reads the cards 
   // promising what the newsletter line promises and nothing more.
   const programsSrc = read("src/app/programs/page.tsx");
   check("/programs: with an open block the lead says Pick your group and enroll, as the card's button does; with none it says dates are coming", programsSrc.includes("const anyOpen = openBlockCards(cards).length > 0;") && programsSrc.includes('{anyOpen ? "Pick your group and enroll." : PROGRAMS_NO_DATES_LINE}'));
-  check("…in one plain line: dates for the next cohort are coming, and Notify me brings an email when it opens", PROGRAMS_NO_DATES_LINE === `Dates for the next cohort are coming. Choose ${NOTIFY_LABEL} and we'll email you when it opens.`);
-  check("…in words for any screen, with no tap and no click, and a promise exactly as narrow as the newsletter line it leads to", !/\b(tap|click|press)\b/i.test(PROGRAMS_NO_DATES_LINE) && PROGRAMS_NO_DATES_LINE.startsWith("Dates for the next cohort are coming.") && PROGRAMS_NO_DATES_LINE.endsWith(" we'll email you when it opens.") && read("src/components/sections/EmailCapture.tsx").includes("Be first to know when a new cohort opens."));
+  check("…in one plain line: dates for the next cohort are coming, and Notify me joins the email list our coaches write to", PROGRAMS_NO_DATES_LINE === `Dates for the next cohort are coming. Choose ${NOTIFY_LABEL} to join our email list, where our coaches announce new dates.`);
+  check("…in words for any screen, with no tap and no click, and a promise exactly as narrow as the newsletter line it leads to", !/\b(tap|click|press)\b/i.test(PROGRAMS_NO_DATES_LINE) && PROGRAMS_NO_DATES_LINE.startsWith("Dates for the next cohort are coming.") && PROGRAMS_NO_DATES_LINE.endsWith(" to join our email list, where our coaches announce new dates.") && read("src/components/sections/EmailCapture.tsx").includes("Be first to know when a new cohort opens."));
   check("…naming the cohort, not the block, and promising no spot, no hold and no date", !/\bblock\b|spot|hold|first|guarantee|soon/i.test(PROGRAMS_NO_DATES_LINE));
   // The programs' own words never contradict the cards (fix round 2): no
   // weekday and no count of groups or levels in a description, a search

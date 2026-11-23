@@ -18,6 +18,9 @@
 //   5. signed in, no loop: the dashboard's "Open for your tier" lists private
 //      blocks only (the public ones are the cards above it), and the approval
 //      step's link takes a signed-in invitee to the dashboard, not the login;
+//   7. words that are true: /programs promises no automatic email, the
+//      dashboard points at the groups below only when one can be enrolled in,
+//      and the Youth page's paragraph names no fixed list of groups;
 // Checks that read source text accept either line ending (`read`). Exits
 // non-zero on any failure. Never spells the cohort length or total.
 
@@ -26,13 +29,14 @@ import { join } from "node:path";
 import { COHORT_TOTAL_CENTS, COHORT_WEEKS, programGroups } from "../content/programs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { privateTierMatches, accountOpenCards, blockByApproval, blockFacts, blockHasPrice, groupCards, groupForBlock, openBlockCards, plannedGroupForBlock, signedInOpenCards } from "../lib/groupBlocks";
+import { cardTakesEnrollment, cardsHeading, privateTierMatches, accountOpenCards, blockByApproval, blockFacts, blockHasPrice, groupCards, groupForBlock, openBlockCards, plannedGroupForBlock, signedInOpenCards } from "../lib/groupBlocks";
 import { groupAction, groupStatus } from "../lib/programCatalog";
 import { invitedAlreadyLink, APPROVAL_ONLY_ERROR, approvalGateApplies, approvalRefusal, priceRefusal } from "../lib/enrollGate";
 import { tierById } from "../lib/tiers";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { EnrollWizard } from "../app/enroll/[cohortId]/EnrollWizard";
 import { programs } from "../content/programs";
+import { PROGRAMS_NO_DATES_LINE } from "../content/site";
 import { ageBandBlock, dobAgeError } from "../lib/enrollPlayers";
 import type { Cohort } from "../types/cohort";
 
@@ -227,6 +231,27 @@ console.log("5. Signed in, no loop");
   check("signed out, the approval step's link is Sign in, back to this page", out.href === "/login?next=%2Fenroll%2Fhp" && out.label === "Sign in" && out.rest === " and your invitation is on your dashboard.");
   check("signed in, it opens the dashboard, never the login form", signedIn.href === "/dashboard" && signedIn.label === "Open your dashboard" && signedIn.rest === " and your invitation is there." && !signedIn.href.includes("login"));
   check("the approval step draws that link, told whether the visitor is signed in", enrollPage.includes("invitedAlreadyLink(signedIn, signInHref)") && enrollPage.includes("signedIn={Boolean(sessionEmail)}") && !/Invited already\?[\s\S]{0,80}<Link href=\{signInHref\}/.test(enrollPage));
+}
+
+// ── 7. Words that are true ──────────────────────────────────────────────────
+console.log("7. Words that are true");
+{
+  check("/programs with no block open: Notify me joins the email list, and nothing says an email is sent when a block opens", PROGRAMS_NO_DATES_LINE === "Dates for the next cohort are coming. Choose Notify me to join our email list, where our coaches announce new dates." && !/we'll email|we will email|email you|when it opens|as soon as|automatic/i.test(PROGRAMS_NO_DATES_LINE));
+  check("…it still says dates are coming and names the button, in words for any screen", PROGRAMS_NO_DATES_LINE.startsWith("Dates for the next cohort are coming. Choose Notify me ") && !/\b(tap|click|press)\b|!/i.test(PROGRAMS_NO_DATES_LINE));
+
+  const open = block({ id: "open" });
+  const one = (b: Cohort, seats: number | null) => groupCards(programGroups, [b], { [b.id]: seats }).filter((c) => c.block !== null);
+  check("a listed card with room can be enrolled in: seats unknown, plenty, or the last one", [null, 8, 1].every((n) => one(open, n).every(cardTakesEnrollment)));
+  check("a Full card cannot, nor a by-approval one, nor a group with no open block", !one(open, 0).some(cardTakesEnrollment) && !one(youthBlock({ id: "hp", levelMin: 5, levelMax: 7 }), 4).some(cardTakesEnrollment) && !groupCards(programGroups, []).some(cardTakesEnrollment));
+  const dash = read("src/app/dashboard/page.tsx");
+  check("the dashboard says Or pick a group with dates below only when a listed card can be enrolled in, never for a Full card alone", dash.includes("groupsBelow: openGroups.some(cardTakesEnrollment),") && !dash.includes("groupsBelow: openGroups.length > 0"));
+
+  const youth = programs.find((p) => p.id === "youth-programs")!;
+  const youthGroups = programGroups.filter((g) => g.programSlug === "youth-programs");
+  const fourCards = groupCards(youthGroups, [youthBlock({ id: "int", levelMin: 3, levelMax: 3.5 })]);
+  check("the Youth page can head its cards Four groups (a block off the planned lineup)", cardsHeading(fourCards).startsWith("Four groups"));
+  check("…so its paragraph names no list of groups to contradict the heading", youthGroups.every((g) => !youth.longDescription.includes(g.name)) && !/\(ages \d/.test(youth.longDescription), youth.longDescription);
+  check("…and still says how the groups go, and where each one's dates are", youth.longDescription.includes("The groups go by age and level, from juniors in their first season to the competitive track for players who compete, or are training to. Each group below shows its dates and class times. "));
 }
 
 if (failed > 0) {

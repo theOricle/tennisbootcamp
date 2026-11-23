@@ -59,12 +59,14 @@ export const NEWSLETTER_ANCHOR = "notify";
  * The /programs lead's second line while no block is open anywhere (backlog
  * #85, fix round 3): every card's button then reads "Notify me", so the lead
  * says what is true and what that button does, in words for a phone and a
- * computer alike (no "tap" or "click"). It promises what the newsletter line
- * it leads to promises ("Be first to know when a new cohort opens.") and
- * nothing more. "Cohort", not "block": one name per thing (voice.md rule 7).
+ * computer alike (no "tap" or "click"): it opens the newsletter form, which
+ * adds an address to our email list. It read "and we'll email you when it
+ * opens" until the safety review: nothing sends an email when a block opens,
+ * so the line says who writes to that list, and promises no moment.
+ * "Cohort", not "block": one name per thing (voice.md rule 7).
  * With an open block the lead reads "Pick your group and enroll."
  */
-export const PROGRAMS_NO_DATES_LINE = "Dates for the next cohort are coming. Choose Notify me and we'll email you when it opens.";
+export const PROGRAMS_NO_DATES_LINE = "Dates for the next cohort are coming. Choose Notify me to join our email list, where our coaches announce new dates.";
 
 export type NavLink = { href: string; label: string };
 
