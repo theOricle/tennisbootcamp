@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { useBotCheck } from "@/lib/useBotCheck";
 import { emailError } from "@/lib/formValidation";
+import { FormRefusal, submitFailure } from "@/lib/formRefusal";
 import { buttonClass } from "@/components/ui/Button";
 import { FieldError, LiveStatus, fieldA11y } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
@@ -45,12 +46,13 @@ export function ProgramInterestForm({ programSlug, programTitle }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, program: programSlug, ...bot.payload() }),
       });
-      if (!res.ok) throw new Error("Failed to save");
+      if (!res.ok) throw await submitFailure(res);
       trackEvent("program_interest_signup", { program: programSlug });
       setStatus("ok");
-    } catch {
+    } catch (err) {
       setStatus("error");
-      setError("Couldn't save — try again or email info@tennisbootcamp.ca.");
+      // A refused try (429) shows the route's own line (backlog #84).
+      setError(err instanceof FormRefusal ? err.message : "Couldn't save — try again or email info@tennisbootcamp.ca.");
     }
   }
 

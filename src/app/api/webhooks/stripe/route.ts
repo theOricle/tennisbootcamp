@@ -1,40 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { google } from "googleapis";
 import {
   saveEnrollmentToSupabase,
   notifyEnrollmentAccount,
+  enrollmentRowsOwner,
+  enrollmentStatuses,
   participantNamesOf,
-  resolveEnrollmentUserId,
+  setEnrollmentStatusByIds,
 } from "@/lib/supabase/enrollmentActions";
 import { inviteLinkFromMetadata } from "@/lib/checkoutInvite";
 import { getCohortById } from "@/lib/cohortsDb";
 import { programs } from "@/content/programs";
+import { flipPaymentRows, setEnrollmentCredit } from "@/lib/enrollmentSheet";
+import { settleEnrollmentPayment } from "@/lib/paymentSettlement";
+import { reverseCheckoutSession } from "@/lib/paymentReversal";
+import {
+  bookingPaid,
+  paymentOutcome,
+  refundReversal,
+  type ReversalKind,
+} from "@/lib/stripeOutcome";
 
-const TAB = "enrollments";
-const STATUS_COL = "P";
-
-async function markEnrollmentPaid(rowNumber: number) {
-  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-  if (!spreadsheetId || !clientEmail || !rawKey) return;
-
-  const privateKey = rawKey.replace(/\\n/g, "\n").replace(/\r/g, "").trim();
-  const auth = new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-  const sheets = google.sheets({ version: "v4", auth });
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${TAB}!${STATUS_COL}${rowNumber}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [["paid"]] },
-  });
-}
+// The Stripe webhook. The endpoint must receive three events (backlog #84):
+//   checkout.session.completed  a payment settles its seats or its booking
+//                               (a test-key payment as a test, below);
+//   charge.refunded             a full refund releases them (a partial
+//                               refund changes nothing);
+//   charge.dispute.created      a dispute releases them.
+// Every write is a guarded move out of the state it expects, so a redelivered
+// event changes nothing twice, and the account email goes only from the
+// delivery that made the move. A write that throws answers 500 and Stripe
+// retries, which the same guards make safe: a delivery that stopped half-way
+// is finished by the next one (src/lib/paymentSettlement.ts).
 
 export async function POST(req: NextRequest) {
   const sig = req.headers.get("stripe-signature");
@@ -49,9 +46,10 @@ export async function POST(req: NextRequest) {
   }
 
   let event: Stripe.Event;
+  let stripe: Stripe;
   try {
     const rawBody = await req.text();
-    const stripe = new Stripe(stripeKey);
+    stripe = new Stripe(stripeKey);
     event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
   } catch (err) {
     console.error("Stripe webhook signature error:", err);
@@ -61,15 +59,30 @@ export async function POST(req: NextRequest) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
+    // Backlog #84: Stripe's word on the money decides everything below. Only
+    // a session whose payment_status is "paid" counts (checkout is card only,
+    // so nothing arrives later); with test keys (livemode false) it is a test
+    // payment that never counts toward seats, the minimum or confirmation.
+    const outcome = paymentOutcome({ livemode: event.livemode, paymentStatus: session.payment_status });
+    if (outcome === "unpaid") {
+      console.warn(
+        `[stripe webhook] session ${session.id} completed without payment (${session.payment_status}): nothing marked paid`
+      );
+      return NextResponse.json({ received: true });
+    }
+
     // ── Assessment bookings (Phase 1) — additive branch ──────────────────────
-    // Distinguished by metadata.kind; enrollment logic below is untouched.
+    // Distinguished by metadata.kind. confirmBooking moves pending → booked
+    // (guarded, so a redelivery sends nothing twice) and books a hold that
+    // expired before the money landed again, or tells the coach (#84).
     if (session.metadata?.kind === "assessment") {
       const bookingId = session.metadata?.bookingId ?? "";
-      if (bookingId) {
+      const paid = bookingPaid(outcome);
+      if (bookingId && paid !== null) {
         const { confirmBooking } = await import("@/lib/assessments");
-        // Marks booked + paid, dual-writes the assessments Sheet tab, sends the
-        // booking confirmation email.
-        await confirmBooking(bookingId, { stripeSessionId: session.id });
+        // Marks booked (paid only on live money), dual-writes the assessments
+        // Sheet tab, sends the booking confirmation email.
+        await confirmBooking(bookingId, { stripeSessionId: session.id, paid });
       }
       return NextResponse.json({ received: true });
     }
@@ -105,154 +118,183 @@ export async function POST(req: NextRequest) {
           : [];
 
     const paidRows = rowNumbers.length > 0 ? rowNumbers : rowNumber ? [rowNumber] : [];
-    for (const n of paidRows) {
-      await markEnrollmentPaid(n);
-    }
-
-    // Read once for the invite settlement below and the enrolled email: a
-    // cohort that cannot be read counts as private (fail closed).
-    const cohort = cohortId ? await getCohortById(cohortId).catch(() => undefined) : undefined;
-    // Audit H5: the account the payer's rows belong to. No session in a
-    // webhook, so this is the account that exists for the email, if any.
-    const ownerId = contactEmail ? await resolveEnrollmentUserId(contactEmail, null) : null;
-
-    // ── Phase 3: assessment credit + invite confirmation ─────────────────────
     const creditBookings =
       bookingIds.length > 0
         ? bookingIds
         : assessmentBookingId && assessmentCreditCents > 0
           ? [assessmentBookingId]
           : [];
-    if (creditBookings.length > 0) {
-      const { markCreditApplied } = await import("@/lib/assessmentCredit");
-      const { setEnrollmentCredit } = await import("@/lib/enrollmentSheet");
-      const { ASSESSMENT_CREDIT_CENTS } = await import("@/lib/assessmentCredit");
-      // One credit per player, in the same order the rows were appended.
-      const perCredit =
-        bookingIds.length > 0 ? ASSESSMENT_CREDIT_CENTS : assessmentCreditCents;
-      for (let i = 0; i < creditBookings.length; i++) {
-        await markCreditApplied(creditBookings[i]);
-        const target = paidRows[i] ?? paidRows[0];
-        if (target) {
-          await setEnrollmentCredit(target, (perCredit / 100).toFixed(2));
-        }
-      }
-    }
-    if (cohortId) {
-      const { markInvitePaidAndMaybeConfirm } = await import("@/lib/cohortActions");
-      const { cohortRequiresInvite, inviteSettlement, settledByInvite, unmatchedSignal } =
-        await import("@/lib/enrollGate");
-      const { sendPaymentUnmatchedAdminEmail } = await import("@/lib/email");
-      // Backlog #38: the email fallback only serves a legacy session that
-      // names neither an invite nor a participant, and never a private
-      // cohort — a cohort that cannot be read counts as private (fail
-      // closed). Once the first player has settled onto an invite row here
-      // by id or token, later players on the same session may use it.
-      const requiresInvite = cohortRequiresInvite(cohort);
-      const playerCount = Math.max(1, participantIds.length, paidRows.length);
-      const targets: (string | undefined)[] = Array.from(
-        { length: playerCount },
-        (_, i) => participantIds[i]
-      );
-      let priorInviteProof = false;
-      for (let i = 0; i < targets.length; i++) {
-        const by = inviteSettlement({
-          inviteId,
-          legacyInviteToken,
-          participantId: targets[i],
-          contactEmail,
-          requiresInvite,
-          // The invite row belongs to the first player only.
-          isFirstPlayer: i === 0,
-          priorInviteProof,
-        });
-        const result = by
-          ? await markInvitePaidAndMaybeConfirm({ cohortId, ...by }).catch((err) => {
-              console.error("Invite confirmation failed (non-blocking):", err);
-              return null;
-            })
-          : null;
-        const matched = Boolean(result?.matched);
-        if (settledByInvite(by, matched)) priorInviteProof = true;
-        // The money is banked and the Sheet row is paid; only the invite
-        // needs the coach's hand. PII-light here, the address in the inbox —
-        // and only for a cohort that runs on invites, never for a retry of a
-        // session whose invite is already paid.
-        const signal = unmatchedSignal({
-          matched,
-          alreadyPaid: Boolean(result?.alreadyPaid),
-          requiresInvite,
-          byParticipant: Boolean(by?.participantId),
-          playerCount: targets.length,
-        });
-        if (signal.warn) {
-          console.warn(
-            `Payment settled to no invite: session=${session.id} cohort=${cohortId} player=${i + 1}/${targets.length}`
-          );
-        }
-        if (signal.email) {
+
+    const { ASSESSMENT_CREDIT_CENTS, markCreditApplied } = await import("@/lib/assessmentCredit");
+    const { flagDuplicatePayment, markInvitePaidAndMaybeConfirm, maybeConfirmCohort } = await import(
+      "@/lib/cohortActions"
+    );
+    const { cohortRequiresInvite } = await import("@/lib/enrollGate");
+    const { sendPaymentUnmatchedAdminEmail } = await import("@/lib/email");
+
+    // Read once, by the first step that needs it: a cohort that cannot be
+    // read counts as private (fail closed).
+    let cohortRead: ReturnType<typeof getCohortById> | null = null;
+    const readCohort = () =>
+      (cohortRead ??= cohortId
+        ? getCohortById(cohortId).catch(() => undefined)
+        : Promise.resolve(undefined));
+
+    // The steps, their order and what a retry may repeat live in
+    // settleEnrollmentPayment (src/lib/paymentSettlement.ts): every delivery
+    // walks the guarded steps, so one that stopped half-way is finished by
+    // the next, and only the delivery whose row move landed sends the emails.
+    await settleEnrollmentPayment(
+      {
+        readEnrollmentStatuses: enrollmentStatuses,
+        flipSheetRows: flipPaymentRows,
+        applyCredit: markCreditApplied,
+        recordSheetCredit: setEnrollmentCredit,
+        requiresInvite: async () => cohortRequiresInvite(await readCohort()),
+        // The invite only: the cohort's confirmation is the last step, once
+        // the enrollment rows read paid.
+        settleInvite: (by) =>
+          markInvitePaidAndMaybeConfirm({
+            cohortId,
+            ...by,
+            confirm: false,
+            // The flip records which payment settled the invite, so a refund
+            // gives back only its own, and a second payment is told apart.
+            cardSessionId: session.id,
+          }).catch((err) => {
+            console.error("Invite confirmation failed (non-blocking):", err);
+            return null;
+          }),
+        // A second card payment through an already-paid invite: one line for
+        // the coach in the invite's note on the cohort page.
+        flagDuplicate: async (duplicateInviteId) => {
+          await flagDuplicatePayment(cohortId, duplicateInviteId, session.id);
+        },
+        moveEnrollments: setEnrollmentStatusByIds,
+        emailUnmatched: async ({ playerIndex, playerCount }) => {
+          const cohort = await readCohort();
           await sendPaymentUnmatchedAdminEmail({
             sessionId: session.id,
             cohortLabel: cohort?.label ?? cohortId,
             cohortId,
-            playerIndex: i + 1,
-            playerCount: targets.length,
+            playerIndex,
+            playerCount,
             payerEmail: contactEmail,
-          });
-        }
-      }
-    }
-
-    // What the account hears once the money is in (audit H5): a new email
-    // gets the set-password link, an existing account gets "You're enrolled".
-    const enrolled = {
-      programTitle: programs.find((p) => p.id === cohort?.programId)?.title ?? "your program",
-      cohortLabel: cohort?.label ?? cohortId,
-      paid: true,
-    };
-
-    // If the enrollment wasn't saved to Supabase during checkout creation
-    // (e.g. Supabase wasn't configured at checkout time), save it now.
-    if (contactEmail && !supabaseEnrollmentId) {
-      const newId = await saveEnrollmentToSupabase({
+          }).catch((err) =>
+            console.error(
+              "Unmatched payment email failed (non-blocking):",
+              err instanceof Error ? err.name : typeof err
+            )
+          );
+        },
+        // What the account hears once the money is in (audit H5): a new email
+        // gets the set-password link, an existing account gets "You're
+        // enrolled". Non-blocking: the payment is already recorded, and a
+        // Resend refusal must not 500 the webhook.
+        notifyAccount: async ({ rowStatus, notify }) => {
+          try {
+            const cohort = await readCohort();
+            // Audit H5, backlog #84: whoever owns the rows checkout saved — a
+            // signed-in buyer's session — never the account that exists for
+            // the payer's email. A signed-out payment's rows stay unowned and
+            // link when the address owner signs in through their own emailed
+            // link.
+            const ownerId = await enrollmentRowsOwner(paidEnrollmentIds);
+            const enrolled = {
+              programTitle: programs.find((p) => p.id === cohort?.programId)?.title ?? "your program",
+              cohortLabel: cohort?.label ?? cohortId,
+              paid: true,
+            };
+            if (contactEmail && !supabaseEnrollmentId) {
+              // The enrollment wasn't saved to Supabase during checkout
+              // creation (e.g. Supabase wasn't configured then): save it now.
+              const newId = await saveEnrollmentToSupabase({
+                cohortId,
+                contactEmail,
+                status: rowStatus,
+                userId: ownerId,
+              });
+              if (newId && notify) {
+                await notifyEnrollmentAccount({
+                  email: contactEmail,
+                  enrollmentId: newId,
+                  ownerId,
+                  cohortId,
+                  enrolled: { ...enrolled, participantName: null },
+                });
+              }
+            } else if (supabaseEnrollmentId && contactEmail && notify) {
+              // Every player's name is on the rows saved at checkout, so the
+              // set-up email can name them all (owner, 2026-10-12).
+              const playerNames = await participantNamesOf(paidEnrollmentIds).catch(() => []);
+              await notifyEnrollmentAccount({
+                email: contactEmail,
+                enrollmentId: supabaseEnrollmentId,
+                ownerId,
+                cohortId,
+                enrolled: { ...enrolled, playerNames },
+              });
+            }
+          } catch (err) {
+            console.error("Activation link failed (non-blocking):", err);
+          }
+        },
+        confirmCohort: () => maybeConfirmCohort(cohortId),
+        log: (line) => console.log(line),
+        warn: (line) => console.warn(line),
+      },
+      {
+        sessionId: session.id,
+        outcome,
         cohortId,
         contactEmail,
-        status: "paid",
-        userId: ownerId,
-      });
-      if (newId) {
-        // Non-blocking: the payment is already recorded. Letting a Resend
-        // refusal throw here would 500 the webhook and make Stripe retry a
-        // payment we have already banked.
-        await notifyEnrollmentAccount({
-          email: contactEmail,
-          enrollmentId: newId,
-          userId: ownerId,
-          cohortId,
-          enrolled: { ...enrolled, participantName: null },
-        }).catch((err) => console.error("Activation link failed (non-blocking):", err));
+        sheetRows: paidRows,
+        enrollmentIds: paidEnrollmentIds,
+        creditBookingIds: creditBookings,
+        // One credit per player; a session from before households carries
+        // the one amount it took off.
+        perCreditCents: bookingIds.length > 0 ? ASSESSMENT_CREDIT_CENTS : assessmentCreditCents,
+        inviteId,
+        legacyInviteToken,
+        participantIds,
       }
-    } else if (supabaseEnrollmentId && contactEmail) {
-      // Update every player's Supabase row to paid, not just the first: a
-      // household payment covers each seat (audit M25).
-      const { createServiceClient } = await import("@/lib/supabase/service");
-      const supabase = createServiceClient();
-      await supabase
-        .from("enrollments")
-        .update({ status: "paid" })
-        .in("id", paidEnrollmentIds);
-      // Every player's name is on the rows saved at checkout, so the set-up
-      // email can name them all (owner, 2026-10-12).
-      const playerNames = await participantNamesOf(paidEnrollmentIds).catch(() => []);
-      await notifyEnrollmentAccount({
-        email: contactEmail,
-        enrollmentId: supabaseEnrollmentId,
-        userId: ownerId,
-        cohortId,
-        // The player's name is on the row saved at checkout.
-        enrolled: { ...enrolled, playerNames },
-      }).catch((err) => console.error("Activation link failed (non-blocking):", err));
+    );
+  }
+
+  // ── A card payment that went back (#84) ──────────────────────────────────
+  // A full refund or a dispute releases what the payment bought: the session
+  // is found by the charge's payment, then reverseCheckoutSession moves its
+  // rows to refunded or disputed (the seat count lets someone else in), gives
+  // the invite back and frees a booking's slot. No email. A partial refund
+  // changes nothing.
+  if (event.type === "charge.refunded" || event.type === "charge.dispute.created") {
+    let kind: ReversalKind | null;
+    let paymentIntent: string | Stripe.PaymentIntent | null;
+    if (event.type === "charge.refunded") {
+      const charge = event.data.object as Stripe.Charge;
+      kind = refundReversal(charge);
+      paymentIntent = charge.payment_intent;
+    } else {
+      const dispute = event.data.object as Stripe.Dispute;
+      kind = "disputed";
+      paymentIntent = dispute.payment_intent;
     }
+    if (!kind) {
+      console.log(`[stripe webhook] ${event.id}: partial refund, nothing released`);
+      return NextResponse.json({ received: true });
+    }
+    const paymentIntentId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id ?? null;
+    if (!paymentIntentId) {
+      console.warn(`[stripe webhook] ${event.id}: ${kind} charge has no payment to trace`);
+      return NextResponse.json({ received: true });
+    }
+    const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 1 });
+    const session = sessions.data[0];
+    if (!session) {
+      console.warn(`[stripe webhook] ${event.id}: ${kind} payment has no Checkout session here`);
+      return NextResponse.json({ received: true });
+    }
+    await reverseCheckoutSession(session, kind, { livemode: event.livemode === true });
   }
 
   return NextResponse.json({ received: true });

@@ -129,13 +129,28 @@ console.log("enrollmentSessionParams");
   const noInvite = enrollmentSessionParams({
     cohortId: "coh_1",
     programTitle: "Adult Bootcamp",
-    priceCents: 0,
+    priceCents: 21000,
     enrollmentRowNumber: 3,
     successUrl: urls.successUrl,
     cancelUrl: urls.cancelUrl,
   });
   check("no invite → empty inviteId, as the webhook expects", noInvite.metadata?.inviteId, "");
-  check("unset price → 1 CAD placeholder unchanged", noInvite.line_items?.[0]?.price_data?.unit_amount, 100);
+  // Since the #84 safety round a cohort with no price is refused, where a
+  // 1 CAD placeholder used to go to Stripe (test-safety-round.ts, point 11).
+  let unpriced: string | null = null;
+  try {
+    enrollmentSessionParams({
+      cohortId: "coh_1",
+      programTitle: "Adult Bootcamp",
+      priceCents: 0,
+      enrollmentRowNumber: 3,
+      successUrl: urls.successUrl,
+      cancelUrl: urls.cancelUrl,
+    });
+  } catch (err) {
+    unpriced = err instanceof Error ? err.message : String(err);
+  }
+  check("unset price → no session is built, never a placeholder amount", unpriced, "Enrollment checkout refused: the cohort has no price");
 }
 
 /** Mirrors the route: a refusal never reaches enrollmentSessionParams. */

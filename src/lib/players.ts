@@ -924,14 +924,7 @@ export async function resolveParticipantId(input: {
  */
 export async function setPlayerAvailabilityByEmail(
   email: string,
-  input: {
-    availability: unknown;
-    source: AvailabilitySource;
-    participantId?: string | null;
-    fullName?: string | null;
-    phone?: string | null;
-    onlyIfOlderThan?: string | null;
-  }
+  input: AvailabilitySnapshot & { participantId?: string | null }
 ): Promise<{ ok: boolean; skipped?: string; error?: string }> {
   if (!hasAnyAvailability(input.availability)) {
     return { ok: true, skipped: "empty grid" };
@@ -942,7 +935,32 @@ export async function setPlayerAvailabilityByEmail(
     fullName: input.fullName,
   });
   if (!participantId) return { ok: true, skipped: "no account for email" };
+  return setKnownPlayerAvailability(participantId, input);
+}
 
+/** An availability snapshot, whoever it is addressed to. */
+type AvailabilitySnapshot = {
+  availability: unknown;
+  source: AvailabilitySource;
+  fullName?: string | null;
+  phone?: string | null;
+  onlyIfOlderThan?: string | null;
+};
+
+/**
+ * The same write for one known player, never resolved by email (backlog
+ * #84): an assessment's result reaches only the player a linked booking
+ * names, so a read that misses can never fall back to the account the
+ * booking's typed email belongs to. Same rules otherwise: an empty grid
+ * writes nothing, and `onlyIfOlderThan` keeps a newer confirmation.
+ */
+export async function setKnownPlayerAvailability(
+  participantId: string,
+  input: AvailabilitySnapshot
+): Promise<{ ok: boolean; skipped?: string; error?: string }> {
+  if (!hasAnyAvailability(input.availability)) {
+    return { ok: true, skipped: "empty grid" };
+  }
   const current = await getParticipant(participantId).catch(() => null);
   if (input.onlyIfOlderThan) {
     const stamped = current?.availability_updated_at;

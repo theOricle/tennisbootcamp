@@ -10,7 +10,7 @@ import { isCohortRenderable } from "@/lib/cohortVisibility";
 import { approvalGateApplies, claimedInvite, resolveEnrollGate } from "@/lib/enrollGate";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { createClient } from "@/lib/supabase/server";
-import { findUnusedCredit } from "@/lib/assessmentCredit";
+import { accountCreditView, creditsForSeats } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
 import { INVITE_RESUME_COOKIE } from "@/lib/checkoutInvite";
 import { loginHref } from "@/lib/authFlow";
@@ -18,7 +18,12 @@ import { cohortMatchesGroup } from "@/lib/programCatalog";
 import { currentUser } from "@/lib/household";
 import { getParticipant, listParticipantsForAccount } from "@/lib/players";
 import { listInvitesForAccount } from "@/lib/cohortActions";
-import { alreadyInCohortReason, matchingPlayer, type BlockedPlayer } from "@/lib/enrollPlayers";
+import {
+  alreadyInCohortReason,
+  enrollmentRowBlocks,
+  matchingPlayer,
+  type BlockedPlayer,
+} from "@/lib/enrollPlayers";
 import { isAgeBand } from "@/lib/ageBand";
 import { TrackedButton } from "@/components/ui/TrackedButton";
 import { EnrollWizard, type EtransferInfo, type InvitedPlayer } from "./EnrollWizard";
@@ -278,11 +283,9 @@ async function blockedPlayers(input: {
     for (const row of (data ?? []) as { participant_name: string | null; status: string }[]) {
       const player = matchingPlayer(input.participants, row.participant_name ?? "");
       if (!player || out.has(player.id)) continue;
-      if (row.status === "paid" || row.status === "test_paid") {
-        out.set(player.id, alreadyInCohortReason("enrolled"));
-      } else if (row.status === "pending_etransfer") {
-        out.set(player.id, alreadyInCohortReason("pending"));
-      }
+      // A test payment enrolls nobody: only a paid row reads "Already enrolled".
+      const kind = enrollmentRowBlocks(row.status);
+      if (kind) out.set(player.id, alreadyInCohortReason(kind));
     }
   } catch {
     // Same: fail open here, closed at payment.
@@ -363,28 +366,51 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
     );
   }
 
-  // E-transfer cohorts (backlog #12): the payment step shows the amount after
-  // the $20 assessment credit, looked up by the invite email (or the signed-in
-  // player's). The server re-derives it when the player taps "I've sent it".
-  let etransfer: EtransferInfo | null = null;
-  if ((cohort.paymentMode ?? "card") === "etransfer") {
-    const creditEmail = inviteEmail ?? sessionEmail;
-    const credit = creditEmail ? await findUnusedCredit(creditEmail) : null;
-    etransfer = {
-      recipientEmail: etransferRecipient(),
-      creditCents: credit ? Math.min(credit.creditCents, cohort.priceCents) : 0,
-    };
-  }
-
   // Who the invitation names (migration 0007), and who on the signed-in
   // account is already in this cohort (owner, 2026-10-12).
   const invitedParticipantId = claimed?.participant_id ?? null;
   const claimingInviteId = claimed?.id ?? null;
   const user = await currentUser();
+  const participants = user ? await listParticipantsForAccount(user.id).catch(() => []) : [];
+
+  // What this account's credits are, by the one rule every price reads
+  // (src/lib/creditRules.ts): the $20s an enrollment would take off, and any
+  // booked under its own address while signed out, which waits on a sign-in
+  // through an emailed link and is said so on the price (safety review).
+  const creditView = user
+    ? await accountCreditView({
+        accountId: user.id,
+        email: user.email,
+        participantIds: participants.map((p) => p.id),
+      }).catch(() => null)
+    : null;
+
+  // E-transfer cohorts (backlog #12): the payment step shows the amount after
+  // the $20 assessment credit. Whose credit (backlog #84): the one the
+  // invitation reaches — the same booking the coach's "amount due" reads —
+  // else a signed-in account's own; never one found by an email. The server
+  // re-derives it when the player taps "I've sent it".
+  let etransfer: EtransferInfo | null = null;
+  if ((cohort.paymentMode ?? "card") === "etransfer") {
+    let creditCents = 0;
+    if (claimed && (claimed.participant_id || claimed.user_id)) {
+      const [credit] = await creditsForSeats({
+        accountId: claimed.user_id ?? null,
+        seats: [claimed.participant_id ?? null],
+      });
+      creditCents = credit?.creditCents ?? 0;
+    } else if (creditView) {
+      creditCents = creditView.ready[0]?.creditCents ?? 0;
+    }
+    etransfer = {
+      recipientEmail: etransferRecipient(),
+      creditCents: Math.min(creditCents, cohort.priceCents),
+    };
+  }
+
   let blocked: BlockedPlayer[] = [];
   let invited: InvitedPlayer | null = null;
   if (user) {
-    const participants = await listParticipantsForAccount(user.id).catch(() => []);
     const people = participants.map((p) => ({ id: p.id, name: p.full_name }));
     blocked = await blockedPlayers({
       accountId: user.id,
@@ -429,6 +455,7 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
       seatsRemaining={seatsRemaining}
       inviteToken={inviteToken}
       initialEmail={inviteEmail}
+      signedIn={Boolean(sessionEmail)}
       etransfer={etransfer}
       // Admitted by level: only the players inside the band can be enrolled
       // (the payment routes refuse anyone else), so only they are offered.
@@ -438,6 +465,8 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
       blocked={blocked}
       invited={invited}
       signInHref={signInHref}
+      creditWaiting={Boolean(creditView && creditView.waiting.length > 0)}
+      signInLinkNext={thisPage}
     />
   );
 }

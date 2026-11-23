@@ -138,6 +138,19 @@ export function alreadyInCohortReason(kind: "enrolled" | "invited" | "pending"):
 }
 
 /**
+ * What an enrollment row in a player's name means for the chooser: enrolled
+ * only when the seat was paid for, a spot held while an e-transfer is on its
+ * way, and nothing otherwise. A test payment enrolls nobody (safety review):
+ * it took no money and holds no seat, so the player can still be chosen. The
+ * same goes for a row that was refunded, disputed or never finished.
+ */
+export function enrollmentRowBlocks(status: string | null | undefined): "enrolled" | "pending" | null {
+  if (status === "paid") return "enrolled";
+  if (status === "pending_etransfer") return "pending";
+  return null;
+}
+
+/**
  * An invitation for one player locks the chooser to them: the others show
  * disabled with the reason, and the invited player cannot be unticked.
  */

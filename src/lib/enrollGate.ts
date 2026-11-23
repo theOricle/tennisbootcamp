@@ -23,6 +23,7 @@ import { cohortMatchesGroup } from "@/lib/programCatalog";
 import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 import { emailBelongsToAccount } from "@/lib/enrollmentLink";
+import { normalizeEmail } from "@/lib/supabase/adminUsers";
 
 /** What getInviteByToken reported, as far as the gate cares. */
 export type GateInviteLookup =
@@ -34,6 +35,10 @@ export type GateInviteLookup =
         cohort_id?: string;
         /** The player the invitation names (migration 0007), when it names one. */
         participant_id?: string | null;
+        /** The account the invitation was made for, when it has one. */
+        user_id?: string | null;
+        /** The row's status: getInviteByToken answers "valid" for a paid one too. */
+        status?: string;
       };
     }
   | { state: "expired" | "invalid" };
@@ -326,6 +331,125 @@ export function foreignRows(
   });
 }
 
+/** The status /api/enroll writes, and the only one a card checkout may pay for. */
+export const CHECKOUT_ROW_STATUS = "pending";
+
+/**
+ * Which of the row numbers a checkout names are NOT the payer's own to pay
+ * for (backlog #84, safety review). A row number arrives from the browser, so
+ * sitting under the right cohort is not enough: a stranger could name another
+ * family's row and have a payment event move it. A row passes only when the
+ * Sheet says all three: it sits under this cohort, its contact email is the
+ * one this checkout carries (trimmed, case aside), and it is still pending,
+ * the state /api/enroll left it in. A row already waiting on an e-transfer,
+ * paid, refunded or disputed is nobody's to pay for by card. No email on the
+ * checkout means no row can be its own.
+ */
+export function rowsNotPayable(
+  snapshot: EnrollmentSheetSnapshot,
+  params: { cohortId: string; email: string | null | undefined; rowNumbers: readonly number[] }
+): number[] {
+  const cohortCol = snapshot.header.indexOf("cohort_id");
+  const emailCol = snapshot.header.indexOf("contact_email");
+  const statusCol = snapshot.header.indexOf("status");
+  const payer = normalizeEmail(params.email ?? "");
+  if (cohortCol === -1 || emailCol === -1 || statusCol === -1 || !payer) {
+    return params.rowNumbers.slice();
+  }
+  return params.rowNumbers.filter((n) => {
+    if (!Number.isInteger(n) || n < 2) return true;
+    const row = snapshot.rows[n - 2];
+    return (
+      !row ||
+      String(row[cohortCol] ?? "") !== params.cohortId ||
+      normalizeEmail(String(row[emailCol] ?? "")) !== payer ||
+      String(row[statusCol] ?? "").trim() !== CHECKOUT_ROW_STATUS
+    );
+  });
+}
+
+/** What a payment event may do to the Sheet rows its session remembers. */
+export type PaymentRowPlan = {
+  /** The rows to move: this payment's own, in a status the move expects. */
+  rows: number[];
+  /** The remembered rows that are this payment's own, whatever their status. */
+  own: number[];
+  /** Remembered rows that are not this payment's and could not be found again. */
+  unresolved: number[];
+};
+
+/**
+ * The rows a payment event moves (backlog #84, safety review): a settled
+ * payment, a refund or a dispute. The session remembers row numbers, and a
+ * number alone proves nothing: it came from the browser, and weeks later
+ * another family's row may sit there. A remembered row is moved only when it
+ * still carries the payment's own cohort and contact email and its status is
+ * one the move expects (`from`).
+ *
+ * `relocate` is for a reversal, which can arrive long after the payment: when
+ * a remembered position no longer holds this payment's row, the row is looked
+ * for by the payment's cohort and email among rows already settled (never a
+ * row still pending, which an unfinished sign-up leaves behind). It is taken
+ * only when exactly as many are found as went missing; otherwise nothing is
+ * guessed and the position is reported for the coach.
+ */
+export function paymentRowsToMove(
+  snapshot: EnrollmentSheetSnapshot,
+  params: {
+    rowNumbers: readonly number[];
+    cohortId: string;
+    email: string | null | undefined;
+    from: readonly string[];
+    relocate?: boolean;
+  }
+): PaymentRowPlan {
+  const remembered = [...new Set(params.rowNumbers.filter((n) => Number.isInteger(n) && n >= 2))];
+  const cohortCol = snapshot.header.indexOf("cohort_id");
+  const emailCol = snapshot.header.indexOf("contact_email");
+  const statusCol = snapshot.header.indexOf("status");
+  const payer = normalizeEmail(params.email ?? "");
+  if (cohortCol === -1 || emailCol === -1 || statusCol === -1 || !payer || !params.cohortId) {
+    return { rows: [], own: [], unresolved: remembered };
+  }
+  const isOwn = (row: string[] | undefined) =>
+    Boolean(row) &&
+    String(row?.[cohortCol] ?? "") === params.cohortId &&
+    normalizeEmail(String(row?.[emailCol] ?? "")) === payer;
+  const statusOf = (row: string[] | undefined) => String(row?.[statusCol] ?? "").trim();
+
+  const rows: number[] = [];
+  const own: number[] = [];
+  const strays: number[] = [];
+  for (const n of remembered) {
+    const row = snapshot.rows[n - 2];
+    if (!isOwn(row)) {
+      strays.push(n);
+      continue;
+    }
+    own.push(n);
+    if (params.from.includes(statusOf(row))) rows.push(n);
+  }
+
+  let unresolved = strays;
+  if (strays.length > 0 && params.relocate) {
+    const found: number[] = [];
+    snapshot.rows.forEach((row, i) => {
+      const n = i + 2;
+      const status = statusOf(row);
+      if (isOwn(row) && !own.includes(n) && status !== CHECKOUT_ROW_STATUS && params.from.includes(status)) {
+        found.push(n);
+      }
+    });
+    if (found.length === strays.length) {
+      rows.push(...found);
+      own.push(...found);
+      unresolved = [];
+    }
+  }
+  const asc = (a: number, b: number) => a - b;
+  return { rows: rows.sort(asc), own: own.sort(asc), unresolved: unresolved.sort(asc) };
+}
+
 export type ResolvedEnrollGate = {
   decision: EnrollGateDecision;
   /**
@@ -363,15 +487,15 @@ export const APPROVAL_ONLY_ERROR =
  * (`claimedInvite`), so an invitee holding the link on a public cohort still
  * pays. Null when nothing stands in the way, or the cohort trains in no group.
  *
- * One difference from the page (fix round 3): a token whose 48h hold ran out
- * between loading the wizard and paying (`lookup.state === "expired"`, which
- * getInviteByToken only reports for a row in this cohort) is this cohort's
- * invitation too. The routes already admit it through decideEnrollGate's
- * `payable` grace (backlog #30/#34) and the payment settles onto that row,
- * so this wall stands aside for it as well — else a coach-approved invitee
- * is told to open the link they just came from, or refused after the
- * e-transfer has already been sent. The page keeps sending an expired token
- * to ApprovalGate (`claimedInvite` is null there), as before.
+ * Only a live invitation walks through (safety review): one still inside its
+ * hold and not yet paid for. A token whose hold ran out
+ * (`lookup.state === "expired"`) no longer passes on a direct request: the
+ * spot it held went back to the coaches, so the approval it stood for is
+ * spent, as the page already says by sending an expired token to
+ * ApprovalGate. A token whose invite is already paid does not pass either:
+ * getInviteByToken answers "valid" for it so the payer can revisit their
+ * confirmation, but it was approval for one spot, and that spot is taken.
+ * (A private by-approval cohort is decided by its own invite gate, above.)
  */
 export function approvalRefusal(
   cohort: Pick<Cohort, "programId" | "sessions" | "levelMin" | "levelMax"> | null | undefined,
@@ -381,10 +505,30 @@ export function approvalRefusal(
   if (!cohort) return null;
   const group = groups.find((g) => cohortMatchesGroup(cohort, g));
   if (!group) return null;
-  if (gate.lookup?.state === "expired") return null;
-  return approvalGateApplies({ group, decision: gate.decision, claimed: claimedInvite(gate.lookup) })
+  const claimed = claimedInvite(gate.lookup);
+  const live = claimed && claimed.status !== "paid" ? claimed : null;
+  return approvalGateApplies({ group, decision: gate.decision, claimed: live })
     ? { error: APPROVAL_ONLY_ERROR, status: 403 }
     : null;
+}
+
+/** Sent back with a 409 when the cohort has no price to charge. */
+export const PRICE_NOT_SET_ERROR =
+  "This cohort's price isn't set yet, so we can't take payment for it. Email info@tennisbootcamp.ca and our coaches will finish your enrollment with you.";
+
+/**
+ * A cohort whose price is zero or missing takes no payment (safety review):
+ * both payment routes refuse before anything is created. Card checkout used
+ * to send Stripe a one-dollar placeholder in its place, and the e-transfer
+ * route would have asked the player for "$0".
+ */
+export function priceRefusal(
+  cohort: Pick<Cohort, "priceCents"> | null | undefined
+): { error: string; status: 409 } | null {
+  const cents = cohort?.priceCents;
+  return typeof cents === "number" && Number.isFinite(cents) && cents > 0
+    ? null
+    : { error: PRICE_NOT_SET_ERROR, status: 409 };
 }
 
 /**
@@ -438,6 +582,26 @@ export function claimCredit<T extends { bookingId: string }>(
   if (!found) return null;
   for (const id of claimed) if (id === found.bookingId) return null;
   return found;
+}
+
+/**
+ * Whose $20 assessment credit a card checkout may look up, one entry per
+ * player (backlog #84, owner 2026-11-14): only a signed-in account's own
+ * players, by participant id. Signed out, nobody — a typed email is never a
+ * way to find a credit, so naming another family's address (or `%`) finds
+ * nothing. The players have already been through scrubParticipantIds, so
+ * every id still here belongs to the session's account. A player with no id
+ * gets no lookup, and never a sibling's credit.
+ */
+export function checkoutCreditParticipants(
+  signedIn: boolean,
+  players: readonly { participantId?: string | null }[]
+): (string | null)[] {
+  return players.map((p) => {
+    if (!signedIn) return null;
+    const id = (p.participantId ?? "").trim();
+    return id || null;
+  });
 }
 
 // ─── E-transfer rail: which invite row a player's transfer lands on ───────────

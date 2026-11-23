@@ -9,6 +9,9 @@ import {
   REQUEST_TOO_LARGE,
   TEXT_LIMITS,
 } from "@/lib/botCheck";
+import { programInterestSheetRow } from "@/lib/sheetText";
+import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
+import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
 
 const TAB = "program_interest";
 const HEADERS = ["timestamp", "email", "program"];
@@ -33,6 +36,11 @@ export async function POST(req: NextRequest) {
     };
     if (!isValidEmail(body.email)) {
       return NextResponse.json({ error: "Please provide a valid email." }, { status: 400 });
+    }
+    // Repeated submissions (backlog #84): per network address and per email,
+    // before the Sheet.
+    if (!(await checkSubmissionLimit(req, "interest", body.email)).allowed) {
+      return NextResponse.json({ error: SUBMISSION_LIMIT_ERROR }, { status: 429 });
     }
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -84,11 +92,8 @@ export async function POST(req: NextRequest) {
       range: `${TAB}!A:C`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [[
-          new Date().toISOString(),
-          body.email,
-          body.program ?? "",
-        ]],
+        // The typed cells are written formula-safe (backlog #33, #84).
+        values: [programInterestSheetRow(new Date().toISOString(), body.email, body.program ?? "")],
       },
     });
 

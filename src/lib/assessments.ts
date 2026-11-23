@@ -12,11 +12,19 @@ import {
 } from "@/lib/email";
 import { availabilityChips } from "@/lib/availability";
 import { issueActivationLink } from "@/lib/supabase/enrollmentActions";
+import { emailBelongsToAccount, ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
+import { normalizeEmail } from "@/lib/supabase/adminUsers";
+import { bookingPaymentPlan, latePaymentPlan, writeBookingState } from "@/lib/stripeOutcome";
+import { guestPlayer, linkedBookingPlayer, linkedLevelApplies } from "@/lib/guestAccount";
+import { settleGuestSubmission } from "@/lib/household";
+import type { ParticipantInput } from "@/lib/participantInput";
 import {
   findUserIdByEmail,
   setPlayerLevel,
   setPlayerAvailabilityByEmail,
-  resolveParticipantId,
+  setKnownPlayerAvailability,
+  ensureSelfParticipant,
+  listParticipantsForAccount,
   getParticipant,
   getAccount,
   listPlayers,
@@ -261,44 +269,19 @@ function isMissingParticipantColumn(
   );
 }
 
-/** Best-effort: stamp a resolved participant onto a row that predates 0007. */
-async function attachParticipant(bookingId: string, participantId: string) {
-  const supabase = createServiceClient();
-  const { error } = await supabase
-    .from("assessment_bookings")
-    .update({ participant_id: participantId })
-    .eq("id", bookingId);
-  if (error) {
-    console.warn("Booking participant not stamped (run migration 0007?):", error.message);
-  }
-}
-
 /**
- * Who a booking is for, and whose account it sits on. A row without a
- * participant_id (written before 0007, or by a guest whose account came later)
- * is resolved to the holder's 'self' participant and stamped, so the Sheet and
- * the emails always carry the household columns.
+ * Who a booking is for, and whose account it sits on. The player is the
+ * booking's own participant and nothing else (backlog #84): a booking made
+ * signed in carries it, a brand-new household's guest booking got it when
+ * the account was made, and an unlinked one gets it when it links at its
+ * owner's sign-in (linkBookingsToAccount). Never one found by the booking's
+ * email or guessed from its account — those are typed. Without one, the
+ * Sheet and the emails carry the typed names.
  */
-export async function bookingHousehold(
-  booking: BookingRow
-): Promise<BookingHousehold> {
-  let participant: PlayerRecord | null = null;
-  if (booking.participant_id) {
-    participant = await getParticipant(booking.participant_id).catch(() => null);
-  }
-  if (!participant) {
-    const resolved = await resolveParticipantId({
-      accountId: booking.user_id,
-      email: booking.email,
-      fullName: booking.name,
-    }).catch(() => null);
-    if (resolved) {
-      participant = await getParticipant(resolved).catch(() => null);
-      if (participant && !booking.participant_id) {
-        await attachParticipant(booking.id, participant.id).catch(() => undefined);
-      }
-    }
-  }
+export async function bookingHousehold(booking: BookingRow): Promise<BookingHousehold> {
+  const participant: PlayerRecord | null = booking.participant_id
+    ? await getParticipant(booking.participant_id).catch(() => null)
+    : null;
 
   const accountId = participant?.account_id ?? booking.user_id ?? null;
   const account = accountId ? await getAccount(accountId).catch(() => null) : null;
@@ -311,6 +294,118 @@ export async function bookingHousehold(
     accountEmail: account?.email || booking.email,
     accountName: account?.name?.trim() || booking.name,
   };
+}
+
+/**
+ * Bookings made under this address while nobody was signed in become the
+ * account's once its owner has signed in through their own emailed link
+ * (backlog #84; /auth/callback, next to linkEnrollmentsToAccount). The address
+ * is re-checked against the account first. A result the coach recorded
+ * meanwhile — the level, the note and the booking's availability — reaches the
+ * player it was for when that player is clear (linkedBookingPlayer); otherwise
+ * it stays on the booking for the coach. Only unowned bookings are touched;
+ * never throws. Resolves to how many bookings were linked.
+ */
+export async function linkBookingsToAccount(userId: string, email: string): Promise<number> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !userId) return 0;
+  const target = normalizeEmail(email);
+  if (!target) return 0;
+  try {
+    const supabase = createServiceClient();
+    const { data: owner, error: ownerError } = await supabase.auth.admin.getUserById(userId);
+    if (ownerError || !owner?.user || !emailBelongsToAccount(owner.user.email, target)) return 0;
+    const { data, error } = await supabase
+      .from("assessment_bookings")
+      .select("*")
+      .is("user_id", null)
+      .ilike("email", ilikePattern(target));
+    if (error) {
+      console.error("Booking link lookup failed (non-blocking):", error.code ?? "unknown");
+      return 0;
+    }
+    const candidates = rowsWithEmail((data ?? []) as BookingRow[], target, (b) => b.email);
+    if (candidates.length === 0) return 0;
+    const { data: linkedRows } = await supabase
+      .from("assessment_bookings")
+      .update({ user_id: userId })
+      .in("id", candidates.map((b) => b.id))
+      .is("user_id", null)
+      .select("*");
+    // Oldest first, so the latest result is the one a player keeps.
+    const linked = ((linkedRows ?? []) as BookingRow[]).sort((a, b) =>
+      a.created_at.localeCompare(b.created_at)
+    );
+
+    let players = await listParticipantsForAccount(userId).catch(() => [] as PlayerRecord[]);
+    // Each player's level as the coach left it, read before anything below
+    // writes: an old booking's result never replaces a level set since
+    // (safety review). The assessment's own day stands in for when it was
+    // completed (linkedLevelApplies).
+    const levelBefore = new Map(
+      players.map((p) => [p.id, { hasLevel: p.level != null, setAt: p.level_assessed_at }])
+    );
+    const assessedOn = new Map<string, string>();
+    const blockIds = [
+      ...new Set(
+        linked
+          .filter((b) => b.status === "completed" && b.level_result != null && b.block_id)
+          .map((b) => b.block_id as string)
+      ),
+    ];
+    if (blockIds.length > 0) {
+      const { data: blocks } = await supabase
+        .from("assessment_blocks")
+        .select("id, block_date")
+        .in("id", blockIds);
+      for (const block of (blocks ?? []) as Pick<BlockRow, "id" | "block_date">[]) {
+        assessedOn.set(block.id, block.block_date);
+      }
+    }
+    for (const booking of linked) {
+      let participantId = linkedBookingPlayer(
+        { participantId: booking.participant_id ?? null, name: booking.name },
+        players
+      );
+      if (participantId === "new-self") {
+        const self = await ensureSelfParticipant(userId, { fullName: booking.name }).catch(() => null);
+        participantId = self?.id ?? null;
+        if (self) players = [...players, self];
+      }
+      if (!participantId) continue;
+      if (!booking.participant_id) {
+        await supabase
+          .from("assessment_bookings")
+          .update({ participant_id: participantId })
+          .eq("id", booking.id)
+          .is("participant_id", null);
+      }
+      if (booking.status === "completed" && booking.level_result != null) {
+        const was = levelBefore.get(participantId);
+        const levelApplies = linkedLevelApplies({
+          playerHasLevel: was?.hasLevel ?? false,
+          playerLevelSetAt: was?.setAt ?? null,
+          assessedOn: booking.block_id ? assessedOn.get(booking.block_id) ?? null : null,
+        });
+        if (levelApplies) {
+          await setPlayerLevel(participantId, {
+            level: Number(booking.level_result),
+            notes: booking.coach_notes ?? "",
+          }).catch(() => console.error("Linked booking level not written (non-blocking)"));
+        } else {
+          console.log("Linked booking level kept on the booking: the player's level was set since (non-blocking)");
+        }
+        await setKnownPlayerAvailability(participantId, {
+          availability: booking.availability,
+          source: "assessment",
+          onlyIfOlderThan: booking.created_at,
+        }).catch(() => undefined);
+      }
+    }
+    return linked.length;
+  } catch (err) {
+    console.error("Booking link failed (non-blocking):", err instanceof Error ? err.name : typeof err);
+    return 0;
+  }
 }
 
 // ─── Booking creation ─────────────────────────────────────────────────────────
@@ -399,11 +494,6 @@ async function getBookingWithBlock(
   return { booking: booking as BookingRow, block: block as BlockRow };
 }
 
-/** Escape a value for an exact, case-insensitive `ilike` match. */
-function likeExact(value: string): string {
-  return value.trim().replace(/[\\%_]/g, (c) => "\\" + c);
-}
-
 /** A booked assessment as the account's dashboard shows it (audit M25). */
 export type AccountBooking = {
   id: string;
@@ -435,15 +525,23 @@ export async function listUpcomingBookingsForAccount(input: {
     const supabase = createServiceClient();
     const base = () =>
       supabase.from("assessment_bookings").select("*").eq("status", "booked");
+    // The account's own address, escaped and then re-checked exactly:
+    // PostgREST reads `*` as `%` (backlog #84).
+    const email = normalizeEmail(input.email);
     const reads = [
       base().eq("user_id", input.accountId),
-      input.email.trim() ? base().ilike("email", likeExact(input.email)) : null,
+      email ? base().ilike("email", ilikePattern(email)) : null,
       input.participantIds.length > 0 ? base().in("participant_id", input.participantIds) : null,
     ];
     const results = await Promise.all(reads.map((q) => (q ? q.then((r) => r, () => null) : null)));
     const byId = new Map<string, BookingRow>();
-    for (const r of results) {
-      for (const row of ((r?.data as BookingRow[] | null) ?? [])) byId.set(row.id, row);
+    const [byAccount, byEmail, byPlayer] = results.map((r) => (r?.data as BookingRow[] | null) ?? []);
+    for (const row of [
+      ...(byAccount ?? []),
+      ...rowsWithEmail(byEmail ?? [], email, (b) => b.email),
+      ...(byPlayer ?? []),
+    ]) {
+      byId.set(row.id, row);
     }
     const bookings = [...byId.values()].filter((b) => b.block_id && b.slot_start);
     if (bookings.length === 0) return [];
@@ -509,23 +607,31 @@ export async function getBookedSlotSummary(
 }
 
 /**
- * Mark a pending booking booked + paid, dual-write the Sheet, and send the
+ * Mark a pending booking booked, dual-write the Sheet, and send the
  * confirmation email. Idempotent-ish: re-confirming an already-booked row is a
  * no-op for the status but still safe. Used by free/mock mode and the webhook.
+ *
+ * `paid` is the money's word (backlog #84): true only when Stripe reports a
+ * live payment paid; "test" for a test-key payment or mock mode (booked, not
+ * paid, and "test" in the assessments tab); false for a free booking. Only a
+ * paid assessment earns the $20 credit later.
  */
 export async function confirmBooking(
   bookingId: string,
-  opts: { stripeSessionId?: string | null } = {}
+  opts: { stripeSessionId?: string | null; paid: boolean | "test" }
 ): Promise<BookingRow | null> {
+  // A test-mode payment holds no slot and sends nothing (backlog #84).
+  if (opts.paid === "test") return recordTestBooking(bookingId, opts.stripeSessionId ?? null);
+
   const supabase = createServiceClient();
 
   // Only transition rows that are still pending → booked, so a duplicate webhook
   // doesn't re-send the email.
-  const { data: updated } = await supabase
+  let { data: updated } = await supabase
     .from("assessment_bookings")
     .update({
       status: "booked",
-      paid: true,
+      paid: opts.paid === true,
       stripe_session_id: opts.stripeSessionId ?? undefined,
     })
     .eq("id", bookingId)
@@ -534,8 +640,13 @@ export async function confirmBooking(
     .maybeSingle();
 
   if (!updated) {
-    // Already confirmed (or gone) — nothing more to do.
-    return null;
+    // Not pending any more. A payment is never dropped silently (backlog
+    // #84): a hold swept to expired before the money landed is booked again
+    // when its slot is still free; otherwise the coach is told. Anything
+    // else (already booked: a redelivery) needs nothing more.
+    if (!opts.stripeSessionId) return null;
+    updated = await settleLatePayment(bookingId, { stripeSessionId: opts.stripeSessionId, paid: opts.paid });
+    if (!updated) return null;
   }
 
   const withBlock = await getBookingWithBlock(bookingId);
@@ -550,7 +661,7 @@ export async function confirmBooking(
     slotDate: block.block_date,
     slotStart: normTime(booking.slot_start ?? ""),
     status: "booked",
-    paid: true,
+    paid: opts.paid,
     creditStatus: booking.credit_status,
     accountEmail: household.accountEmail,
     accountName: household.accountName,
@@ -572,11 +683,145 @@ export async function confirmBooking(
 
   // Same set-password account email enrollees get. Fires only on the
   // pending → booked transition above, so a duplicate webhook can't re-send it.
-  await issueActivationLink(booking.email, null).catch((err) =>
+  await issueActivationLink(booking.email).catch((err) =>
     console.error("Activation link failed (non-blocking):", err)
   );
 
   return booking;
+}
+
+/**
+ * A test-mode payment on a booking (Stripe test keys, or mock mode; backlog
+ * #84, part 2's rule): the hold — still pending, or already lapsed — becomes
+ * a test booking. It holds no slot, so the slot is free for a real booking;
+ * nothing is sent (no confirmation, no account email); it earns no $20
+ * credit; and the admin list and the assessments tab say "test". Guarded, so
+ * a redelivery does nothing. Before migration 0012 the table refuses the
+ * status, and "cancelled", which also holds no slot, stands in.
+ */
+async function recordTestBooking(bookingId: string, stripeSessionId: string | null): Promise<BookingRow | null> {
+  const supabase = createServiceClient();
+  const plan = bookingPaymentPlan("test");
+  const write = (p: Record<string, unknown>) =>
+    supabase
+      .from("assessment_bookings")
+      .update(p)
+      .eq("id", bookingId)
+      .in("status", ["pending", "expired"])
+      .select("*")
+      .maybeSingle();
+  // Before migration 0012 the table refuses "test"; writeBookingState writes
+  // "cancelled", which also frees the slot, in its place.
+  const { data, error } = await writeBookingState(write, {
+    status: plan.status,
+    paid: plan.paid,
+    stripe_session_id: stripeSessionId ?? undefined,
+  });
+  if (error) console.error(`[assessment] Test booking ${bookingId} not recorded:`, error.code ?? "unknown");
+  if (!data) return null;
+
+  const withBlock = await getBookingWithBlock(bookingId);
+  if (withBlock) {
+    const { booking, block } = withBlock;
+    const household = await bookingHousehold(booking);
+    await appendAssessmentRow({
+      name: household.participantName,
+      email: booking.email,
+      phone: booking.phone,
+      slotDate: block.block_date,
+      slotStart: normTime(booking.slot_start ?? ""),
+      status: "test",
+      paid: "test",
+      creditStatus: booking.credit_status,
+      accountEmail: household.accountEmail,
+      accountName: household.accountName,
+      participantName: household.participantName,
+      participantRelationship: household.participantRelationship,
+      participantId: household.participantId,
+    });
+  }
+  console.log(`[assessment] booking ${bookingId}: test payment recorded, no slot held, nothing sent`);
+  return data as BookingRow;
+}
+
+/**
+ * A paid session landing on a booking that is no longer pending (backlog
+ * #84). Resolves to the booking when it was booked again, so confirmBooking
+ * carries on exactly as for a hold that was still pending; null otherwise.
+ *
+ *   expired, slot free   → booked again (guarded expired → booked; the
+ *                          one-active-hold-per-slot index refuses it when
+ *                          someone else holds the slot).
+ *   expired, slot taken  → cancelled with the money kept (guarded), a plain
+ *                          log line and a row in the assessments tab for the
+ *                          coach to refund or rebook. No email.
+ *   anything else        → nothing (a redelivery, or the coach's own call).
+ *   no booking           → a plain log line.
+ */
+async function settleLatePayment(
+  bookingId: string,
+  opts: { stripeSessionId: string; paid: boolean | "test" }
+): Promise<BookingRow | null> {
+  const supabase = createServiceClient();
+  const { data: current } = await supabase
+    .from("assessment_bookings")
+    .select("*")
+    .eq("id", bookingId)
+    .maybeSingle();
+  const row = (current as BookingRow | null) ?? null;
+  const plan = latePaymentPlan(row?.status ?? null);
+  if (plan === "missing") {
+    console.error(
+      `[assessment] Payment for a booking that does not exist: booking ${bookingId}, Stripe session ${opts.stripeSessionId}. Refund it or book another time by hand.`
+    );
+    return null;
+  }
+  if (plan === "nothing" || !row) return null;
+
+  const { data: restored, error } = await supabase
+    .from("assessment_bookings")
+    .update({ status: "booked", paid: opts.paid === true, stripe_session_id: opts.stripeSessionId })
+    .eq("id", bookingId)
+    .eq("status", "expired")
+    .select("*")
+    .maybeSingle();
+  if (restored) return restored as BookingRow;
+  if (error?.code !== "23505") {
+    // Moved underneath us (or a failed write): a redelivery decides again.
+    if (error) console.error(`[assessment] Late payment for booking ${bookingId} not recorded:`, error.message);
+    return null;
+  }
+
+  // The slot went to someone else while the money was on its way: keep the
+  // record of the payment on a cancelled booking (it holds no slot) so the
+  // admin shows it, and say so plainly. Guarded, so it is logged once.
+  const { data: marked } = await supabase
+    .from("assessment_bookings")
+    .update({ status: "cancelled", paid: opts.paid === true, stripe_session_id: opts.stripeSessionId })
+    .eq("id", bookingId)
+    .eq("status", "expired")
+    .select("id")
+    .maybeSingle();
+  if (!marked) return null;
+  console.error(
+    `[assessment] Paid assessment not booked: its hold expired and the slot was taken before the payment landed. Booking ${bookingId}, Stripe session ${opts.stripeSessionId}. Refund it or book another time by hand.`
+  );
+  const block = row.block_id
+    ? ((await supabase.from("assessment_blocks").select("*").eq("id", row.block_id).maybeSingle())
+        .data as BlockRow | null)
+    : null;
+  await appendAssessmentRow({
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    slotDate: block?.block_date ?? "",
+    slotStart: normTime(row.slot_start ?? ""),
+    status: "paid, slot taken: refund or rebook",
+    paid: opts.paid,
+    creditStatus: row.credit_status,
+    participantId: row.participant_id ?? null,
+  });
+  return null;
 }
 
 // ─── Completion (admin) ───────────────────────────────────────────────────────
@@ -607,28 +852,31 @@ export async function completeBooking(
 
   // The level lands on the participant this booking was for — two children on
   // one account get two separate levels — mirrored to the profile when the
-  // participant is the account holder themselves.
+  // participant is the account holder themselves. Only into a linked booking's
+  // player (backlog #84): one made signed in, or one linked after its owner
+  // signed in through their own emailed link. An unlinked booking keeps the
+  // level, the note and its availability on itself (written above); they
+  // reach the player when it links (linkBookingsToAccount).
   const household = await bookingHousehold(booking);
   if (household.participantId) {
     await setPlayerLevel(household.participantId, {
       level: input.level,
       notes: input.coachNotes,
     });
-  }
 
-  // Carry the booking's availability snapshot onto the participant as the
-  // assessment-time standard — unless they confirmed a newer grid since
-  // booking (a dashboard confirmation is never overwritten by an older
-  // snapshot).
-  await setPlayerAvailabilityByEmail(booking.email, {
-    availability: booking.availability,
-    source: "assessment",
-    participantId: household.participantId,
-    phone: booking.phone,
-    onlyIfOlderThan: booking.created_at,
-  }).catch((err) =>
-    console.error("Player availability (assessment) failed (non-blocking):", err)
-  );
+    // Carry the booking's availability snapshot onto the participant as the
+    // assessment-time standard — unless they confirmed a newer grid since
+    // booking (a dashboard confirmation is never overwritten by an older
+    // snapshot). Addressed to that player only, never by the booking's email.
+    await setKnownPlayerAvailability(household.participantId, {
+      availability: booking.availability,
+      source: "assessment",
+      phone: booking.phone,
+      onlyIfOlderThan: booking.created_at,
+    }).catch((err) =>
+      console.error("Player availability (assessment) failed (non-blocking):", err)
+    );
+  }
 
   await updateAssessmentRow({
     email: booking.email,
@@ -821,7 +1069,10 @@ export async function listBookings(opts: { date?: string } = {}): Promise<
     .from("assessment_bookings")
     .select("*")
     .in("block_id", blockIds)
-    .in("status", ["pending", "booked", "completed", "no_show"])
+    // Test, refunded and disputed bookings show too, labelled (backlog #84),
+    // and cancelled ones: before migration 0012 those three are stored as
+    // cancelled, and a payment that landed on a lost hold is kept there.
+    .in("status", ["pending", "booked", "completed", "no_show", "cancelled", "test", "refunded", "disputed"])
     .order("created_at", { ascending: false });
 
   const decorated = await decorateHousehold((data as BookingRow[]) ?? []);
@@ -894,9 +1145,70 @@ export async function createRequestedBooking(input: {
     ({ data, error } = await attemptInsert());
   }
   if (error) throw new Error(`Failed to create request: ${error.message}`);
-  const booking = data as BookingRow;
+  return data as BookingRow;
+}
 
-  const holderName = input.accountName?.trim() || booking.name;
+/** The typed holder and player of a signed-out booking (backlog #84). */
+export type GuestBooking = {
+  holderName: string;
+  holderPhone: string | null;
+  /** The "who is this for?" block, as typed. */
+  participant: ParticipantInput | null;
+};
+
+/**
+ * A signed-out booking's account step, after the response (backlog #84). A
+ * new address booking for someone else gets its account and that player
+ * now, and the booking becomes theirs (only while it is still unowned). An
+ * address that already has an account is left exactly as it is, and the
+ * booking stays unowned. Resolves to the account this booking made, if any.
+ */
+export async function attachGuestBooking(
+  booking: Pick<BookingRow, "id" | "email">,
+  guest: GuestBooking
+): Promise<{ accountId: string | null; participantId: string | null }> {
+  const player = guestPlayer(guest.participant, { name: guest.holderName });
+  const settled = await settleGuestSubmission({
+    email: booking.email,
+    holderName: guest.holderName,
+    holderPhone: guest.holderPhone,
+    players: [player],
+  });
+  if (settled.kind !== "new" || !settled.accountId) return { accountId: null, participantId: null };
+  const participantId = settled.playerIds[0] ?? null;
+  const patch: Record<string, unknown> = { user_id: settled.accountId };
+  if (participantId) patch.participant_id = participantId;
+  const supabase = createServiceClient();
+  const { error } = await supabase
+    .from("assessment_bookings")
+    .update(patch)
+    .eq("id", booking.id)
+    .is("user_id", null);
+  if (error) console.warn("Guest booking not stamped with its new account (non-blocking):", error.message);
+  return { accountId: settled.accountId, participantId };
+}
+
+/**
+ * The rest of a requested booking, run after the response: the
+ * request-received email to the prospect, the inbox notification, the
+ * set-password email and the request's grid as the player's availability.
+ * Signed out (backlog #84), the grid lands only in an account this request
+ * made; an existing account's availability is never overwritten.
+ */
+export async function finishRequestedBooking(
+  booking: BookingRow,
+  opts: { accountName?: string | null; guest: GuestBooking | null }
+): Promise<void> {
+  // A signed-in request carries its own account; a guest's may make one.
+  let ownAccountId: string | null = opts.guest ? null : booking.user_id;
+  let participantId = booking.participant_id ?? null;
+  if (opts.guest) {
+    const attached = await attachGuestBooking(booking, opts.guest).catch(() => null);
+    ownAccountId = attached?.accountId ?? null;
+    participantId = attached?.participantId ?? participantId;
+  }
+
+  const holderName = opts.accountName?.trim() || booking.name;
 
   await sendAssessmentRequestReceivedEmail({
     to: booking.email,
@@ -920,23 +1232,27 @@ export async function createRequestedBooking(input: {
   // Set-password account email, sent once here at request time. The admin
   // assign/schedule path (finalizeScheduledRequest) deliberately does not send
   // it again, and confirmBooking only fires it on pending rows — never these.
-  await issueActivationLink(booking.email, null).catch((err) =>
-    console.error("Activation link failed (non-blocking):", err)
-  );
+  const sent = await issueActivationLink(booking.email).catch((err) => {
+    console.error("Activation link failed (non-blocking):", err);
+    return { userId: null, created: false };
+  });
+  if (opts.guest && !ownAccountId && sent.created) ownAccountId = sent.userId;
+  if (!opts.guest) ownAccountId = ownAccountId ?? sent.userId;
 
-  // The account now exists (invite creates it), so the request's grid becomes
-  // the profile's availability, stamped source = 'request'.
-  await setPlayerAvailabilityByEmail(booking.email, {
-    availability: booking.availability,
-    source: "request",
-    participantId: booking.participant_id ?? null,
-    fullName: input.accountName?.trim() ? null : booking.name,
-    phone: booking.phone,
-  }).catch((err) =>
-    console.error("Profile availability (request) failed (non-blocking):", err)
-  );
-
-  return booking;
+  // The request's grid becomes the player's availability, stamped source =
+  // 'request' — in the session's own account, or in the one this request
+  // made. Never in an account a signed-out visitor only named.
+  if (ownAccountId) {
+    await setPlayerAvailabilityByEmail(booking.email, {
+      availability: booking.availability,
+      source: "request",
+      participantId,
+      fullName: opts.accountName?.trim() ? null : booking.name,
+      phone: booking.phone,
+    }).catch((err) =>
+      console.error("Profile availability (request) failed (non-blocking):", err)
+    );
+  }
 }
 
 /** Open requests, oldest first — the admin works the queue top-down. */

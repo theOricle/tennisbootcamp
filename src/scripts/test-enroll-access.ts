@@ -153,12 +153,14 @@ console.log("loginErrorMessage — plain words and the one way out");
 
 // ─── H5: whose row it is ─────────────────────────────────────────────────────
 
-console.log("enrollmentOwner — the session first, then the email's account");
+console.log("enrollmentOwner — the session, else nobody (H5; backlog #84)");
 {
-  check("signed in → the session's user, even if the email resolves elsewhere", enrollmentOwner("u_session", "u_lookup"), "u_session");
-  check("signed out, email has an account → that account", enrollmentOwner(null, "u_lookup"), "u_lookup");
-  check("nobody → null until the invite creates one", enrollmentOwner(null, null), null);
-  check("blank session id counts as signed out", enrollmentOwner("", undefined), null);
+  check("signed in → the session's user", enrollmentOwner("u_session"), "u_session");
+  // Backlog #84 (owner, 2026-11-14): a typed email never makes a row the
+  // property of the account that exists for it; the row links at sign-in.
+  check("signed out → nobody, even when the email has an account", enrollmentOwner(null), null);
+  check("blank session id counts as signed out", enrollmentOwner(""), null);
+  check("no session at all counts as signed out", enrollmentOwner(undefined), null);
 }
 
 console.log("emailBelongsToAccount — rows link only to the account that owns the address");
@@ -340,27 +342,47 @@ console.log("Source: enrollment rows carry their owner (H5)");
 {
   const actions = read("src/lib/supabase/enrollmentActions.ts");
   check("insert writes user_id", actions.includes("user_id: data.userId"), true);
-  check("the owner rule in use is enrollmentOwner", actions.includes("return enrollmentOwner(sessionUserId, lookup)"), true);
   check("the link helper asks Supabase whose address it is", actions.includes("auth.admin.getUserById(userId)"), true);
   check("…and refuses another account's address", actions.includes("emailBelongsToAccount(owner.user.email, target)"), true);
   check("the ilike read escapes its wildcards", actions.includes('.ilike("contact_email", ilikePattern(target))'), true);
+  // Backlog #84: the link helper is the only owner write left; the activation
+  // link no longer attaches rows when it is minted.
   const ownerWrites = actions.match(/\.update\(\{ user_id: \w+ \}\)[^;]*;/g) ?? [];
-  check("owner writes found", ownerWrites.length, 3);
+  check("owner writes found", ownerWrites.length, 1);
   for (const [i, write] of ownerWrites.entries()) {
     check(`owner write ${i + 1} only touches an unowned row`, write.includes('.is("user_id", null)'), true);
   }
+  for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts"]) {
+    const src = read(route);
+    check(`${route}: the owner is the session (enrollmentOwner)`, src.includes("enrollmentOwner(signedIn?.id)"), true);
+  }
+  check(
+    "the webhook's owner is whoever owns the session's rows",
+    read("src/app/api/webhooks/stripe/route.ts").includes("enrollmentRowsOwner(paidEnrollmentIds)"),
+    true
+  );
   for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
     const src = read(route);
-    check(`${route}: resolves the owner`, src.includes("resolveEnrollmentUserId("), true);
-    check(`${route}: notifies through notifyEnrollmentAccount`, src.includes("notifyEnrollmentAccount("), true);
+    check(`${route}: no owner looked up by email`, src.includes("resolveEnrollmentUserId("), false);
     check(`${route}: no direct issueActivationLink`, src.includes("issueActivationLink("), false);
   }
+  // Backlog #84 review fix 7: the account email follows the money. The card
+  // payment's webhook sends it (live money only); the e-transfer submit sends
+  // it; the checkout submit, mock mode included, never does.
+  for (const route of ["src/app/api/enroll/etransfer/route.ts", "src/app/api/webhooks/stripe/route.ts"]) {
+    check(`${route}: notifies through notifyEnrollmentAccount`, read(route).includes("notifyEnrollmentAccount("), true);
+  }
+  check(
+    "src/app/api/checkout/route.ts: the submit sends no account email",
+    read("src/app/api/checkout/route.ts").includes("notifyEnrollmentAccount("),
+    false
+  );
   for (const route of ["src/app/api/checkout/route.ts", "src/app/api/enroll/etransfer/route.ts"]) {
     const src = read(route);
     check(`${route}: refuses a signed-in caller's foreign contact email`, src.includes("contactEmailRefusal(signedIn, enrollmentMeta"), true);
     check(
-      `${route}: …before the owner is resolved`,
-      src.indexOf("contactEmailRefusal(") < src.indexOf("resolveEnrollmentUserId("),
+      `${route}: …before the owner is set`,
+      src.indexOf("contactEmailRefusal(") < src.indexOf("enrollmentOwner(signedIn?.id)"),
       true
     );
   }

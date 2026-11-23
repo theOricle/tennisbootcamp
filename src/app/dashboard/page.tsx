@@ -20,7 +20,7 @@ import {
 } from "@/lib/players";
 import { listInvitesForAccount, type AccountInvite } from "@/lib/cohortActions";
 import { listUpcomingBookingsForAccount, type AccountBooking } from "@/lib/assessments";
-import { listUnusedCreditsForAccount, type AccountCredit } from "@/lib/assessmentCredit";
+import { accountCreditView } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
 import { locations } from "@/content/locations";
 import { LocationBlock } from "@/components/locations/LocationLine";
@@ -208,15 +208,23 @@ async function DashboardContent({
   // The states fall-2026 players are in (audit M25): an invite on hold, an
   // e-transfer waiting on Sina, a booked assessment, an unused $20. Read with
   // the service client, scoped to this account's id, email and players.
-  const [invites, bookings, credits] = await Promise.all([
+  const [invites, bookings, creditView] = await Promise.all([
     listInvitesForAccount({ accountId: userId, email: userEmail, participantIds, cohorts }).catch(
       () => [] as AccountInvite[]
     ),
     listUpcomingBookingsForAccount({ accountId: userId, email: userEmail, participantIds, today }).catch(
       () => [] as AccountBooking[]
     ),
-    listUnusedCreditsForAccount({ email: userEmail, participantIds }).catch(() => [] as AccountCredit[]),
+    // The one credit rule (src/lib/creditRules.ts): `ready` is what an
+    // enrollment by this account takes off, and the only thing the line
+    // below promises; `waiting` was booked under this address while signed
+    // out and is named with the way to link it, never promised.
+    accountCreditView({ accountId: userId, email: userEmail, participantIds }).catch(() => ({
+      ready: [],
+      waiting: [],
+    })),
   ]);
+  const credits = creditView.ready;
 
   // Who trains (audit M26): a holder who only registered a child is the
   // account, not a player — no unranked card, no availability card, no
@@ -325,6 +333,7 @@ async function DashboardContent({
       voice={voice}
       nextStep={nextStep}
       creditLine={creditLine(credits, roster, self?.id ?? null)}
+      creditWaiting={creditView.waiting.length > 0}
       enrollments={rows}
       cohorts={cohorts}
       sessionsByCohort={sessionsByCohort}
