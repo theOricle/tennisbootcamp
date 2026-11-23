@@ -17,6 +17,7 @@ import { TierRangeBadges } from "@/components/tiers";
 import { ProgramPlate } from "@/components/plates/ProgramPlate";
 import { artFocusForCohort } from "@/lib/plates/variant";
 import { amountDueCents, etransferMemo } from "@/lib/paymentTransitions";
+import { chosenCreditCents, type ReadyCredit } from "@/lib/creditRules";
 import {
   WhoIsThisFor,
   useHousehold,
@@ -80,7 +81,14 @@ const ETRANSFER_STEPS = 5;
 /** Server-derived facts for the e-transfer step (null on card cohorts). */
 export type EtransferInfo = {
   recipientEmail: string;
-  creditCents: number; // unused assessment credit that comes off the price
+  /** The credit the invitation reaches: fixed, since the invitation names its player. */
+  creditCents: number;
+  /**
+   * A signed-in account's own unused credits, each with the player it is for
+   * (null: whoever enrolls next). When set, the amount waits for the players
+   * chosen (chosenCreditCents) and `creditCents` is not read.
+   */
+  ready?: ReadyCredit[] | null;
 };
 
 /**
@@ -757,6 +765,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 function EtransferStep({
   cohort,
   info,
+  creditCents,
   memo,
   seats,
   submitting,
@@ -764,6 +773,8 @@ function EtransferStep({
 }: {
   cohort: Cohort;
   info: EtransferInfo;
+  /** The assessment credit that comes off this transfer, for the players chosen. */
+  creditCents: number;
   memo: string;
   /** How many players this transfer covers — one seat each. */
   seats: number;
@@ -771,7 +782,7 @@ function EtransferStep({
   onPayByCard: () => void;
 }) {
   const total = cohort.priceCents * seats;
-  const due = amountDueCents(total, info.creditCents);
+  const due = amountDueCents(total, creditCents);
   return (
     <div className="space-y-5">
       <p className="text-sm leading-relaxed text-white/70">
@@ -784,13 +795,13 @@ function EtransferStep({
         <div className="px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Amount</p>
           <p className="mt-1 text-xl font-semibold text-white">{moneyCAD(due)} CAD</p>
-          {(seats > 1 || info.creditCents > 0) && (
+          {(seats > 1 || creditCents > 0) && (
             <p className="mt-0.5 text-xs text-white/70">
               {seats > 1
                 ? `${moneyCAD(cohort.priceCents)} × ${seats} players`
                 : moneyCAD(cohort.priceCents)}
-              {info.creditCents > 0
-                ? ` − ${moneyCAD(info.creditCents)} assessment credit`
+              {creditCents > 0
+                ? ` − ${moneyCAD(creditCents)} assessment credit`
                 : ""}
             </p>
           )}
@@ -1350,6 +1361,18 @@ export function EnrollWizard({
   }
 
   const seatCount = Math.max(1, players.length);
+  // The $20 that comes off an e-transfer (safety review): an account's own
+  // credit waits for the players chosen and follows the payment routes' rule;
+  // an invitation's is the one it reaches.
+  const etransferCreditCents = !etransfer
+    ? 0
+    : etransfer.ready
+      ? chosenCreditCents({
+          ready: etransfer.ready,
+          seats: players.map((p) => p.participantId),
+          priceCents: cohort.priceCents,
+        })
+      : etransfer.creditCents;
 
   function back() {
     setPressedWithGaps(false);
@@ -1501,6 +1524,7 @@ export function EnrollWizard({
             <EtransferStep
               cohort={cohort}
               info={etransfer}
+              creditCents={etransferCreditCents}
               memo={memo}
               seats={seatCount}
               submitting={submitting}

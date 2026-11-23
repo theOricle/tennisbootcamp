@@ -432,11 +432,15 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
   // E-transfer cohorts (backlog #12): the payment step shows the amount after
   // the $20 assessment credit. Whose credit (backlog #84): the one the
   // invitation reaches — the same booking the coach's "amount due" reads —
-  // else a signed-in account's own; never one found by an email. The server
-  // re-derives it when the player taps "I've sent it".
+  // else a signed-in account's own; never one found by an email. An
+  // account's own waits for the player chosen (safety review): the wizard
+  // is handed the account's credits and takes off the chosen players', by
+  // the payment routes' rule, never the account's first before anyone is
+  // picked. The server re-derives it when the player taps "I've sent it".
   let etransfer: EtransferInfo | null = null;
   if ((cohort.paymentMode ?? "card") === "etransfer") {
     let creditCents = 0;
+    let ready: EtransferInfo["ready"] = null;
     if (claimed && (claimed.participant_id || claimed.user_id)) {
       const [credit] = await creditsForSeats({
         accountId: claimed.user_id ?? null,
@@ -444,11 +448,12 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
       });
       creditCents = credit?.creditCents ?? 0;
     } else if (creditView) {
-      creditCents = creditView.ready[0]?.creditCents ?? 0;
+      ready = creditView.ready.map((c) => ({ participantId: c.participantId, creditCents: c.creditCents }));
     }
     etransfer = {
       recipientEmail: etransferRecipient(),
       creditCents: Math.min(creditCents, cohort.priceCents),
+      ready,
     };
   }
 

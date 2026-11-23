@@ -21,6 +21,9 @@
 //   7. words that are true: /programs promises no automatic email, the
 //      dashboard points at the groups below only when one can be enrolled in,
 //      and the Youth page's paragraph names no fixed list of groups;
+//   9. the e-transfer amount on the sign-up page waits for the chosen player:
+//      the $20 comes off for the player it belongs to, by the payment routes'
+//      own rule, never for whoever the account's first credit names;
 // Checks that read source text accept either line ending (`read`). Exits
 // non-zero on any failure. Never spells the cohort length or total.
 
@@ -38,6 +41,8 @@ import { EnrollWizard } from "../app/enroll/[cohortId]/EnrollWizard";
 import { programs } from "../content/programs";
 import { PROGRAMS_NO_DATES_LINE } from "../content/site";
 import { ageBandBlock, dobAgeError } from "../lib/enrollPlayers";
+import { accountCredits, chosenCreditCents, decideCredits, readyCreditsForSeats, type CreditBooking } from "../lib/creditRules";
+import { amountDueCents } from "../lib/paymentTransitions";
 import type { Cohort } from "../types/cohort";
 
 let failed = 0;
@@ -252,6 +257,71 @@ console.log("7. Words that are true");
   check("the Youth page can head its cards Four groups (a block off the planned lineup)", cardsHeading(fourCards).startsWith("Four groups"));
   check("…so its paragraph names no list of groups to contradict the heading", youthGroups.every((g) => !youth.longDescription.includes(g.name)) && !/\(ages \d/.test(youth.longDescription), youth.longDescription);
   check("…and still says how the groups go, and where each one's dates are", youth.longDescription.includes("The groups go by age and level, from juniors in their first season to the competitive track for players who compete, or are training to. Each group below shows its dates and class times. "));
+}
+
+// ── 9. The e-transfer amount waits for the chosen player ────────────────────
+console.log("9. The e-transfer amount waits for the chosen player");
+{
+  const ACCOUNT = "acct-1";
+  const FIRST = "player-first";
+  const SECOND = "player-second";
+  const booking = (over: Partial<CreditBooking> & Pick<CreditBooking, "id">): CreditBooking => ({
+    user_id: ACCOUNT,
+    participant_id: null,
+    email: "holder@example.com",
+    name: "Player",
+    status: "completed",
+    paid: true,
+    credit_status: "unused",
+    created_at: "2026-11-01T12:00:00Z",
+    ...over,
+  });
+  const price = COHORT_TOTAL_CENTS;
+  const readyFor = (bookings: CreditBooking[]) =>
+    accountCredits({ accountId: ACCOUNT, email: "holder@example.com", playerIds: [FIRST, SECOND], bookings }).ready.map((c) => ({ participantId: c.participantId, creditCents: c.creditCents }));
+  /** What the screen shows for the chosen players. */
+  const shown = (bookings: CreditBooking[], seats: (string | null)[]) => {
+    const credit = chosenCreditCents({ ready: readyFor(bookings), seats, priceCents: price });
+    return { credit, due: amountDueCents(price * Math.max(1, seats.length), credit) };
+  };
+  /** What /api/enroll/etransfer takes off: one player at a time, each lookup told what the earlier ones used. */
+  const charged = (bookings: CreditBooking[], seats: (string | null)[]) => {
+    const claimed: string[] = [];
+    return seats.map((seat) => {
+      const [credit] = decideCredits({ accountId: ACCOUNT, seats: [seat], bookings, claimed });
+      if (credit) claimed.push(credit.bookingId);
+      return Math.min(credit?.creditCents ?? 0, price);
+    });
+  };
+
+  // Two players on one account; the $20 belongs to the second.
+  const secondsCredit = [booking({ id: "b-second", participant_id: SECOND })];
+  check("the account's first credit is the second player's", readyFor(secondsCredit).length === 1 && readyFor(secondsCredit)[0].participantId === SECOND);
+  check("before a player is chosen, nothing comes off", shown(secondsCredit, []).credit === 0 && shown(secondsCredit, []).due === price);
+  check("choosing the first player shows the full price", shown(secondsCredit, [FIRST]).credit === 0 && shown(secondsCredit, [FIRST]).due === price);
+  check("choosing the second shows $20 off", shown(secondsCredit, [SECOND]).credit === 2000 && shown(secondsCredit, [SECOND]).due === price - 2000);
+  check("choosing both shows one $20 off the two", shown(secondsCredit, [FIRST, SECOND]).credit === 2000 && shown(secondsCredit, [FIRST, SECOND]).due === price * 2 - 2000);
+
+  const stories: [string, CreditBooking[]][] = [
+    ["the second player's own credit", secondsCredit],
+    ["a credit on the account, for whoever enrolls next", [booking({ id: "b-acct" })]],
+    ["one each", [booking({ id: "b1", participant_id: FIRST }), booking({ id: "b2", participant_id: SECOND, created_at: "2026-11-02T12:00:00Z" })]],
+    ["the first player's own and one on the account", [booking({ id: "b1", participant_id: FIRST }), booking({ id: "b-acct", created_at: "2026-11-03T12:00:00Z" })]],
+    ["two for one player", [booking({ id: "b1", participant_id: SECOND }), booking({ id: "b2", participant_id: SECOND, created_at: "2026-11-02T12:00:00Z" })]],
+    ["one that is used, one not paid, one for another account's player", [booking({ id: "u", participant_id: FIRST, credit_status: "applied" }), booking({ id: "n", participant_id: SECOND, paid: false }), booking({ id: "o", participant_id: "someone-else", user_id: "acct-2" })]],
+    ["none", []],
+  ];
+  const seatings: (string | null)[][] = [[FIRST], [SECOND], [FIRST, SECOND], [SECOND, FIRST]];
+  for (const [name, bookings] of stories) {
+    const same = seatings.every((seats) => JSON.stringify(readyCreditsForSeats(readyFor(bookings), seats)) === JSON.stringify(charged(bookings, seats)));
+    check(`${name}: the amount shown is the amount the payment route takes off, for every choice of players`, same, seatings.map((seats) => `${JSON.stringify(readyCreditsForSeats(readyFor(bookings), seats))} vs ${JSON.stringify(charged(bookings, seats))}`).join("; "));
+  }
+  check("a credit never takes off more than the price", chosenCreditCents({ ready: [{ participantId: SECOND, creditCents: 2000 }], seats: [SECOND], priceCents: 1500 }) === 1500);
+
+  const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
+  check("the sign-up page hands the wizard the account's credits and names no amount of its own for a signed-in account", enrollPage.includes("ready = creditView.ready.map((c) => ({ participantId: c.participantId, creditCents: c.creditCents }));") && !enrollPage.includes("creditView.ready[0]"));
+  check("the wizard works the amount out from the players chosen, by that rule", wizard.includes("chosenCreditCents({") && wizard.includes("seats: players.map((p) => p.participantId),") && wizard.includes("creditCents={etransferCreditCents}") && !wizard.includes("amountDueCents(total, info.creditCents)"));
+  check("the wizard is sent no booking id, name or email of a credit", !/ready\.map\(\(c\) => \(\{[^}]*(bookingId|playerName|email)/.test(enrollPage));
 }
 
 if (failed > 0) {
