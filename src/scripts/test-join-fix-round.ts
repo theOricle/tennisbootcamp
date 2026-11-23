@@ -15,6 +15,9 @@
 //      on its sign-up page as on its card.
 //   4. the sign-up page says what its card says: the class days and times,
 //      the dates from the first class to the last, and the group's ages;
+//   5. signed in, no loop: the dashboard's "Open for your tier" lists private
+//      blocks only (the public ones are the cards above it), and the approval
+//      step's link takes a signed-in invitee to the dashboard, not the login;
 // Checks that read source text accept either line ending (`read`). Exits
 // non-zero on any failure. Never spells the cohort length or total.
 
@@ -23,9 +26,9 @@ import { join } from "node:path";
 import { COHORT_TOTAL_CENTS, COHORT_WEEKS, programGroups } from "../content/programs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { accountOpenCards, blockByApproval, blockFacts, blockHasPrice, groupCards, groupForBlock, openBlockCards, plannedGroupForBlock, signedInOpenCards } from "../lib/groupBlocks";
+import { privateTierMatches, accountOpenCards, blockByApproval, blockFacts, blockHasPrice, groupCards, groupForBlock, openBlockCards, plannedGroupForBlock, signedInOpenCards } from "../lib/groupBlocks";
 import { groupAction, groupStatus } from "../lib/programCatalog";
-import { APPROVAL_ONLY_ERROR, approvalGateApplies, approvalRefusal, priceRefusal } from "../lib/enrollGate";
+import { invitedAlreadyLink, APPROVAL_ONLY_ERROR, approvalGateApplies, approvalRefusal, priceRefusal } from "../lib/enrollGate";
 import { tierById } from "../lib/tiers";
 import { ProgramGroupCard } from "../components/sections/ProgramGroupCard";
 import { EnrollWizard } from "../app/enroll/[cohortId]/EnrollWizard";
@@ -201,6 +204,29 @@ console.log("4. The sign-up page reads its card's own dates, class days and ages
   check("a youth group reads its own ages too, never its program's whole range", signUpPage(twoTimes).includes("Ages 11–15") && !signUpPage(twoTimes).includes("7–17"));
   const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
   check("the page types no date or time format of its own: it reads the card's facts", wizard.includes("const facts = blockFacts(cohort);") && !wizard.includes("formatDateRange") && !wizard.includes("formatDaysTimes"));
+}
+
+// ── 5. Signed-in loops ──────────────────────────────────────────────────────
+console.log("5. Signed in, no loop");
+{
+  const top = tierById(5).levelMin;
+  const hpPublic = youthBlock({ id: "hp-public", levelMin: top, levelMax: 7 });
+  const openPublic = block({ id: "open-public", levelMin: 4, levelMax: 4.5 });
+  const privateBlock = block({ id: "private", levelMin: 4, levelMax: 4.5, visibility: "private" });
+  const legacy = block({ id: "legacy", visibility: undefined });
+  const player = { id: "p1", level: 5.5 };
+  const matches = [hpPublic, openPublic, privateBlock, legacy].map((cohort) => ({ cohort, players: [player] }));
+  check("Open for your tier keeps only private blocks: a public one is a card under Groups with dates already", privateTierMatches(matches).map((m) => m.cohort.id).join() === "private");
+  check("…so a high-level player is never offered Enroll on a public by-approval block, whose page would send them back to the dashboard", !privateTierMatches(matches).some((m) => m.cohort.id === "hp-public") && approvalGateApplies({ group: groupForBlock(hpPublic), decision: { allowed: true, via: "public" }, claimed: null }));
+  check("…and a block with no visibility set reads as public, as everywhere else", !privateTierMatches(matches).some((m) => m.cohort.id === "legacy"));
+  const dash = read("src/app/dashboard/page.tsx");
+  check("the dashboard builds that list through it", dash.includes("const openForTier = privateTierMatches(tierMatches)"));
+
+  const out = invitedAlreadyLink(false, "/login?next=%2Fenroll%2Fhp");
+  const signedIn = invitedAlreadyLink(true, "/login?next=%2Fenroll%2Fhp");
+  check("signed out, the approval step's link is Sign in, back to this page", out.href === "/login?next=%2Fenroll%2Fhp" && out.label === "Sign in" && out.rest === " and your invitation is on your dashboard.");
+  check("signed in, it opens the dashboard, never the login form", signedIn.href === "/dashboard" && signedIn.label === "Open your dashboard" && signedIn.rest === " and your invitation is there." && !signedIn.href.includes("login"));
+  check("the approval step draws that link, told whether the visitor is signed in", enrollPage.includes("invitedAlreadyLink(signedIn, signInHref)") && enrollPage.includes("signedIn={Boolean(sessionEmail)}") && !/Invited already\?[\s\S]{0,80}<Link href=\{signInHref\}/.test(enrollPage));
 }
 
 if (failed > 0) {

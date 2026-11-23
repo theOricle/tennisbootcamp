@@ -7,7 +7,13 @@ import type { ProgramGroup } from "@/types/program";
 import type { Cohort } from "@/types/cohort";
 import { getCohortById } from "@/lib/cohortsDb";
 import { isCohortRenderable } from "@/lib/cohortVisibility";
-import { approvalGateApplies, claimedInvite, priceRefusal, resolveEnrollGate } from "@/lib/enrollGate";
+import {
+  approvalGateApplies,
+  claimedInvite,
+  invitedAlreadyLink,
+  priceRefusal,
+  resolveEnrollGate,
+} from "@/lib/enrollGate";
 import { getSeatsRemaining } from "@/lib/seatCount";
 import { createClient } from "@/lib/supabase/server";
 import { accountCreditView, creditsForSeats } from "@/lib/assessmentCredit";
@@ -187,11 +193,14 @@ function ApprovalGate({
   group,
   programSlug,
   signInHref,
+  signedIn,
 }: {
   group: ProgramGroup;
   programSlug: string;
   signInHref: string;
+  signedIn: boolean;
 }) {
+  const invited = invitedAlreadyLink(signedIn, signInHref);
   return (
     <GateShell eyebrow={group.name}>
       <h1 className="mt-3 text-2xl font-semibold">This group is by approval</h1>
@@ -214,10 +223,10 @@ function ApprovalGate({
       </div>
       <p className="mt-5 text-sm text-white/65">
         Invited already?{" "}
-        <Link href={signInHref} className={inlineLink}>
-          Sign in
-        </Link>{" "}
-        and your invitation is on your dashboard.
+        <Link href={invited.href} className={inlineLink}>
+          {invited.label}
+        </Link>
+        {invited.rest}
       </p>
     </GateShell>
   );
@@ -376,7 +385,12 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
   const group = groupForBlock(cohort);
   if (group && approvalGateApplies({ group, decision: gate.decision, claimed })) {
     return (
-      <ApprovalGate group={group} programSlug={program?.slug ?? group.programSlug} signInHref={signInHref} />
+      <ApprovalGate
+        group={group}
+        programSlug={program?.slug ?? group.programSlug}
+        signInHref={signInHref}
+        signedIn={Boolean(sessionEmail)}
+      />
     );
   }
 

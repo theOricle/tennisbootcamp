@@ -86,6 +86,21 @@ export function approvalGateApplies(input: {
 }
 
 /**
+ * The approval step's last line, "Invited already? …" (safety review, #85):
+ * signed out, "Sign in" back to this page; signed in, straight to the
+ * dashboard, where the invitation is. It used to send a signed-in invitee
+ * to the login form, which sent them back here.
+ */
+export function invitedAlreadyLink(
+  signedIn: boolean,
+  signInHref: string
+): { href: string; label: string; rest: string } {
+  return signedIn
+    ? { href: "/dashboard", label: "Open your dashboard", rest: " and your invitation is there." }
+    : { href: signInHref, label: "Sign in", rest: " and your invitation is on your dashboard." };
+}
+
+/**
  * The gate rule itself, shared by the page and both payment routes.
  *
  * `payable` is the payment routes' one extension: an invite whose hold lapsed

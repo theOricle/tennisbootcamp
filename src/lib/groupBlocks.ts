@@ -367,6 +367,19 @@ export function signedInOpenCards(cards: readonly GroupCard[]): GroupCard[] {
   return cards.filter((c) => c.block !== null && c.group.joining !== "approval");
 }
 
+/**
+ * The dashboard's "Open for your tier": private blocks only (safety review,
+ * #85). A public block is already a card under "Groups with dates" above it,
+ * with its own button; listed here again it repeated that card, and offered
+ * "Enroll" on a public by-approval block to a player at its level, whose
+ * sign-up page sends a walk-in back to the dashboard. A private block, which
+ * admits a signed-in player by level, shows nowhere else. A block with no
+ * visibility set is public, as everywhere.
+ */
+export function privateTierMatches<T extends { cohort: Pick<Cohort, "visibility"> }>(matches: readonly T[]): T[] {
+  return matches.filter((m) => m.cohort.visibility === "private");
+}
+
 /** A player as an account holds one: enough to tell which groups' ages take them. */
 export type AgePlayer = { age_band?: string | null; is_minor: boolean };
 

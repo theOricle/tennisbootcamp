@@ -11,7 +11,13 @@ import {
   type CohortSessionRow,
 } from "@/lib/cohortsDb";
 import { isCohortPublic, todayIso } from "@/lib/cohortVisibility";
-import { accountOpenCards, groupCards, openBlockCards, suggestionsBesideCards } from "@/lib/groupBlocks";
+import {
+  accountOpenCards,
+  groupCards,
+  openBlockCards,
+  privateTierMatches,
+  suggestionsBesideCards,
+} from "@/lib/groupBlocks";
 import { readBlockSeats } from "@/lib/groupSeats";
 import {
   listParticipantsForAccount,
@@ -264,8 +270,9 @@ async function DashboardContent({
   }
   // A cohort the account is already enrolled in isn't an "open for your tier"
   // pitch, and a cohort only lists the players its program's ages take (a
-  // child is never offered an adult group on level alone).
-  const openForTier = tierMatches
+  // child is never offered an adult group on level alone). Private blocks
+  // only: a public one is a card under "Groups with dates" already.
+  const openForTier = privateTierMatches(tierMatches)
     .filter((m) => !enrolledCohortIds.includes(m.cohort.id))
     .map((m) => {
       const program = programs.find((p) => p.id === m.cohort.programId);
