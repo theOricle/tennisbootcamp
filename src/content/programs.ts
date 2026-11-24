@@ -65,8 +65,10 @@ export const COHORT_LENGTH = cohortLengthFor(COHORT_WEEKS);
 export const COHORT_LENGTH_ADJ = `${COHORT_WEEKS_WORD}-week`;
 /**
  * "$35": the per-session figure. Shown nowhere a visitor browses (owner,
- * 2026-11-17: the whole price only); it stays for the Program Policies and
- * for the sign-up step of one bootcamp, which is a later item.
+ * 2026-11-17: the whole price only); it stays for the Program Policies. The
+ * sign-up page of one block shows that block's own per-class figure, worked
+ * out from its price and classes (perClassFigure, src/lib/groupBlocks.ts),
+ * never this setting.
  */
 export const SESSION_PRICE_LABEL = formatDollars(SESSION_PRICE);
 /** "$210" */

@@ -115,6 +115,56 @@ export function blockClassCount(block: Pick<Cohort, "startDate" | "weeks" | "ses
   return generateSessionDates(block.startDate, block.weeks, block.sessions).length;
 }
 
+/**
+ * One class's share of a block's price (backlog #86; owner, 2026-11-22: the
+ * code works it out, and the site shows it quietly). Plain data.
+ */
+export type PerClassFigure = {
+  /** The classes the block runs, the number its card names ("for 8 classes over eight weeks"). */
+  classes: number;
+  /** The block's price over its classes, in cents, rounded to the cent. */
+  cents: number;
+  /** "$35" for whole dollars; anything else to the cent, "$33.33". */
+  amount: string;
+};
+
+/** Any date will do for a count: a block runs one class per class day per week, whatever day it starts. */
+const COUNT_FROM = "2026-01-05";
+
+/**
+ * A block's per-class figure: its own price, from its row, over the classes
+ * it runs, counted as its card counts them (blockClassCount). A class the
+ * coach cancels is a dated row of its own (cohort_sessions), and so is its
+ * make-up, so neither changes the count: the class is counted once. Null for
+ * a block with no price, a zero price or no classes. It reads no price or
+ * length typed in code. A form with no start date yet (admin) counts the
+ * same, since the count does not depend on the date.
+ *
+ * Shown on the sign-up page of one block, under its whole price, and in
+ * admin beside the price; nowhere else (npm test, test-copy-truth.ts).
+ */
+export function perClassFigure(
+  block: Pick<Cohort, "priceCents" | "weeks" | "sessions"> & { startDate?: string | null }
+): PerClassFigure | null {
+  if (!blockHasPrice(block) || !Number.isInteger(block.weeks)) return null;
+  const startDate = block.startDate && /^\d{4}-\d{2}-\d{2}$/.test(block.startDate) ? block.startDate : COUNT_FROM;
+  const classes = blockClassCount({ startDate, weeks: block.weeks, sessions: block.sessions });
+  if (classes <= 0) return null;
+  const cents = Math.round(block.priceCents / classes);
+  return { classes, cents, amount: formatDollars(cents / 100) };
+}
+
+/**
+ * "8 classes, $35 each" · "6 classes, $33.33 each" · "1 class, $40": the
+ * figure as one line. Each number keeps its word on its line, so a narrow
+ * column breaks it only after the comma.
+ */
+export function perClassLine(figure: PerClassFigure): string {
+  const nbsp = String.fromCharCode(0xa0);
+  if (figure.classes === 1) return `1${nbsp}class, ${figure.amount}`;
+  return `${figure.classes}${nbsp}classes, ${figure.amount}${nbsp}each`;
+}
+
 /** The block's weekly classes in the order they first come, from its start date. */
 function weekOrder(block: Pick<Cohort, "startDate" | "sessions">): SessionSlot[] {
   return generateSessionDates(block.startDate, 1, block.sessions).map(({ day, start, end }) => ({ day, start, end }));

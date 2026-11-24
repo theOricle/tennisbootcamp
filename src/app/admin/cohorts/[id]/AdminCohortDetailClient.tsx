@@ -9,6 +9,7 @@ import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
 import { PlayerPreview } from "@/components/admin/PlayerPreview";
 import type { MatrixPlayer } from "@/lib/availabilityMatrix";
 import { dayNameForDate } from "@/lib/makeup";
+import { perClassFigure, perClassLine } from "@/lib/groupBlocks";
 import { accountEmailOffered } from "@/lib/enrollPlayers";
 import {
   COHORT_STATUS_LABELS,
@@ -926,6 +927,10 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
   if (!detail) return <p className="text-sm text-white/60">Loading…</p>;
 
   const { cohort, invites, sessions, paidCount } = detail;
+  // The per-class figure the sign-up page shows (backlog #86), from the
+  // block's own row: the session list below may hold a cancelled class and
+  // its make-up, and the figure counts that class once.
+  const perClass = perClassFigure(cohort);
   const dbStatus = cohort.dbStatus ?? "draft";
   const paidPlayers = detail.paidPlayers ?? [];
   const selected = pool
@@ -943,6 +948,8 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
           {cohort.visibility === "private" ? " · private" : " · public"}
           {cohort.paymentMode === "etransfer" ? " · e-transfer" : " · card"}
         </p>
+        {/* Read-only, beside the price: this page edits no price, weeks or class days. */}
+        {perClass && <p className="mt-0.5 text-xs tabular-nums text-white/60">{perClassLine(perClass)}</p>}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />
           <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-white/80">

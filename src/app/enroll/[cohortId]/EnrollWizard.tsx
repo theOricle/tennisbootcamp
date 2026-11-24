@@ -6,7 +6,7 @@ import type { Cohort } from "@/types/cohort";
 import type { Program, ProgramGroup } from "@/types/program";
 import type { AgeBand } from "@/lib/ageBand";
 import { formatCohortPrice } from "@/lib/cohorts";
-import { blockFacts } from "@/lib/groupBlocks";
+import { blockFacts, perClassFigure, perClassLine } from "@/lib/groupBlocks";
 import { agesChipLabel } from "@/lib/programCatalog";
 import { locationForCohort } from "@/content/locations";
 import { membershipNote } from "@/lib/membership";
@@ -304,6 +304,9 @@ function OrderSummary({
   // with its own time, and the group's own ages.
   const facts = blockFacts(cohort);
   const ages = group ? agesChipLabel([group]) : program?.ageGroup;
+  // The per-class figure (backlog #86): the block's own price over its
+  // classes, on the full price, before any $20 assessment credit.
+  const perClass = perClassFigure(cohort);
   return (
     <div className="space-y-5">
       {/* Where, first (owner, 2026-10-12: enrollment shows the location
@@ -384,6 +387,12 @@ function OrderSummary({
           <p className="text-sm text-white/70">Total</p>
           <p className="text-base font-semibold text-white">{price}</p>
         </div>
+        {/* Under the whole price, once, small and muted, the one public
+            place it shows (owner, 2026-11-17 and 2026-11-22). Tight to the
+            total, with room before the note under it. No figure, no line. */}
+        {perClass && (
+          <p className="mb-2 mt-0.5 text-right text-xs text-white/60">{perClassLine(perClass)}</p>
+        )}
         {cohort.priceCents === 0 && (
           <p className="mt-1 text-xs text-white/60">
             Price will be confirmed before payment is collected.

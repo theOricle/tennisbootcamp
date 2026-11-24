@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import { COHORT_TOTAL, COHORT_WEEKS, listedPrograms as programs } from "@/content/programs";
 import { scheduledEndDate, addDaysISO } from "@/lib/makeup";
+import { perClassFigure, perClassLine } from "@/lib/groupBlocks";
 import { TierLine, TierRangeBadges } from "@/components/tiers";
 import { LEVEL_OPTIONS, formatLevelBand, formatTierSpan } from "@/lib/tiers";
 import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
@@ -92,6 +93,19 @@ function CreateCohortForm({
     }
     return null;
   }, [startDate, weeks, slots, makeupMaxWeeks, seasonEndDate]);
+
+  // The per-class figure the block's sign-up page will show (backlog #86),
+  // read from the form as typed. Display only: nothing here is sent.
+  const perClass = useMemo(
+    () =>
+      perClassFigure({
+        priceCents: Math.round(Number(priceDollars || "0") * 100),
+        weeks,
+        sessions: slots as SessionSlot[],
+        startDate,
+      }),
+    [priceDollars, weeks, slots, startDate]
+  );
 
   function setSlot(i: number, patch: Partial<SlotDraft>) {
     setSlots((s) => s.map((slot, idx) => (idx === i ? { ...slot, ...patch } : slot)));
@@ -340,6 +354,7 @@ function CreateCohortForm({
             step="1"
             value={priceDollars}
             onChange={(e) => setPriceDollars(e.target.value)}
+            aria-describedby="new-cohort-per-class"
             className={inputClass}
           />
         </div>
@@ -365,6 +380,13 @@ function CreateCohortForm({
             className={inputClass}
           />
         </div>
+        {/* Read-only, straight under the price field across the row, so it
+            stays one line on a phone and its line is kept when it is empty:
+            the classes and the per-class figure, as the price, the weeks and
+            the class days change. */}
+        <p id="new-cohort-per-class" className="col-span-3 -mt-2 min-h-4 text-xs tabular-nums text-white/60">
+          {perClass ? perClassLine(perClass) : ""}
+        </p>
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
