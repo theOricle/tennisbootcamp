@@ -16,8 +16,16 @@
 // Programs description carry no price (the home page has none), a program
 // page's line carries the whole price and never a per-session figure, and no
 // file a visitor's pages are built from states a per-session price or a
-// general class length ("60-minute", "Once a week"). The enroll flow, the
-// admin and the legal pages are outside that rule and outside the scan.
+// general class length ("60-minute", "Once a week"). The admin and the legal
+// pages are outside that rule and outside the scan, and so, by name, is the
+// sign-up page of one block.
+//
+// Since backlog #86 (owner, 2026-11-22): the sign-up page of one block is
+// the one public page that shows the per-class figure, worked out from the
+// block (perClassFigure, src/lib/groupBlocks.ts). Every other file under src
+// that reads the figure or types one fails, a group card and a program page
+// first among them; admin's two block screens, which no visitor sees, show
+// it beside the price.
 //
 // This file is skipped by its own scan, so it may spell the retired strings.
 
@@ -27,6 +35,7 @@ import {
   COHORT_LENGTH,
   COHORT_LENGTH_ADJ,
   COHORT_TOTAL_LABEL,
+  COHORT_WEEKS,
   GROUP_MAX_PLAYERS,
   PRICE_SUMMARY,
   SESSION_PRICE_LABEL,
@@ -230,14 +239,18 @@ check("no retired string under src", hits.length === 0, `found:\n      ${hits.jo
 //
 // The scan reads every file a visitor's pages are built from: src/app,
 // src/components, src/content and src/lib (what they render: code and
-// strings, with comments blanked). Outside it by owner rule: the enroll
-// flow, the admin and the legal pages (src/app/enroll, src/app/admin,
-// src/app/legal); src/app/api, which renders no page; and, in src/lib, the
-// emails (src/lib/email*) and the files only the admin reads.
+// strings, with comments blanked). Outside it by owner rule: the sign-up page
+// of one block (src/app/enroll/[cohortId]/page.tsx and its EnrollWizard.tsx,
+// by name: the enrollment's confirmation page is scanned), the admin and the
+// legal pages (src/app/admin, src/app/legal); src/app/api, which renders no
+// page; and, in src/lib, the emails (src/lib/email*) and the files only the
+// admin reads.
 console.log("No per-session price and no general class length where a visitor browses");
 {
   const SCANNED = ["app", "components", "content", "lib"].map((dir) => join(ROOT, "src", dir));
-  const OUTSIDE = ["enroll", "admin", "legal", "api"].map((dir) => join(ROOT, "src", "app", dir) + sep);
+  const OUTSIDE = ["admin", "legal", "api"].map((dir) => join(ROOT, "src", "app", dir) + sep);
+  // The one named exception: the sign-up page of one block (backlog #86).
+  const SIGN_UP_PAGE = ["page.tsx", "EnrollWizard.tsx"].map((name) => join(ROOT, "src", "app", "enroll", "[cohortId]", name));
   // Backlog #70, fix round: src/lib is scanned too, since the pages render
   // strings built there (the program catalog, the group seats, the main
   // action, the share cards, the structured data). Left out by name: the
@@ -248,9 +261,9 @@ console.log("No per-session price and no general class length where a visitor br
   const SETTINGS = join(ROOT, "src", "content", "programs.ts");
   const browsed: string[] = [];
   for (const dir of SCANNED) walk(dir, browsed);
-  const inScope = browsed.filter((file) => !OUTSIDE.some((prefix) => file.startsWith(prefix)) && !LIB_OUTSIDE.has(file));
+  const inScope = browsed.filter((file) => !OUTSIDE.some((prefix) => file.startsWith(prefix)) && !SIGN_UP_PAGE.includes(file) && !LIB_OUTSIDE.has(file));
   check("the scan covers the pages, the components, the content and src/lib", inScope.length > 80 && inScope.some((f) => f.endsWith(join("app", "page.tsx"))) && inScope.some((f) => f.endsWith("ProgramGroupCard.tsx")) && inScope.includes(SETTINGS) && inScope.includes(join(ROOT, "src", "lib", "programCatalog.ts")) && inScope.includes(join(ROOT, "src", "lib", "structuredData.ts")), `${inScope.length} files`);
-  check("…and leaves out the enroll flow, the admin and the legal pages", !inScope.some((f) => OUTSIDE.some((prefix) => f.startsWith(prefix))) && browsed.some((f) => f.startsWith(OUTSIDE[0])) && browsed.some((f) => f.startsWith(OUTSIDE[2])));
+  check("…and leaves out the sign-up page by name, the admin and the legal pages, and scans the enrollment's confirmation page", !inScope.some((f) => OUTSIDE.some((prefix) => f.startsWith(prefix)) || SIGN_UP_PAGE.includes(f)) && SIGN_UP_PAGE.every((f) => browsed.includes(f)) && browsed.some((f) => f.startsWith(OUTSIDE[0])) && browsed.some((f) => f.startsWith(OUTSIDE[1])) && inScope.includes(join(ROOT, "src", "app", "enroll", "[cohortId]", "confirmed", "page.tsx")));
   check("…and, in src/lib, only the emails and the admin-only files, each by name", [...LIB_OUTSIDE].every((file) => browsed.includes(file)) && inScope.filter((f) => f.startsWith(join(ROOT, "src", "lib") + sep)).length > 40 && !inScope.some((f) => /[\\/]lib[\\/]email/.test(f)));
 
   // "a session" as a price: an amount, or a price constant, in front of it;
@@ -310,6 +323,52 @@ console.log("No per-session price and no general class length where a visitor br
   check("the share cards carry no price at all", !/SESSION_PRICE|COHORT_TOTAL|PRICE_SUMMARY|\$\d/.test(og));
   const ld = read("src/lib/structuredData.ts");
   check("the structured data reads the cohort total and never the per-session amount, a class length or a workload", ld.includes("price: COHORT_TOTAL,") && !/SESSION_PRICE|SESSION_MINUTES|courseWorkload|isoDuration|duration:|UnitPriceSpecification|unitText/.test(ld));
+
+  // ── Backlog #86: the per-class figure, on the sign-up page alone ──────────
+  // Worked out from one block (perClassFigure, src/lib/groupBlocks.ts) and
+  // shown on one public page, the sign-up page of that block: the named
+  // exception above. Admin's two block screens, which no visitor sees, show
+  // it beside the price. Every other file under src fails if it reads the
+  // figure or types one: a group card and a program page first, and the home
+  // page, the dashboard, the confirmation page, a description, the
+  // structured data, an email or a route as much. Comments are blanked.
+  console.log("The per-class figure: the sign-up page of one block, and nowhere else (backlog #86)");
+  const FIGURE_HOME = join(ROOT, "src", "lib", "groupBlocks.ts");
+  const ADMIN_SCREENS = [join(ROOT, "src", "app", "admin", "cohorts", "AdminCohortsClient.tsx"), join(ROOT, "src", "app", "admin", "cohorts", "[id]", "AdminCohortDetailClient.tsx")];
+  // The figure read (perClassFigure, perClassLine) or typed: an amount, then
+  // "each", "a class" or "per class"; or "per-class" at all.
+  const PER_CLASS_WORDS = /\bperClass(Figure|Line)\b|\$\d[\d.,]*\s*(each|a class|per class)\b|\bper[- ]class\b/i;
+  check(
+    "the scan catches the figure read or typed, and lets the whole price and a class count through",
+    ["const figure = perClassFigure(block);", "{perClassLine(perClass)}", "6 classes, $35 each", "$33.33 a class", "$35 per class", "the per-class figure"].every((s) => PER_CLASS_WORDS.test(s)) &&
+      [`${COHORT_TOTAL_LABEL} for ${COHORT_WEEKS} classes over ${COHORT_LENGTH}`, "from $280 for 8 classes", "Up to 8 players a group", "Every player takes their own seat", "How a class runs", "20 minutes on court for $20", "each player"].every((s) => !PER_CLASS_WORDS.test(s))
+  );
+  const everyFile: string[] = [];
+  walk(join(ROOT, "src"), everyFile);
+  const SCRIPTS = join(ROOT, "src", "scripts") + sep;
+  const perClassScope = everyFile.filter((f) => !f.startsWith(SCRIPTS) && !SIGN_UP_PAGE.includes(f) && !ADMIN_SCREENS.includes(f));
+  const mustScan = ["src/components/sections/ProgramGroupCard.tsx", "src/components/sections/ProgramCard.tsx", "src/components/sections/ProgramCatalog.tsx", "src/app/programs/[slug]/page.tsx", "src/app/programs/page.tsx", "src/app/page.tsx", "src/app/dashboard/page.tsx", "src/app/enroll/[cohortId]/confirmed/page.tsx", "src/content/site.ts", "src/lib/structuredData.ts", "src/lib/emailBodies.ts", "src/lib/groupBlocks.ts"];
+  check("…over every file under src but the tests, the sign-up page and admin's two block screens: the cards, the program pages, the descriptions and the emails among them", perClassScope.length > 150 && mustScan.every((p) => perClassScope.includes(join(ROOT, ...p.split("/")))), mustScan.filter((p) => !perClassScope.includes(join(ROOT, ...p.split("/")))).join(", "));
+  const perClassHits: string[] = [];
+  for (const file of perClassScope) {
+    let text = readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+    // Its own file names it in its definition, from its type to the end of
+    // perClassLine, and nowhere else: no card fact or page line is built from it.
+    if (file === FIGURE_HOME) {
+      const from = text.indexOf("export type PerClassFigure");
+      const to = text.indexOf("\n}\n", text.indexOf("export function perClassLine("));
+      if (from !== -1 && to > from) text = text.slice(0, from) + text.slice(from, to).replace(/[^\n]/g, " ") + text.slice(to);
+    }
+    withoutComments(text)
+      .split("\n")
+      .forEach((line, i) => {
+        if (PER_CLASS_WORDS.test(line)) perClassHits.push(`${relative(ROOT, file).split(sep).join("/")}:${i + 1} ${line.trim().slice(0, 80)}`);
+      });
+  }
+  check("no file reads the per-class figure or types one but the sign-up page (and admin's two block screens)", perClassHits.length === 0, `found:\n      ${perClassHits.join("\n      ")}`);
+  const figureSrc = readFileSync(FIGURE_HOME, "utf8");
+  check("…its own file defines it once and calls it nowhere", (figureSrc.match(/\bperClassFigure\(/g) ?? []).length === 1 && (figureSrc.match(/\bperClassLine\(/g) ?? []).length === 1 && figureSrc.includes("export type PerClassFigure"));
+  check("…and the sign-up page draws it, as admin's two block screens do", [SIGN_UP_PAGE[1], ...ADMIN_SCREENS].every((f) => readFileSync(f, "utf8").includes("perClassLine(perClass)")) && !readFileSync(SIGN_UP_PAGE[0], "utf8").includes("perClass"));
 }
 
 if (failed > 0) {
