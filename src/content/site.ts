@@ -18,9 +18,12 @@ import { COHORT_LENGTH_ADJ, GROUP_MAX_PLAYERS, numberInWords } from "@/content/p
 export const SITE_DESCRIPTION =
   `Group bootcamps in Toronto for juniors, teens and adults: ${CLASS_IDEA}, in ${COHORT_LENGTH_ADJ} cohorts.`;
 
-/** /programs: the two bootcamp programs by day, then private lessons. */
+/**
+ * /programs: who the two bootcamp programs are for, then private lessons. No
+ * weekday (backlog #85, fix round): each group's card shows its own days.
+ */
 export const PROGRAMS_DESCRIPTION =
-  `Group bootcamps in Toronto, ${CLASS_IDEA}: youth on Saturdays, adults on Sundays. Private lessons by arrangement.`;
+  `Group bootcamps in Toronto, ${CLASS_IDEA}: for youth and for adults, by age and level. Private lessons by arrangement.`;
 
 /** /about: what we run, the cohort and the public group size. */
 export const ABOUT_DESCRIPTION =
@@ -51,6 +54,19 @@ export const site: SiteConfig = {
  * "Notify me" button on a full group points at it (`#notify`).
  */
 export const NEWSLETTER_ANCHOR = "notify";
+
+/**
+ * The /programs lead's second line while no block is open anywhere (backlog
+ * #85, fix round 3): every card's button then reads "Notify me", so the lead
+ * says what is true and what that button does, in words for a phone and a
+ * computer alike (no "tap" or "click"): it opens the newsletter form, which
+ * adds an address to our email list. It read "and we'll email you when it
+ * opens" until the safety review: nothing sends an email when a block opens,
+ * so the line says who writes to that list, and promises no moment.
+ * "Cohort", not "block": one name per thing (voice.md rule 7).
+ * With an open block the lead reads "Pick your group and enroll."
+ */
+export const PROGRAMS_NO_DATES_LINE = "Dates for the next cohort are coming. Choose Notify me to join our email list, where our coaches announce new dates.";
 
 export type NavLink = { href: string; label: string };
 

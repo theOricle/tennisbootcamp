@@ -28,7 +28,7 @@ import {
   APPROVAL_ONLY_ERROR,
   type GatePlayer,
 } from "../lib/enrollGate";
-import { cohortAdmitsLevel } from "../lib/tiers";
+import { cohortAdmitsLevel, tierById } from "../lib/tiers";
 import { groupById } from "../content/programs";
 import type { ProgramGroup } from "../types/program";
 import { readFileSync } from "node:fs";
@@ -206,11 +206,14 @@ console.log("gateRefusal — what a refused route answers");
 
 console.log("approvalRefusal — the page's by-approval gate, run again by both payment routes");
 {
-  // A public cohort that trains in a group: the group's program and class.
+  // A public cohort that trains in a group: the group's program, level band
+  // (the rule since backlog #85: program and level) and class.
   const inGroup = (g: ProgramGroup, overrides: Partial<Cohort> = {}) =>
     cohort({
       id: `coh_${g.id}`,
       programId: g.programSlug,
+      levelMin: tierById(g.level!).levelMin,
+      levelMax: tierById(g.level!).levelMax,
       visibility: "public",
       sessions: [{ day: g.day!.slice(0, 3) as Cohort["sessions"][number]["day"], start: g.start!, end: g.end! }],
       ...overrides,

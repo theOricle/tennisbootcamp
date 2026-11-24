@@ -230,12 +230,22 @@ export function PersonIcon({ className }: IconProps) {
   );
 }
 
-/** A calendar: when a group trains. */
+/** A calendar: a group's dates, from the first class to the last. */
 export function CalendarIcon({ className }: IconProps) {
   return (
     <Icon className={className}>
       <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
       <path d="M3.5 10h17M8 3v4M16 3v4" />
+    </Icon>
+  );
+}
+
+/** A clock: a group's class days and times. Drawn here, on the calendar's 24-unit grid and line. */
+export function ClockIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="12" cy="12.4" r="8.4" />
+      <path d="M12 7.8v4.6l3 1.9" />
     </Icon>
   );
 }

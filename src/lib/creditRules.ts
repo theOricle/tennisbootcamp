@@ -166,6 +166,47 @@ export function accountCredits(input: {
   return { ready, waiting };
 }
 
+/** One of an account's ready credits, as the sign-up page hands it to the browser: whose it is, and how much. */
+export type ReadyCredit = Pick<AccountCredit, "participantId" | "creditCents">;
+
+/**
+ * The $20 each chosen player takes off, in the order chosen, from the
+ * account's ready credits (accountCredits): what the sign-up page shows
+ * before anything is sent. It is decideCredits as the e-transfer route asks
+ * it, one player at a time, each told what the earlier ones used: a player's
+ * own credit first, else one on the account for whoever enrolls next, and
+ * none twice. `ready` is a signed-in account's, so the account is proved.
+ * src/scripts/test-join-fix-round.ts holds the two side by side.
+ */
+export function readyCreditsForSeats(
+  ready: readonly ReadyCredit[],
+  seats: readonly (string | null | undefined)[]
+): number[] {
+  const taken = new Set<number>();
+  return seats.map((seat) => {
+    const player = (seat ?? "").trim() || null;
+    let at = player ? ready.findIndex((c, i) => !taken.has(i) && c.participantId === player) : -1;
+    if (at === -1) at = ready.findIndex((c, i) => !taken.has(i) && c.participantId === null);
+    if (at === -1) return 0;
+    taken.add(at);
+    return ready[at].creditCents;
+  });
+}
+
+/**
+ * The credit that comes off an enrollment of the chosen players, in cents:
+ * each player's own (readyCreditsForSeats), never more than one price each.
+ * Nothing while no player is chosen.
+ */
+export function chosenCreditCents(input: {
+  ready: readonly ReadyCredit[];
+  seats: readonly (string | null | undefined)[];
+  priceCents: number;
+}): number {
+  const price = Math.max(0, Math.round(input.priceCents));
+  return readyCreditsForSeats(input.ready, input.seats).reduce((sum, credit) => sum + Math.min(credit, price), 0);
+}
+
 /** What the guarded update that marks a credit used answers. */
 export type CreditWriteAnswer<T> = {
   data: T | null;

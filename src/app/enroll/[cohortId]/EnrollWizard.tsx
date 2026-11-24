@@ -5,7 +5,9 @@ import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import type { Program, ProgramGroup } from "@/types/program";
 import type { AgeBand } from "@/lib/ageBand";
-import { formatDateRange, formatDaysTimes, formatCohortPrice } from "@/lib/cohorts";
+import { formatCohortPrice } from "@/lib/cohorts";
+import { blockFacts } from "@/lib/groupBlocks";
+import { agesChipLabel } from "@/lib/programCatalog";
 import { locationForCohort } from "@/content/locations";
 import { membershipNote } from "@/lib/membership";
 import { COOLING_OFF_DAYS } from "@/content/policies";
@@ -15,6 +17,7 @@ import { TierRangeBadges } from "@/components/tiers";
 import { ProgramPlate } from "@/components/plates/ProgramPlate";
 import { artFocusForCohort } from "@/lib/plates/variant";
 import { amountDueCents, etransferMemo } from "@/lib/paymentTransitions";
+import { chosenCreditCents, type ReadyCredit } from "@/lib/creditRules";
 import {
   WhoIsThisFor,
   useHousehold,
@@ -78,7 +81,14 @@ const ETRANSFER_STEPS = 5;
 /** Server-derived facts for the e-transfer step (null on card cohorts). */
 export type EtransferInfo = {
   recipientEmail: string;
-  creditCents: number; // unused assessment credit that comes off the price
+  /** The credit the invitation reaches: fixed, since the invitation names its player. */
+  creditCents: number;
+  /**
+   * A signed-in account's own unused credits, each with the player it is for
+   * (null: whoever enrolls next). When set, the amount waits for the players
+   * chosen (chosenCreditCents) and `creditCents` is not read.
+   */
+  ready?: ReadyCredit[] | null;
 };
 
 /**
@@ -264,12 +274,15 @@ const EMPTY_FORM: FormState = {
 function OrderSummary({
   cohort,
   program,
+  group,
   seatsRemaining,
   creditAfterSignIn,
   creditWaitingNext,
 }: {
   cohort: Cohort;
   program: Program | undefined;
+  /** The group this cohort trains in: its ages are the ones its card shows. */
+  group: ProgramGroup | null;
   seatsRemaining: number | null;
   /**
    * Signed out, with no credit already on the invitation (backlog #84): the
@@ -286,6 +299,11 @@ function OrderSummary({
 }) {
   const price = formatCohortPrice(cohort);
   const location = locationForCohort(cohort);
+  // The dates, the class days and the ages read as the block's card reads
+  // them (safety review, #85): the first class to the last, each class day
+  // with its own time, and the group's own ages.
+  const facts = blockFacts(cohort);
+  const ages = group ? agesChipLabel([group]) : program?.ageGroup;
   return (
     <div className="space-y-5">
       {/* Where, first (owner, 2026-10-12: enrollment shows the location
@@ -334,9 +352,7 @@ function OrderSummary({
         <p className="mt-0.5 text-xl font-semibold text-white">
           {program?.title ?? cohort.programId}
         </p>
-        {program?.ageGroup && (
-          <p className="mt-0.5 text-sm text-white/60">{program.ageGroup}</p>
-        )}
+        {ages && <p className="mt-0.5 text-sm text-white/60">{ages}</p>}
         <TierRangeBadges
           levelMin={cohort.levelMin}
           levelMax={cohort.levelMax}
@@ -350,12 +366,12 @@ function OrderSummary({
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
           <p className="text-xs text-white/60 uppercase tracking-wide font-semibold">Dates</p>
-          <p className="mt-1 text-sm text-[#B4E655]">{formatDateRange(cohort)}</p>
+          <p className="mt-1 text-sm text-[#B4E655]">{facts.dates}</p>
           <p className="mt-0.5 text-xs text-white/60">{cohort.weeks} weeks</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
           <p className="text-xs text-white/60 uppercase tracking-wide font-semibold">Sessions</p>
-          <p className="mt-1 text-sm text-[#B4E655]">{formatDaysTimes(cohort)}</p>
+          <p className="mt-1 text-sm text-[#B4E655]">{facts.days}</p>
           <p className="mt-0.5 text-xs text-white/60">
             {cohort.capacityMin}–{cohort.capacityMax} players
           </p>
@@ -749,6 +765,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 function EtransferStep({
   cohort,
   info,
+  creditCents,
   memo,
   seats,
   submitting,
@@ -756,6 +773,8 @@ function EtransferStep({
 }: {
   cohort: Cohort;
   info: EtransferInfo;
+  /** The assessment credit that comes off this transfer, for the players chosen. */
+  creditCents: number;
   memo: string;
   /** How many players this transfer covers — one seat each. */
   seats: number;
@@ -763,7 +782,7 @@ function EtransferStep({
   onPayByCard: () => void;
 }) {
   const total = cohort.priceCents * seats;
-  const due = amountDueCents(total, info.creditCents);
+  const due = amountDueCents(total, creditCents);
   return (
     <div className="space-y-5">
       <p className="text-sm leading-relaxed text-white/70">
@@ -776,13 +795,13 @@ function EtransferStep({
         <div className="px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Amount</p>
           <p className="mt-1 text-xl font-semibold text-white">{moneyCAD(due)} CAD</p>
-          {(seats > 1 || info.creditCents > 0) && (
+          {(seats > 1 || creditCents > 0) && (
             <p className="mt-0.5 text-xs text-white/70">
               {seats > 1
                 ? `${moneyCAD(cohort.priceCents)} × ${seats} players`
                 : moneyCAD(cohort.priceCents)}
-              {info.creditCents > 0
-                ? ` − ${moneyCAD(info.creditCents)} assessment credit`
+              {creditCents > 0
+                ? ` − ${moneyCAD(creditCents)} assessment credit`
                 : ""}
             </p>
           )}
@@ -1342,6 +1361,18 @@ export function EnrollWizard({
   }
 
   const seatCount = Math.max(1, players.length);
+  // The $20 that comes off an e-transfer (safety review): an account's own
+  // credit waits for the players chosen and follows the payment routes' rule;
+  // an invitation's is the one it reaches.
+  const etransferCreditCents = !etransfer
+    ? 0
+    : etransfer.ready
+      ? chosenCreditCents({
+          ready: etransfer.ready,
+          seats: players.map((p) => p.participantId),
+          priceCents: cohort.priceCents,
+        })
+      : etransfer.creditCents;
 
   function back() {
     setPressedWithGaps(false);
@@ -1416,6 +1447,7 @@ export function EnrollWizard({
             <OrderSummary
               cohort={cohort}
               program={program}
+              group={group}
               seatsRemaining={seatsRemaining}
               creditAfterSignIn={!signedIn && !(etransfer && etransfer.creditCents > 0)}
               creditWaitingNext={signedIn && creditWaiting ? signInLinkNext : null}
@@ -1492,6 +1524,7 @@ export function EnrollWizard({
             <EtransferStep
               cohort={cohort}
               info={etransfer}
+              creditCents={etransferCreditCents}
               memo={memo}
               seats={seatCount}
               submitting={submitting}

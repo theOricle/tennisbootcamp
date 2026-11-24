@@ -285,6 +285,8 @@ export type NextStepInput = {
   today: string;
   /** The current instant (ISO); invite holds are compared against it. */
   now: string;
+  /** The dashboard lists at least one open group below the next step (backlog #85). */
+  groupsBelow?: boolean;
 };
 
 // Every level is confirmed on court in week one; the assessment is optional,
@@ -542,6 +544,7 @@ export function nextStepFor(input: NextStepInput): NextStep {
   }
 
   // 6. Nothing booked: the coaches place the players from the quiz.
+  const lead = input.groupsBelow ? "Or pick a group with dates below." : "There is nothing else you need to do.";
   const unplaced = roster.filter((p) => !hasLevel(p.level));
   if (input.voice === "you" || roster.length === 0) {
     return unplaced.length > 0 || roster.length === 0
@@ -549,7 +552,7 @@ export function nextStepFor(input: NextStepInput): NextStep {
           kind: "placing",
           eyebrow: "Next step",
           headline: "Our coaches are placing you in a group and time.",
-          detail: `There is nothing else you need to do. ${ASSESSMENT_LINE}`,
+          detail: `${lead} ${ASSESSMENT_LINE}`,
           primary: { href: "#availability", label: "Update my availability" },
           secondary: { href: "/assessment/book", label: "Book Your Assessment" },
         }
@@ -557,7 +560,7 @@ export function nextStepFor(input: NextStepInput): NextStep {
           kind: "placed",
           eyebrow: "Next step",
           headline: "Your level is set. Our coaches are placing you in a group.",
-          detail: "There is nothing else you need to do. Your group, dates and price land here once they are set.",
+          detail: `${lead} Your group, dates and price land here once they are set.`,
           primary: { href: "#availability", label: "Update my availability" },
           secondary: { href: "/programs", label: "Browse Programs" },
         };
@@ -570,8 +573,8 @@ export function nextStepFor(input: NextStepInput): NextStep {
     headline: `Our coaches are placing ${namesList(everyone)} in ${many ? "groups and times" : "a group and time"}.`,
     detail:
       unplaced.length > 0
-        ? `There is nothing else you need to do. ${ASSESSMENT_LINE}`
-        : "There is nothing else you need to do. Groups, dates and prices land here once they are set.",
+        ? `${lead} ${ASSESSMENT_LINE}`
+        : `${lead} Groups, dates and prices land here once they are set.`,
     primary: { href: "#availability", label: many ? "Update availability" : `Update ${possessive(everyone[0] ?? "their")} availability` },
     secondary:
       unplaced.length > 0

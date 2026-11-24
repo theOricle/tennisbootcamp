@@ -18,8 +18,8 @@
 import type { Cohort } from "@/types/cohort";
 import type { ProgramGroup } from "@/types/program";
 import { programGroups } from "@/content/programs";
-import { isCohortRenderable, todayIso } from "@/lib/cohortVisibility";
-import { cohortMatchesGroup } from "@/lib/programCatalog";
+import { isCohortRenderable } from "@/lib/cohortVisibility";
+import { blockHasPrice, groupForBlock } from "@/lib/groupBlocks";
 import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 import { emailBelongsToAccount } from "@/lib/enrollmentLink";
@@ -86,6 +86,21 @@ export function approvalGateApplies(input: {
 }
 
 /**
+ * The approval step's last line, "Invited already? …" (safety review, #85):
+ * signed out, "Sign in" back to this page; signed in, straight to the
+ * dashboard, where the invitation is. It used to send a signed-in invitee
+ * to the login form, which sent them back here.
+ */
+export function invitedAlreadyLink(
+  signedIn: boolean,
+  signInHref: string
+): { href: string; label: string; rest: string } {
+  return signedIn
+    ? { href: "/dashboard", label: "Open your dashboard", rest: " and your invitation is there." }
+    : { href: signInHref, label: "Sign in", rest: " and your invitation is on your dashboard." };
+}
+
+/**
  * The gate rule itself, shared by the page and both payment routes.
  *
  * `payable` is the payment routes' one extension: an invite whose hold lapsed
@@ -113,8 +128,9 @@ export function decideEnrollGate(input: {
   today?: string;
 }): EnrollGateDecision {
   const { cohort, tokenSent, lookup, playerLevel, playerLevels } = input;
-  const today = input.today ?? todayIso();
-  if (!cohort || !isCohortRenderable(cohort, today)) {
+  // Until its first class has started, in Toronto time (`today` is a moment,
+  // or a bare date read by the day; left out, it is now).
+  if (!cohort || !isCohortRenderable(cohort, input.today)) {
     return { allowed: false, status: 404 };
   }
   if (cohort.visibility !== "private") return { allowed: true, via: "public" };
@@ -483,7 +499,7 @@ export const APPROVAL_ONLY_ERROR =
  * direct POST to /api/checkout or /api/enroll/etransfer must meet the same
  * wall, else a Stripe session or an e-transfer row exists for a spot the
  * coaches never approved. Reads the cohort's group the way the page does
- * (`cohortMatchesGroup`) and the request's invitation the way the page does
+ * (`groupForBlock`) and the request's invitation the way the page does
  * (`claimedInvite`), so an invitee holding the link on a public cohort still
  * pays. Null when nothing stands in the way, or the cohort trains in no group.
  *
@@ -498,12 +514,12 @@ export const APPROVAL_ONLY_ERROR =
  * (A private by-approval cohort is decided by its own invite gate, above.)
  */
 export function approvalRefusal(
-  cohort: Pick<Cohort, "programId" | "sessions"> | null | undefined,
+  cohort: Pick<Cohort, "programId" | "sessions" | "levelMin" | "levelMax"> | null | undefined,
   gate: Pick<ResolvedEnrollGate, "decision" | "lookup">,
   groups: readonly ProgramGroup[] = programGroups
 ): { error: string; status: 403 } | null {
   if (!cohort) return null;
-  const group = groups.find((g) => cohortMatchesGroup(cohort, g));
+  const group = groupForBlock(cohort, groups);
   if (!group) return null;
   const claimed = claimedInvite(gate.lookup);
   const live = claimed && claimed.status !== "paid" ? claimed : null;
@@ -525,10 +541,7 @@ export const PRICE_NOT_SET_ERROR =
 export function priceRefusal(
   cohort: Pick<Cohort, "priceCents"> | null | undefined
 ): { error: string; status: 409 } | null {
-  const cents = cohort?.priceCents;
-  return typeof cents === "number" && Number.isFinite(cents) && cents > 0
-    ? null
-    : { error: PRICE_NOT_SET_ERROR, status: 409 };
+  return cohort && blockHasPrice(cohort) ? null : { error: PRICE_NOT_SET_ERROR, status: 409 };
 }
 
 /**

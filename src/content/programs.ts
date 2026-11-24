@@ -55,8 +55,12 @@ export const INSTALMENT_AMOUNT = COHORT_TOTAL / 2;
 
 /** "six" */
 export const COHORT_WEEKS_WORD = numberInWords(COHORT_WEEKS);
+/** A length in weeks, in words: "six weeks", "one week", "13 weeks". */
+export function cohortLengthFor(weeks: number): string {
+  return `${numberInWords(weeks)} week${weeks === 1 ? "" : "s"}`;
+}
 /** "six weeks" */
-export const COHORT_LENGTH = `${COHORT_WEEKS_WORD} week${COHORT_WEEKS === 1 ? "" : "s"}`;
+export const COHORT_LENGTH = cohortLengthFor(COHORT_WEEKS);
 /** "six-week" (adjective: "six-week cohorts") */
 export const COHORT_LENGTH_ADJ = `${COHORT_WEEKS_WORD}-week`;
 /**
@@ -71,16 +75,46 @@ export const COHORT_TOTAL_LABEL = formatDollars(COHORT_TOTAL);
 export const INSTALMENT_LABEL = formatDollars(INSTALMENT_AMOUNT);
 
 /**
- * "$210 for six weeks": the price a visitor reads, the whole price of one
- * bootcamp (owner, 2026-11-17), on the group cards, the program pages, the
- * dashboard's program cards and the quiz's match card. Never a per-session
- * figure. Cards show it stacked (priceParts, src/lib/programCatalog.ts).
+ * A whole price as a visitor reads it: the total, then "for" and the length
+ * ("$210 for six weeks"). A group card names its class count with it, once
+ * a week or twice ("$210 for 6 classes over six weeks", "$420 for 12 classes
+ * over six weeks"; owner, 2026-11-20), so two cards' prices compare at a
+ * glance: a planned group from the constants (GROUP_PRICE), a block the
+ * coach opens from its own total, length and classes (src/lib/groupBlocks.ts).
+ * Never a per-session figure.
  */
-export const PRICE_SUMMARY = `${COHORT_TOTAL_LABEL} for ${COHORT_LENGTH}`;
+export function priceSummaryFor(totalDollars: number, weeks: number, classes?: number): string {
+  const length = cohortLengthFor(weeks);
+  if (classes === undefined || !(classes > 0)) return `${formatDollars(totalDollars)} for ${length}`;
+  return `${formatDollars(totalDollars)} for ${classes} class${classes === 1 ? "" : "es"} over ${length}`;
+}
 
-/** The program page's price sentence: the whole price, then the $20 mechanic in full (voice.md rule 2). */
-const PRICE_LINE =
-  `${PRICE_SUMMARY}. If you took the $20 assessment, that $20 comes off the price.`;
+/**
+ * "$210 for six weeks": the price a visitor reads, the whole price of one
+ * bootcamp (owner, 2026-11-17), on the program pages while no block is open,
+ * the dashboard's program cards and the quiz's match card; the group cards
+ * add the class count (GROUP_PRICE). Never a per-session figure. Cards show
+ * it stacked (priceParts, src/lib/programCatalog.ts).
+ */
+export const PRICE_SUMMARY = priceSummaryFor(COHORT_TOTAL, COHORT_WEEKS);
+
+/**
+ * "$210 for 6 classes over six weeks": a planned group's price on its card,
+ * one class a week for the cohort length, with its class count like an open
+ * block's beside it (owner, 2026-11-20).
+ */
+export const GROUP_PRICE = priceSummaryFor(COHORT_TOTAL, COHORT_WEEKS, COHORT_WEEKS);
+
+/**
+ * The program page's price sentence: a whole price, then the $20 mechanic in
+ * full (voice.md rule 2). A program page reads it with its open blocks' price
+ * (src/lib/groupBlocks.ts cardsPrice), and with the setting's when none is open.
+ */
+export function priceLineFor(price: string): string {
+  return `${price}. If you took the $20 assessment, that $20 comes off the price.`;
+}
+
+const PRICE_LINE = priceLineFor(PRICE_SUMMARY);
 
 /** Private lessons carry no public rate (owner, 2026-10-12). */
 export const PRIVATE_LESSONS_PRICE = "Rates on request";
@@ -182,6 +216,24 @@ export function bootcampTitle(level: TierId, audience: "Junior" | "Youth" | "Adu
   return `${tierById(level).name} ${audience} Bootcamp`;
 }
 
+/**
+ * The programs that run group bootcamps, and the audience word their titles
+ * carry. A block the coach opens in one of them shows as a group card; one
+ * that matches no planned group is titled from its own level and this word
+ * ("Intermediate Youth Bootcamp"; "Youth Bootcamp" for a block built for
+ * any level). Private lessons run no blocks of their own.
+ */
+export const BOOTCAMP_AUDIENCE: Readonly<Record<string, "Youth" | "Adult">> = {
+  "youth-programs": "Youth",
+  bootcamps: "Adult",
+};
+
+/** A bootcamp group's title from its program and level, for a block that matches no planned group. */
+export function blockGroupTitle(programSlug: string, level: TierId | null): string {
+  const audience = BOOTCAMP_AUDIENCE[programSlug] ?? "Adult";
+  return level === null ? `${audience} Bootcamp` : bootcampTitle(level, audience);
+}
+
 export const programGroups: ProgramGroup[] = [
   {
     id: "youth-7-10",
@@ -194,7 +246,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Saturday",
     start: "12:00",
     end: "13:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },
@@ -209,7 +261,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Saturday",
     start: "13:00",
     end: "14:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },
@@ -227,7 +279,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Saturday",
     start: "14:00",
     end: "15:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     // By approval (owner, 2026-10-12): the quiz, then our coaches' yes.
     joining: "approval",
@@ -244,7 +296,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Sunday",
     start: "16:00",
     end: "17:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },
@@ -259,7 +311,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Sunday",
     start: "17:00",
     end: "18:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },
@@ -274,7 +326,7 @@ export const programGroups: ProgramGroup[] = [
     day: "Sunday",
     start: "18:00",
     end: "19:00",
-    price: PRICE_SUMMARY,
+    price: GROUP_PRICE,
     status: "forming",
     joining: "open",
   },
@@ -355,13 +407,18 @@ export const programs: Program[] = [
     id: "youth-programs",
     slug: "youth-programs",
     title: "Youth Bootcamps",
-    description: "Tennis and fitness in every class: three Saturday groups for ages 7–17.",
+    // No count of groups and no weekday in the program's own words (backlog
+    // #85, fix round): the cards below show each open group with its dates
+    // and class days, and a group may run on another day or twice a week.
+    description: "Tennis and fitness in every class: groups for ages 7–17, by age and level.",
     metaDescription:
-      `Saturday group bootcamps in Toronto for ages 7–17: tennis and fitness in every class, three groups by age and level. ${PRICE_SUMMARY}.`,
+      `Youth group bootcamps in Toronto, ages 7–17: tennis and fitness in every class, in groups by age and level. ${PRICE_SUMMARY}.`,
     longDescription:
       `${CLASS_LINE} ` +
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}. ` +
-      "Three groups run back to back on Saturdays: the Beginner Junior Bootcamp (ages 7–10) at 12:00, the Novice Youth Bootcamp (ages 11–15) at 1:00, and the High Performance Youth Bootcamp at 2:00 for players 12–17 who compete, or are training to. " +
+      // No list of the groups (backlog #85, safety review): a block off the
+      // planned lineup adds a card, and the heading over the cards counts it.
+      "The groups go by age and level, from juniors in their first season to the competitive track for players who compete, or are training to. Each group below shows its dates and class times. " +
       PLACEMENT_LINE,
     type: "Group bootcamp",
     comingSoon: false,
@@ -379,7 +436,7 @@ export const programs: Program[] = [
     plateCaption: "Cross-court rallies. Every rep aimed past the service line.",
     ageBands: YOUTH_BANDS,
     ...spanFor("youth-programs"),
-    levelNote: "Three groups by age and level, from a first season to the competitive track",
+    levelNote: "Groups by age and level, from a first season to the competitive track",
     priceSummary: PRICE_SUMMARY,
     enrollmentStatus: "forming",
     schedule: scheduleFor("youth-programs", "Saturday"),
@@ -396,13 +453,14 @@ export const programs: Program[] = [
     id: "bootcamps",
     slug: "bootcamps",
     title: "Adult Bootcamps",
-    description: "Tennis and fitness in every class: three Sunday levels for adults and players 16 and up.",
+    // No count and no weekday here either (backlog #85, fix round).
+    description: "Tennis and fitness in every class: groups by level for adults and players 16 and up.",
     metaDescription:
-      `Sunday group bootcamps for adults in Toronto, 16 and up: tennis and fitness in every class, three levels back to back. ${PRICE_SUMMARY}.`,
+      `Adult group bootcamps in Toronto, 16 and up: tennis and fitness in every class, in groups by level. ${PRICE_SUMMARY}.`,
     longDescription:
       `${CLASS_LINE} ` +
       `Each cohort is a fixed group that trains together for ${COHORT_LENGTH}. ` +
-      "Three levels run back to back on Sundays: Beginner at 4:00, Intermediate at 5:00, Advanced at 6:00. Players 16 and up are welcome. " +
+      "The groups go by level: Beginner, Intermediate and Advanced. Players 16 and up are welcome. Each group below shows its dates and class times. " +
       PLACEMENT_LINE,
     type: "Group bootcamp",
     comingSoon: false,
@@ -417,10 +475,10 @@ export const programs: Program[] = [
     plate: "bootcamps",
     plateAlt:
       "Court diagram: three ball flights from the same spot, from a high arc landing short to a flat drive landing deep.",
-    plateCaption: "Three levels on Sunday. As the level goes up, the ball flies flatter and lands deeper.",
+    plateCaption: "As the level goes up, the ball flies flatter and lands deeper.",
     ageBands: ADULT_BANDS,
     ...spanFor("bootcamps"),
-    levelNote: "Beginner, Intermediate and Advanced classes, back to back",
+    levelNote: "Beginner, Intermediate and Advanced groups",
     priceSummary: PRICE_SUMMARY,
     enrollmentStatus: "forming",
     schedule: scheduleFor("bootcamps", "Sunday"),

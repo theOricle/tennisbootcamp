@@ -149,7 +149,7 @@ check(
 console.log("/programs: the Location is the first dropdown");
 const catalogPrograms = listedPrograms.map((p) => ({ slug: p.slug, title: p.title }));
 const catalogView = (query = initialCatalogQuery()) =>
-  render(createElement(ProgramCatalogView, { programs: catalogPrograms, groups: programGroups, nextCohorts: {}, header: null, query, onChange: () => {} }));
+  render(createElement(ProgramCatalogView, { programs: catalogPrograms, cards: programGroups.map((group) => ({ group, block: null })), header: null, query, onChange: () => {} }));
 const view = catalogView();
 check("three labelled dropdowns, the location first", at(view, ">Location</label>") > 0 && at(view, ">Location</label>") < at(view, ">Player&#x27;s age</label>") && at(view, ">Player&#x27;s age</label>") < at(view, ">Level</label>") && (view.match(/<select /g) ?? []).length === 3);
 check("each dropdown is tied to its label", (view.match(/<label for="/g) ?? []).length === 3 && [...view.matchAll(/<label for="([^"]+)"/g)].every(([, id]) => view.includes(`<select id="${id}"`)));
@@ -164,20 +164,24 @@ check("the dropdown writes the same ?location= the catalog reads, in Suspense, w
 check("a second location would add an All locations option", catalogSrc.includes('{locations.length > 1 && <option value="">All locations</option>}'));
 
 console.log("Group cards and program pages show the club");
-const youth = listedPrograms[0];
-const card = render(createElement(ProgramGroupCard, { group: programGroups[0], program: youth }));
+const card = render(createElement(ProgramGroupCard, { group: programGroups[0] }));
 check("the where line: the club's name, a plain line with a pin and no label", card.includes(`${NAME}</li>`) && !card.includes(">Where<") && !card.includes("<dt"));
 check("the area left the card (it is on the page, beside the club's name)", !card.includes("North York"));
 // Re-pinned for backlog #70: the price is the cohort total now, not "… a session".
-check("where sits after when and before the price", at(card, "Saturdays 12:00–1:00 pm") > 0 && at(card, "Saturdays 12:00–1:00 pm") < at(card, `${NAME}</li>`) && at(card, `>${COHORT_TOTAL_LABEL}</span>`) > 0 && at(card, `${NAME}</li>`) < at(card, `>${COHORT_TOTAL_LABEL}</span>`));
+// Re-pinned for backlog #85: the class days and times read short ("Saturdays 12–1pm").
+check("where sits after when and before the price", at(card, ">12–1pm") > 0 && at(card, ">12–1pm") < at(card, `${NAME}</li>`) && at(card, `>${COHORT_TOTAL_LABEL}</span>`) > 0 && at(card, `${NAME}</li>`) < at(card, `>${COHORT_TOTAL_LABEL}</span>`));
 check("the card keeps one link (no map link on a card)", (card.match(/<a /g) ?? []).length === 1 && !card.includes("google.com/maps"));
-check("every group card shows the club", programGroups.filter((g) => g.day !== null).every((g) => render(createElement(ProgramGroupCard, { group: g, program: listedPrograms.find((p) => p.slug === g.programSlug)! })).includes(`${NAME}</li>`)));
+check("every group card shows the club", programGroups.filter((g) => g.day !== null).every((g) => render(createElement(ProgramGroupCard, { group: g })).includes(`${NAME}</li>`)));
 const line = render(createElement(LocationLine, { location: club!, mapLink: true }));
 check("LocationLine: name · area · map link", line.includes(`>${NAME}</span>`) && line.includes(`</span>${AREA}</span>`) && line.includes("Open in Google Maps"));
 const detail = read("src/app/programs/[slug]/page.tsx");
 check("program pages show the location with its map link", detail.includes("<LocationLine key={l.id} location={l} mapLink") && detail.includes("locationsForProgram(program.slug)"));
-check("program pages: the cohort list names the club, not a stand-in", detail.includes("At {programLocations.map(locationLine).join(\" and \")}.") && !detail.includes("VENUE_LINE"));
-check("program pages: the cohort list keeps the neutral club-membership line (D19)", detail.includes("<p>{membershipNote()}</p>"));
+// Re-pinned for backlog #85 (fix round): the cohort list under the groups
+// left the page (the group cards carry the open blocks, each naming the
+// club), and with it its club line and the club-membership line, which the
+// sign-up page still shows beside the club before anyone pays.
+check("program pages: the club is named by the hero's location line and on every card, never a stand-in", detail.includes("<LocationLine key={l.id} location={l} mapLink") && !detail.includes("VENUE_LINE") && !detail.includes("At {programLocations.map(locationLine)"));
+check("the neutral club-membership line (D19) stays where a player pays: the sign-up page", read("src/app/enroll/[cohortId]/EnrollWizard.tsx").includes("{membershipNote()}") && !detail.includes("membershipNote()"));
 
 console.log("Home: Where we train");
 const home = read("src/app/page.tsx");

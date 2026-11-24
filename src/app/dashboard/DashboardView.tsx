@@ -14,7 +14,6 @@ import { AGE_BAND_LABELS } from "@/lib/ageBand";
 import { locations } from "@/content/locations";
 import { LocationBlock } from "@/components/locations/LocationLine";
 import { formatTierLevel, formatTierSpan, hasLevel, levelNumber, type PlacedSpan } from "@/lib/tiers";
-import { isCohortPublic } from "@/lib/cohortVisibility";
 import { artFocusForCohort } from "@/lib/plates/variant";
 import {
   ENROLLMENT_CHIP,
@@ -31,6 +30,8 @@ import { ProgramPlate } from "@/components/plates/ProgramPlate";
 import { PlateMark } from "@/components/plates/PlateMark";
 import { AgeBandChips } from "@/components/programs/AgeBandChips";
 import { ProgramCardList } from "@/components/sections/ProgramCard";
+import { OPEN_GROUPS_HEADING, OpenGroupsList } from "@/components/sections/OpenGroups";
+import type { GroupCard } from "@/lib/groupBlocks";
 import { suggestionsSubCopy, type ProgramFit, type SuggestedProgram } from "@/lib/programCatalog";
 import { AvailabilityEditor } from "./AvailabilityEditor";
 
@@ -38,11 +39,13 @@ import { AvailabilityEditor } from "./AvailabilityEditor";
 // session and hands it over as plain data; the words for each state come
 // from src/lib/dashboardState.ts. One surface style throughout — the
 // homepage card: rounded-2xl, border white/10, bg white/5. Mobile order top
-// to bottom: next step, tiers, my programs, open groups, players, availability,
-// suggestions.
+// to bottom: next step, tiers, my programs, groups with dates, open for your
+// tier, players, availability, suggestions.
 //
 // The next-step card is the one primary on the page (audit M32): every other
-// action is an outline button or a text link. The page speaks to the players
+// action is an outline button or a text link, the open blocks' "Enroll" under
+// "Groups with dates" included (the same cards as /programs, drawn quiet).
+// The page speaks to the players
 // who train (audit M26): a parent who registered only a child reads about
 // that child by name, never "you" as an unranked player.
 
@@ -79,16 +82,28 @@ export type DashboardViewProps = {
    */
   creditWaiting?: boolean;
   enrollments: DashboardEnrollment[];
-  /** Every cohort (enrollment lookups + the public ones for suggestion cards). */
+  /** Every cohort (enrollment lookups). */
   cohorts: Cohort[];
   /** Dated session rows keyed by cohort id (empty when none are generated yet). */
   sessionsByCohort: Record<string, CohortSessionRow[]>;
   /** Open cohorts a player on the account may join by level, not yet enrolled. */
   openForTier: OpenForTier[];
   /**
+   * The open blocks as group cards (owner, 2026-11-19), each with "Enroll" to
+   * its sign-up page: the same cards as /programs, for this account
+   * (accountOpenCards, src/lib/groupBlocks.ts: not a block it is in, not a
+   * by-approval one, ages that take one of its players). None reads one
+   * line, by anyGroupOpen: no group has dates yet, or none with dates is
+   * open to this account.
+   */
+  openGroups?: GroupCard[];
+  /** Whether any block is open at all, listed for this account or not. */
+  anyGroupOpen?: boolean;
+  /**
    * "Suggested for you" (audit M31): programs the account isn't enrolled in
    * that fit at least one player's age and level, with the ranked player each
-   * one fits, from suggestProgramsFor().
+   * one fits, from suggestProgramsFor(), less any program whose groups with
+   * dates are listed above them (suggestionsBesideCards).
    */
   suggestions: SuggestedProgram[];
   programs: Program[];
@@ -424,6 +439,8 @@ export function DashboardView(props: DashboardViewProps) {
     cohorts,
     sessionsByCohort,
     openForTier,
+    openGroups = [],
+    anyGroupOpen,
     suggestions,
     programs,
     placedSpans = {},
@@ -431,7 +448,6 @@ export function DashboardView(props: DashboardViewProps) {
     quizTaken = true,
   } = props;
 
-  const publicCohorts = cohorts.filter((c) => isCohortPublic(c, today));
   const several = roster.length > 1;
   const names = roster.map((p) => (p.id === self?.id ? "you" : firstNameOf(p.full_name) || "your player"));
   const openCount = (playerId: string) =>
@@ -559,6 +575,22 @@ export function DashboardView(props: DashboardViewProps) {
                 })}
               </div>
             )}
+          </section>
+
+          {/* Groups with dates (owner, 2026-11-19: no dead end when signed
+              in): the account's open blocks as the same group cards as
+              /programs, each "Enroll" an outline to the block's sign-up page,
+              since the next step above is the page's one primary. With none
+              listed, one line says which is true, no group has dates yet or
+              none with dates is open to them, and points to the groups. */}
+          <section aria-labelledby="open-groups">
+            <SectionHeading id="open-groups" title={OPEN_GROUPS_HEADING} />
+            <OpenGroupsList
+              cards={openGroups}
+              quiet
+              blocksOpen={anyGroupOpen}
+              whom={several ? "your players" : (names[0] ?? "you")}
+            />
           </section>
 
           {/* Open cohorts a player's level admits (audit M27): per player, by
@@ -757,7 +789,10 @@ export function DashboardView(props: DashboardViewProps) {
       {/* Suggested for you (audit M31, H7): the same spec-sheet card as the
           home grid, filtered by each player's age and level, with "Fits
           Maya" and her place on the rail. Hidden when there is nothing to
-          suggest. */}
+          suggest. It never repeats a block (backlog #85): a program whose
+          groups with dates are listed above is left out, and the cards carry
+          no Next row, since the group cards are where a block's dates,
+          price and "Enroll" live. */}
       {suggestions.length > 0 && (
         <section aria-labelledby="suggested">
           <SectionHeading
@@ -772,7 +807,6 @@ export function DashboardView(props: DashboardViewProps) {
           />
           <ProgramCardList
             programs={suggestions.map((s) => s.program)}
-            publicCohorts={publicCohorts}
             fits={Object.fromEntries(suggestions.map((s) => [s.program.id, s.fit])) as Record<string, ProgramFit>}
           />
         </section>
