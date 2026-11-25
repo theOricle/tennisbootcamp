@@ -122,11 +122,20 @@ export function CodeSubmit({ label, loading }: { label: string; loading: boolean
  * A refused code, in our words. A session that has run out is the one refusal
  * with somewhere to go: back to /login, keeping the page the visitor wanted.
  */
-export function CodeError({ kind, nextPath }: { kind: CodeErrorKind | null; nextPath: string }) {
+export function CodeError({
+  kind,
+  nextPath,
+  page = "code",
+}: {
+  kind: CodeErrorKind | null;
+  nextPath: string;
+  /** The set-up page has its own wrong-code line. */
+  page?: "code" | "setup";
+}) {
   if (!kind) return null;
   return (
     <div role="alert" className="text-sm text-red-400">
-      <p>{codeErrorMessage(kind)}</p>
+      <p>{codeErrorMessage(kind, page)}</p>
       {kind === "signedOut" && (
         <Link href={loginHref(nextPath)} className={TEXT_LINK_LIME}>
           {CODE_COPY.signInAgain}

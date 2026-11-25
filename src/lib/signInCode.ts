@@ -163,10 +163,16 @@ export const CODE_COPY = {
   checking: "Checking…",
   tryAgain: "Try again",
   signInAgain: "Sign in again →",
+  signOut: "Sign out",
 
   incomplete: "Enter the 6 digits from your app.",
-  wrong: "That code didn't match. Enter the newest code from your app.",
-  expired: "That code expired. Enter the newest code from your app.",
+  wrong: "That code didn't match. Enter the newest code from your app, or email info@tennisbootcamp.ca.",
+  // The set-up page's own line: opening the page again (a reload, a second
+  // tab) makes a new QR, and an entry scanned from the earlier one never
+  // matches.
+  setupWrong:
+    "That code didn't match. If you opened this page again, delete the earlier Tennis Bootcamp entry in your app and scan this code, or email info@tennisbootcamp.ca.",
+  expired: "That code expired. Enter the newest code from your app, or email info@tennisbootcamp.ca.",
   rateLimited: "Too many tries in a row. Wait a minute, then try again, or email info@tennisbootcamp.ca.",
   signedOut: "Your sign-in timed out. Sign in again, or email info@tennisbootcamp.ca.",
   setupStale: "This set-up timed out. Start it again, or email info@tennisbootcamp.ca.",
@@ -217,7 +223,9 @@ export function codeErrorKind(error: MfaErrorLike): CodeErrorKind {
   return "generic";
 }
 
-export function codeErrorMessage(kind: CodeErrorKind): string {
+/** The line for a refusal. The set-up page has its own for a wrong code. */
+export function codeErrorMessage(kind: CodeErrorKind, page: "code" | "setup" = "code"): string {
+  if (kind === "wrong" && page === "setup") return CODE_COPY.setupWrong;
   return CODE_COPY[kind];
 }
 
@@ -232,6 +240,13 @@ export function secretGroups(secret: string | null | undefined): string[] {
 const SVG_DATA_PREFIX = "data:image/svg+xml;utf-8,";
 
 /**
+ * What may stand before the drawing: an XML prolog, then comments. Supabase's
+ * QR opens with both (`<?xml version="1.0"?>`, then a generator comment).
+ * Anything else before `<svg` (a doctype, another element, text) is refused.
+ */
+const SVG_DOCUMENT = /^(?:<\?xml[^<>]*\?>\s*)?(?:<!--(?:(?!-->)[\s\S])*-->\s*)*<svg[\s>]/;
+
+/**
  * Supabase hands the QR over as an SVG data URL with the markup unescaped.
  * It is re-encoded so a "#" inside it can never cut the image short, and
  * anything that is not that SVG data URL is not drawn at all.
@@ -240,7 +255,7 @@ export function qrImageSrc(qr: string | null | undefined): string | null {
   const value = qr ?? "";
   if (!value.startsWith(SVG_DATA_PREFIX)) return null;
   const svg = value.slice(SVG_DATA_PREFIX.length).trim();
-  if (!svg.startsWith("<svg")) return null;
+  if (!SVG_DOCUMENT.test(svg)) return null;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 

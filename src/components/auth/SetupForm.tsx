@@ -192,7 +192,7 @@ export function SetupForm({
             />
           </section>
 
-          <CodeError kind={errorKind} nextPath={nextPath} />
+          <CodeError kind={errorKind} nextPath={nextPath} page="setup" />
           <LiveStatus message={loading ? CODE_COPY.checking : ""} />
           {stale ? (
             <button type="button" onClick={startAgain} className={`${buttonClass("primary")} w-full`}>

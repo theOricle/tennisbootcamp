@@ -4,8 +4,7 @@
 -- The coach's account signs in with a password and then a 6-digit code from an
 -- authenticator app (Supabase MFA, TOTP). A session that has passed the code
 -- carries the claim aal = 'aal2' in its access token; a password-only session
--- carries 'aal1'. Until now is_admin() looked at profiles.role alone, so a
--- password-only session of the admin account passed every admin policy.
+-- carries 'aal1'. is_admin() now asks for the role and for 'aal2' together.
 --
 -- This replaces the function body and nothing else: same name, same return
 -- type, same security definer, stable and search_path, same grants. Every

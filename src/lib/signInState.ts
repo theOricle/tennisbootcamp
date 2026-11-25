@@ -43,6 +43,7 @@ export async function readSignInState(client?: SupabaseClient): Promise<SignInSt
   let aal: AssuranceLevel | null = null;
   try {
     const { data, error } = await supabase.auth.getClaims();
+    if (error) console.error("Sign-in level not read: the claims were refused");
     const claims = error ? null : data?.claims;
     if (claims && claims.sub === user.id) {
       if (claims.aal === "aal2") aal = "aal2";
@@ -50,6 +51,8 @@ export async function readSignInState(client?: SupabaseClient): Promise<SignInSt
     }
   } catch {
     // The level could not be verified: it stays unknown, which never passes.
+    // One fixed line, no user data.
+    console.error("Sign-in level not read: the claims check failed");
   }
 
   const factors = (user.factors ?? []) as FactorLike[];

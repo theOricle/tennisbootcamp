@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/browser";
 import { LiveStatus } from "@/components/ui/Input";
+import { TEXT_LINK_MUTED } from "@/components/ui/TextLink";
+import { signOut } from "@/lib/useAuthState";
 import {
   CODE_COPY,
   isCompleteCode,
@@ -87,6 +89,13 @@ export function CodeForm({
         <CodeError kind={errorKind} nextPath={nextPath} />
         <LiveStatus message={loading ? CODE_COPY.checking : ""} />
         <CodeSubmit label={CODE_COPY.codeButton} loading={loading} />
+        {/* The way out for someone at the wrong account, or without their
+            phone: the header's own sign-out, as a quiet link. */}
+        <div className="-mb-3 text-center">
+          <button type="button" onClick={() => void signOut()} className={TEXT_LINK_MUTED}>
+            {CODE_COPY.signOut}
+          </button>
+        </div>
       </form>
     </CodeShell>
   );
