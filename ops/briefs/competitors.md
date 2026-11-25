@@ -55,6 +55,11 @@ Not a group class, for reference (summary): ACE's high-performance streams at Da
 - **Toronto Tennis Academy:** the site could not be read.
 - Group size at Toronto Tennis City, and whether its winter classes are indoors; Xanadu's tax; whether Bayview or MC Academy run anything indoors.
 
+## Where we differ (facts only)
+
+- **Commitment:** a cohort runs six weeks (`COHORT_WEEKS`), at the short end of the rivals' 5 to 40 weeks.
+- **Week one:** our coaches confirm each player's level on court in week one; a player moves to a group that fits better at the same price, or is refunded in full if none does (`RIGHT_GROUP_PROMISE`). The rivals' rules above refund only with notice before the start (two weeks at Toronto Tennis City, ACE and Bayview, with a $35 fee at the first two), give credit (MC Academy, which refunds a card on request with 7 days' notice; TAC Sports, credits only), refund only when a class does not run (Xanadu), or show no rule (Nike).
+
 ## Our line (`src/content/programs.ts`)
 
 - $35 a session (`SESSION_PRICE`); $210 per six-week cohort of 6 classes (`COHORT_WEEKS`; a group card reads "$210 for 6 classes over six weeks"). A block the coach opens in `/admin/cohorts` carries its own price.
