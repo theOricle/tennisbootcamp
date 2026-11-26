@@ -428,7 +428,7 @@ void (async () => {
     check("the private line, in the same small type", markup("private") === `<p class="mb-1 basis-full text-xs text-white/60">${PRIVATE_LINE}</p>`);
     const back = markup("back_to_draft");
     check("Back to draft: one button and no line", (back.match(/<button/g) ?? []).length === 1 && text(back) === BACK_TO_DRAFT_BUTTON);
-    check("the words: Open to the public, Back to draft, and the line under the first", OPEN_BUTTON === "Open to the public" && BACK_TO_DRAFT_BUTTON === "Back to draft" && OPEN_LINE === "A draft is hidden from the site. Once it's open, the site lists it with an Enroll button until its first class." && PRIVATE_LINE === "A private cohort opens when you send its first invitation.");
+    check("the words: Open to the public, Back to draft, and the line under the first", OPEN_BUTTON === "Open to the public" && BACK_TO_DRAFT_BUTTON === "Back to draft" && OPEN_LINE === "A draft is hidden from the site. Once it's open, the site lists it until its first class." && PRIVATE_LINE === "A private cohort opens when you send its first invitation.");
 
     const page = read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx");
     const reopen = /onClick=\{\(\) => void postStatus\(\{ action: "reopen" \}\)\}\s*className="([^"]+)"/.exec(page)?.[1] ?? "";

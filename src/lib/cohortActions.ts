@@ -255,7 +255,7 @@ export async function createInvites(
     return {
       sent: 0,
       emailed: 0,
-      errors: [`Cohort is ${cohort.dbStatus} — invites go out from draft or inviting.`],
+      errors: [`Cohort is ${cohort.dbStatus} — invites go out from draft or open.`],
     };
   }
 

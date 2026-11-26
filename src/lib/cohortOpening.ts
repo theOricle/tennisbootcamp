@@ -79,8 +79,7 @@ export function firstClassAhead(cohort: Cohort, when?: string): boolean {
 
 /** The button that opens a draft, and the line under it. */
 export const OPEN_BUTTON = "Open to the public";
-export const OPEN_LINE =
-  "A draft is hidden from the site. Once it's open, the site lists it with an Enroll button until its first class.";
+export const OPEN_LINE = "A draft is hidden from the site. Once it's open, the site lists it until its first class.";
 /** A private draft's line on its page, and the API's answer when asked to open one. */
 export const PRIVATE_LINE = "A private cohort opens when you send its first invitation.";
 /** The button that takes an open cohort back to draft. */

@@ -670,7 +670,7 @@ function InviteSection({
         </div>
       ) : (
         <p className="text-sm text-white/60">
-          Invites go out while the cohort is draft or inviting. Re-invite from
+          Invites go out while the cohort is draft or open. Re-invite from
           those states; an expired invite gets a fresh link the same way.
         </p>
       )}
