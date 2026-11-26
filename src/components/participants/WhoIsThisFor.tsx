@@ -43,6 +43,9 @@ import { FOCUS_RING } from "@/components/ui/focus";
 // Signed out → a repeatable participant block; each block becomes its own
 //              participant row (and its own booking / intake row / invite)
 //              under the holder's email once the account is provisioned.
+//              On the sign-up page (`signup`, backlog #97) a block asks who
+//              the player is as tap choices, then their name: no age, no
+//              level, since the date of birth on the next step settles both.
 
 export const RELATIONSHIPS = ["self", "child", "spouse", "other"] as const;
 export type Relationship = (typeof RELATIONSHIPS)[number];
@@ -132,6 +135,87 @@ export const EMPTY_HOUSEHOLD: HouseholdValue = {
   guests: [emptyGuest("self")],
   profiles: {},
 };
+
+// ─── The sign-up page, signed out (backlog #97) ───────────────────────────────
+
+/**
+ * What the sign-up page's group means for its first step. Only the enroll
+ * wizard passes it: signed out, each block then asks who the player is as
+ * tap choices, then their name, and never their age or level. Without it
+ * the quiz's and the booking's blocks are exactly as they were.
+ */
+export type SignupWho = {
+  /** A youth group (isYouthGroup): "My child" and "Someone else" only. */
+  youth: boolean;
+  /** The block an invitation for the holder themselves starts on: on a youth group it keeps "Myself". */
+  selfKey: string | null;
+};
+
+/** The choices one sign-up block offers, in the usual order. */
+export function signupRelationships(signup: SignupWho, key: string): readonly Relationship[] {
+  if (!signup.youth) return RELATIONSHIPS;
+  return RELATIONSHIPS.filter(
+    (r) => r === "child" || r === "other" || (r === "self" && key === signup.selfKey)
+  );
+}
+
+/** The name field follows the choice. */
+export function signupNameLabel(relationship: Relationship): string {
+  if (relationship === "self") return "Your full name";
+  if (relationship === "child") return "Your child's full name";
+  return "Their full name";
+}
+
+function signupNamePlaceholder(relationship: Relationship): string {
+  if (relationship === "self") return "Your name";
+  if (relationship === "child") return "Your child's name";
+  return "Their name";
+}
+
+/** A block on another relationship, with the band it assumes, as the select sets it. */
+function withRelationship(guest: GuestParticipant, relationship: Relationship): GuestParticipant {
+  const ageBand = defaultAgeBand(relationship);
+  return { ...guest, relationship, ageBand, isMinor: ageBandIsMinor(ageBand) };
+}
+
+/** The player an invitation names, as the sign-up page's first block takes them. */
+export type SignupInvite = { name: string | null; relationship: string };
+
+/**
+ * The blocks the sign-up page starts on, signed out, and the key of the one
+ * that keeps "Myself" on a youth group. With no invitation (or one for a
+ * player on the signed-in account), the block every form starts on; an
+ * invitation starts the block on its player's name and relationship, and
+ * when that player is the holder themselves the block is `selfKey`.
+ */
+export function signupStart(invite: SignupInvite | null): {
+  value: HouseholdValue;
+  selfKey: string | null;
+} {
+  if (!invite) return { value: EMPTY_HOUSEHOLD, selfKey: null };
+  const relationship = isRelationshipValue(invite.relationship) ? invite.relationship : "self";
+  const guest = { ...emptyGuest(relationship), name: invite.name?.trim() ?? "" };
+  return {
+    value: { ...EMPTY_HOUSEHOLD, guests: [guest] },
+    selfKey: invite.relationship === "self" ? guest.key : null,
+  };
+}
+
+/**
+ * The blocks as the sign-up page shows and posts them, each on a choice its
+ * group offers: on a youth group, a block on "Myself" (the one every form
+ * starts on, unless an invitation for the holder keeps it) or on "My spouse
+ * or partner" reads "My child". The wizard reads its typed players through
+ * this, so what a block shows is what the page posts.
+ */
+export function signupValue(signup: SignupWho, value: HouseholdValue): HouseholdValue {
+  const offered = (g: GuestParticipant) => signupRelationships(signup, g.key).includes(g.relationship);
+  if (value.guests.every(offered)) return value;
+  return {
+    ...value,
+    guests: value.guests.map((g) => (offered(g) ? g : withRelationship(g, "child"))),
+  };
+}
 
 /**
  * Signed in, the typed blocks are people being added to the account (backlog
@@ -701,6 +785,77 @@ function AddPersonForm({
   );
 }
 
+// ─── Who is this? as tap choices (the sign-up page) ──────────────────────────
+
+/** The card shows the ring while its radio has keyboard focus (FOCUS_RING, through the card). */
+const CHOICE_FOCUS_RING =
+  "has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-[#B4E655]/50 " +
+  "has-[input:focus-visible]:ring-offset-2 has-[input:focus-visible]:ring-offset-[#061427]";
+
+/**
+ * "Who is this?" on the sign-up page (backlog #97): the signed-in chooser's
+ * cards, each a real radio input in one fieldset, so the arrow keys move
+ * between them and a screen reader hears the question and each choice. The
+ * tick shows the state as well as the colour (WCAG 1.4.1); each card is a
+ * 44px target.
+ */
+function RelationshipChoices({
+  name,
+  value,
+  choices,
+  onChange,
+}: {
+  /** The radios' shared name: one group per block. */
+  name: string;
+  value: Relationship;
+  choices: readonly Relationship[];
+  onChange: (next: Relationship) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className={`${LABEL_CLASS} mb-1.5`}>Who is this?</legend>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {choices.map((r) => {
+          const checked = value === r;
+          return (
+            <label
+              key={r}
+              className={[
+                "relative flex min-h-[44px] cursor-pointer items-center justify-between gap-3 rounded-2xl border px-4 py-3 transition",
+                CHOICE_FOCUS_RING,
+                checked
+                  ? "border-[#B4E655]/60 bg-[#B4E655]/10"
+                  : "border-white/15 bg-white/5 hover:bg-white/10",
+              ].join(" ")}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={r}
+                checked={checked}
+                onChange={() => onChange(r)}
+                className="sr-only"
+              />
+              <span className="min-w-0 text-base font-semibold text-white">
+                {RELATIONSHIP_LABELS[r]}
+              </span>
+              <span
+                aria-hidden="true"
+                className={[
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs font-bold",
+                  checked ? "border-[#B4E655] bg-[#B4E655] text-[#061427]" : "border-white/45",
+                ].join(" ")}
+              >
+                {checked ? "✓" : ""}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 // ─── Guest block (signed out) ─────────────────────────────────────────────────
 
 function GuestBlock({
@@ -713,6 +868,7 @@ function GuestBlock({
   title,
   relationships = RELATIONSHIPS,
   errors,
+  signup = null,
 }: {
   guest: GuestParticipant;
   index: number;
@@ -726,6 +882,12 @@ function GuestBlock({
   relationships?: readonly Relationship[];
   /** Problems to show, keyed by field id (householdIssues). */
   errors?: Record<string, string>;
+  /**
+   * The sign-up page (backlog #97): who the player is as tap choices first,
+   * then the name, labelled for that choice; no age and no level. Null keeps
+   * the block as it was.
+   */
+  signup?: SignupWho | null;
 }) {
   const id = `guest-${guest.key}`;
   const heading = title ?? guestTitle(index, false);
@@ -750,9 +912,20 @@ function GuestBlock({
           </button>
         )}
       </div>
+      {/* The sign-up page asks who first, then the name (backlog #97). The
+          age is asked once, as the date of birth on the next step, so it
+          shows no band and no level. */}
+      {signup && (
+        <RelationshipChoices
+          name={`${id}-rel`}
+          value={guest.relationship}
+          choices={signupRelationships(signup, guest.key)}
+          onChange={(relationship) => onChange(withRelationship(guest, relationship))}
+        />
+      )}
       <div className="grid gap-1.5">
         <label htmlFor={nameId} className={LABEL_CLASS}>
-          Full name
+          {signup ? signupNameLabel(guest.relationship) : "Full name"}
         </label>
         <input
           id={nameId}
@@ -760,62 +933,66 @@ function GuestBlock({
           autoComplete={index === 0 && self ? "name" : "off"}
           value={guest.name}
           onChange={(e) => onChange({ ...guest, name: e.target.value })}
-          placeholder={self ? "Your name" : "Their name"}
+          placeholder={signup ? signupNamePlaceholder(guest.relationship) : self ? "Your name" : "Their name"}
           required
           className={inputClass}
           {...fieldA11y(nameId, { error: errors?.[nameId] })}
         />
         <FieldError fieldId={nameId} message={errors?.[nameId]} />
       </div>
-      <div className="grid gap-1.5">
-        <label htmlFor={`${id}-rel`} className={LABEL_CLASS}>
-          Who is this?
-        </label>
-        <select
-          id={`${id}-rel`}
-          value={guest.relationship}
-          onChange={(e) => {
-            const relationship = e.target.value as Relationship;
-            const ageBand = defaultAgeBand(relationship);
-            onChange({
-              ...guest,
-              relationship,
-              ageBand,
-              isMinor: ageBandIsMinor(ageBand),
-            });
-          }}
-          className={inputClass}
-        >
-          {relationships.map((r) => (
-            <option key={r} value={r} className="bg-[#061427]">
-              {RELATIONSHIP_LABELS[r]}
-            </option>
-          ))}
-        </select>
-      </div>
-      <AgeBandField
-        id={`${id}-age`}
-        value={guest.ageBand}
-        onChange={(ageBand) =>
-          onChange({ ...guest, ageBand, isMinor: ageBandIsMinor(ageBand) })
-        }
-        label={
-          guest.relationship === "self"
-            ? "How old are you?"
-            : "How old are they?"
-        }
-        error={errors?.[`${id}-age`]}
-      />
-      <SelfLevelField
-        id={levelId}
-        value={guest.selfLevel}
-        onChange={(selfLevel) => onChange({ ...guest, selfLevel })}
-        required={requireLevel}
-        self={self}
-        label={self ? "Where's your game right now?" : "Where's their game right now?"}
-        error={errors?.[levelId]}
-        tierHint={requireLevel}
-      />
+      {!signup && (
+        <>
+          <div className="grid gap-1.5">
+            <label htmlFor={`${id}-rel`} className={LABEL_CLASS}>
+              Who is this?
+            </label>
+            <select
+              id={`${id}-rel`}
+              value={guest.relationship}
+              onChange={(e) => {
+                const relationship = e.target.value as Relationship;
+                const ageBand = defaultAgeBand(relationship);
+                onChange({
+                  ...guest,
+                  relationship,
+                  ageBand,
+                  isMinor: ageBandIsMinor(ageBand),
+                });
+              }}
+              className={inputClass}
+            >
+              {relationships.map((r) => (
+                <option key={r} value={r} className="bg-[#061427]">
+                  {RELATIONSHIP_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <AgeBandField
+            id={`${id}-age`}
+            value={guest.ageBand}
+            onChange={(ageBand) =>
+              onChange({ ...guest, ageBand, isMinor: ageBandIsMinor(ageBand) })
+            }
+            label={
+              guest.relationship === "self"
+                ? "How old are you?"
+                : "How old are they?"
+            }
+            error={errors?.[`${id}-age`]}
+          />
+          <SelfLevelField
+            id={levelId}
+            value={guest.selfLevel}
+            onChange={(selfLevel) => onChange({ ...guest, selfLevel })}
+            required={requireLevel}
+            self={self}
+            label={self ? "Where's your game right now?" : "Where's their game right now?"}
+            error={errors?.[levelId]}
+            tierHint={requireLevel}
+          />
+        </>
+      )}
     </fieldset>
   );
 }
@@ -835,10 +1012,18 @@ export function WhoIsThisFor({
   disabledReasons,
   lockedIds,
   signInHref = null,
+  signup = null,
 }: {
   household: Household;
   value: HouseholdValue;
   onChange: (next: HouseholdValue) => void;
+  /**
+   * The sign-up page's group (backlog #97), set only by the enroll wizard.
+   * Signed out, each block asks who the player is as tap choices, then the
+   * name, with no age and no level; on a youth group the add button reads
+   * "+ Add another child". Signed in it changes nothing.
+   */
+  signup?: SignupWho | null;
   /**
    * Enroll on a tier-gated private cohort the holder reached by level (audit
    * M27): only these players are inside the band and can be picked; the
@@ -1173,6 +1358,7 @@ export function WhoIsThisFor({
           removable={value.guests.length > 1}
           requireLevel={collectProfile}
           errors={errors}
+          signup={signup}
           onChange={(next) =>
             onChange({
               ...value,
@@ -1192,13 +1378,14 @@ export function WhoIsThisFor({
           type="button"
           onClick={() => {
             // Focus follows the new block (audit M18), as it does signed in.
+            // A new block starts on "My child" everywhere, a youth group too.
             const guest = emptyGuest("child");
             onChange({ ...value, guests: [...value.guests, guest] });
             setFocusKey(guest.key);
           }}
           className={`min-h-[44px] w-full rounded-2xl border border-dashed border-white/35 px-4 py-3 text-sm font-semibold text-white/75 transition hover:border-[#B4E655]/50 hover:text-white ${FOCUS_RING}`}
         >
-          + Add another person
+          {signup?.youth ? "+ Add another child" : "+ Add another person"}
         </button>
       )}
       {signInHref && (
