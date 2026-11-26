@@ -21,18 +21,21 @@ import { chosenCreditCents, type ReadyCredit } from "@/lib/creditRules";
 import {
   WhoIsThisFor,
   useHousehold,
-  EMPTY_HOUSEHOLD,
-  emptyGuest,
   householdIssues,
-  isRelationshipValue,
+  signupStart,
+  signupValue,
   type HouseholdValue,
   type ParticipantOption,
+  type SignupWho,
 } from "@/components/participants/WhoIsThisFor";
 import {
   ageBandBlock,
+  computeAge,
   dobAgeError,
+  dobIsMinor,
   groupAgesLabel,
   invitedLockReasons,
+  isYouthGroup,
   levelNote,
   pickedButBlockedIssue,
   rightGroupHref,
@@ -114,17 +117,6 @@ function moneyCAD(cents: number): string {
 
 function cn(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
-}
-
-function computeAge(dob: string): number | null {
-  if (!dob) return null;
-  const today = new Date();
-  const birth = new Date(dob + "T00:00:00");
-  if (isNaN(birth.getTime())) return null;
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -223,7 +215,6 @@ const FIELD_IDS = {
   who: "enroll-who",
   player: (key: string) => `enroll-player-${key}`,
   dob: (key: string) => `enroll-dob-${key}`,
-  guestAge: (key: string) => `guest-${key}-age`,
   email: "enroll-email",
   phone: "enroll-phone",
   guardianName: "enroll-guardian-name",
@@ -268,6 +259,47 @@ const EMPTY_FORM: FormState = {
   consentChecked: false,
   consentSignedName: "",
 };
+
+/**
+ * What stops step 1, one issue per field, in screen order: the chooser's own
+ * (a block with no name, or nobody chosen), a chosen player who carries a
+ * reason not to take a seat, then the seats left. Signed out it asks no age
+ * (backlog #97): a typed player is held to the group's ages by the date of
+ * birth on step 2, so the band a block's relationship assumes stops no one.
+ */
+export function whoStepIssues({
+  value,
+  signedIn,
+  participants,
+  disabledReasons,
+  seatsRemaining,
+  players,
+}: {
+  /** The chooser's value as it shows it: signed out, read through signupValue. */
+  value: HouseholdValue;
+  signedIn: boolean;
+  participants: ParticipantOption[];
+  disabledReasons: Record<string, string>;
+  seatsRemaining: number | null;
+  players: readonly EnrollPlayer[];
+}): FieldIssue[] {
+  const out = householdIssues(value, signedIn, participants);
+  // A chosen player who carries a reason not to take a seat — a player
+  // added a moment ago whose age band is outside the group, once the
+  // account reloaded — stops the step here, with the reason. The
+  // chooser never picks a disabled row itself; this closes the gap.
+  if (signedIn) {
+    for (const id of value.selectedIds) {
+      const reason = disabledReasons[id];
+      if (!reason) continue;
+      const p = participants.find((x) => x.id === id);
+      out.push({ id: FIELD_IDS.who, message: pickedButBlockedIssue(p?.name, reason) });
+    }
+  }
+  const seats = seatCapIssue(seatsRemaining, players.length);
+  if (seats) out.push({ id: FIELD_IDS.who, message: seats });
+  return out;
+}
 
 // ─── Step renderers ───────────────────────────────────────────────────────────
 
@@ -866,24 +898,6 @@ const STEP_SUBTITLES = [
   "Your spot is held while the coach confirms the transfer arrived.",
 ];
 
-/** The guest block an invitation for a named player starts on (signed out). */
-function guestFromInvited(invited: InvitedPlayer | null): HouseholdValue {
-  if (!invited || invited.onAccount) return EMPTY_HOUSEHOLD;
-  const relationship = isRelationshipValue(invited.relationship) ? invited.relationship : "self";
-  const guest = emptyGuest(relationship);
-  return {
-    ...EMPTY_HOUSEHOLD,
-    guests: [
-      {
-        ...guest,
-        name: invited.name?.trim() ?? "",
-        ageBand: invited.ageBand ?? guest.ageBand,
-        isMinor: invited.ageBand ? invited.ageBand !== "adult" : invited.isMinor,
-      },
-    ],
-  };
-}
-
 export function EnrollWizard({
   cohort,
   program,
@@ -945,9 +959,20 @@ export function EnrollWizard({
   // and the fill time go with each of the three posts.
   const bot = useBotCheck();
 
-  // Who is this for? (backlog #11) One seat per player, one payment.
+  // Who is this for? (backlog #11) One seat per player, one payment. Signed
+  // out, the typed block starts on the player an invitation names, if any.
   const household = useHousehold();
-  const [who, setWho] = useState<HouseholdValue>(() => guestFromInvited(invited));
+  const [start] = useState(() =>
+    signupStart(invited && !invited.onAccount ? { name: invited.name, relationship: invited.relationship } : null)
+  );
+  const [who, setWho] = useState<HouseholdValue>(start.value);
+  // Signed out, each block offers the choices its group does (backlog #97):
+  // on a youth group "My child" and "Someone else", and it starts on "My
+  // child". What a block shows is what the page checks and posts. Signed in,
+  // the chooser lists the account's players and reads `who` as it always has.
+  const youthGroup = isYouthGroup(group);
+  const signup: SignupWho = { youth: youthGroup, selfKey: start.selfKey };
+  const chooserValue = household.signedIn ? who : signupValue(signup, who);
   const [dobs, setDobs] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -987,7 +1012,7 @@ export function EnrollWizard({
           isMinor: p?.isMinor === true,
         };
       })
-    : who.guests
+    : chooserValue.guests
         .filter((g) => g.name.trim())
         .map((g) => ({
           key: g.key,
@@ -995,7 +1020,9 @@ export function EnrollWizard({
           dob: dobs[g.key] ?? "",
           participantId: null,
           relationship: g.relationship,
-          isMinor: g.isMinor,
+          // The blocks ask no age (backlog #97): under 18 is the typed date
+          // of birth's alone, never the band a relationship assumes.
+          isMinor: dobIsMinor(dobs[g.key] ?? ""),
         }));
 
   function setPlayers(next: EnrollPlayer[]) {
@@ -1007,10 +1034,12 @@ export function EnrollWizard({
   }
 
   // Anyone under 18 puts the guardian block on screen and the guardian's
-  // signature on the waiver.
-  const isMinor = players.some(
-    (p) => p.isMinor || ((a) => a !== null && a < 18)(computeAge(p.dob))
-  );
+  // signature on the waiver. Signed out on a youth group it is there from
+  // the start of step 2 (backlog #97): the group takes no one 18 or over,
+  // and step 2's date-of-birth check holds every player to its ages.
+  const isMinor =
+    (!household.signedIn && youthGroup) ||
+    players.some((p) => p.isMinor || ((a) => a !== null && a < 18)(computeAge(p.dob)));
 
   // Who on the account cannot take a seat here, and why (owner, 2026-10-12):
   // already in this cohort, outside the group's ages, or not the player the
@@ -1051,36 +1080,14 @@ export function EnrollWizard({
   /** What stops the current step, one issue per field, in screen order. */
   function stepIssues(): FieldIssue[] {
     if (step === 1) {
-      const out = householdIssues(who, household.signedIn, household.participants);
-      // A typed player outside the group's ages is stopped on their band,
-      // with the right groups a link away (owner, 2026-10-12).
-      if (!household.signedIn && group) {
-        for (const g of who.guests) {
-          if (!g.name.trim()) continue;
-          const reason = ageBandBlock(group, g.ageBand);
-          if (reason) {
-            out.push({
-              id: FIELD_IDS.guestAge(g.key),
-              message: `${g.name.trim()} is outside this group's ages (${groupAgesLabel(group)}). Pick the group for their age below, or change the age group.`,
-            });
-          }
-        }
-      }
-      // A chosen player who carries a reason not to take a seat — a player
-      // added a moment ago whose age band is outside the group, once the
-      // account reloaded — stops the step here, with the reason. The
-      // chooser never picks a disabled row itself; this closes the gap.
-      if (household.signedIn) {
-        for (const id of who.selectedIds) {
-          const reason = disabledReasons[id];
-          if (!reason) continue;
-          const p = household.participants.find((x) => x.id === id);
-          out.push({ id: FIELD_IDS.who, message: pickedButBlockedIssue(p?.name, reason) });
-        }
-      }
-      const seats = seatCapIssue(seatsRemaining, players.length);
-      if (seats) out.push({ id: FIELD_IDS.who, message: seats });
-      return out;
+      return whoStepIssues({
+        value: chooserValue,
+        signedIn: household.signedIn,
+        participants: household.participants,
+        disabledReasons,
+        seatsRemaining,
+        players,
+      });
     }
     if (step === 2) {
       const out: FieldIssue[] = [];
@@ -1472,7 +1479,7 @@ export function EnrollWizard({
             >
               <WhoIsThisFor
                 household={household}
-                value={who}
+                value={chooserValue}
                 onChange={setWho}
                 multiple={!invited?.onAccount}
                 intro={whoIntro}
@@ -1480,6 +1487,7 @@ export function EnrollWizard({
                 disabledReasons={disabledReasons}
                 lockedIds={lockedIds}
                 signInHref={signInHref}
+                signup={signup}
                 errors={errors}
               />
               <FieldError fieldId={FIELD_IDS.who} message={errors[FIELD_IDS.who]} />

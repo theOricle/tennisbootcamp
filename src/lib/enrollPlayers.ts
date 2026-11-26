@@ -64,6 +64,37 @@ export function ageBandBlock(
   return `Outside this group's ages (${groupAgesLabel(group)})`;
 }
 
+/**
+ * A youth group: its oldest age is set and under 18 (backlog #97). Every
+ * player it takes is a minor, so signed out its sign-up page offers "My
+ * child" and "Someone else", and the guardian block is on screen from the
+ * start of step 2. An adult group, an any-age group or no group is not one.
+ */
+export function isYouthGroup(group: Pick<ProgramGroup, "ageMax"> | null | undefined): boolean {
+  return group?.ageMax != null && group.ageMax < 18;
+}
+
+/** Whole years from a date of birth ("2014-03-09") to today, or null when it is not a date. */
+export function computeAge(dob: string, today: Date = new Date()): number | null {
+  if (!dob) return null;
+  const birth = new Date(dob + "T00:00:00");
+  if (isNaN(birth.getTime())) return null;
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+/**
+ * Under 18 by the typed date of birth. Signed out on the sign-up page this
+ * is a player's only under-18 flag (backlog #97): the blocks ask no age, so
+ * the band a block's relationship assumes is never read.
+ */
+export function dobIsMinor(dob: string, today: Date = new Date()): boolean {
+  const age = computeAge(dob, today);
+  return age !== null && age < 18;
+}
+
 /** The DOB field's problem when the exact age is outside the group, else null. */
 export function dobAgeError(
   group: Pick<ProgramGroup, "ageMin" | "ageMax"> | null | undefined,
