@@ -2,7 +2,7 @@
 
 # dependencies
 /node_modules
-# node_modules at any depth (e.g. ops/voice/bridge/node_modules) — never commit built deps
+# node_modules at any depth — never commit built deps
 node_modules/
 /.pnp
 .pnp.*
