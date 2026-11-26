@@ -18,6 +18,15 @@ import {
   programTitleFor,
   statusLabel,
 } from "@/lib/adminLabels";
+import {
+  BACK_TO_DRAFT_BUTTON,
+  OPEN_BUTTON,
+  OPEN_LINE,
+  PRIVATE_LINE,
+  openingControl,
+  type OpeningControl,
+  type OpeningMove,
+} from "@/lib/cohortOpening";
 
 type PaymentMode = "card" | "etransfer";
 
@@ -807,6 +816,64 @@ function SessionRowItem({
   );
 }
 
+// ─── Open to the public / Back to draft (backlog #95) ─────────────────────────
+// One row at the top of the status controls, at most one per cohort
+// (openingControl, src/lib/cohortOpening.ts): a public draft whose first class
+// is still ahead gets the button and its line, a private draft the line
+// alone, and an open cohort with no seat held or paid "Back to draft". The
+// API checks the same rules again; a refusal shows in the status line.
+
+/** The style of the "Reopen cohort" button, shared by both. */
+const OPENING_BUTTON_CLASS =
+  "min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/80 hover:border-[#B4E655]/50 hover:text-white disabled:opacity-40";
+
+export function OpeningControls({
+  control,
+  busy,
+  onMove,
+}: {
+  control: OpeningControl;
+  busy: boolean;
+  onMove: (move: OpeningMove) => void;
+}) {
+  if (control === "open") {
+    return (
+      <div className="mb-1 basis-full">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onMove("open")}
+          aria-describedby="opening-line"
+          className={OPENING_BUTTON_CLASS}
+        >
+          {OPEN_BUTTON}
+        </button>
+        <p id="opening-line" className="mt-2 text-xs text-white/60">
+          {OPEN_LINE}
+        </p>
+      </div>
+    );
+  }
+  if (control === "private") {
+    return <p className="mb-1 basis-full text-xs text-white/60">{PRIVATE_LINE}</p>;
+  }
+  if (control === "back_to_draft") {
+    return (
+      <div className="basis-full">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onMove("back_to_draft")}
+          className={OPENING_BUTTON_CLASS}
+        >
+          {BACK_TO_DRAFT_BUTTON}
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
@@ -932,6 +999,14 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
   // its make-up, and the figure counts that class once.
   const perClass = perClassFigure(cohort);
   const dbStatus = cohort.dbStatus ?? "draft";
+  // Open to the public / Back to draft (backlog #95), judged on what this
+  // page has read, its invites and its card payments. The API reads the
+  // Sheet's paid rows as well before it moves anything.
+  const opening = openingControl(cohort, {
+    inviteStatuses: invites.map((i) => i.status),
+    enrollmentStatuses: (detail.payments ?? []).map((p) => p.status),
+    sheetPaidRows: null,
+  });
   const paidPlayers = detail.paidPlayers ?? [];
   const selected = pool
     .filter((p) => ticked.has(p.id))
@@ -980,6 +1055,11 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
 
       {/* Status controls */}
       <div className="flex flex-wrap gap-2">
+        <OpeningControls
+          control={opening}
+          busy={statusBusy}
+          onMove={(move) => void postStatus({ action: move })}
+        />
         {dbStatus === "confirmed" && (
           <button
             type="button"

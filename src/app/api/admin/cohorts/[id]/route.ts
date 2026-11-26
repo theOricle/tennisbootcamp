@@ -9,6 +9,7 @@ import {
   cancelSession,
   updateCohort,
   reopenCohort,
+  moveCohortOpening,
   ensureCohortSessions,
   cohortMembers,
   cohortPayments,
@@ -19,12 +20,14 @@ import {
 } from "@/lib/cohortActions";
 import { resendAccountEmail } from "@/lib/supabase/enrollmentActions";
 import { ACCOUNT_EMAIL_NOT_OFFERED, accountEmailOffered } from "@/lib/enrollPlayers";
+import { directStatusRefusal } from "@/lib/cohortOpening";
 import { programs } from "@/content/programs";
 
 // Admin cohort detail: invites, sessions, and the state-changing actions —
 // invite (by email, or by player: audit M28), cancel_session (→ make-up
 // append), update, set_status, reopen (undo a cancelled cohort, audit M30),
-// and the e-transfer rail's mark_paid / mark_unpaid (backlog #12).
+// open / back_to_draft (backlog #95), and the e-transfer rail's mark_paid /
+// mark_unpaid (backlog #12).
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -147,6 +150,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       if (!STATUSES.includes(status)) {
         return NextResponse.json({ error: "Unknown status." }, { status: 400 });
       }
+      // Running, completed and cancelled only, as before (backlog #95): a
+      // draft opens and an open cohort goes back to draft through the two
+      // guarded actions below, and a cohort confirms when its paid players
+      // reach the minimum.
+      const refused = directStatusRefusal(status);
+      if (refused) {
+        return NextResponse.json({ error: refused }, { status: 400 });
+      }
       const result = await updateCohort(id, { status });
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: 400 });
@@ -159,6 +170,17 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     if (action === "reopen") {
       const result = await reopenCohort(id);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, status: result.status });
+    }
+
+    // Open a public draft whose first class is still ahead, or take an open
+    // cohort with no seat held or paid back to draft (backlog #95). Every
+    // other request through these two is refused, and nothing is written.
+    if (action === "open" || action === "back_to_draft") {
+      const result = await moveCohortOpening(id, action);
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }

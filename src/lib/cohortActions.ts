@@ -57,6 +57,8 @@ import {
   noteSettledBy,
   paidInviteHit,
 } from "@/lib/stripeOutcome";
+import { runOpeningMove, type OpeningResult, type SeatRecords } from "@/lib/cohortOpening";
+import { paidSeatRows, readEnrollmentSheet } from "@/lib/seatCount";
 
 // Server-side cohort operations (Phase 3): invite flow with expiring holds,
 // minimum-to-run confirmation, session generation, and cancellation → make-up
@@ -1673,6 +1675,66 @@ export async function reopenCohort(
   if (status === "confirmed") await ensureCohortSessions(cohortId);
   revalidateCohortPages();
   return { ok: true, status };
+}
+
+/**
+ * Open a draft cohort to the public, or take an open one back to draft
+ * (backlog #95). The rules and the order of the reads and the one write live
+ * in src/lib/cohortOpening.ts (runOpeningMove); these are the reads and the
+ * write. The update is a compare-and-set on the status the rules allowed the
+ * move from, then the public pages refresh. Nobody is emailed.
+ */
+export async function moveCohortOpening(cohortId: string, move: string): Promise<OpeningResult> {
+  return runOpeningMove(
+    {
+      readCohort: getCohortById,
+      readSeatRecords: cohortSeatRecords,
+      setStatusIf: async (id, from, to) => {
+        const supabase = createServiceClient();
+        const { data: flipped, error } = await supabase
+          .from("cohorts")
+          .update({ status: to })
+          .eq("id", id)
+          .eq("status", from)
+          .select("id")
+          .maybeSingle();
+        if (error) return { moved: false, error: error.message };
+        return { moved: Boolean(flipped) };
+      },
+      revalidate: revalidateCohortPages,
+    },
+    { cohortId, move }
+  );
+}
+
+/**
+ * Every seat record the enrollment path writes for one cohort (SeatRecords,
+ * src/lib/cohortOpening.ts): the statuses of its invites and of its
+ * enrollment rows, and its paid rows on the Sheet. Null when one of them
+ * could not be read, so the guard refuses instead of guessing. A Sheet that
+ * isn't set up (local development) counts no rows, as the sign-up page's
+ * seat count does.
+ */
+async function cohortSeatRecords(cohort: Cohort): Promise<SeatRecords | null> {
+  const supabase = createServiceClient();
+  const [invites, enrollments] = await Promise.all([
+    supabase.from("cohort_invites").select("status").eq("cohort_id", cohort.id),
+    supabase.from("enrollments").select("status").eq("cohort_id", cohort.id),
+  ]);
+  if (invites.error || enrollments.error) {
+    console.error("Seat records read failed:", invites.error?.message ?? enrollments.error?.message);
+    return null;
+  }
+  const sheet = await readEnrollmentSheet();
+  if (sheet.status === "error") return null;
+  const sheetPaidRows = sheet.status === "ok" ? paidSeatRows(sheet.snapshot, cohort.id) : null;
+  if (sheet.status === "ok" && sheetPaidRows === null) return null;
+  const statuses = (rows: unknown) => ((rows ?? []) as { status: string | null }[]).map((r) => r.status);
+  return {
+    inviteStatuses: statuses(invites.data),
+    enrollmentStatuses: statuses(enrollments.data),
+    sheetPaidRows,
+  };
 }
 
 export type CohortInput = {

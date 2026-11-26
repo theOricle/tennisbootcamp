@@ -45,6 +45,21 @@ export async function readEnrollmentSheet(): Promise<EnrollmentSheetRead> {
   }
 }
 
+/**
+ * This cohort's paid rows in a snapshot, the seats it has taken: 0 on an
+ * empty tab, null when the columns can't be found. The seat count below and
+ * the admin's back-to-draft guard (backlog #95) both count with it.
+ */
+export function paidSeatRows(snapshot: EnrollmentSheetSnapshot, cohortId: string): number | null {
+  if (snapshot.rows.length === 0) return 0;
+  const cohortIdCol = snapshot.header.indexOf("cohort_id");
+  const statusCol = snapshot.header.indexOf("status");
+  if (cohortIdCol === -1 || statusCol === -1) return null;
+  return snapshot.rows.filter(
+    (row) => row[cohortIdCol] === cohortId && PAID_STATUSES.has(row[statusCol])
+  ).length;
+}
+
 /** Seats left from a snapshot: capacity minus this cohort's paid rows. */
 export function seatsFromSnapshot(
   snapshot: EnrollmentSheetSnapshot,
@@ -52,12 +67,8 @@ export function seatsFromSnapshot(
   capacityMax: number
 ): number | null {
   if (snapshot.rows.length === 0) return capacityMax;
-  const cohortIdCol = snapshot.header.indexOf("cohort_id");
-  const statusCol = snapshot.header.indexOf("status");
-  if (cohortIdCol === -1 || statusCol === -1) return null;
-  const paid = snapshot.rows.filter(
-    (row) => row[cohortIdCol] === cohortId && PAID_STATUSES.has(row[statusCol])
-  ).length;
+  const paid = paidSeatRows(snapshot, cohortId);
+  if (paid === null) return null;
   return Math.max(0, capacityMax - paid);
 }
 

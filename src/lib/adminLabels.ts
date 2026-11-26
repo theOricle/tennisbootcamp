@@ -13,7 +13,10 @@ export function programTitleFor(programId: string): string {
 
 export const COHORT_STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
-  inviting: "Inviting",
+  // Backlog #95: a public one is listed on the site until its first class,
+  // a private one takes its invitees. A draft opens from its page, or with
+  // its first invitation.
+  inviting: "Open",
   confirmed: "Confirmed",
   running: "Running",
   completed: "Completed",
