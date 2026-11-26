@@ -558,7 +558,7 @@ export function AdminPlayersClient() {
                   className={inputClass}
                 >
                   <option value="" className="bg-[#061427]">
-                    {targets.length === 0 ? "No draft or inviting cohorts" : "Pick a cohort…"}
+                    {targets.length === 0 ? "No draft or open cohorts" : "Pick a cohort…"}
                   </option>
                   {targets.map((c) => (
                     <option key={c.id} value={c.id} className="bg-[#061427]">

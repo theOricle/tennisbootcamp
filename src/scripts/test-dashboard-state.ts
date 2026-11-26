@@ -519,7 +519,8 @@ console.log("admin labels (audit L20, L23)");
 {
   check("program title, not the slug", programTitleFor("youth-programs"), "Youth Bootcamps");
   check("unknown id stays", programTitleFor("mystery"), "mystery");
-  check("cohort statuses in sentence case", ["draft", "inviting", "cancelled"].map((s) => statusLabel(COHORT_STATUS_LABELS, s)), ["Draft", "Inviting", "Cancelled"]);
+  // Backlog #95: an inviting cohort reads "Open" on the admin screens.
+  check("cohort statuses in sentence case", ["draft", "inviting", "cancelled"].map((s) => statusLabel(COHORT_STATUS_LABELS, s)), ["Draft", "Open", "Cancelled"]);
   check("invite statuses", ["invited", "paid"].map((s) => statusLabel(INVITE_STATUS_LABELS, s)), ["Invited", "Paid"]);
   check("no_show reads No-show", statusLabel(BOOKING_STATUS_LABELS, "no_show"), "No-show");
   check("an unknown status is tidied, not raw", statusLabel({}, "pending_etransfer"), "Pending etransfer");
