@@ -17,6 +17,7 @@ import {
   loginErrorMessage,
   safeNextPath,
 } from "@/lib/authFlow";
+import { afterSignInPath } from "@/lib/signInCode";
 
 // Standalone links are 44px targets (audit L4).
 const linkClass = `${TEXT_LINK_CLASS} text-[#B4E655] hover:underline`;
@@ -89,8 +90,20 @@ function LoginForm({ notice, nextPath }: { notice: string | null; nextPath: stri
       return;
     }
 
+    // Backlog #92: an account with an authenticator app (the coach's) owes
+    // its 6-digit code before it goes on; the code page keeps `next`. An
+    // account with no factor goes straight through, as before. This only
+    // picks the next page: the server decides what any session may open.
+    let destination = nextPath;
+    try {
+      const { data: levels } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      destination = afterSignInPath(levels, nextPath);
+    } catch {
+      // The levels could not be read: go on, and the server gate decides.
+    }
+
     trackEvent("login_success");
-    router.push(nextPath);
+    router.push(destination);
     router.refresh();
   }
 

@@ -73,7 +73,7 @@ Every writing task loads `ops/briefs/voice.md`, whatever the model.
 | `src/lib/players.ts`, `src/lib/availability.ts` | Level or availability reads/writes |
 | `src/content/programs.ts`, `src/content/policies.ts` | Prices, cohort length, policy values |
 | `src/content/locations.ts`, `src/lib/membership.ts` | Where we train, or club-membership copy |
-| `supabase/migrations/` | Writing a migration (0001–0012 exist; each is applied by hand) |
+| `supabase/migrations/` | Writing a migration (0001–0013 exist; each is applied by hand) |
 | `.claude/memory/archive/` | Never by default — superseded history |
 
 ## Outstanding owner inputs

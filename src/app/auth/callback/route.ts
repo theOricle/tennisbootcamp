@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { callbackErrorFor, safeNextPath, type CallbackError } from "@/lib/authFlow";
 import { linkEnrollmentsToAccount } from "@/lib/supabase/enrollmentActions";
 import { linkBookingsToAccount } from "@/lib/assessments";
+import { afterSignInPath } from "@/lib/signInCode";
+import { readSignInState } from "@/lib/signInState";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -63,5 +65,25 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.redirect(`${origin}${next}`);
+  // Backlog #92: an emailed link is the first step only. An account with an
+  // authenticator app (the coach's) owes its 6-digit code before it goes on,
+  // so the session goes to the code page, which keeps `next`. An account with
+  // no factor goes straight through, as before. A level that cannot be read
+  // never holds up the sign-in: every admin page and API checks it again.
+  let destination = next;
+  if (signedIn) {
+    try {
+      const state = await readSignInState(supabase);
+      if (state) {
+        destination = afterSignInPath(
+          { currentLevel: state.aal, nextLevel: state.totpFactorId ? "aal2" : "aal1" },
+          next
+        );
+      }
+    } catch {
+      console.error("Sign-in level not read at the callback (non-blocking)");
+    }
+  }
+
+  return NextResponse.redirect(`${origin}${destination}`);
 }
