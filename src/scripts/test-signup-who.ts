@@ -31,7 +31,8 @@ import {
   type Relationship,
   type SignupWho,
 } from "../components/participants/WhoIsThisFor";
-import { computeAge, dobIsMinor, isYouthGroup } from "../lib/enrollPlayers";
+import { ageBandBlock, computeAge, dobIsMinor, isYouthGroup } from "../lib/enrollPlayers";
+import { whoStepIssues } from "../app/enroll/[cohortId]/EnrollWizard";
 import { groupById } from "../content/programs";
 import type { ProgramGroup } from "../types/program";
 
@@ -271,6 +272,20 @@ console.log("5. The choices: native radios in a fieldset, 44px cards, keyboard a
     cards().every((attrs) => attrs.includes("has-[input:focus-visible]:ring-2")) &&
     (step().html.match(/<span aria-hidden="true" class="flex h-5 w-5/g) ?? []).length === 4
   );
+  // Forced colors (Windows High Contrast) drop the ring, a box shadow. The
+  // card also takes the transparent 2px outline a focused button gets from
+  // FOCUS_RING's focus:outline-none, which forced colors draw; it is
+  // invisible otherwise, so the normal look is unchanged.
+  check("in forced colors the focused card keeps a visible outline: the buttons' transparent one", () =>
+    cards().every((attrs) =>
+      [
+        "has-[input:focus-visible]:outline ",
+        "has-[input:focus-visible]:outline-2 ",
+        "has-[input:focus-visible]:outline-offset-2 ",
+        "has-[input:focus-visible]:outline-transparent",
+      ].every((cls) => attrs.includes(cls))
+    )
+  );
 }
 
 // ── 6. Ages: the date of birth alone ────────────────────────────────────────
@@ -296,7 +311,32 @@ console.log("6. Ages: a typed player's under-18 flag is the date of birth's alon
     grownChild.ageBand === "junior" && grownChild.isMinor === true
   );
   check("a grown child on an adult group is not a minor: their date of birth says so", () => !dobIsMinor("1994-02-03", today));
-  check("…and is not stopped at step 1: a named block raises no issue", () =>
+
+  // Step 1, as the wizard runs it signed out, for that grown child.
+  const adult = mustGroup("adult-intermediate");
+  const asShown = (guests: GuestParticipant[]) =>
+    signupValue({ youth: false, selfKey: null }, { ...EMPTY_HOUSEHOLD, guests });
+  const stepOne = (guests: GuestParticipant[]) =>
+    whoStepIssues({
+      value: asShown(guests),
+      signedIn: false,
+      participants: [],
+      disabledReasons: {},
+      seatsRemaining: 6,
+      players: guests
+        .filter((g) => g.name.trim())
+        .map((g) => ({ key: g.key, name: g.name, dob: "", participantId: null, relationship: g.relationship, isMinor: false })),
+    });
+  check("(the premise) that assumed band is outside an adult group's ages: the old step 1 stopped them on it", () =>
+    ageBandBlock(adult, grownChild.ageBand) !== null
+  );
+  check("…and is not stopped at step 1: the wizard's step-1 list raises nothing for them", () =>
+    stepOne([grownChild]).length === 0
+  );
+  check("…while the same list still stops a block with no name", () =>
+    stepOne([{ ...grownChild, name: "" }]).some((i) => i.message === "Add the player's full name.")
+  );
+  check("(the premise) the chooser's own issues never read an age", () =>
     householdIssues({ ...EMPTY_HOUSEHOLD, guests: [grownChild] }, false, []).length === 0
   );
 }
@@ -312,7 +352,8 @@ console.log("7. The sign-up page wires it, and nothing else does");
     wizard.includes("signup={signup}")
   );
   check("…and every typed block it posts or checks is the one on screen", () =>
-    wizard.includes("householdIssues(chooserValue, household.signedIn, household.participants)") &&
+    /return whoStepIssues\(\{\s*value: chooserValue,/.test(wizard) &&
+    wizard.includes("const out = householdIssues(value, signedIn, participants);") &&
     wizard.includes(": chooserValue.guests") &&
     wizard.includes("value={chooserValue}")
   );
@@ -331,6 +372,20 @@ console.log("7. The sign-up page wires it, and nothing else does");
   const quiz = read("src/app/intake/page.tsx");
   const booking = read("src/app/assessment/book/page.tsx");
   check("the quiz and the booking pass no sign-up choices", () => !quiz.includes("signup=") && !booking.includes("signup="));
+
+  // + Add another child / person: focus moves to the new block (it may not
+  // stay on a button that just moved). On the sign-up page that is the new
+  // block's chosen card, which comes first there, so a phone opens no
+  // keyboard over a name field; the quiz keeps its name field.
+  const chooser = read("src/components/participants/WhoIsThisFor.tsx");
+  check("after an add, focus goes to the new block's chosen Who is this? card on the sign-up page, and to its name field elsewhere", () =>
+    chooser.includes("const choiceFirst = Boolean(signup) && !signedIn;") &&
+    chooser.includes("document.querySelector<HTMLElement>(`input[name=\"guest-${focusKey}-rel\"]:checked`)") &&
+    chooser.includes(": document.getElementById(`guest-${focusKey}-name`);") &&
+    chooser.includes("}, [focusKey, choiceFirst]);") &&
+    /<input\s+type="radio"\s+name=\{name\}/.test(chooser) &&
+    chooser.includes("name={`${id}-rel`}")
+  );
 }
 
 // ── 8. The quiz and the booking keep their blocks ───────────────────────────

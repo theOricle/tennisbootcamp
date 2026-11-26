@@ -787,10 +787,17 @@ function AddPersonForm({
 
 // ─── Who is this? as tap choices (the sign-up page) ──────────────────────────
 
-/** The card shows the ring while its radio has keyboard focus (FOCUS_RING, through the card). */
+/**
+ * The card shows keyboard focus while its radio has it, since the radio
+ * itself is visually hidden: FOCUS_RING's ring, through the card, and the
+ * transparent outline FOCUS_RING's `focus:outline-none` gives every button,
+ * which forced colors (Windows High Contrast) draw where they drop the ring.
+ */
 const CHOICE_FOCUS_RING =
   "has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-[#B4E655]/50 " +
-  "has-[input:focus-visible]:ring-offset-2 has-[input:focus-visible]:ring-offset-[#061427]";
+  "has-[input:focus-visible]:ring-offset-2 has-[input:focus-visible]:ring-offset-[#061427] " +
+  "has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 " +
+  "has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-transparent";
 
 /**
  * "Who is this?" on the sign-up page (backlog #97): the signed-in chooser's
@@ -1076,12 +1083,20 @@ export function WhoIsThisFor({
   const [reusedNote, setReusedNote] = useState<string | null>(null);
   // After "+ Add someone", focus lands on the new block's name field so a
   // keyboard or screen-reader user is not left on a button that just moved.
+  // On the sign-up page it lands on the new block's chosen "Who is this?"
+  // card instead (backlog #97): the choice comes first there, so it is seen
+  // first, and a phone opens no keyboard over a name field whose label
+  // follows a choice the visitor has not made yet.
   const [focusKey, setFocusKey] = useState<string | null>(null);
+  const choiceFirst = Boolean(signup) && !signedIn;
   useEffect(() => {
     if (!focusKey) return;
-    document.getElementById(`guest-${focusKey}-name`)?.focus();
+    const target = choiceFirst
+      ? document.querySelector<HTMLElement>(`input[name="guest-${focusKey}-rel"]:checked`)
+      : document.getElementById(`guest-${focusKey}-name`);
+    target?.focus();
     setFocusKey(null);
-  }, [focusKey]);
+  }, [focusKey, choiceFirst]);
 
   const reasonFor = (id: string): string | null => {
     if (disabledReasons?.[id]) return disabledReasons[id];

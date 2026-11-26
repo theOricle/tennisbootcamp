@@ -260,6 +260,47 @@ const EMPTY_FORM: FormState = {
   consentSignedName: "",
 };
 
+/**
+ * What stops step 1, one issue per field, in screen order: the chooser's own
+ * (a block with no name, or nobody chosen), a chosen player who carries a
+ * reason not to take a seat, then the seats left. Signed out it asks no age
+ * (backlog #97): a typed player is held to the group's ages by the date of
+ * birth on step 2, so the band a block's relationship assumes stops no one.
+ */
+export function whoStepIssues({
+  value,
+  signedIn,
+  participants,
+  disabledReasons,
+  seatsRemaining,
+  players,
+}: {
+  /** The chooser's value as it shows it: signed out, read through signupValue. */
+  value: HouseholdValue;
+  signedIn: boolean;
+  participants: ParticipantOption[];
+  disabledReasons: Record<string, string>;
+  seatsRemaining: number | null;
+  players: readonly EnrollPlayer[];
+}): FieldIssue[] {
+  const out = householdIssues(value, signedIn, participants);
+  // A chosen player who carries a reason not to take a seat — a player
+  // added a moment ago whose age band is outside the group, once the
+  // account reloaded — stops the step here, with the reason. The
+  // chooser never picks a disabled row itself; this closes the gap.
+  if (signedIn) {
+    for (const id of value.selectedIds) {
+      const reason = disabledReasons[id];
+      if (!reason) continue;
+      const p = participants.find((x) => x.id === id);
+      out.push({ id: FIELD_IDS.who, message: pickedButBlockedIssue(p?.name, reason) });
+    }
+  }
+  const seats = seatCapIssue(seatsRemaining, players.length);
+  if (seats) out.push({ id: FIELD_IDS.who, message: seats });
+  return out;
+}
+
 // ─── Step renderers ───────────────────────────────────────────────────────────
 
 function OrderSummary({
@@ -1039,24 +1080,14 @@ export function EnrollWizard({
   /** What stops the current step, one issue per field, in screen order. */
   function stepIssues(): FieldIssue[] {
     if (step === 1) {
-      // Signed out, step 1 asks no age (backlog #97): a typed player is held
-      // to the group's ages by the date of birth on step 2, exactly.
-      const out = householdIssues(chooserValue, household.signedIn, household.participants);
-      // A chosen player who carries a reason not to take a seat — a player
-      // added a moment ago whose age band is outside the group, once the
-      // account reloaded — stops the step here, with the reason. The
-      // chooser never picks a disabled row itself; this closes the gap.
-      if (household.signedIn) {
-        for (const id of who.selectedIds) {
-          const reason = disabledReasons[id];
-          if (!reason) continue;
-          const p = household.participants.find((x) => x.id === id);
-          out.push({ id: FIELD_IDS.who, message: pickedButBlockedIssue(p?.name, reason) });
-        }
-      }
-      const seats = seatCapIssue(seatsRemaining, players.length);
-      if (seats) out.push({ id: FIELD_IDS.who, message: seats });
-      return out;
+      return whoStepIssues({
+        value: chooserValue,
+        signedIn: household.signedIn,
+        participants: household.participants,
+        disabledReasons,
+        seatsRemaining,
+        players,
+      });
     }
     if (step === 2) {
       const out: FieldIssue[] = [];
