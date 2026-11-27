@@ -74,6 +74,84 @@ export function isYouthGroup(group: Pick<ProgramGroup, "ageMax"> | null | undefi
   return group?.ageMax != null && group.ageMax < 18;
 }
 
+/** The slice of a player on the account the pre-selection reads. */
+export type PreselectPlayer = {
+  id: string;
+  isMinor: boolean;
+  ageBand?: AgeBand | null;
+};
+
+/**
+ * Signed in on a youth group (backlog #101): the players the chooser may tick
+ * for the holder before they choose. Never an adult: a player counts only
+ * when their age band is one the group takes, or, with no band on file, when
+ * they are under 18 (the date of birth on the next step then settles the
+ * exact age). Null on any other group, whose chooser starts as it always has.
+ */
+export function youthPreselectIds(
+  group: Pick<ProgramGroup, "ageMin" | "ageMax"> | null | undefined,
+  participants: readonly PreselectPlayer[]
+): string[] | null {
+  if (!group || !isYouthGroup(group)) return null;
+  return participants
+    .filter((p) => (p.ageBand && isAgeBand(p.ageBand) ? groupTakesBand(group, p.ageBand) : p.isMinor))
+    .map((p) => p.id);
+}
+
+/**
+ * Who the chooser starts on, signed in. The player an invitation names
+ * always. Then, on a youth group (`youthIds` set), the one player who fits
+ * when exactly one can be picked, else nobody, and the holder chooses. On any
+ * other group the holder themselves, else the first player who can be picked.
+ */
+export function initialSelection<T extends { id: string; relationship: string }>(input: {
+  participants: readonly T[];
+  canPick: (id: string) => boolean;
+  locked: (id: string) => boolean;
+  youthIds: readonly string[] | null | undefined;
+}): string | null {
+  const pickable = input.participants.filter((p) => input.canPick(p.id));
+  const invited = pickable.find((p) => input.locked(p.id));
+  if (invited) return invited.id;
+  if (input.youthIds) {
+    const fits = pickable.filter((p) => input.youthIds!.includes(p.id));
+    return fits.length === 1 ? fits[0].id : null;
+  }
+  return (pickable.find((p) => p.relationship === "self") ?? pickable[0])?.id ?? null;
+}
+
+// ─── The guardian's contact (backlog #101) ────────────────────────────────────
+
+/** The one choice that opens the guardian's own email and phone. */
+export const GUARDIAN_OTHER_LABEL = "The parent or guardian is someone else";
+
+/** Under "Parent / Guardian" on a youth group: who signs, and where we reach them. */
+export function guardianHint(other: boolean): string {
+  return `The parent or guardian signs the waiver for every player under 18. We'll reach them at the email and phone ${other ? "below" : "above"}.`;
+}
+
+/**
+ * The guardian's email and phone as the page checks and posts them. On a
+ * youth group the account holder's serve as the guardian's, asked once,
+ * unless the holder says the parent or guardian is someone else; then, and
+ * on every other group, the guardian's own fields do.
+ */
+export function guardianContact(input: {
+  /** A youth group: the holder's contact is the guardian's by default. */
+  askOnce: boolean;
+  /** "The parent or guardian is someone else" is ticked. */
+  other: boolean;
+  holderEmail: string;
+  holderPhone: string;
+  guardianEmail: string;
+  guardianPhone: string;
+}): { email: string; phone: string; fromHolder: boolean } {
+  if (input.askOnce && !input.other) {
+    return { email: input.holderEmail, phone: input.holderPhone, fromHolder: true };
+  }
+  return { email: input.guardianEmail, phone: input.guardianPhone, fromHolder: false };
+}
+
 /** Whole years from a date of birth ("2014-03-09") to today, or null when it is not a date. */
 export function computeAge(dob: string, today: Date = new Date()): number | null {
   if (!dob) return null;

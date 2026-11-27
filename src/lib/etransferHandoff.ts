@@ -1,0 +1,82 @@
+// The e-transfer details, carried from the sign-up page's last step to the
+// page after it (backlog #101). A family that taps "I've sent the e-transfer"
+// before sending it still needs the amount, the address and the message, so
+// the step leaves them in the browser's session storage and the confirmation
+// page shows them again. They never go in the URL: the message carries the
+// players' names. Session storage ends with the tab, so on another device, or
+// days later, nothing is there and the page keeps its "in your inbox" line.
+//
+// Pure and client-safe. The storage is handed in, so `npm test`
+// (test-signup-four-fixes.ts) reads every path with a stand-in.
+
+/** What the e-transfer step showed, in its own words. */
+export type EtransferDetails = {
+  /** The amount due, with its currency, as the step words it. */
+  amount: string;
+  /** The working under the amount (price, players, assessment credit), or null when it needs none. */
+  breakdown: string | null;
+  recipientEmail: string;
+  memo: string;
+};
+
+/** The slice of Storage this reads and writes. */
+export type HandoffStorage = Pick<Storage, "getItem" | "setItem">;
+
+const KEY_PREFIX = "tb:etransfer:";
+const MAX_FIELD = 300;
+
+/** One entry per cohort, so two sign-ups in one tab never read each other's. */
+export function etransferHandoffKey(cohortId: string): string {
+  return `${KEY_PREFIX}${cohortId}`;
+}
+
+const text = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= MAX_FIELD;
+
+/** The details from a stored string, or null when it is not one this module wrote. */
+export function parseEtransferDetails(raw: string | null | undefined): EtransferDetails | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!v || typeof v !== "object") return null;
+    if (!text(v.amount) || !text(v.recipientEmail) || !text(v.memo)) return null;
+    return {
+      amount: v.amount,
+      breakdown: text(v.breakdown) ? v.breakdown : null,
+      recipientEmail: v.recipientEmail,
+      memo: v.memo,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Leave the details for the page after this one. A browser that refuses storage loses nothing else. */
+export function saveEtransferDetails(
+  storage: HandoffStorage | null | undefined,
+  cohortId: string,
+  details: EtransferDetails
+): void {
+  try {
+    storage?.setItem(etransferHandoffKey(cohortId), JSON.stringify(details));
+  } catch {
+    // Private mode or a full store: the page after falls back to the inbox line.
+  }
+}
+
+/** The stored string for this cohort, or null. Raw, so a caller can compare it cheaply. */
+export function readEtransferRaw(storage: HandoffStorage | null | undefined, cohortId: string): string | null {
+  try {
+    return storage?.getItem(etransferHandoffKey(cohortId)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** This tab's session storage, or null where there is none (the server, a locked-down browser). */
+export function tabStorage(): HandoffStorage | null {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}

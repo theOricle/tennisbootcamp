@@ -15,6 +15,7 @@ import { withHumanFallback, type FieldIssue } from "@/lib/formValidation";
 import { PARTICIPANT_CAP_ERROR } from "@/lib/participantInput";
 import {
   accountAtCap,
+  initialSelection,
   matchingPlayer,
   reusedPlayerNote,
   twinBlockedNote,
@@ -1020,6 +1021,7 @@ export function WhoIsThisFor({
   lockedIds,
   signInHref = null,
   signup = null,
+  youthPreselectIds = null,
 }: {
   household: Household;
   value: HouseholdValue;
@@ -1031,6 +1033,14 @@ export function WhoIsThisFor({
    * "+ Add another child". Signed in it changes nothing.
    */
   signup?: SignupWho | null;
+  /**
+   * Signed in on a youth group's sign-up page (backlog #101): the players on
+   * the account the group's ages can take (youthPreselectIds,
+   * src/lib/enrollPlayers.ts). The chooser then starts on the one who fits
+   * when exactly one does, else on nobody, and never on an adult. Null, the
+   * default, keeps the start every other page has: the holder themselves.
+   */
+  youthPreselectIds?: readonly string[] | null;
   /**
    * Enroll on a tier-gated private cohort the holder reached by level (audit
    * M27): only these players are inside the band and can be picked; the
@@ -1108,17 +1118,14 @@ export function WhoIsThisFor({
 
   // Default the selection to the player an invitation names, else the holder
   // themselves once we know who they are (or, on a level-gated group, the
-  // first player inside its band).
+  // first player inside its band). On a youth group (backlog #101) never the
+  // holder: the one child who fits, or nobody (initialSelection).
   useEffect(() => {
     if (!signedIn || participants.length === 0) return;
     if (value.selectedIds.length > 0) return;
-    const pickable = participants.filter((p) => canPick(p.id));
-    const first =
-      pickable.find((p) => locked(p.id)) ??
-      pickable.find((p) => p.relationship === "self") ??
-      pickable[0];
+    const first = initialSelection({ participants, canPick, locked, youthIds: youthPreselectIds });
     if (!first) return;
-    onChange({ ...value, selectedIds: [first.id] });
+    onChange({ ...value, selectedIds: [first] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn, participants]);
 

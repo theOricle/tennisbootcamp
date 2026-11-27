@@ -8,6 +8,7 @@ import { locationForCohort } from "@/content/locations";
 import { createClient } from "@/lib/supabase/server";
 import { cardPaymentIsTest } from "@/lib/payments";
 import { enrollConfirmation } from "@/lib/paymentConfirmation";
+import { EtransferDetailsFromStep } from "@/components/enroll/EtransferDetails";
 import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
 type PageProps = {
@@ -111,6 +112,13 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
           {/* Greeting */}
           <h1 className="mt-4 text-2xl font-semibold md:text-3xl">{copy.heading}</h1>
           <p className="mt-2 text-sm leading-relaxed text-white/65">{copy.lead}</p>
+
+          {/* After an e-transfer, signed out (backlog #101): the amount, the
+              address and the message as the step showed them, read from this
+              tab and never from the URL. With none there (another device, a
+              later visit) it renders nothing and the lead's "in your inbox"
+              line stands. */}
+          {viaEtransfer && !user && <EtransferDetailsFromStep cohortId={cohortId} className="mt-6" />}
 
           {/* Enrollment detail box */}
           <div className="mt-6 divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">

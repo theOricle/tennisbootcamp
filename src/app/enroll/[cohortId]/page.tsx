@@ -18,6 +18,7 @@ import { getSeatsRemaining } from "@/lib/seatCount";
 import { createClient } from "@/lib/supabase/server";
 import { accountCreditView, creditsForSeats } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
+import { cardPaymentIsLive } from "@/lib/payments";
 import { INVITE_RESUME_COOKIE } from "@/lib/checkoutInvite";
 import { loginHref } from "@/lib/authFlow";
 import { groupForBlock } from "@/lib/groupBlocks";
@@ -454,6 +455,9 @@ export default async function EnrollPage({ params, searchParams }: PageProps) {
       recipientEmail: etransferRecipient(),
       creditCents: Math.min(creditCents, cohort.priceCents),
       ready,
+      // "Pay by card instead" only while card payments are live (backlog
+      // #101), read here from the server's own payment settings.
+      cardOffer: cardPaymentIsLive(),
     };
   }
 

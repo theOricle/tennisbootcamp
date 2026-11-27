@@ -44,6 +44,24 @@ export function cardPaymentIsTest(
 }
 
 /**
+ * Whether a card payment taken now is a real one (backlog #101): Stripe with
+ * a live key, and nothing else. The e-transfer step and the e-transfer email
+ * offer "pay by card instead" only then, so nobody is sent to a checkout
+ * that refuses a real card (a test key), records a test payment that books
+ * nothing (mock mode), or is refused outright (production with no key).
+ * Server-only by its inputs: the answer is handed to the page, and nothing a
+ * browser sends is read.
+ */
+export function cardPaymentIsLive(
+  env: { stripeKey?: string; vercelEnv?: string } = {
+    stripeKey: process.env.STRIPE_SECRET_KEY,
+    vercelEnv: process.env.VERCEL_ENV,
+  }
+): boolean {
+  return paymentRail(env) === "stripe" && !cardPaymentIsTest(env);
+}
+
+/**
  * The assessment's price in cents: ASSESSMENT_PRICE_CENTS when it is set to
  * a price (0 makes the assessment free), else $20. One reading for the
  * booking route and the page after it.

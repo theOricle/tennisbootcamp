@@ -277,7 +277,7 @@ export async function sendEtransferInstructionsEmail(params: {
   amountCents: number;   // price − credit
   recipientEmail: string;
   memo: string;
-  cardUrl: string;       // enroll link (with invite token) for "pay by card instead"
+  cardUrl: string | null; // enroll link (with invite token) for "pay by card instead"; null while card payments are not live
 }): Promise<void> {
   const { to, ...rest } = params;
   const email = buildEtransferInstructionsEmail(rest);

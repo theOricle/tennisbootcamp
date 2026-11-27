@@ -170,8 +170,11 @@ check(
 );
 check("the no-name message offers a way out and info@", FIELD_MESSAGES.playerNameMissing.includes("choose someone else") && FIELD_MESSAGES.playerNameMissing.includes(INFO_EMAIL));
 check("the player block shows its own error", enroll.includes("fieldId={FIELD_IDS.player(player.key)}") && enroll.includes("id={FIELD_IDS.player(player.key)}"));
-check("the Copy button is announced", enroll.includes("copied` : \"\""));
-check("the e-transfer labels meet the floor", !/text-white\/40">(Amount|Send to|Message)/.test(enroll));
+// The e-transfer box (its rows and Copy buttons) is one component, shared by
+// the step and the page after it (backlog #101); the step still draws it.
+const etransferBox = read("src/components/enroll/EtransferDetails.tsx");
+check("the Copy button is announced", enroll.includes("<EtransferDetailsBox details={details} />") && etransferBox.includes("copied` : \"\""));
+check("the e-transfer labels meet the floor", !/text-white\/40">(Amount|Send to|Message)/.test(etransferBox) && /text-white\/60">Amount</.test(etransferBox));
 for (const [file, src] of [
   ["login", read("src/app/login/page.tsx")],
   ["forgot-password", read("src/app/auth/forgot-password/page.tsx")],
