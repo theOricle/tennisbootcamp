@@ -19,6 +19,8 @@
 //      the club, and the club-membership line stays neutral (D19).
 // Exits non-zero on any failure.
 
+// First: /locations reads the open blocks through a server-only module (backlog #99).
+import "./stub-server-only";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
@@ -193,20 +195,27 @@ check("no boxes: hairlines only", !section.includes("rounded-2xl") && !section.i
 check("beside it, Coaching: the lead coach's name and title from coaches.ts, and the way to About", section.includes('<section aria-labelledby="coaching"') && section.includes(`>${coaches[0].name}</p>`) && section.includes(`>${coaches[0].role}</p>`) && /<a [^>]*href="\/about"[^>]*>About us/.test(section));
 check("the component types no club and no coach: both come from content", !read("src/components/sections/WhereAndWho.tsx").includes("Newtonbrook") && read("src/components/sections/WhereAndWho.tsx").includes("{lead.name}") && read("src/components/sections/WhereAndWho.tsx").includes("{location.name}"));
 
-console.log("/locations is back");
-const page = render(createElement(LocationsPage));
-check("an h1, Our Locations", page.includes(">Our Locations</h1>"));
-check("the intro names the club plainly", page.includes(`We train at one club right now: ${NAME}, in North York. Every group and private lesson meets there.`));
-check("a card per club with its h2, area and map link", page.includes(`>${NAME}</h2>`) && page.includes(`>${AREA}</p>`) && page.includes(MAPS.replace(/&/g, "&amp;")));
-check("what runs there, every group with its time", programGroups.every((g) => page.includes(`>${g.name}</span>`)) && page.includes("Saturdays 12:00–1:00 pm") && page.includes("By arrangement"));
-check("each program links to its page", listedPrograms.every((p) => page.includes(`href="/programs/${p.slug}"`)));
-check("Browse Programs to the catalog, the club line neutral, and the main action to close", page.includes(">Browse Programs<") && page.includes('href="/programs"') && page.includes(membershipNote()) && page.includes(">Groups are open to join.</h2>") && page.includes(`>${JOIN_CTA_LABEL}</a>`) && JOIN_CTA_LABEL === "Join a bootcamp" && !page.includes("Join a group") && page.includes("Not sure which group?") && page.includes("Take the 2-minute quiz"));
-const locationsSrc = read("src/app/locations/page.tsx");
-check("its metadata: a canonical and a description under 155 characters", locationsSrc.includes('alternates: { canonical: "/locations" }') && /LOCATIONS_META_DESCRIPTION =/.test(locationsSrc));
-check("no street address, hours or courts on the page", !/\b(St|Ave|Rd|Blvd)\b\.?\s|\bhours\b|\bcourts\b/i.test(page.replace(/<[^>]+>/g, " ")));
-// Owner, 2026-11-16: the top menu is Programs and About; Locations moved to the footer.
-check("Locations in the footer, beside Programs, and no longer in the top menu", FOOTER_GROUPS[0].links[1]?.href === "/locations" && FOOTER_GROUPS[0].links[1]?.label === "Locations" && !NAV_LINKS.some((l) => l.href === "/locations"));
-check("/locations in the sitemap", sitemap().some((e) => e.url.endsWith("/locations")));
+// The page reads the open blocks as /programs does (backlog #99), so it
+// renders async: its checks run once it has rendered, at the end. There is no
+// database here, so every group reads as its card does with no open block.
+async function locationsPageChecks() {
+  console.log("/locations is back");
+  const page = render(await LocationsPage());
+  check("an h1, Our Locations", page.includes(">Our Locations</h1>"));
+  check("the intro names the club plainly", page.includes(`We train at one club right now: ${NAME}, in North York. Every group and private lesson meets there.`));
+  check("a card per club with its h2, area and map link", page.includes(`>${NAME}</h2>`) && page.includes(`>${AREA}</p>`) && page.includes(MAPS.replace(/&/g, "&amp;")));
+  // Re-pinned for backlog #99: each row reads as its card on /programs ("Saturdays 12–1pm", then "Dates coming soon").
+  const shown = page.replace(/<[^>]+>/g, "");
+  check("what runs there, every group with its time", programGroups.every((g) => page.includes(`>${g.name}</span>`)) && shown.includes("Saturdays 12–1pm") && shown.includes("Dates coming soon") && shown.includes("By arrangement"));
+  check("each program links to its page", listedPrograms.every((p) => page.includes(`href="/programs/${p.slug}"`)));
+  check("Browse Programs to the catalog, the club line neutral, and the main action to close", page.includes(">Browse Programs<") && page.includes('href="/programs"') && page.includes(membershipNote()) && page.includes(">Groups are open to join.</h2>") && page.includes(`>${JOIN_CTA_LABEL}</a>`) && JOIN_CTA_LABEL === "Join a bootcamp" && !page.includes("Join a group") && page.includes("Not sure which group?") && page.includes("Take the 2-minute quiz"));
+  const locationsSrc = read("src/app/locations/page.tsx");
+  check("its metadata: a canonical and a description under 155 characters", locationsSrc.includes('alternates: { canonical: "/locations" }') && /LOCATIONS_META_DESCRIPTION =/.test(locationsSrc));
+  check("no street address, hours or courts on the page", !/\b(St|Ave|Rd|Blvd)\b\.?\s|\bhours\b|\bcourts\b/i.test(page.replace(/<[^>]+>/g, " ")));
+  // Owner, 2026-11-16: the top menu is Programs and About; Locations moved to the footer.
+  check("Locations in the footer, beside Programs, and no longer in the top menu", FOOTER_GROUPS[0].links[1]?.href === "/locations" && FOOTER_GROUPS[0].links[1]?.label === "Locations" && !NAV_LINKS.some((l) => l.href === "/locations"));
+  check("/locations in the sitemap", sitemap().some((e) => e.url.endsWith("/locations")));
+}
 
 console.log("Enrollment shows the location first");
 const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
@@ -257,13 +266,17 @@ check("the invitation names the club (HTML and text)", invite.html.includes(`${N
 check("the invitation no longer defers the venue to another email", !invite.html.includes("Court details are confirmed") && !invite.text.includes("Court details are confirmed"));
 check("the admin action passes the cohort's location", read("src/lib/cohortActions.ts").includes("locationLine: cohortWhereLine(cohort),"));
 
-// ── Wiring ──────────────────────────────────────────────────────────────────
-console.log("Wiring");
-const pkg = JSON.parse(read("package.json")) as { scripts: { test: string } };
-check("npm test runs this script", pkg.scripts.test.includes("npx tsx src/scripts/test-locations.ts"));
+locationsPageChecks()
+  .catch((err) => check("/locations renders", false, err instanceof Error ? err.message : String(err)))
+  .then(() => {
+    // ── Wiring ──────────────────────────────────────────────────────────────
+    console.log("Wiring");
+    const pkg = JSON.parse(read("package.json")) as { scripts: { test: string } };
+    check("npm test runs this script", pkg.scripts.test.includes("npx tsx src/scripts/test-locations.ts"));
 
-if (failed > 0) {
-  console.log(`\n${failed} check(s) failed.`);
-  process.exit(1);
-}
-console.log("\nAll location checks passed.");
+    if (failed > 0) {
+      console.log(`\n${failed} check(s) failed.`);
+      process.exit(1);
+    }
+    console.log("\nAll location checks passed.");
+  });
