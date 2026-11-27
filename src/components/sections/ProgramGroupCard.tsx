@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Program, ProgramGroup } from "@/types/program";
+import type { ProgramGroup } from "@/types/program";
 import type { BlockFacts } from "@/lib/groupBlocks";
 import {
   DATES_COMING_SOON,
@@ -12,6 +12,7 @@ import {
   type GroupAction,
 } from "@/lib/programCatalog";
 import { locationById } from "@/content/locations";
+import { ASK_ABOUT_LESSONS_HREF, CONTACT_EMAIL } from "@/content/programs";
 import { NEWSLETTER_ANCHOR } from "@/content/site";
 import { buttonClass } from "@/components/ui/Button";
 import { CARD_CLASS } from "@/components/ui/Card";
@@ -267,18 +268,19 @@ export function ProgramGroupCard({
 
 /**
  * A group with no fixed class (private lessons) as one row: its name, "By
- * arrangement" and the price in a line, and one outline button, which leads
- * where the private card's link always led: the quiz for the program.
+ * arrangement" and the price in a line, and one outline button, "Ask about
+ * lessons", which opens an email to us with its subject filled in (backlog
+ * #103; it opened the quiz until then, whose steps are about groups). The
+ * address is written under the button as plain text, so a visitor with no
+ * mail app can copy it; the button stays the row's one link.
  */
 export function ArrangedGroupRow({
   group: g,
-  program,
   source = "group-card",
   headingLevel = 3,
 }: {
   group: ProgramGroup;
-  program: Pick<Program, "slug">;
-  /** The quiz link's analytics source. */
+  /** The button's analytics source (lessons_cta_click). */
   source?: string;
   headingLevel?: 2 | 3 | 4;
 }) {
@@ -295,17 +297,17 @@ export function ArrangedGroupRow({
           {formatGroupWhen(g)} · {g.price}
         </p>
       </div>
-      {/* "Ask about lessons" opens the quiz for the program for everyone, a
-          quiz-taker included (quizAware={false}), as it always has. */}
-      <TrackedLink
-        href={`/intake?program=${program.slug}`}
-        track="quiz"
-        source={source}
-        quizAware={false}
-        className={`${buttonClass("secondary")} ${BUTTON_SHAPE}`}
-      >
-        <ButtonLabel action={action} />
-      </TrackedLink>
+      <div className="flex flex-col items-center gap-1.5">
+        <TrackedLink
+          href={ASK_ABOUT_LESSONS_HREF}
+          track="lessons"
+          source={source}
+          className={`${buttonClass("secondary")} ${BUTTON_SHAPE}`}
+        >
+          <ButtonLabel action={action} />
+        </TrackedLink>
+        <p className="select-all text-[13px] text-white/60">{CONTACT_EMAIL}</p>
+      </div>
     </article>
   );
 }

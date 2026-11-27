@@ -1,6 +1,8 @@
 "use client";
 
+import { startTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { buttonClass } from "@/components/ui/Button";
 
 export default function Error({
@@ -9,6 +11,18 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const router = useRouter();
+  // "Try again" asks the server for the page again, then clears the error,
+  // in one transition (backlog #103). reset() alone redraws the page from
+  // what the browser already holds, so a server read that failed (Supabase
+  // or the Sheet timing out) stayed failed until a reload.
+  const tryAgain = () => {
+    startTransition(() => {
+      router.refresh();
+      reset();
+    });
+  };
+
   return (
     <main className="flex min-h-[70vh] flex-col items-center justify-center px-6 bg-[#061427] text-white">
       <div className="max-w-md w-full text-center">
@@ -32,7 +46,7 @@ export default function Error({
         </p>
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <button type="button" onClick={reset} className={buttonClass("primary")}>
+          <button type="button" onClick={tryAgain} className={buttonClass("primary")}>
             Try again
           </button>
           <Link href="/" className={buttonClass("secondary")}>

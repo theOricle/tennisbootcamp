@@ -261,7 +261,8 @@ check("/assessment: both Book Your Assessment buttons are outline pills", (asses
 check("detail: closes on the main action (M13), to this page's group list and this program's quiz", detail.includes('<JoinClosing className="mt-12" source="program-closing" quizHref={quizHref} href={groupListHref} />'));
 check("detail: the panel's lime button is the main button, to the page's own group list, marked for the bar", /<Button variant="primary" href=\{groupListHref\}[^>]*data-main-cta>\s*\{JOIN_CTA_LABEL\}/.test(detail) && detail.includes("const groupListHref = scheduledGroups.length > 0 ? `#${GROUPS_ANCHOR}` : undefined;") && detail.includes("<h2 id={GROUPS_ANCHOR}"));
 check("detail: the quiz side line sits under it, for this program", /\{JOIN_CTA_LABEL\}\s*<\/Button>\s*<QuizSideLine source="program-detail" quizHref=\{quizHref\}/.test(detail));
-check("detail: a program booked by arrangement asks about lessons, where the lime button always led", /<TrackedButton\s+variant="primary"\s+href=\{quizHref\}\s+track="quiz"\s+source="program-detail"\s+quizAware=\{false\}[^>]*data-main-cta\s*>\s*Ask about lessons/.test(detail));
+// Re-pinned for backlog #103: the lime button asks about lessons by email (it opened the quiz for the program until then).
+check("detail: a program booked by arrangement asks about lessons on the lime button, by email", /<TrackedButton\s+variant="primary"\s+href=\{ASK_ABOUT_LESSONS_HREF\}\s+track="lessons"\s+source="program-detail"[^>]*data-main-cta\s*>\s*Ask about lessons/.test(detail));
 check("detail: no lime quiz button", !detail.includes("data-quiz-cta") && !/variant="primary"[^>]*>\s*Take the 2-minute quiz/.test(detail));
 const button = read("src/components/ui/Button.tsx");
 check("one primary hover (brightness-110)", button.includes('primary: "bg-[#B4E655] text-[#061427] hover:brightness-110"'));

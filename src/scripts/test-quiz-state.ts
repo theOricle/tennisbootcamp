@@ -315,14 +315,17 @@ check("the swapped click is tagged -taken for analytics", tracked.includes("`${s
 // surfaces that carried the small "Retake the quiz" link, left the pages, and
 // the RetakeQuizLink component went with them. The label and the link that
 // opens the first step stay on the quiz's own already-taken panel and on the
-// dashboard (both pinned below). quizAware={false} keeps "Ask about lessons"
-// reading its own words and opening the quiz for a taker. Backlog #71 (owner,
-// 2026-11-18): a group card's button keeps its own words too, but where it
-// goes follows a signed-in taker to the dashboard (quizAware="href").
+// dashboard (both pinned below). Backlog #71 (owner, 2026-11-18): a group
+// card's button keeps its own words too, but where it goes follows a
+// signed-in taker to the dashboard (quizAware="href").
+// Re-pinned for backlog #103: "Ask about lessons" read quizAware={false},
+// keeping its words and the quiz for a taker. It emails us now (track
+// "lessons"), and only a quiz CTA ever swaps, so it reads and leads the same
+// for everyone.
 {
   const cardFile = read("src/components/sections/ProgramGroupCard.tsx");
   const arrangedSrc = cardFile.slice(at(cardFile, "export function ArrangedGroupRow"));
-  check("quizAware={false} keeps Ask about lessons on the quiz, on the program page and on the private lessons row", /quizAware=\{false\}[\s\S]{0,120}Ask about lessons/.test(read("src/app/programs/[slug]/page.tsx")) && arrangedSrc.includes("quizAware={false}") && !arrangedSrc.includes('quizAware="href"'));
+  check("Ask about lessons is no quiz CTA, so nothing swaps it, on the program page and on the private lessons row", /track="lessons"[\s\S]{0,240}Ask about lessons/.test(read("src/app/programs/[slug]/page.tsx")) && arrangedSrc.includes('track="lessons"') && !arrangedSrc.includes("quizAware") && tracked.includes('track === "quiz" && quizAware !== false'));
 }
 check("quizAware=\"href\": the link keeps its own words, and only where it goes follows the taker", tracked.includes('quizAware?: boolean | "href";') && tracked.includes('{swap && quizAware !== "href" ? quiz.next.label : children}') && tracked.includes("href={swap ? quiz.next.href : href}"));
 check("no surface is left holding a Retake link component nobody renders", !read("src/components/quiz/QuizSwap.tsx").includes("RetakeQuizLink") && retakeQuizHref("/intake") === "/intake?retake=1");

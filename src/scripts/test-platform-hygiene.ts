@@ -83,11 +83,17 @@ async function main() {
   // The 404's quiz link is the main action's side line now (backlog #69): same event, same source tag.
   check("the 404 quiz link is still tracked", notFound.includes('<MainAction source="not-found"') && read("src/components/ui/MainAction.tsx").includes('<TrackedLink href={quizHref} track="quiz" source={source}'));
   check("the Course provider is named inline", /name: site\.name,\s*url: SITE_URL,/.test(read("src/lib/structuredData.ts")));
-  check("the error page offers info@", read("src/app/error.tsx").includes("info@tennisbootcamp.ca"));
+  // Backlog #103: the whole-site error screen (no header, no footer) offers it too, as the error page does.
+  for (const page of ["src/app/error.tsx", "src/app/global-error.tsx"]) {
+    check(`${page} offers info@, as a mailto link`, read(page).includes('href="mailto:info@tennisbootcamp.ca"'));
+  }
 
   // ── L13: source-tagged funnel events ──────────────────────────────────────
   console.log("Funnel analytics (L13)");
-  check("program pages tag their quiz CTA", /track="quiz"\s+source="program-detail"/.test(detail));
+  // Re-pinned for backlog #103: "Ask about lessons" was the page's one tracked quiz button; it emails us now
+  // and sends its own event. The quiz link is the side line, tagged for the page.
+  check("program pages tag their quiz CTA", detail.includes('<QuizSideLine source="program-detail"') && read("src/components/ui/MainAction.tsx").includes('<TrackedLink href={quizHref} track="quiz" source={source}'));
+  check("program pages tag their lessons CTA", /track="lessons"\s+source="program-detail"/.test(detail));
   check("program pages tag their assessment CTA", /track="assessment"\s+source="program-detail"/.test(detail));
   const assessmentPage = read("src/app/assessment/page.tsx");
   check("/assessment tags its CTAs", assessmentPage.includes('source="assessment-price"') && assessmentPage.includes('source="assessment-closing"') && assessmentPage.includes('source="assessment-page"'));

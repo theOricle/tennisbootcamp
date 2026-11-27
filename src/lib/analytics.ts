@@ -198,14 +198,25 @@ export function trackAssessmentCtaClick(source: string) {
 // ─── Quiz-first events (backlog #22) ──────────────────────────────────────────
 
 /**
- * A player taps a link that opens the 2-minute quiz: the quiz side line, or
- * a group card's button. `source` distinguishes where (audit L13): "hero" |
- * "not-found" | "program-detail" | "programs-filters" | "assessment-page" |
- * a closing's own source ("home-closing", "program-closing") | a group
- * card's ("programs-group", "program-group", "programs-closest").
+ * A player taps a link that opens the 2-minute quiz, such as the quiz side
+ * line. `source` distinguishes where (audit L13): "hero" | "not-found" |
+ * "program-detail" | "programs-filters" | "assessment-page" | a closing's own
+ * source ("home-closing", "program-closing"). A group card's button never
+ * opens the quiz, and the private lessons row's "Ask about lessons" sends
+ * lessons_cta_click (backlog #103).
  */
 export function trackQuizCtaClick(source: string) {
   trackEvent("quiz_cta_click", { source });
+}
+
+/**
+ * A visitor taps "Ask about lessons", which opens an email to us (backlog
+ * #103; it opened the quiz, and sent quiz_cta_click, until then). `source`:
+ * "program-detail" (the Private Lessons page) | "programs-group" (its row on
+ * /programs).
+ */
+export function trackLessonsCtaClick(source: string) {
+  trackEvent("lessons_cta_click", { source });
 }
 
 // ─── Friction-pass events (Phase 2.6) ─────────────────────────────────────────
