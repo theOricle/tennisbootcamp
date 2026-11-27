@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cardPaymentIsTest } from "@/lib/payments";
 import { enrollConfirmation } from "@/lib/paymentConfirmation";
 import { EtransferDetailsFromStep } from "@/components/enroll/EtransferDetails";
+import { TextLink } from "@/components/ui/TextLink";
 import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
 type PageProps = {
@@ -172,21 +173,32 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
             </div>
           )}
 
-          {/* Primary CTA — auth-aware */}
-          <div className="mt-8 flex flex-wrap gap-3">
-            {user ? (
+          {/* Signed out, the way back in (backlog #101): a guest has no
+              password yet, so no main button sends them to /login. One line
+              says where the dashboard opens from, then quiet text links. */}
+          {copy.wayBack && (
+            <div className="mt-8">
+              {copy.wayBack.line && (
+                <p className="text-sm leading-relaxed text-white/70">{copy.wayBack.line}</p>
+              )}
+              <div className="flex flex-wrap gap-x-6">
+                {copy.wayBack.links.map((link) => (
+                  <TextLink key={link.href} href={link.href} tone="lime">
+                    {link.label}
+                  </TextLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Signed in: the dashboard is the main button, as before. */}
+          <div className={`${copy.wayBack ? "mt-3" : "mt-8"} flex flex-wrap gap-3`}>
+            {user && (
               <Link
                 href="/dashboard"
                 className="rounded-full bg-[#B4E655] px-6 py-2.5 text-sm font-semibold text-[#061427] transition hover:brightness-110"
               >
                 Go to Dashboard →
-              </Link>
-            ) : (
-              <Link
-                href="/login"
-                className="rounded-full bg-[#B4E655] px-6 py-2.5 text-sm font-semibold text-[#061427] transition hover:brightness-110"
-              >
-                Sign in to your dashboard →
               </Link>
             )}
             <Link

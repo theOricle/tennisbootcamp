@@ -50,7 +50,12 @@ import {
   EtransferDetailsFromStep,
   EtransferDetailsSection,
 } from "../components/enroll/EtransferDetails";
-import { enrollConfirmation } from "../lib/paymentConfirmation";
+import {
+  WAY_BACK_LINE,
+  WAY_BACK_NEW_LINK,
+  WAY_BACK_SIGN_IN,
+  enrollConfirmation,
+} from "../lib/paymentConfirmation";
 import { groupById } from "../content/programs";
 import type { ProgramGroup } from "../types/program";
 import type { AgeBand } from "../lib/ageBand";
@@ -465,6 +470,70 @@ console.log("4. After an e-transfer, signed out: the details as the step showed 
     !handoff.includes("cookie") &&
     !reader.includes("localStorage") &&
     reader.includes("() => null")
+  );
+}
+
+// ── 5. Signed out, the way back in ──────────────────────────────────────────
+console.log("5. Signed out, the page after: no main button to /login; the account email's link, then two quiet links");
+{
+  const conf = (over: Partial<Parameters<typeof enrollConfirmation>[0]>) =>
+    enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: false, firstName: null, ...over });
+  const linkText = (c: ReturnType<typeof conf>) => (c.wayBack?.links ?? []).map((l) => `${l.label}>${l.href}`).join();
+
+  for (const [label, c] of [
+    ["after an e-transfer", conf({ viaEtransfer: true })],
+    ["after a card payment", conf({})],
+  ] as const) {
+    check(`${label}: the line says where the dashboard opens from`, () =>
+      c.wayBack?.line === WAY_BACK_LINE &&
+      WAY_BACK_LINE.startsWith("Your dashboard opens from the link in the account email we just sent.")
+    );
+    check(`${label}: Sign in to /login, then Send a new link to /auth/forgot-password`, () =>
+      linkText(c) === "Sign in>/login,Send a new link>/auth/forgot-password"
+    );
+  }
+  check("the line stays true for an address that already had an account: no link is promised to it", () =>
+    WAY_BACK_LINE.includes("An address that already had an account gets no link, so sign in with your password.")
+  );
+  check("the links' words are /login's own", () =>
+    WAY_BACK_SIGN_IN.label === "Sign in" &&
+    WAY_BACK_NEW_LINK.label === "Send a new link" &&
+    read("src/app/login/page.tsx").includes("Send a new link") &&
+    read("src/app/login/page.tsx").includes('href="/auth/forgot-password"')
+  );
+  check("a test payment promises no email: no line, no new-link offer, the plain Sign in alone", () => {
+    const c = conf({ testPayment: true });
+    return (
+      c.wayBack !== null &&
+      c.wayBack.line === null &&
+      linkText(c) === "Sign in>/login" &&
+      !/email|inbox|link/i.test([c.heading, c.badge, ...c.nextSteps, ...c.wayBack.links.map((l) => l.label)].join(" ")) &&
+      c.lead.includes("no email was sent")
+    );
+  });
+  check("signed in: no way-back block, in any state", () =>
+    conf({ signedIn: true }).wayBack === null &&
+    conf({ signedIn: true, viaEtransfer: true }).wayBack === null &&
+    conf({ signedIn: true, testPayment: true }).wayBack === null
+  );
+
+  const lime = "bg-[#B4E655]";
+  const mainButtons = [...confirmedPage.matchAll(/<Link\s+href="([^"]+)"\s+className="([^"]*)"/g)].filter((m) => m[2].includes(lime));
+  check("the page has one lime button, the signed-in one to /dashboard, and no link to /login of its own", () =>
+    mainButtons.length === 1 &&
+    mainButtons[0][1] === "/dashboard" &&
+    confirmedPage.includes("{user && (") &&
+    !confirmedPage.includes('href="/login"') &&
+    !confirmedPage.includes("Sign in to your dashboard")
+  );
+  check("the way back is drawn from those words as text links, never a button", () =>
+    confirmedPage.includes("{copy.wayBack && (") &&
+    confirmedPage.includes("{copy.wayBack.line}") &&
+    confirmedPage.includes('<TextLink key={link.href} href={link.href} tone="lime">') &&
+    !read("src/components/ui/TextLink.tsx").includes(lime)
+  );
+  check("nothing asks a route to send anything", () =>
+    !confirmedPage.includes("fetch(") && !confirmedPage.includes("/api/auth/")
   );
 }
 

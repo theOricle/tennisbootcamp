@@ -15,6 +15,29 @@ export const TEST_PAYMENT_ENROLL_LINE =
 export const TEST_PAYMENT_BOOKING_LINE =
   "Card payments are in test mode, so no money was taken. Nothing was booked and no email was sent.";
 
+/**
+ * Signed out, how a guest gets back in (backlog #101). A guest has no
+ * password yet: the account email sent after a sign-up carries the link that
+ * sets one and opens the dashboard. An address that already had an account
+ * gets a note with no link (audit H5), so the line says both. Nothing here
+ * asks a route for anything.
+ */
+export const WAY_BACK_LINE =
+  "Your dashboard opens from the link in the account email we just sent. An address that already had an account gets no link, so sign in with your password.";
+
+/** For someone who already has a password. */
+export const WAY_BACK_SIGN_IN = { label: "Sign in", href: "/login" } as const;
+
+/** For someone with no email: the words and the page /login already uses. */
+export const WAY_BACK_NEW_LINK = { label: "Send a new link", href: "/auth/forgot-password" } as const;
+
+export type WayBack = {
+  /** The line about the account email; null after a test payment, which sends none. */
+  line: string | null;
+  /** Quiet text links, never a main button. */
+  links: readonly { label: string; href: string }[];
+};
+
 /** The status icon: a check for what stands, an "i" for a test payment. */
 export type ConfirmationIcon = "check" | "info";
 
@@ -28,6 +51,8 @@ export type EnrollConfirmation = {
   lead: string;
   /** "What happens next"; none after a test payment, which leads nowhere. */
   nextSteps: string[];
+  /** Signed out, the way back in; null signed in, where the dashboard button stands. */
+  wayBack: WayBack | null;
 };
 
 /**
@@ -50,6 +75,8 @@ export function enrollConfirmation(input: {
       heading: TEST_PAYMENT_HEADING,
       lead: TEST_PAYMENT_ENROLL_LINE,
       nextSteps: [],
+      // No email was sent, so none is spoken of: the plain sign-in link alone.
+      wayBack: signedIn ? null : { line: null, links: [WAY_BACK_SIGN_IN] },
     };
   }
   // Audit H5: an email that already had an account gets no activation link
@@ -89,6 +116,7 @@ export function enrollConfirmation(input: {
       ? "Once the coach confirms your e-transfer arrived, you're in and the confirmation email follows. The amount, the address, and the message to put on the transfer are in your inbox."
       : "Your payment is confirmed and your spot is reserved. Everything below is what you signed up for — save this page or check your email for a receipt.",
     nextSteps,
+    wayBack: signedIn ? null : { line: WAY_BACK_LINE, links: [WAY_BACK_SIGN_IN, WAY_BACK_NEW_LINK] },
   };
 }
 

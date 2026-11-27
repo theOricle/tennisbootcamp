@@ -266,12 +266,22 @@ console.log("The page after a test payment says so, and promises nothing a live 
   check("…no money taken, nothing booked, no email sent", enrollTest.lead, TEST_PAYMENT_ENROLL_LINE);
   check("…no next steps at all", enrollTest.nextSteps, []);
   check("…never 'Check your email', never enrolled or reserved", /check your email|enrolled|reserved|Payment Received/i.test(words(enrollTest)), false);
-  check("…signed in, the same", enrollConfirmation({ viaEtransfer: false, testPayment: true, signedIn: true, firstName: null }), enrollTest);
+  // Signed out, the page also carries the way back in (backlog #101): after a
+  // test payment the plain sign-in link alone, with no word of an email.
+  check("…signed out, a plain Sign in link and no line about an email", enrollTest.wayBack, { line: null, links: [{ label: "Sign in", href: "/login" }] });
+  check("…signed in, the same words, and no way-back block", enrollConfirmation({ viaEtransfer: false, testPayment: true, signedIn: true, firstName: null }), { ...enrollTest, wayBack: null });
   check("…and the browser tab says so too", [enrollTest.title, enrollTest.description], ["Test payment", TEST_PAYMENT_HEADING]);
 
   const LIVE_STEPS_TAIL = "We'll send reminders before your first session with court details and what to bring.";
   const LIVE_ENROLL_META = { title: "Enrollment Confirmed", description: "Your Tennis Bootcamp enrollment has been confirmed." };
-  check("card, live, signed out: the page is as it was", enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: false, firstName: "Sam" }), {
+  const WAY_BACK = {
+    line: "Your dashboard opens from the link in the account email we just sent. An address that already had an account gets no link, so sign in with your password.",
+    links: [
+      { label: "Sign in", href: "/login" },
+      { label: "Send a new link", href: "/auth/forgot-password" },
+    ],
+  };
+  check("card, live, signed out: the words as they were, then the way back in", enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: false, firstName: "Sam" }), {
     ...LIVE_ENROLL_META,
     badge: "Payment Received",
     icon: "check",
@@ -282,6 +292,7 @@ console.log("The page after a test payment says so, and promises nothing a live 
       "Your dashboard then shows this enrollment, each player's level once our coaches set it, the weekly slot and, once the group is set, every session date.",
       LIVE_STEPS_TAIL,
     ],
+    wayBack: WAY_BACK,
   });
   check("card, live, signed in: as it was", enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: true, firstName: null }), {
     ...LIVE_ENROLL_META,
@@ -293,6 +304,7 @@ console.log("The page after a test payment says so, and promises nothing a live 
       "This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date.",
       LIVE_STEPS_TAIL,
     ],
+    wayBack: null,
   });
   check("e-transfer: as it was, and never a test page (no card was used)", enrollConfirmation({ viaEtransfer: true, testPayment: true, signedIn: true, firstName: "Sam" }), {
     ...LIVE_ENROLL_META,
@@ -305,6 +317,7 @@ console.log("The page after a test payment says so, and promises nothing a live 
       "This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date.",
       "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email.",
     ],
+    wayBack: null,
   });
 
   const bookedTest = bookedConfirmation({ testPayment: true });
