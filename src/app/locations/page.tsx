@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { locations } from "@/content/locations";
-import { formatGroupWhen } from "@/lib/programCatalog";
+import { programGroups } from "@/content/programs";
+import { getPublicCohorts } from "@/lib/cohortsDb";
+import { readBlockSeats } from "@/lib/groupSeats";
+import { groupCards } from "@/lib/groupBlocks";
 import { catalogHref, EMPTY_QUERY } from "@/lib/programFilters";
-import { programsAtLocation } from "@/lib/locationCatalog";
+import { cardWhen, cardsAtLocation } from "@/lib/locationCatalog";
 import { membershipNote } from "@/lib/membership";
 import { Container } from "@/components/layout/Container";
 import { PageStack } from "@/components/layout/PageStack";
@@ -11,21 +14,34 @@ import { Heading } from "@/components/ui/Heading";
 import { Button } from "@/components/ui/Button";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { JoinClosing } from "@/components/sections/JoinClosing";
+import { TimesKeptWhole } from "@/components/sections/ProgramGroupCard";
 import { MapLink, PinIcon } from "@/components/locations/LocationLine";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 
 // Our locations (owner, 2026-10-12): the page returns, now naming the club we
 // train at. One card per location: the name and area, the map link (a Google
 // Maps search, since no street address is published), and what runs there,
-// group by group, from the lineup in src/content/programs.ts. The page closes
-// on the main action (audit M13). Static: nothing here changes without a deploy.
+// group by group, from the same group cards /programs shows (backlog #99;
+// src/lib/groupBlocks.ts): an open block's class days, times and dates, and a
+// planned group with none in its card's own words. The page closes on the
+// main action (audit M13).
+
+// Incremental static regeneration, as /programs: the open blocks and their
+// seats are read the way that page reads them, at most once a minute, so a
+// row follows its group's card. A read that fails lists every planned group
+// as its card reads with no open block, never an error.
+export const revalidate = 60;
 
 const [first] = locations;
 
-/** The search-result line: geography, then what runs there (at most 155 characters, audit M10). */
+/**
+ * The search-result line: geography, then what runs there (at most 155
+ * characters, audit M10). No weekday (backlog #99): each group's days are its
+ * card's, and an open block may run on another day.
+ */
 const LOCATIONS_META_DESCRIPTION =
   locations.length === 1
-    ? `Where we train in Toronto: ${first.name}, ${first.locality}. Youth Bootcamps on Saturdays, Adult Bootcamps on Sundays, private lessons by arrangement.`
+    ? `Where we train in Toronto: ${first.name}, ${first.locality}. Youth Bootcamps and Adult Bootcamps by age and level, private lessons by arrangement.`
     : "Where we train in Toronto: every Tennis Bootcamp location, and the groups that run at each.";
 
 export const metadata: Metadata = {
@@ -36,7 +52,26 @@ export const metadata: Metadata = {
 
 const PROGRAM_LINK = `rounded underline-offset-4 hover:underline ${FOCUS_RING}`;
 
-export default function LocationsPage() {
+/**
+ * "Nov 28, 2026 – Jan 2, 2027" as its two dates, each kept whole and the dash
+ * riding the first, as the cards keep them; any other line as it is.
+ */
+function DatesKeptWhole({ text }: { text: string }) {
+  const [from, to] = text.split(" – ");
+  if (to === undefined) return <>{text}</>;
+  return (
+    <>
+      <span className="whitespace-nowrap">{from} –</span> <span className="whitespace-nowrap">{to}</span>
+    </>
+  );
+}
+
+export default async function LocationsPage() {
+  const publicCohorts = await getPublicCohorts();
+  const seats = await readBlockSeats(publicCohorts);
+  // One card per open block, and one per planned group with none, as on
+  // /programs. No row shows a seat count; the seats keep the cards the same.
+  const cards = groupCards(programGroups, publicCohorts, seats);
   const single = locations.length === 1;
   return (
     <main className="min-h-screen bg-[#061427] text-white">
@@ -55,7 +90,7 @@ export default function LocationsPage() {
         <div>
           <ul role="list" className="space-y-6">
             {locations.map((location) => {
-              const here = programsAtLocation(location.id);
+              const here = cardsAtLocation(location.id, cards);
               const headingId = `location-${location.id}`;
               return (
                 <li key={location.id}>
@@ -82,29 +117,48 @@ export default function LocationsPage() {
                     </div>
 
                     {/* What runs here, program by program, each group on its own
-                        line: beside the club from md, under it on a phone. */}
+                        line, as its card on /programs says when it runs: beside
+                        the club from md, under it on a phone. */}
                     <div className="mt-8 min-w-0 border-t border-white/10 pt-6 md:col-start-2 md:row-span-2 md:row-start-1 md:mt-0 md:border-l md:border-t-0 md:pl-12 md:pt-0">
                       <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-[#B4E655]">
                         What runs here
                       </h3>
                       <ul role="list" className="mt-4 space-y-6">
-                        {here.map(({ program, groups }) => (
+                        {here.map(({ program, cards: programCards }) => (
                           <li key={program.slug}>
                             <p className="text-base font-semibold tracking-tight text-white">
                               <Link href={`/programs/${program.slug}`} className={PROGRAM_LINK}>
                                 {program.title} <span aria-hidden="true">→</span>
                               </Link>
                             </p>
+                            {/* Each row: the group's name, then its class days
+                                and times over its dates. The time column takes
+                                at most half the row, so a long line (two class
+                                days, dates across a new year) wraps inside it,
+                                each time and date kept whole, and never
+                                squeezes the name. */}
                             <ul role="list" className="mt-2 divide-y divide-white/10 border-y border-white/10">
-                              {groups.map((g) => (
-                                <li
-                                  key={g.id}
-                                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 py-2.5 text-sm"
-                                >
-                                  <span className="min-w-0 text-white/90">{g.name}</span>
-                                  <span className="text-right tabular-nums text-white/70">{formatGroupWhen(g)}</span>
-                                </li>
-                              ))}
+                              {programCards.map((card) => {
+                                const when = cardWhen(card);
+                                return (
+                                  <li
+                                    key={card.group.id}
+                                    className="grid grid-cols-[minmax(0,1fr)_fit-content(50%)] gap-x-4 py-2.5 text-sm"
+                                  >
+                                    <span className="min-w-0 text-white/90">{card.group.name}</span>
+                                    <span className="text-right tabular-nums text-white/70">
+                                      <span className="block">
+                                        <TimesKeptWhole text={when.classDays} />
+                                      </span>
+                                      {when.dates && (
+                                        <span className="block">
+                                          <DatesKeptWhole text={when.dates} />
+                                        </span>
+                                      )}
+                                    </span>
+                                  </li>
+                                );
+                              })}
                             </ul>
                           </li>
                         ))}
