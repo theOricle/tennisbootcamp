@@ -506,11 +506,11 @@ export const programs: Program[] = [
     title: "Private Lessons",
     description: "One-to-one coaching for any age and level, at a time arranged with you.",
     metaDescription:
-      "Private tennis lessons in Toronto for any age and level, at a time arranged with you. Rates on request. Take the 2-minute quiz or email us.",
+      "Private tennis lessons in Toronto for any age and level. Rates on request. Email us what you want to work on, and we'll come back with times and a rate.",
     longDescription:
       "A private lesson is one player and one coach on court, built around your game: the strokes, patterns or match situations you want to work on, at a pace set by you. " +
       "Any age and any level. Times are arranged with you, and rates are on request. " +
-      `Take the 2-minute quiz and tell us what you want to work on, or email ${CONTACT_EMAIL}.`,
+      `Email ${CONTACT_EMAIL} and tell us what you want to work on.`,
     type: "One-to-one coaching",
     comingSoon: false,
     ctaText: "View Program",
@@ -530,7 +530,7 @@ export const programs: Program[] = [
     schedule: "By arrangement",
     currency: "CAD",
     ageGroup: ageBandsLabel(ANY_AGE_BANDS),
-    priceLine: `${PRIVATE_LESSONS_PRICE}. Email ${CONTACT_EMAIL} or take the 2-minute quiz, and we'll come back to you with times and a rate.`,
+    priceLine: `${PRIVATE_LESSONS_PRICE}. Email us, and we'll come back to you with times and a rate.`,
   },
   {
     // High Performance became a group inside Youth Bootcamps (owner,

@@ -401,10 +401,15 @@ check(
   "detail: the assessment button is inside the viewer panel (a guest's), for a scheduled program only",
   panelOpen < at(detail, 'href="/assessment/book"') && at(detail, 'href="/assessment/book"') < panelClose && /\{!arranged && \(\s*<>\s*<TrackedButton[\s\S]{0,200}?href="\/assessment\/book"/.test(detail)
 );
-check(
-  "detail: a program booked by arrangement offers the inbox outside the viewer panel, so a signed-in holder sees it too",
-  at(detail, "href={`mailto:${CONTACT_EMAIL}`}") > panelClose && /\{arranged && \(\s*<Button[^>]*href=\{`mailto:\$\{CONTACT_EMAIL\}`\}/.test(detail)
-);
+// Re-pinned for backlog #103 (fix round): the button opens the same email as
+// Ask about lessons, the subject filled in; it read a plain mailto: link.
+{
+  const inbox = /\{arranged && \(\s*<Button[^>]*href=\{ASK_ABOUT_LESSONS_HREF\}[^>]*>\s*Email \{CONTACT_EMAIL\}/.exec(detail);
+  check(
+    "detail: a program booked by arrangement offers the inbox outside the viewer panel, so a signed-in holder sees it too, with the lessons subject",
+    !!inbox && inbox.index > panelClose && !detail.includes("href={`mailto:${CONTACT_EMAIL}`}")
+  );
+}
 const dashboardPage = read("src/app/dashboard/page.tsx");
 check("dashboard: suggestions through suggestProgramsFor", dashboardPage.includes("suggestProgramsFor(roster, listedPrograms, enrolledProgramIds)"));
 const dashboardView = read("src/app/dashboard/DashboardView.tsx");

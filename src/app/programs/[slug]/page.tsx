@@ -310,9 +310,10 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                   everyone, so it sits outside the panel: a signed-in holder,
                   whose panel replaces Ask about lessons, still has a way to
                   ask for a lesson, and a visitor with no mail app reads the
-                  address right under that button (backlog #103). */}
+                  address right under that button. It opens the same email,
+                  the subject filled in (backlog #103). */}
               {arranged && (
-                <Button variant="secondary" href={`mailto:${CONTACT_EMAIL}`} className="mt-3 w-full">
+                <Button variant="secondary" href={ASK_ABOUT_LESSONS_HREF} className="mt-3 w-full">
                   Email {CONTACT_EMAIL}
                 </Button>
               )}

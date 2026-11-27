@@ -13,7 +13,9 @@
 //      /programs, opens an email to info@tennisbootcamp.ca with the subject
 //      "Private lessons", the address written next to it, and never the quiz.
 //      Each keeps its look and its click event, renamed from quiz_cta_click
-//      to lessons_cta_click.
+//      to lessons_cta_click. Fix round: the page's outline "Email
+//      info@tennisbootcamp.ca" carries the same subject, and no Private
+//      Lessons string mentions the quiz; its words offer the email.
 //
 // The repo has no DOM test runner: the screens are rendered to static markup,
 // and a button's click handler is read off the elements its component
@@ -277,6 +279,39 @@ async function main() {
     "…with the address written right under it (the outline Email info@tennisbootcamp.ca, which signed-in visitors see too)",
     () => wordsAfter(page, pageAsk[0]?.html).startsWith(`Email ${ADDRESS}`),
     () => pageError || wordsAfter(page, pageAsk[0]?.html)
+  );
+  // Fix round: the page offers only the email, in its words and on both of
+  // its buttons. Its closing (the main action and the quiz side line, below
+  // the levels) is the site's own and stays.
+  const pageEmail = anchors(page).find((a) => a.text === `Email ${ADDRESS}`);
+  check(
+    "both buttons carry the subject: Ask about lessons and the outline Email info@tennisbootcamp.ca under it",
+    () => pageAsk.length === 1 && pageAsk[0].href === LESSONS_MAILTO && pageEmail?.href === LESSONS_MAILTO,
+    () => pageError || `${pageAsk[0]?.href} | ${pageEmail?.href}`
+  );
+  const pageTop = pageEmail ? page.slice(0, page.indexOf(pageEmail.html) + pageEmail.html.length) : "";
+  check(
+    "the page, from its title to the panel's last button, never mentions the quiz or links to it",
+    () => pageTop.length > 0 && !/quiz/i.test(words(pageTop)) && !pageTop.includes("/intake"),
+    () => pageError || words(pageTop).match(/.{0,60}quiz.{0,20}/i)?.[0] || "no Email button found"
+  );
+  const privateLessons = listedPrograms.find((p) => p.slug === "private-lessons")!;
+  const privateWords = [privateLessons, groupById("private-lessons")!].flatMap((entry) =>
+    Object.values(entry).filter((v): v is string => typeof v === "string")
+  );
+  check(
+    "no Private Lessons string mentions the quiz: not its search line, its paragraph, its panel line, nor any other word of the program or its group",
+    () => privateWords.length > 10 && privateWords.every((w) => !/quiz/i.test(w)),
+    () => privateWords.filter((w) => /quiz/i.test(w)).join(" | ")
+  );
+  check(
+    "they offer the email instead: tell us what you want to work on, and we come back with times and a rate",
+    () =>
+      privateLessons.metaDescription ===
+        "Private tennis lessons in Toronto for any age and level. Rates on request. Email us what you want to work on, and we'll come back with times and a rate." &&
+      privateLessons.longDescription.endsWith(" Email info@tennisbootcamp.ca and tell us what you want to work on.") &&
+      privateLessons.priceLine === "Rates on request. Email us, and we'll come back to you with times and a rate.",
+    () => [privateLessons.metaDescription, privateLessons.longDescription, privateLessons.priceLine].join(" | ")
   );
   let pageEvents: string[] = [];
   check(
