@@ -371,8 +371,10 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   const beginnerAdult = { ...adult, level: 1 };
   check("…the level never filters: a Beginner adult still sees the Advanced block", seen([beginnerAdult]) === "beg-sun,adv-sun");
   check("a junior sees the youth blocks whose ages take juniors, and no adult group", seen([junior]) === "nov-sat", seen([junior]));
-  check("a teen sees the youth block that takes 14 and 15, and the 16-and-up adult blocks", seen([teen]) === "nov-sat,beg-sun,adv-sun", seen([teen]));
-  check("a household sees what fits any of its players; a player with no band reads as under 18 (so 16 and up still fits) or 18 and up", seen([adult, junior]) === "nov-sat,beg-sun,adv-sun" && seen([{ is_minor: true }]) === "nov-sat,beg-sun,adv-sun" && seen([{ is_minor: false }]) === "beg-sun,adv-sun" && !groupTakesPlayerAge(g("youth-7-10"), { is_minor: false }));
+  // Backlog #98: a 16-and-up group takes only a player whose whole range
+  // starts at 16 or above, never a teen band or a minor with no band.
+  check("a teen sees the youth block that takes 14 and 15, and never a 16-and-up adult block", seen([teen]) === "nov-sat", seen([teen]));
+  check("a household sees what fits any of its players; a player with no band reads as under 18 (never a 16-and-up group) or 18 and up", seen([adult, junior]) === "nov-sat,beg-sun,adv-sun" && seen([{ is_minor: true }]) === "nov-sat" && seen([{ is_minor: false }]) === "beg-sun,adv-sun" && !groupTakesPlayerAge(g("youth-7-10"), { is_minor: false }));
   check("a block the account is already in drops out", seen([adult], ["beg-sun"]) === "adv-sun");
   check("by approval stays out, whoever fits it", !seen([teen]).includes("hp") && !seen([]).includes("hp"));
   check("an account with no player on file sees every open block but the by-approval one", seen([]) === "nov-sat,beg-sun,adv-sun");

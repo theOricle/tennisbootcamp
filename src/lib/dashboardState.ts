@@ -11,12 +11,21 @@
 //   4. the next session of a paid enrollment (pending and cancelled ones
 //      never drive it)
 //   5. a paid cohort whose dates aren't generated yet
-//   6. otherwise: our coaches are placing the players, nothing else to do.
+//   6. nothing on file at all (no quiz answers, times or level, nothing
+//      booked, held or enrolled): pick a group, the main action, with the
+//      quiz as its side line (backlog #98)
+//   7. otherwise: our coaches are placing the players, nothing else to do.
+// Under its detail, every other upcoming dated item on the account (another
+// held spot, an assessment, the next class) is one short line, three at
+// most, soonest first (backlog #98: one status hid the others).
 
 import type { Cohort } from "@/types/cohort";
 import { formatDollars, numberInWords } from "@/content/programs";
+import { hasAnyAvailability } from "@/lib/availability";
+import { JOIN_CTA_HREF, JOIN_CTA_LABEL } from "@/lib/mainAction";
 import { dayNameForDate } from "@/lib/makeup";
 import { etransferMemo } from "@/lib/paymentTransitions";
+import { accountQuizStatus, type QuizEvidencePlayer } from "@/lib/quizStatus";
 import { noteWithoutMarks } from "@/lib/stripeOutcome";
 import { formatTierSpan, hasLevel } from "@/lib/tiers";
 import { firstNameOf, namesList, possessive, type RosterPlayer } from "@/lib/householdView";
@@ -254,6 +263,7 @@ export type NextStepKind =
   | "assessment"
   | "session"
   | "dates-coming"
+  | "start"
   | "placing"
   | "placed";
 
@@ -262,8 +272,20 @@ export type NextStep = {
   eyebrow: string;
   headline: string;
   detail: string;
+  /**
+   * Every other upcoming dated item on the account, one short line each,
+   * soonest first, three at most: another held spot's deadline, an
+   * assessment booking, the next class. Absent when there is nothing else.
+   */
+  also?: string[];
   primary?: { href: string; label: string };
   secondary?: { href: string; label: string };
+  /**
+   * The quiz as the side line under the buttons, "Not sure which group? Take
+   * the 2-minute quiz" (QuizSideLine): on the first step of an account with
+   * nothing on file, whose primary is the main action (backlog #98).
+   */
+  quizSideLine?: boolean;
 };
 
 export type NextStepInput = {
@@ -287,6 +309,12 @@ export type NextStepInput = {
   now: string;
   /** The dashboard lists at least one open group below the next step (backlog #85). */
   groupsBelow?: boolean;
+  /**
+   * Nothing on file for the account (nothingOnFile): no quiz answers, no
+   * times, no level, nothing booked, held or enrolled. The next step is then
+   * to pick a group, never "our coaches are placing you" (backlog #98).
+   */
+  nothingOnFile?: boolean;
 };
 
 // Every level is confirmed on court in week one; the assessment is optional,
@@ -356,26 +384,221 @@ function cohortIsLive(cohort: Cohort | undefined, today: string): cohort is Coho
   );
 }
 
-export function nextStepFor(input: NextStepInput): NextStep {
-  const { roster, enrollments, cohorts, sessionsByCohort, programs, today, now } = input;
-  const cohortById = new Map(cohorts.map((c) => [c.id, c]));
+/** An invite whose spot is still held: invited, its hold not lapsed. */
+export function holdIsOpen(invite: Pick<DashInvite, "status" | "expires_at">, now: string): boolean {
+  return invite.status === "invited" && invite.expires_at > now;
+}
 
-  // 1. An open invite: a held spot, not yet paid for or sent by e-transfer.
+/**
+ * An e-transfer sent and not yet confirmed: an invite invited or expired (a
+ * lapsed hold), paid by e-transfer. Its spot is held while our coaches
+ * confirm it arrived.
+ */
+function transferIsWaiting(invite: Pick<DashInvite, "status" | "payment_method">): boolean {
+  return (invite.status === "invited" || invite.status === "expired") && invite.payment_method === "etransfer";
+}
+
+/**
+ * The blocks the account holds a spot in (backlog #98): an invite still
+ * invited with its hold not lapsed, or a waiting e-transfer, lapsed hold or
+ * not. The dashboard leaves them out of "Groups with dates"
+ * (accountOpenCards), so a held spot is never offered twice.
+ */
+export function heldCohortIds(
+  invites: readonly Pick<DashInvite, "cohort_id" | "status" | "expires_at" | "payment_method">[],
+  now: string
+): string[] {
+  return [...new Set(invites.filter((i) => holdIsOpen(i, now) || transferIsWaiting(i)).map((i) => i.cohort_id))];
+}
+
+/**
+ * Nothing on file for the account (backlog #98): no player has quiz answers
+ * (a self-estimate or an age band), times or a coach level, and nothing is
+ * booked, held, enrolled or credited. Our coaches then have nothing to place
+ * from, so the next step is to pick a group, with the quiz beside it.
+ */
+export function nothingOnFile(account: {
+  players: readonly QuizEvidencePlayer[];
+  enrollments: readonly unknown[];
+  invites: readonly unknown[];
+  bookings: readonly unknown[];
+  credits: readonly unknown[];
+}): boolean {
+  if (accountQuizStatus(account.players).taken) return false;
+  if (account.players.some((p) => hasAnyAvailability(p.availability))) return false;
+  return (
+    account.enrollments.length === 0 &&
+    account.invites.length === 0 &&
+    account.bookings.length === 0 &&
+    account.credits.length === 0
+  );
+}
+
+/** Step 1's held spots, the soonest hold first: invited, not by e-transfer, in a live cohort. */
+function openHolds(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort>): DashInvite[] {
   const paidCohorts = new Set(
-    enrollments
+    input.enrollments
       .filter((e) => enrollmentIsActive(enrollmentState(e, cohortById.get(e.cohort_id))))
       .map((e) => e.cohort_id)
   );
-  const open = input.invites
+  return input.invites
     .filter(
       (i) =>
-        i.status === "invited" &&
+        holdIsOpen(i, input.now) &&
         i.payment_method !== "etransfer" &&
-        i.expires_at > now &&
-        cohortIsLive(cohortById.get(i.cohort_id), today) &&
+        cohortIsLive(cohortById.get(i.cohort_id), input.today) &&
         !(paidCohorts.has(i.cohort_id) && input.voice === "you")
     )
     .sort((a, b) => a.expires_at.localeCompare(b.expires_at));
+}
+
+/** Step 2's waiting e-transfers: sent, not yet confirmed, in a live cohort (a lapsed hold included). */
+function isWaitingTransfer(invite: DashInvite, cohort: Cohort | undefined, today: string): boolean {
+  return transferIsWaiting(invite) && cohortIsLive(cohort, today);
+}
+
+/** Step 4's next class: the soonest upcoming session of a paid (or test) enrollment. */
+function nextClass(
+  input: NextStepInput,
+  cohortById: ReadonlyMap<string, Cohort>
+): { row: DashSession; enrollment: DashEnrollment } | null {
+  let soonest: { row: DashSession; enrollment: DashEnrollment } | null = null;
+  for (const enrollment of input.enrollments) {
+    const cohort = cohortById.get(enrollment.cohort_id);
+    if (!enrollmentIsActive(enrollmentState(enrollment, cohort))) continue;
+    for (const row of input.sessionsByCohort[enrollment.cohort_id] ?? []) {
+      if (row.status === "cancelled" || row.session_date < input.today) continue;
+      if (
+        !soonest ||
+        row.session_date < soonest.row.session_date ||
+        (row.session_date === soonest.row.session_date && row.start_time < soonest.row.start_time)
+      ) {
+        soonest = { row, enrollment };
+      }
+    }
+  }
+  return soonest;
+}
+
+/** "2026-11-27T18:00": an instant on the Toronto clock, to sort beside a booking's or a class's local time. */
+function torontoStamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+/** The item the next step itself shows, so the lines under it never repeat it. */
+type Shown = { inviteId?: string; bookingId?: string; sessionId?: string };
+
+/** The most lines under the next step's detail. */
+const MAX_ALSO = 3;
+
+/** A date and time kept whole on a narrow screen: the line breaks before it, never inside it. */
+function keptWhole(when: string): string {
+  return when.split(" ").join(String.fromCharCode(0xa0));
+}
+
+/**
+ * Every other upcoming dated item on the account, one short line each,
+ * soonest first, three at most (backlog #98): another held spot's deadline,
+ * an assessment booking (who, day, date, time), the next class. Never the
+ * item the next step shows; empty when there is nothing else.
+ */
+function alsoLines(input: NextStepInput, shown: Shown, cohortById: ReadonlyMap<string, Cohort>): string[] {
+  const items: { at: string; line: string }[] = [];
+  for (const invite of openHolds(input, cohortById)) {
+    if (invite.id === shown.inviteId) continue;
+    const cohort = cohortById.get(invite.cohort_id) as Cohort;
+    const who = whose(input, playerFor(input.roster, { participantId: invite.participant_id }), null);
+    // The deadline on the Toronto clock, in the other lines' own style
+    // ("Sun Nov 29 at 12pm"); the hold step's headline keeps its own.
+    const at = torontoStamp(invite.expires_at);
+    const until = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)
+      ? `${fmtDayDate(at.slice(0, 10))} at ${fmt12h(at.slice(11))}`
+      : fmtHoldDeadline(invite.expires_at);
+    items.push({
+      at,
+      line: `${who.Owner} spot in ${programTitle(input.programs, cohort, cohort.programId)} is held until ${keptWhole(until)}.`,
+    });
+  }
+  for (const booking of input.bookings) {
+    if (booking.date < input.today || booking.id === shown.bookingId) continue;
+    const who = whose(
+      input,
+      playerFor(input.roster, { participantId: booking.participantId, name: booking.playerName }),
+      booking.playerName
+    );
+    items.push({
+      at: `${booking.date}T${booking.start.slice(0, 5)}`,
+      line: `${who.Owner} assessment is ${keptWhole(`${fmtDayDate(booking.date)} at ${fmt12h(booking.start)}`)}.`,
+    });
+  }
+  const next = nextClass(input, cohortById);
+  if (next && next.row.id !== shown.sessionId) {
+    const { row, enrollment } = next;
+    const who = whose(input, playerFor(input.roster, { name: enrollment.participant_name }), enrollment.participant_name);
+    items.push({
+      at: `${row.session_date}T${row.start_time.slice(0, 5)}`,
+      line: `${who.Owner} next class is ${keptWhole(`${fmtDayDate(row.session_date)} at ${fmt12h(row.start_time)}`)}.`,
+    });
+  }
+  return items
+    .sort((a, b) => a.at.localeCompare(b.at))
+    .slice(0, MAX_ALSO)
+    .map((item) => item.line);
+}
+
+/**
+ * The $20s a waiting transfer's amount already took (backlog #98), said once,
+ * the way the invite step says its own: "Leo's $20 assessment came off the
+ * price." Each booking once, as etransferTotalCents counts them; "" when the
+ * amount took none.
+ */
+function transferCreditSentence(
+  people: readonly { invite: DashInvite; who: ReturnType<typeof whose> }[],
+  priceCents: number
+): string {
+  const used = new Set<string>();
+  const owners: { Owner: string; label: string }[] = [];
+  for (const { invite, who } of people) {
+    const booking = invite.creditBookingId ?? null;
+    if (!booking || used.has(booking)) continue;
+    if (invite.amountDueCents === null || invite.amountDueCents >= priceCents) continue;
+    used.add(booking);
+    owners.push({ Owner: who.Owner, label: who.isSelf ? "yours" : possessive(who.name ?? "your player") });
+  }
+  if (owners.length === 0) return "";
+  if (owners.length === 1) return `${owners[0].Owner} $20 assessment came off the price.`;
+  const labels = owners.map((o) => o.label);
+  if (new Set(labels).size < labels.length) {
+    const word = numberInWords(owners.length);
+    return `${word.charAt(0).toUpperCase()}${word.slice(1)} $20 assessments came off the price.`;
+  }
+  return `The $20 assessments (${namesList(labels)}) each came off the price.`;
+}
+
+export function nextStepFor(input: NextStepInput): NextStep {
+  const cohortById = new Map(input.cohorts.map((c) => [c.id, c]));
+  const { step, shown } = mostUrgent(input, cohortById);
+  const also = alsoLines(input, shown, cohortById);
+  return also.length > 0 ? { ...step, also } : step;
+}
+
+function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort>): { step: NextStep; shown: Shown } {
+  const { roster, enrollments, sessionsByCohort, programs, today } = input;
+
+  // 1. An open invite: a held spot, not yet paid for or sent by e-transfer.
+  const open = openHolds(input, cohortById);
   if (open.length > 0) {
     const invite = open[0];
     const cohort = cohortById.get(invite.cohort_id) as Cohort;
@@ -386,16 +609,19 @@ export function nextStepFor(input: NextStepInput): NextStep {
         ? ` ${who.isSelf ? "Your" : who.Owner} $20 assessment comes off the price, so ${money(invite.amountDueCents)} is due.`
         : "";
     return {
-      kind: "invite",
-      eyebrow: "Spot held",
-      headline: `${who.Owner} spot is held until ${fmtHoldDeadline(invite.expires_at)}.`,
-      detail:
-        `${programTitle(programs, cohort, cohort.programId)}, ${groupName(cohort)}. ` +
-        `${weeklySlots(cohort)}, starting ${fmtMonthDay(cohort.startDate)}. ` +
-        `${price} for the ${weeksPhrase(cohort.weeks)}.${due}`,
-      primary: {
-        href: `/enroll/${encodeURIComponent(cohort.id)}?invite=${encodeURIComponent(invite.token)}`,
-        label: who.isSelf ? "Claim my spot" : `Claim ${who.name}'s spot`,
+      shown: { inviteId: invite.id },
+      step: {
+        kind: "invite",
+        eyebrow: "Spot held",
+        headline: `${who.Owner} spot is held until ${fmtHoldDeadline(invite.expires_at)}.`,
+        detail:
+          `${programTitle(programs, cohort, cohort.programId)}, ${groupName(cohort)}. ` +
+          `${weeklySlots(cohort)}, starting ${fmtMonthDay(cohort.startDate)}. ` +
+          `${price} for the ${weeksPhrase(cohort.weeks)}.${due}`,
+        primary: {
+          href: `/enroll/${encodeURIComponent(cohort.id)}?invite=${encodeURIComponent(invite.token)}`,
+          label: who.isSelf ? "Claim my spot" : `Claim ${who.name}'s spot`,
+        },
       },
     };
   }
@@ -405,12 +631,7 @@ export function nextStepFor(input: NextStepInput): NextStep {
   // cohort), so the card adds up every waiting invite in that cohort and
   // repeats the wizard's memo, everyone's name joined with " + ".
   const waiting = input.invites
-    .filter(
-      (i) =>
-        (i.status === "invited" || i.status === "expired") &&
-        i.payment_method === "etransfer" &&
-        cohortIsLive(cohortById.get(i.cohort_id), today)
-    )
+    .filter((i) => isWaitingTransfer(i, cohortById.get(i.cohort_id), today))
     .sort((a, b) =>
       (cohortById.get(a.cohort_id)?.startDate ?? "").localeCompare(cohortById.get(b.cohort_id)?.startDate ?? "")
     );
@@ -461,23 +682,30 @@ export function nextStepFor(input: NextStepInput): NextStep {
     // counted instead of named.
     const counted = new Set(labels).size < labels.length;
     const names = namesList(labels);
+    // A $20 the amount already took is said here, once (backlog #98); the
+    // credit line under the card leaves it out (creditLine's transfers).
+    const credited = transferCreditSentence(people, cohort.priceCents);
     return {
-      kind: "etransfer",
-      eyebrow: "Payment pending",
-      headline:
-        !several && one.who.isSelf
-          ? "Our coaches are confirming your e-transfer."
-          : counted
-            ? `Our coaches are confirming the e-transfer for ${people.length} spots.`
-            : `Our coaches are confirming the e-transfer for ${names}.`,
-      detail:
-        `${money(amount)} to ${input.recipientEmail}, memo “${memo}”. ` +
-        (counted
-          ? `The ${people.length} spots in ${program} are held while our coaches confirm it arrived.`
-          : several
-            ? `The spots for ${names} in ${program} are held while our coaches confirm it arrived.`
-            : `${one.who.Owner} spot in ${program} is held while our coaches confirm it arrived.`),
-      secondary: { href: "#my-programs", label: "See my programs" },
+      shown: {},
+      step: {
+        kind: "etransfer",
+        eyebrow: "Payment pending",
+        headline:
+          !several && one.who.isSelf
+            ? "Our coaches are confirming your e-transfer."
+            : counted
+              ? `Our coaches are confirming the e-transfer for ${people.length} spots.`
+              : `Our coaches are confirming the e-transfer for ${names}.`,
+        detail:
+          `${money(amount)} to ${input.recipientEmail}, memo “${memo}”. ` +
+          (credited ? `${credited} ` : "") +
+          (counted
+            ? `The ${people.length} spots in ${program} are held while our coaches confirm it arrived.`
+            : several
+              ? `The spots for ${names} in ${program} are held while our coaches confirm it arrived.`
+              : `${one.who.Owner} spot in ${program} is held while our coaches confirm it arrived.`),
+        secondary: { href: "#my-programs", label: "See my programs" },
+      },
     };
   }
 
@@ -486,45 +714,37 @@ export function nextStepFor(input: NextStepInput): NextStep {
   if (booking) {
     const who = whose(input, playerFor(roster, { participantId: booking.participantId, name: booking.playerName }), booking.playerName);
     return {
-      kind: "assessment",
-      eyebrow: who.isSelf ? "Your assessment" : `${who.Owner} assessment`,
-      headline: `${fmtDayDate(booking.date)} · ${fmt12h(booking.start)}`,
-      detail: `20 minutes on court with one of our coaches${booking.locationLabel ? `, ${booking.locationLabel}` : ""}. ${BRING_LINE}`,
-      secondary: { href: "#availability", label: "Update my availability" },
+      shown: { bookingId: booking.id },
+      step: {
+        kind: "assessment",
+        eyebrow: who.isSelf ? "Your assessment" : `${who.Owner} assessment`,
+        headline: `${fmtDayDate(booking.date)} · ${fmt12h(booking.start)}`,
+        detail: `20 minutes on court with one of our coaches${booking.locationLabel ? `, ${booking.locationLabel}` : ""}. ${BRING_LINE}`,
+        secondary: { href: "#availability", label: "Update my availability" },
+      },
     };
   }
 
   // 4. The next session of a paid enrollment.
-  let soonest: { row: DashSession; enrollment: DashEnrollment } | null = null;
-  for (const enrollment of enrollments) {
-    const cohort = cohortById.get(enrollment.cohort_id);
-    if (!enrollmentIsActive(enrollmentState(enrollment, cohort))) continue;
-    for (const row of sessionsByCohort[enrollment.cohort_id] ?? []) {
-      if (row.status === "cancelled" || row.session_date < today) continue;
-      if (
-        !soonest ||
-        row.session_date < soonest.row.session_date ||
-        (row.session_date === soonest.row.session_date && row.start_time < soonest.row.start_time)
-      ) {
-        soonest = { row, enrollment };
-      }
-    }
-  }
+  const soonest = nextClass(input, cohortById);
   if (soonest) {
     const { row, enrollment } = soonest;
     const cohort = cohortById.get(enrollment.cohort_id);
     return {
-      kind: "session",
-      eyebrow: "Next session",
-      headline: `${fmtDayDate(row.session_date)} · ${fmt12h(row.start_time)}–${fmt12h(row.end_time)}`,
-      detail: [
-        programTitle(programs, cohort, enrollment.program ?? enrollment.cohort_id),
-        cohort?.label,
-        input.voice === "named" ? enrollment.participant_name : null,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      secondary: { href: "#my-programs", label: "See all sessions" },
+      shown: { sessionId: row.id },
+      step: {
+        kind: "session",
+        eyebrow: "Next session",
+        headline: `${fmtDayDate(row.session_date)} · ${fmt12h(row.start_time)}–${fmt12h(row.end_time)}`,
+        detail: [
+          programTitle(programs, cohort, enrollment.program ?? enrollment.cohort_id),
+          cohort?.label,
+          input.voice === "named" ? enrollment.participant_name : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        secondary: { href: "#my-programs", label: "See all sessions" },
+      },
     };
   }
 
@@ -535,51 +755,90 @@ export function nextStepFor(input: NextStepInput): NextStep {
     .find((c) => c && c.sessions.length > 0 && !(sessionsByCohort[c.id] ?? []).length);
   if (placed) {
     return {
-      kind: "dates-coming",
-      eyebrow: "Next step",
-      headline: "Session dates are coming.",
-      detail: `${programTitle(programs, placed, placed.programId)} trains ${weeklySlots(placed)}. Our coaches confirm the dates once the group is set.`,
-      secondary: { href: "#my-programs", label: "See my programs" },
+      shown: {},
+      step: {
+        kind: "dates-coming",
+        eyebrow: "Next step",
+        headline: "Session dates are coming.",
+        detail: `${programTitle(programs, placed, placed.programId)} trains ${weeklySlots(placed)}. Our coaches confirm the dates once the group is set.`,
+        secondary: { href: "#my-programs", label: "See my programs" },
+      },
     };
   }
 
-  // 6. Nothing booked: the coaches place the players from the quiz.
-  const lead = input.groupsBelow ? "Or pick a group with dates below." : "There is nothing else you need to do.";
-  const unplaced = roster.filter((p) => !hasLevel(p.level));
-  if (input.voice === "you" || roster.length === 0) {
-    return unplaced.length > 0 || roster.length === 0
-      ? {
-          kind: "placing",
-          eyebrow: "Next step",
-          headline: "Our coaches are placing you in a group and time.",
-          detail: `${lead} ${ASSESSMENT_LINE}`,
-          primary: { href: "#availability", label: "Update my availability" },
-          secondary: { href: "/assessment/book", label: "Book Your Assessment" },
-        }
-      : {
-          kind: "placed",
-          eyebrow: "Next step",
-          headline: "Your level is set. Our coaches are placing you in a group.",
-          detail: `${lead} Your group, dates and price land here once they are set.`,
-          primary: { href: "#availability", label: "Update my availability" },
-          secondary: { href: "/programs", label: "Browse Programs" },
-        };
-  }
+  const solo = input.voice === "you" || roster.length === 0;
   const everyone = roster.map((p) => (p.id === input.selfId ? "you" : firstNameOf(p.full_name) || "your player"));
   const many = roster.length > 1;
+
+  // 6. Nothing on file at all (backlog #98): no quiz answers, no times, no
+  // level, nothing booked, held or enrolled. Our coaches have nothing to
+  // place from, so the next step is the site's own first one: pick a group.
+  // Its one primary is the main action, "Join a bootcamp" to the groups; the
+  // quiz is its side line, never a lime button (design-system.md); the
+  // optional assessment stays the outline, with its $20 spelled out. Never
+  // "nothing else you need to do".
+  if (input.nothingOnFile) {
+    return {
+      shown: {},
+      step: {
+        kind: "start",
+        eyebrow: "Next step",
+        headline: solo
+          ? "Pick the group for your age and level."
+          : many
+            ? "Pick a group for each player's age and level."
+            : `Pick the group for ${possessive(everyone[0] ?? "your player")} age and level.`,
+        detail:
+          "Our coaches confirm every level on court in week one. The optional 20-minute assessment costs $20, and that $20 comes off the price if you enroll in a program afterward.",
+        primary: { href: JOIN_CTA_HREF, label: JOIN_CTA_LABEL },
+        secondary: { href: "/assessment/book", label: "Book Your Assessment" },
+        quizSideLine: true,
+      },
+    };
+  }
+
+  // 7. Something on file and nothing booked: the coaches place the players.
+  const lead = input.groupsBelow ? "Or pick a group with dates below." : "There is nothing else you need to do.";
+  const unplaced = roster.filter((p) => !hasLevel(p.level));
+  if (solo) {
+    return {
+      shown: {},
+      step:
+        unplaced.length > 0 || roster.length === 0
+          ? {
+              kind: "placing",
+              eyebrow: "Next step",
+              headline: "Our coaches are placing you in a group and time.",
+              detail: `${lead} ${ASSESSMENT_LINE}`,
+              primary: { href: "#availability", label: "Update my availability" },
+              secondary: { href: "/assessment/book", label: "Book Your Assessment" },
+            }
+          : {
+              kind: "placed",
+              eyebrow: "Next step",
+              headline: "Your level is set. Our coaches are placing you in a group.",
+              detail: `${lead} Your group, dates and price land here once they are set.`,
+              primary: { href: "#availability", label: "Update my availability" },
+              secondary: { href: "/programs", label: "Browse Programs" },
+            },
+    };
+  }
   return {
-    kind: unplaced.length > 0 ? "placing" : "placed",
-    eyebrow: "Next step",
-    headline: `Our coaches are placing ${namesList(everyone)} in ${many ? "groups and times" : "a group and time"}.`,
-    detail:
-      unplaced.length > 0
-        ? `${lead} ${ASSESSMENT_LINE}`
-        : `${lead} Groups, dates and prices land here once they are set.`,
-    primary: { href: "#availability", label: many ? "Update availability" : `Update ${possessive(everyone[0] ?? "their")} availability` },
-    secondary:
-      unplaced.length > 0
-        ? { href: "/assessment/book", label: "Book Your Assessment" }
-        : { href: "/programs", label: "Browse Programs" },
+    shown: {},
+    step: {
+      kind: unplaced.length > 0 ? "placing" : "placed",
+      eyebrow: "Next step",
+      headline: `Our coaches are placing ${namesList(everyone)} in ${many ? "groups and times" : "a group and time"}.`,
+      detail:
+        unplaced.length > 0
+          ? `${lead} ${ASSESSMENT_LINE}`
+          : `${lead} Groups, dates and prices land here once they are set.`,
+      primary: { href: "#availability", label: many ? "Update availability" : `Update ${possessive(everyone[0] ?? "their")} availability` },
+      secondary:
+        unplaced.length > 0
+          ? { href: "/assessment/book", label: "Book Your Assessment" }
+          : { href: "/programs", label: "Browse Programs" },
+    },
   };
 }
 
@@ -613,14 +872,30 @@ export function etransferTotalCents(
  * The $20 still waiting to come off a price, said with its condition (voice
  * rule 2): "Your $20 assessment comes off the price when you enroll in a
  * program." Null with no unused credit.
+ *
+ * With `transfers` (the account's invites, the cohorts, today), a $20 that a
+ * waiting e-transfer's amount already took is left out (backlog #98: matched
+ * on the transfer's creditBookingId). The e-transfer step says that one, so
+ * it is never promised a second time; a $20 no transfer used keeps its line.
  */
 export function creditLine(
   credits: readonly DashCredit[],
   roster: readonly RosterPlayer[],
-  selfId: string | null
+  selfId: string | null,
+  transfers?: { invites: readonly DashInvite[]; cohorts: readonly Cohort[]; today: string }
 ): string | null {
-  if (credits.length === 0) return null;
-  const owners = credits.map((c) => {
+  const used = new Set<string>();
+  if (transfers) {
+    const cohortById = new Map(transfers.cohorts.map((c) => [c.id, c]));
+    for (const i of transfers.invites) {
+      if (i.creditBookingId && isWaitingTransfer(i, cohortById.get(i.cohort_id), transfers.today)) {
+        used.add(i.creditBookingId);
+      }
+    }
+  }
+  const left = credits.filter((c) => !used.has(c.bookingId));
+  if (left.length === 0) return null;
+  const owners = left.map((c) => {
     // Linked to the account but to no player: it comes off the account's
     // next enrollment, whoever it is for (src/lib/creditRules.ts).
     if (!c.participantId) return "you";

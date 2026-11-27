@@ -34,7 +34,7 @@ import { LocationBlock } from "@/components/locations/LocationLine";
 import { programTakesPlayerAge, suggestProgramsFor } from "@/lib/programCatalog";
 import { hasLevel, placedSpanFor, type PlacedSpan } from "@/lib/tiers";
 import { rosterVoice, trainingRoster } from "@/lib/householdView";
-import { creditLine, nextStepFor, welcomeHeading } from "@/lib/dashboardState";
+import { creditLine, heldCohortIds, nextStepFor, nothingOnFile, welcomeHeading } from "@/lib/dashboardState";
 import { accountQuizStatus } from "@/lib/quizStatus";
 import { DashboardView, SURFACE, type DashboardEnrollment } from "./DashboardView";
 
@@ -210,6 +210,7 @@ async function DashboardContent({
   const firstName = self?.full_name?.trim().split(/\s+/)[0] || userEmail || "";
   const rows = (enrollments ?? []) as DashboardEnrollment[];
   const today = todayIso();
+  const now = new Date().toISOString();
   const participantIds = players.map((p) => p.id);
 
   // The states fall-2026 players are in (audit M25): an invite on hold, an
@@ -264,6 +265,9 @@ async function DashboardContent({
   const allOpenGroups = openBlockCards(groupCards(programGroups, publicBlocks, blockSeats));
   const openGroups = accountOpenCards(allOpenGroups, {
     enrolledCohortIds,
+    // A spot held for the account, an open hold or a waiting e-transfer, is
+    // the next step's, never also "Enroll" here (backlog #98).
+    heldCohortIds: heldCohortIds(invites, now),
     players: roster.length > 0 ? roster : players,
   });
   const sessionsByCohort: Record<string, CohortSessionRow[]> = {};
@@ -326,10 +330,13 @@ async function DashboardContent({
     bookings,
     recipientEmail: etransferRecipient(),
     today,
-    now: new Date().toISOString(),
+    now,
     // "Or pick a group with dates below." only when the list below shows one
     // a player can enroll in: a Full card alone is nothing to pick.
     groupsBelow: openGroups.some(cardTakesEnrollment),
+    // No quiz answers, times or level, and nothing booked, held, enrolled or
+    // credited: the next step is the quiz (backlog #98).
+    nothingOnFile: nothingOnFile({ players, enrollments: rows, invites, bookings, credits }),
   });
   const returning =
     rows.length > 0 || invites.length > 0 || bookings.length > 0 || roster.some((p) => hasLevel(p.level));
@@ -342,7 +349,8 @@ async function DashboardContent({
       roster={roster}
       voice={voice}
       nextStep={nextStep}
-      creditLine={creditLine(credits, roster, self?.id ?? null)}
+      // Less any $20 a waiting e-transfer already took: its step says it once.
+      creditLine={creditLine(credits, roster, self?.id ?? null, { invites, cohorts, today })}
       creditWaiting={creditView.waiting.length > 0}
       enrollments={rows}
       cohorts={cohorts}
