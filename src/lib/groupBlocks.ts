@@ -170,6 +170,23 @@ function weekOrder(block: Pick<Cohort, "startDate" | "sessions">): SessionSlot[]
   return generateSessionDates(block.startDate, 1, block.sessions).map(({ day, start, end }) => ({ day, start, end }));
 }
 
+/**
+ * A block's schedule in words, as the coach builds it (backlog #104):
+ * "Saturdays 12–1pm · Jan 16 – Feb 20", the class days and times a group
+ * card shows, then its dates from the first class to the last. Before a
+ * start date is typed it is the class days alone, in the order typed; with
+ * no class it is empty. Built from the cards' own helpers, with no date
+ * logic of its own.
+ */
+export function blockScheduleLine(block: Pick<Cohort, "startDate" | "weeks" | "sessions">): string {
+  const sessions = block.sessions.filter((s) => /^\d{2}:\d{2}/.test(s.start) && /^\d{2}:\d{2}/.test(s.end));
+  if (sessions.length === 0) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(block.startDate) || !(block.weeks >= 1)) return formatClassDays(sessions);
+  const dated = { startDate: block.startDate, weeks: block.weeks, sessions };
+  const { first, last } = blockClassDates({ ...dated, endDate: block.startDate });
+  return `${formatClassDays(weekOrder(dated))} · ${formatBlockDates(first, last)}`;
+}
+
 /** Does a block show as a group card? Its program runs group bootcamps, and it has a class to show. */
 export function isBootcampBlock(block: Pick<Cohort, "programId" | "sessions">): boolean {
   return Object.prototype.hasOwnProperty.call(BOOTCAMP_AUDIENCE, block.programId) && block.sessions.length > 0;

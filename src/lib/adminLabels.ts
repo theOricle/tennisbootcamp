@@ -58,6 +58,11 @@ export const BOOKING_STATUS_LABELS: Record<string, string> = {
   disputed: "Disputed",
 };
 
+/** "$190" · "$190.50": an amount in cents as the cohort page and the desk show it. */
+export function adminMoney(cents: number): string {
+  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+}
+
 /** A stored status in sentence case: the table's word, else the value tidied. */
 export function statusLabel(table: Record<string, string>, status: string | null | undefined): string {
   if (!status) return "";

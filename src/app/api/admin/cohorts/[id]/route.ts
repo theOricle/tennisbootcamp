@@ -39,7 +39,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   const cohort = await getCohortById(id);
   if (!cohort || !cohort.dbStatus) {
     return NextResponse.json(
-      { error: "Cohort not found in the database (run migration 0004?)." },
+      { error: "We couldn't find this cohort." },
       { status: 404 }
     );
   }

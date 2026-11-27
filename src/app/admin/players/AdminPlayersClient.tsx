@@ -10,6 +10,8 @@ import { LEVEL_OPTIONS, TIERS, tierForLevel } from "@/lib/tiers";
 import { AGE_BAND_LABELS, isAgeBand } from "@/lib/ageBand";
 import { COHORT_STATUS_LABELS, programTitleFor, selfEstimateLine, statusLabel } from "@/lib/adminLabels";
 import { inviteNotice } from "@/lib/emailResult";
+import { AdminLoadProblem } from "@/components/admin/LoadProblem";
+import { adminRead, type LoadProblem } from "@/lib/adminLoad";
 import {
   AVAILABILITY_SOURCE_LABELS,
   type Availability,
@@ -310,7 +312,7 @@ export function AdminPlayersClient() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [counts, setCounts] = useState<Record<View, number>>({ all: 0, leveled: 0, unleveled: 0 });
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<LoadProblem | null>(null);
   const [view, setView] = useState<View>("all");
   const [sort, setSort] = useState<Sort>("level");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
@@ -390,23 +392,21 @@ export function AdminPlayersClient() {
     }
   }
 
+  // A read that fails says so, with Retry, and keeps the players already on
+  // screen (backlog #104).
   const refresh = useCallback(async () => {
-    try {
-      const qs = new URLSearchParams({ view, sort, dir });
-      const res = await fetch(`/api/admin/players?${qs.toString()}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setLoadError(data.error ?? "Failed to load players.");
-        return;
-      }
+    const qs = new URLSearchParams({ view, sort, dir });
+    const result = await adminRead<{ players?: Player[]; counts?: Record<View, number> }>(
+      `/api/admin/players?${qs.toString()}`
+    );
+    if (result.ok) {
       setLoadError(null);
-      setPlayers(data.players ?? []);
-      if (data.counts) setCounts(data.counts);
-    } catch {
-      setLoadError("Network error.");
-    } finally {
-      setLoading(false);
+      setPlayers(result.data.players ?? []);
+      if (result.data.counts) setCounts(result.data.counts);
+    } else {
+      setLoadError(result.problem);
     }
+    setLoading(false);
   }, [view, sort, dir]);
 
   useEffect(() => {
@@ -517,7 +517,14 @@ export function AdminPlayersClient() {
       )}
 
       {loading && <p className="text-sm text-white/60">Loading…</p>}
-      {loadError && <p className="text-sm text-red-300">{loadError}</p>}
+      {loadError && (
+        <AdminLoadProblem
+          problem={loadError}
+          what="the players"
+          here="/admin/players"
+          onRetry={() => void refresh()}
+        />
+      )}
       {!loading && !loadError && filtered.length === 0 && (
         <p className="text-sm text-white/60">
           {view === "unleveled"

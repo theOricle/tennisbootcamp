@@ -15,6 +15,7 @@ import {
   COHORT_STATUS_LABELS,
   INVITE_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
+  adminMoney as money,
   programTitleFor,
   statusLabel,
 } from "@/lib/adminLabels";
@@ -27,10 +28,12 @@ import {
   type OpeningControl,
   type OpeningMove,
 } from "@/lib/cohortOpening";
+import { AdminLoadProblem } from "@/components/admin/LoadProblem";
+import { adminRead, type LoadProblem } from "@/lib/adminLoad";
 
 type PaymentMode = "card" | "etransfer";
 
-type InviteRow = {
+export type InviteRow = {
   id: string;
   /** The account holder's email — one payer, one inbox. */
   email: string;
@@ -132,10 +135,6 @@ function fmtDateTime(iso: string): string {
   });
 }
 
-function money(cents: number): string {
-  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
-}
-
 const METHOD_LABEL: Record<PaymentMode, string> = {
   card: "card",
   etransfer: "e-transfer",
@@ -200,7 +199,7 @@ function receiptLine(receipt: Receipt): string {
   return `Receipt email failed — the payment is still recorded. ${receipt.detail}`;
 }
 
-function InviteItem({
+export function InviteItem({
   cohortId,
   invite,
   onChanged,
@@ -269,23 +268,46 @@ function InviteItem({
     meta = parts.join(" · ");
   }
 
+  // The status chip, drawn once per width: beside the name on a phone, before
+  // the buttons from 640px (where it is the element it always was).
+  const chip = (where: string) => (
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+        INVITE_STYLE[invite.status] ?? "bg-white/10 text-white/60"
+      } ${where}`}
+    >
+      {statusLabel(INVITE_STATUS_LABELS, invite.status)}
+    </span>
+  );
+  // The row's buttons show only while nothing is open under it.
+  const hasButtons = mode === "idle" && (payable || invite.status === "paid" || accountEmailOffered(invite));
+
+  // On a phone (backlog #104) the row stacks: the chip on the name line, the
+  // name, the account and the notes wrapped in full, and the buttons on a
+  // line of their own under the text, the main one first. In one line the
+  // name column was about 60px wide. From 640px it is the one line it always
+  // was: every phone-only class is `max-sm:`, the chip beside the name is
+  // hidden there and the one before the buttons shows.
   return (
     <li className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 max-sm:flex-col max-sm:items-stretch max-sm:gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm text-white">
-            {invite.participant_name || invite.email}
-          </p>
+          <div className="max-sm:flex max-sm:items-start max-sm:justify-between max-sm:gap-2">
+            <p className="text-sm text-white max-sm:min-w-0 max-sm:[overflow-wrap:anywhere] sm:truncate">
+              {invite.participant_name || invite.email}
+            </p>
+            {chip("shrink-0 sm:hidden")}
+          </div>
           {/* Two players under one payer read as two rows, told apart here. */}
-          <p className="truncate text-xs text-white/60">
+          <p className="text-xs text-white/60 max-sm:mt-0.5 max-sm:[overflow-wrap:anywhere] sm:truncate">
             <span className="text-white/60">Account: </span>
             {invite.account_name && invite.account_name !== invite.email
               ? `${invite.account_name} · ${invite.email}`
               : invite.email}
           </p>
-          {meta && <p className="mt-0.5 text-xs text-white/60">{meta}</p>}
+          {meta && <p className="mt-0.5 text-xs text-white/60 max-sm:[overflow-wrap:anywhere]">{meta}</p>}
           {invite.payment_note && (
-            <p className="mt-0.5 text-xs text-white/60">{invite.payment_note}</p>
+            <p className="mt-0.5 text-xs text-white/60 max-sm:[overflow-wrap:anywhere]">{invite.payment_note}</p>
           )}
           {receipt && (
             <p
@@ -306,19 +328,16 @@ function InviteItem({
             </p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-              INVITE_STYLE[invite.status] ?? "bg-white/10 text-white/60"
-            }`}
-          >
-            {statusLabel(INVITE_STATUS_LABELS, invite.status)}
-          </span>
+        <div
+          className={`flex shrink-0 items-center gap-2 max-sm:flex-wrap${hasButtons ? "" : " max-sm:hidden"}`}
+          data-invite-actions=""
+        >
+          {chip("max-sm:hidden")}
           {payable && mode === "idle" && (
             <button
               type="button"
               onClick={() => setMode("paying")}
-              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/70 transition hover:border-[#B4E655]/50 hover:text-white"
+              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/70 transition hover:border-[#B4E655]/50 hover:text-white max-sm:border-white/35 max-sm:px-4 max-sm:text-sm max-sm:text-white"
             >
               Mark paid…
             </button>
@@ -327,20 +346,21 @@ function InviteItem({
             <button
               type="button"
               onClick={() => setMode("undoing")}
-              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/60 transition hover:border-red-400/50 hover:text-red-200"
+              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/60 transition hover:border-red-400/50 hover:text-red-200 max-sm:px-4 max-sm:text-sm"
             >
               Undo
             </button>
           )}
           {/* Only where someone enrolled: paid, or an e-transfer on its way.
               A bare or expired invitation has no enrollment for the email to
-              describe, and the route refuses it too. */}
+              describe, and the route refuses it too. On a phone it is the
+              quieter of the two: words alone, after the main button. */}
           {accountEmailOffered(invite) && mode === "idle" && (
             <button
               type="button"
               disabled={busy}
               onClick={() => void post({ action: "account_link", inviteId: invite.id })}
-              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/60 transition hover:border-[#B4E655]/50 hover:text-white disabled:opacity-40"
+              className="min-h-[44px] rounded-full border border-white/20 px-3 text-xs font-semibold text-white/60 transition hover:border-[#B4E655]/50 hover:text-white disabled:opacity-40 max-sm:border-transparent max-sm:px-2 max-sm:text-sm max-sm:underline max-sm:underline-offset-4"
             >
               Send account email
             </button>
@@ -451,7 +471,7 @@ function PaymentSettings({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Save failed (run migration 0006?).");
+        setError(data.error ?? "That didn't save. Try again.");
         setBusy(false);
         return;
       }
@@ -878,7 +898,7 @@ export function OpeningControls({
 
 export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
   const [detail, setDetail] = useState<Detail | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<LoadProblem | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -929,18 +949,15 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
     };
   }, []);
 
+  // A read that fails says so and keeps the cohort already on screen
+  // (backlog #104): a refresh after an action never blanks the page.
   const refresh = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/admin/cohorts/${cohortId}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setLoadError(data.error ?? "Failed to load cohort.");
-        return;
-      }
-      setLoadError(null);
-      setDetail(data);
-    } catch {
-      setLoadError("Network error.");
+    const result = await adminRead<Detail>(`/api/admin/cohorts/${cohortId}`, undefined, (d) => Boolean(d.cohort));
+    if (result.ok) {
+      setProblem(null);
+      setDetail(result.data);
+    } else {
+      setProblem(result.problem);
     }
   }, [cohortId]);
 
@@ -975,23 +992,15 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
 
   const setStatus = (status: string) => postStatus({ action: "set_status", status });
 
-  if (loadError) {
-    return (
-      <div className="space-y-3">
-        <p role="alert" className="text-sm text-red-300">
-          {loadError}
-        </p>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:text-white"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-  if (!detail) return <p className="text-sm text-white/60">Loading…</p>;
+  const loadProblem = problem && (
+    <AdminLoadProblem
+      problem={problem}
+      what="this cohort"
+      here={`/admin/cohorts/${cohortId}`}
+      onRetry={() => void refresh()}
+    />
+  );
+  if (!detail) return loadProblem || <p className="text-sm text-white/60">Loading…</p>;
 
   const { cohort, invites, sessions, paidCount } = detail;
   // The per-class figure the sign-up page shows (backlog #86), from the
@@ -1014,6 +1023,8 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
 
   return (
     <div className="space-y-8">
+      {/* A refresh that failed: said here, over the cohort as it was last read. */}
+      {loadProblem}
       {/* Header */}
       <header>
         <h1 className="text-2xl font-semibold text-white">{cohort.label}</h1>

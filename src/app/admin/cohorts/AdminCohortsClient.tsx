@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import { COHORT_TOTAL, COHORT_WEEKS, listedPrograms as programs } from "@/content/programs";
 import { scheduledEndDate, addDaysISO } from "@/lib/makeup";
-import { perClassFigure, perClassLine } from "@/lib/groupBlocks";
+import { blockScheduleLine, perClassFigure, perClassLine } from "@/lib/groupBlocks";
 import { TierLine, TierRangeBadges } from "@/components/tiers";
 import { LEVEL_OPTIONS, formatLevelBand, formatTierSpan } from "@/lib/tiers";
 import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
@@ -14,6 +14,8 @@ import { PlateMark } from "@/components/plates/PlateMark";
 import type { MatrixPlayer } from "@/lib/availabilityMatrix";
 import { artFocusForCohort } from "@/lib/plates/variant";
 import { COHORT_STATUS_LABELS, programTitleFor, statusLabel } from "@/lib/adminLabels";
+import { AdminLoadProblem } from "@/components/admin/LoadProblem";
+import { loadCohortList, type LoadProblem } from "@/lib/adminLoad";
 import type { SessionSlot } from "@/types/cohort";
 
 type AdminCohort = Cohort & { paidCount: number };
@@ -46,6 +48,64 @@ function fmtDate(iso: string): string {
 }
 
 type SlotDraft = { day: SessionSlot["day"]; start: string; end: string };
+
+/**
+ * One weekly class in the new-cohort form (backlog #104). On a phone it is a
+ * small grid: the day on its own line at full width, the remove button at
+ * the end of that line, and the two times side by side under it, each half
+ * the row. In one row the day shrank to its arrow and the end time ran past
+ * the card. From 640px it is the one row it always was: the elements, their
+ * order and their classes are main's, and every phone class is `max-sm:`.
+ */
+export function SlotRow({
+  slot,
+  onChange,
+  onRemove,
+}: {
+  slot: SlotDraft;
+  onChange: (patch: Partial<SlotDraft>) => void;
+  /** Absent on the only slot: a cohort keeps at least one class. */
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 max-sm:grid max-sm:grid-cols-[calc(50%-0.25rem)_minmax(0,1fr)_2.75rem]">
+      <select
+        value={slot.day}
+        onChange={(e) => onChange({ day: e.target.value as SessionSlot["day"] })}
+        className={`${inputClass} w-24 max-sm:row-start-1 max-sm:w-full ${onRemove ? "max-sm:col-span-2" : "max-sm:col-span-3"}`}
+        aria-label="Day"
+      >
+        {DAYS.map((d) => (
+          <option key={d} value={d} className="bg-[#061427]">{d}</option>
+        ))}
+      </select>
+      <input
+        type="time"
+        value={slot.start}
+        onChange={(e) => onChange({ start: e.target.value })}
+        className={`${inputClass} max-sm:col-start-1 max-sm:row-start-2 max-sm:min-w-0`}
+        aria-label="Start time"
+      />
+      <input
+        type="time"
+        value={slot.end}
+        onChange={(e) => onChange({ end: e.target.value })}
+        className={`${inputClass} max-sm:col-span-2 max-sm:col-start-2 max-sm:row-start-2 max-sm:min-w-0`}
+        aria-label="End time"
+      />
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="min-h-[44px] min-w-[44px] rounded-full text-white/60 hover:text-red-200 max-sm:col-start-3 max-sm:row-start-1"
+          aria-label="Remove session slot"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
 
 function CreateCohortForm({
   seasonEndDate,
@@ -105,6 +165,13 @@ function CreateCohortForm({
         startDate,
       }),
     [priceDollars, weeks, slots, startDate]
+  );
+
+  // The schedule in words under the slots (backlog #104): the class days and
+  // dates as the group card will show them, live as the form changes.
+  const scheduleLine = useMemo(
+    () => blockScheduleLine({ startDate, weeks, sessions: slots as SessionSlot[] }),
+    [startDate, weeks, slots]
   );
 
   function setSlot(i: number, patch: Partial<SlotDraft>) {
@@ -295,44 +362,19 @@ function CreateCohortForm({
         <p className="mb-1 block text-xs text-white/60">Weekly sessions</p>
         <div className="space-y-2">
           {slots.map((slot, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <select
-                value={slot.day}
-                onChange={(e) => setSlot(i, { day: e.target.value as SessionSlot["day"] })}
-                className={`${inputClass} w-24`}
-                aria-label="Day"
-              >
-                {DAYS.map((d) => (
-                  <option key={d} value={d} className="bg-[#061427]">{d}</option>
-                ))}
-              </select>
-              <input
-                type="time"
-                value={slot.start}
-                onChange={(e) => setSlot(i, { start: e.target.value })}
-                className={inputClass}
-                aria-label="Start time"
-              />
-              <input
-                type="time"
-                value={slot.end}
-                onChange={(e) => setSlot(i, { end: e.target.value })}
-                className={inputClass}
-                aria-label="End time"
-              />
-              {slots.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setSlots((s) => s.filter((_, idx) => idx !== i))}
-                  className="min-h-[44px] min-w-[44px] rounded-full text-white/60 hover:text-red-200"
-                  aria-label="Remove session slot"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+            <SlotRow
+              key={i}
+              slot={slot}
+              onChange={(patch) => setSlot(i, patch)}
+              onRemove={slots.length > 1 ? () => setSlots((s) => s.filter((_, idx) => idx !== i)) : undefined}
+            />
           ))}
         </div>
+        {/* The schedule in words, as the group card will say it: on a phone
+            the day is otherwise only inside its dropdown. */}
+        <p id="new-cohort-schedule" aria-live="polite" className="mt-2 min-h-5 text-sm font-semibold text-white">
+          {scheduleLine}
+        </p>
         <button
           type="button"
           onClick={() =>
@@ -465,11 +507,37 @@ function CreateCohortForm({
   );
 }
 
+/**
+ * The line over the cohort rows: loading, why the read gave nothing, or,
+ * only after a read that answered, that there are none yet.
+ */
+export function CohortListStatus({
+  loading,
+  loaded,
+  problem,
+  count,
+  onRetry,
+}: {
+  loading: boolean;
+  loaded: boolean;
+  problem: LoadProblem | null;
+  count: number;
+  onRetry: () => void;
+}) {
+  if (loading) return <p className="text-sm text-white/60">Loading…</p>;
+  if (problem) {
+    return <AdminLoadProblem problem={problem} what="the cohorts" here="/admin/cohorts" onRetry={onRetry} />;
+  }
+  if (loaded && count === 0) return <p className="text-sm text-white/60">No cohorts yet.</p>;
+  return null;
+}
+
 export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string }) {
   const [cohorts, setCohorts] = useState<AdminCohort[]>([]);
-  const [dbReady, setDbReady] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Whether a read has ever answered: only then can the list be called empty.
+  const [loaded, setLoaded] = useState(false);
+  const [problem, setProblem] = useState<LoadProblem | null>(null);
   const [pool, setPool] = useState<MatrixPlayer[]>([]);
   const [poolLoading, setPoolLoading] = useState(true);
 
@@ -501,21 +569,19 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
     };
   }, []);
 
-  // A load failure says so, with Retry (audit L23), instead of reading as
-  // "no cohorts" or as a missing migration.
+  // A read that fails says so, with Retry, and keeps the cohorts already on
+  // screen (backlog #104). The list route answers `dbReady: false` for any
+  // read it could not make: that is a failed read here, never an empty list.
   const refresh = useCallback(async () => {
-    setLoadError(null);
     try {
-      const res = await fetch("/api/admin/cohorts");
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setLoadError(typeof data.error === "string" ? data.error : "Couldn't load the cohorts.");
-        return;
+      const result = await loadCohortList<AdminCohort>();
+      if (result.ok) {
+        setCohorts(result.data);
+        setLoaded(true);
+        setProblem(null);
+      } else {
+        setProblem(result.problem);
       }
-      setCohorts(data.cohorts ?? []);
-      setDbReady(data.dbReady ?? false);
-    } catch {
-      setLoadError("Couldn't reach the server.");
     } finally {
       setLoading(false);
     }
@@ -527,14 +593,6 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
 
   return (
     <div className="space-y-4">
-      {!loading && !dbReady && (
-        <p className="rounded-lg border border-yellow-400/30 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-200">
-          The cohorts table isn&apos;t reachable — run
-          supabase/migrations/0004_cohorts_admin.sql in the Supabase SQL editor
-          first.
-        </p>
-      )}
-
       <CreateCohortForm
         seasonEndDate={seasonEndDate}
         pool={pool}
@@ -542,24 +600,13 @@ export function AdminCohortsClient({ seasonEndDate }: { seasonEndDate: string })
         onCreated={refresh}
       />
 
-      {loading && <p className="text-sm text-white/60">Loading…</p>}
-      {loadError && (
-        <div className="flex flex-wrap items-center gap-3">
-          <p role="alert" className="text-sm text-red-300">
-            {loadError}
-          </p>
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:text-white"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-      {!loading && !loadError && dbReady && cohorts.length === 0 && (
-        <p className="text-sm text-white/60">No cohorts yet.</p>
-      )}
+      <CohortListStatus
+        loading={loading}
+        loaded={loaded}
+        problem={problem}
+        count={cohorts.length}
+        onRetry={() => void refresh()}
+      />
 
       {cohorts.map((c) => {
         const program = programs.find((p) => p.id === c.programId);

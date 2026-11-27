@@ -1,14 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { trackAssessmentCompletedAdmin } from "@/lib/analytics";
 import { TierChip } from "@/components/tiers";
 import { LEVEL_OPTIONS, formatTierLevel } from "@/lib/tiers";
 import { BOOKING_STATUS_LABELS, selfEstimateLine, statusLabel } from "@/lib/adminLabels";
+import { AdminLoadProblem } from "@/components/admin/LoadProblem";
+import { adminRead, couldNotLoad, keepOnFailure, problemOf, signedOutAmong, type LoadProblem } from "@/lib/adminLoad";
+import { KEEP_PAID, MARK_UNPAID, UNDO_PAID, unmarkPaidLine } from "@/lib/assessmentPaid";
 
 // ─── Types (mirror the admin API payloads) ────────────────────────────────────
 
-type Block = {
+export type Block = {
   id: string;
   block_date: string;
   start_time: string;
@@ -18,7 +21,7 @@ type Block = {
   notes: string | null;
 };
 
-type Booking = {
+export type Booking = {
   id: string;
   slot_start: string;
   name: string;
@@ -32,6 +35,8 @@ type Booking = {
   self_level: string | null;
   status: string;
   paid: boolean;
+  /** "unused" until the $20 has come off a program price, then "applied". */
+  credit_status?: string | null;
   level_result: number | null;
   coach_notes: string | null;
   block_date: string;
@@ -39,7 +44,7 @@ type Booking = {
   location_label: string | null;
 };
 
-type RequestRow = {
+export type RequestRow = {
   id: string;
   name: string;
   email: string;
@@ -57,7 +62,7 @@ type RequestRow = {
 };
 
 // Open (untaken) slots for the assign action, flattened from the public API.
-type OpenSlot = {
+export type OpenSlot = {
   blockId: string;
   slotStart: string;
   label: string;
@@ -258,13 +263,109 @@ function CreateBlock({ onCreated }: { onCreated: () => void }) {
 
 // ─── Complete-booking form ────────────────────────────────────────────────────
 
-function BookingCard({
+// ─── Paid: a status, and an Undo that asks first (backlog #104) ───────────────
+// A paid booking shows "Paid" as a chip beside its status, never as a button:
+// it read like the status chip next to it, and one tap marked the booking
+// unpaid. "Undo" is the quiet button under it, and it only opens the line
+// below; the booking is marked unpaid from that line's "Mark unpaid" alone.
+
+/** The paid part of a booking's header: the chip and "Undo", or "Mark paid". */
+export function PaidStatus({
+  paid,
+  busy,
+  undoing,
+  onMarkPaid,
+  onAskUndo,
+}: {
+  paid: boolean;
+  busy: boolean;
+  /** The confirmation is open under the card: "Undo" steps aside. */
+  undoing: boolean;
+  onMarkPaid: () => void;
+  onAskUndo: () => void;
+}) {
+  if (!paid) {
+    return (
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onMarkPaid}
+        title="Paid at court or by e-transfer"
+        className="mt-1.5 block min-h-[44px] w-full rounded-full bg-white/10 px-3 text-xs font-semibold text-white/80 transition hover:text-white disabled:opacity-40"
+      >
+        Mark paid
+      </button>
+    );
+  }
+  return (
+    <>
+      <span className="ml-1.5 mt-1 inline-block rounded-full bg-[#B4E655]/15 px-2 py-0.5 text-xs font-semibold text-[#B4E655]">
+        Paid
+      </span>
+      {!undoing && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onAskUndo}
+          className="ml-auto mt-1.5 block min-h-[44px] rounded-full border border-white/20 px-4 text-xs font-semibold text-white/60 transition hover:border-red-400/50 hover:text-red-200 disabled:opacity-40"
+        >
+          {UNDO_PAID}
+        </button>
+      )}
+    </>
+  );
+}
+
+/** The line "Undo" opens: what unmarking changes, then the two answers. */
+export function UnmarkPaidConfirm({
+  line,
+  busy,
+  error,
+  onConfirm,
+  onKeep,
+}: {
+  line: string;
+  busy: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onKeep: () => void;
+}) {
+  return (
+    <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+      <p className="text-xs text-white/60">{line}</p>
+      {error && <p className="text-sm text-red-300">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onConfirm}
+          className="min-h-[44px] flex-1 rounded-full bg-red-400/80 px-4 py-2 text-sm font-semibold text-[#061427] transition hover:brightness-110 disabled:opacity-40"
+        >
+          {busy ? "Saving…" : MARK_UNPAID}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onKeep}
+          className="min-h-[44px] rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/70 hover:text-white"
+        >
+          {KEEP_PAID}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function BookingCard({
   booking,
   onChanged,
 }: {
   booking: Booking;
   onChanged: () => void;
 }) {
+  // "Undo" on a paid booking opens the confirmation; nothing is sent until
+  // its "Mark unpaid".
+  const [undoing, setUndoing] = useState(false);
   // The picker starts empty (audit M29): the coach chooses the level, and a
   // one-line confirmation sits between the choice and the email.
   const [level, setLevel] = useState("");
@@ -277,7 +378,7 @@ function BookingCard({
   const playerName = booking.participant_name || booking.name;
   const firstName = playerName.trim().split(/\s+/)[0] || "them";
 
-  async function togglePaid() {
+  async function setPaid(paid: boolean) {
     setBusy(true);
     setError(null);
     try {
@@ -287,7 +388,7 @@ function BookingCard({
         body: JSON.stringify({
           bookingId: booking.id,
           action: "set_paid",
-          paid: !booking.paid,
+          paid,
         }),
       });
       const data = await res.json();
@@ -296,6 +397,8 @@ function BookingCard({
         setBusy(false);
         return;
       }
+      setUndoing(false);
+      setBusy(false);
       onChanged();
     } catch {
       setError("Network error.");
@@ -359,23 +462,32 @@ function BookingCard({
             {statusLabel(BOOKING_STATUS_LABELS, booking.status)}
           </span>
           {(booking.status === "booked" || booking.status === "completed") && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void togglePaid()}
-              title={booking.paid ? "Undo: mark as unpaid" : "Paid at court or by e-transfer"}
-              className={`mt-1.5 block min-h-[44px] w-full rounded-full px-3 text-xs font-semibold transition disabled:opacity-40 ${
-                booking.paid
-                  ? "bg-[#B4E655]/15 text-[#B4E655]"
-                  : "bg-white/10 text-white/80 hover:text-white"
-              }`}
-            >
-              {booking.paid ? "Paid ✓" : "Mark paid"}
-            </button>
+            <PaidStatus
+              paid={booking.paid}
+              busy={busy}
+              undoing={undoing}
+              onMarkPaid={() => void setPaid(true)}
+              onAskUndo={() => {
+                setError(null);
+                setUndoing(true);
+              }}
+            />
           )}
-
         </div>
       </div>
+
+      {undoing && booking.paid && (
+        <UnmarkPaidConfirm
+          line={unmarkPaidLine(booking)}
+          busy={busy}
+          error={error}
+          onConfirm={() => void setPaid(false)}
+          onKeep={() => {
+            setUndoing(false);
+            setError(null);
+          }}
+        />
+      )}
 
       {booking.self_level && (
         <p className="mt-2 text-xs text-white/75">
@@ -520,10 +632,13 @@ function BookingCard({
 function RequestCard({
   request,
   openSlots,
+  slotsFailed,
   onChanged,
 }: {
   request: RequestRow;
   openSlots: OpenSlot[];
+  /** The open slots could not be read: an empty list is not "no open slots". */
+  slotsFailed: boolean;
   onChanged: () => void;
 }) {
   const [mode, setMode] = useState<"idle" | "assign" | "schedule">("idle");
@@ -656,7 +771,9 @@ function RequestCard({
         <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
           {openSlots.length === 0 ? (
             <p className="text-sm text-white/60">
-              No open slots — record a coordinated time instead.
+              {slotsFailed
+                ? `${couldNotLoad("the open slots")} Record a coordinated time instead.`
+                : "No open slots — record a coordinated time instead."}
             </p>
           ) : (
             <>
@@ -761,56 +878,129 @@ function RequestCard({
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-export function AdminAssessmentsClient() {
-  const [blocks, setBlocks] = useState<Block[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [requests, setRequests] = useState<RequestRow[]>([]);
-  const [openSlots, setOpenSlots] = useState<OpenSlot[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+export type AssessmentLists = {
+  blocks: Block[];
+  bookings: Booking[];
+  requests: RequestRow[];
+  openSlots: OpenSlot[];
+};
 
-  // A load failure says so, with Retry (audit L23), instead of leaving the
-  // lists silently empty.
-  const refresh = useCallback(async () => {
-    setLoadError(null);
-    try {
-      const [bRes, kRes, rRes, sRes] = await Promise.all([
-        fetch("/api/assessment/admin/blocks"),
-        fetch("/api/assessment/admin/bookings"),
-        fetch("/api/assessment/admin/requests"),
-        fetch("/api/assessment/slots"),
-      ]);
-      if (![bRes, kRes, rRes].every((r) => r.ok)) {
-        setLoadError("Couldn't load the assessment lists.");
-      }
-      const bData = await bRes.json();
-      const kData = await kRes.json();
-      const rData = await rRes.json();
-      const sData = await sRes.json();
-      setBlocks(bData.blocks ?? []);
-      setBookings(kData.bookings ?? []);
-      setRequests(rData.requests ?? []);
-      setOpenSlots(
-        ((sData.blocks ?? []) as Array<{
-          blockId: string;
-          dateLabel: string;
-          slots: Array<{ slotStart: string; timeLabel: string; taken: boolean }>;
-        }>).flatMap((b) =>
+/** Why each list's own read gave nothing, or null when it answered. */
+export type AssessmentProblems = {
+  blocks: LoadProblem | null;
+  bookings: LoadProblem | null;
+  requests: LoadProblem | null;
+  openSlots: LoadProblem | null;
+  /** The admin sign-in has ended: said once, over the page. */
+  signedOut: boolean;
+};
+
+export const EMPTY_LISTS: AssessmentLists = { blocks: [], bookings: [], requests: [], openSlots: [] };
+
+type SlotsAnswer = {
+  blocks?: Array<{
+    blockId: string;
+    dateLabel: string;
+    slots: Array<{ slotStart: string; timeLabel: string; taken: boolean }>;
+  }>;
+};
+
+/**
+ * The page's four reads, each judged on its own (backlog #104): a list whose
+ * read failed keeps the rows already on screen and reports its problem; the
+ * others take their new rows. Never an empty list from a failed answer.
+ */
+export async function loadAssessmentLists(
+  previous: AssessmentLists,
+  fetchImpl?: Parameters<typeof adminRead>[1]
+): Promise<{ lists: AssessmentLists; problems: AssessmentProblems }> {
+  const [blocks, bookings, requests, slots] = await Promise.all([
+    adminRead<{ blocks?: Block[] }>("/api/assessment/admin/blocks", fetchImpl),
+    adminRead<{ bookings?: Booking[] }>("/api/assessment/admin/bookings", fetchImpl),
+    adminRead<{ requests?: RequestRow[] }>("/api/assessment/admin/requests", fetchImpl),
+    adminRead<SlotsAnswer>("/api/assessment/slots", fetchImpl),
+  ]);
+  return {
+    lists: {
+      blocks: keepOnFailure(previous.blocks, blocks, (d) => d.blocks ?? []),
+      bookings: keepOnFailure(previous.bookings, bookings, (d) => d.bookings ?? []),
+      requests: keepOnFailure(previous.requests, requests, (d) => d.requests ?? []),
+      openSlots: keepOnFailure(previous.openSlots, slots, (d) =>
+        (d.blocks ?? []).flatMap((b) =>
           b.slots
-            .filter((s) => !s.taken)
-            .map((s) => ({
+            .filter((slot) => !slot.taken)
+            .map((slot) => ({
               blockId: b.blockId,
-              slotStart: s.slotStart,
-              label: `${b.dateLabel} · ${s.timeLabel}`,
+              slotStart: slot.slotStart,
+              label: `${b.dateLabel} · ${slot.timeLabel}`,
             }))
         )
-      );
-    } catch {
-      // Keep what is on screen, and say the refresh failed.
-      setLoadError("Couldn't reach the server.");
-    } finally {
-      setLoading(false);
-    }
+      ),
+    },
+    problems: {
+      blocks: problemOf(blocks),
+      bookings: problemOf(bookings),
+      requests: problemOf(requests),
+      openSlots: problemOf(slots),
+      signedOut: signedOutAmong([blocks, bookings, requests]),
+    },
+  };
+}
+
+/**
+ * The line under a section's heading: why its own read gave nothing (with
+ * Retry), or, only when that read answered, that the list is empty. A lapsed
+ * sign-in is said once over the page, so a section then says nothing.
+ */
+export function SectionStatus({
+  loading,
+  problem,
+  signedOut,
+  what,
+  count,
+  empty,
+  onRetry,
+}: {
+  loading: boolean;
+  problem: LoadProblem | null;
+  signedOut: boolean;
+  /** What the section's read loads: "the requests". */
+  what: string;
+  count: number;
+  /** The empty-list line, for a section that has one. */
+  empty?: string;
+  onRetry: () => void;
+}) {
+  if (loading || signedOut) return null;
+  if (problem) {
+    return <AdminLoadProblem problem={problem} what={what} here="/admin/assessments" onRetry={onRetry} />;
+  }
+  if (count === 0 && empty) return <p className="text-sm text-white/60">{empty}</p>;
+  return null;
+}
+
+export function AdminAssessmentsClient() {
+  const [lists, setLists] = useState<AssessmentLists>(EMPTY_LISTS);
+  const [problems, setProblems] = useState<AssessmentProblems>({
+    blocks: null,
+    bookings: null,
+    requests: null,
+    openSlots: null,
+    signedOut: false,
+  });
+  const [loading, setLoading] = useState(true);
+  // The rows on screen, for the next read to keep where it fails.
+  const shown = useRef<AssessmentLists>(EMPTY_LISTS);
+  const { blocks, bookings, requests, openSlots } = lists;
+
+  // Each list's read is judged on its own (backlog #104): the one that failed
+  // says so under its own heading and keeps its rows; the rest refresh.
+  const refresh = useCallback(async () => {
+    const next = await loadAssessmentLists(shown.current);
+    shown.current = next.lists;
+    setLists(next.lists);
+    setProblems(next.problems);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -827,19 +1017,13 @@ export function AdminAssessmentsClient() {
 
   return (
     <div className="space-y-10">
-      {loadError && (
-        <div className="flex flex-wrap items-center gap-3">
-          <p role="alert" className="text-sm text-red-300">
-            {loadError}
-          </p>
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            className="min-h-[44px] rounded-full border border-white/20 px-4 text-sm font-semibold text-white/70 hover:text-white"
-          >
-            Retry
-          </button>
-        </div>
+      {problems.signedOut && (
+        <AdminLoadProblem
+          problem="signed_out"
+          what="the assessments"
+          here="/admin/assessments"
+          onRetry={() => void refresh()}
+        />
       )}
       {/* Blocks */}
       <section className="space-y-3">
@@ -847,6 +1031,14 @@ export function AdminAssessmentsClient() {
           Assessment blocks
         </h2>
         <CreateBlock onCreated={refresh} />
+        <SectionStatus
+          loading={loading}
+          problem={problems.blocks}
+          signedOut={problems.signedOut}
+          what="the assessment blocks"
+          count={blocks.length}
+          onRetry={() => void refresh()}
+        />
         {blocks.length > 0 && (
           <ul className="space-y-2">
             {blocks
@@ -877,14 +1069,21 @@ export function AdminAssessmentsClient() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
           Requests
         </h2>
-        {!loading && requests.length === 0 && (
-          <p className="text-sm text-white/60">No open requests.</p>
-        )}
+        <SectionStatus
+          loading={loading}
+          problem={problems.requests}
+          signedOut={problems.signedOut}
+          what="the requests"
+          count={requests.length}
+          empty="No open requests."
+          onRetry={() => void refresh()}
+        />
         {requests.map((r) => (
           <RequestCard
             key={r.id}
             request={r}
             openSlots={openSlots}
+            slotsFailed={problems.openSlots !== null}
             onChanged={refresh}
           />
         ))}
@@ -896,9 +1095,15 @@ export function AdminAssessmentsClient() {
           Bookings
         </h2>
         {loading && <p className="text-sm text-white/60">Loading…</p>}
-        {!loading && bookings.length === 0 && (
-          <p className="text-sm text-white/60">No bookings yet.</p>
-        )}
+        <SectionStatus
+          loading={loading}
+          problem={problems.bookings}
+          signedOut={problems.signedOut}
+          what="the bookings"
+          count={bookings.length}
+          empty="No bookings yet."
+          onRetry={() => void refresh()}
+        />
         {days.map((day) => (
           <div key={day} className="space-y-3">
             <p className="text-sm font-semibold text-[#B4E655]">{fmtDate(day)}</p>
