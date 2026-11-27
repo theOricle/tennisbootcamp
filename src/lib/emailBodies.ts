@@ -875,7 +875,12 @@ export function buildEtransferInstructionsEmail(params: {
   amountCents: number;   // price − credit
   recipientEmail: string;
   memo: string;
-  cardUrl: string;       // enroll link (with invite token) for "pay by card instead"
+  /**
+   * The enroll link (with invite token) behind "pay by card instead", or null
+   * while card payments are not live (backlog #101): then the email carries
+   * no card line at all, in the HTML or the text.
+   */
+  cardUrl: string | null;
 }): EmailBody {
   const {
     firstName, programTitle, cohortLabel, priceCents, creditCents,
@@ -887,7 +892,11 @@ export function buildEtransferInstructionsEmail(params: {
   const greetingHtml = firstName ? `Your spot is held, ${escapeHtml(firstName)}.` : "Your spot is held.";
   // The card link carries the invite token as the request sent it, matched or
   // not, so it is escaped for the attribute. It opens the same page.
-  const cardEscaped = escapeHtml(cardUrl);
+  const cardOfferHtml = cardUrl
+    ? `Prefer to pay by card? <a href="${escapeHtml(cardUrl)}" style="color:${INK_MUTED};">Pay by card instead</a>. `
+    : "";
+  const cardOfferText = cardUrl ? `Prefer to pay by card? ${cardUrl}
+` : "";
   const amountMath =
     creditCents > 0
       ? `${moneyCAD(priceCents)} − ${moneyCAD(creditCents)} assessment credit = <strong style="color:#fff;">${moneyCAD(amountCents)}</strong>`
@@ -916,7 +925,7 @@ export function buildEtransferInstructionsEmail(params: {
     <p style="margin:20px 0 0;font-size:14px;color:${INK_STRONG};">
       Put the message on the transfer exactly as shown — it's how we match your payment to your spot.
     </p>
-    ${smallText(`Prefer to pay by card? <a href="${cardEscaped}" style="color:${INK_MUTED};">Pay by card instead</a>. Refund terms: <a href="${BASE_URL}/legal/refund-policy" style="color:${INK_MUTED};">program policies</a>.`)}
+    ${smallText(`${cardOfferHtml}Refund terms: <a href="${BASE_URL}/legal/refund-policy" style="color:${INK_MUTED};">program policies</a>.`)}
     ${signOff()}
     ${commercialFooter("general")}
   `;
@@ -931,8 +940,7 @@ To finish enrolling in ${programTitle} — ${cohortLabel}, send an Interac e-tra
 
 Put the message on the transfer exactly as shown — it's how we match your payment to your spot.
 
-Prefer to pay by card? ${cardUrl}
-Refund terms: ${BASE_URL}/legal/refund-policy
+${cardOfferText}Refund terms: ${BASE_URL}/legal/refund-policy
 
 ${SIGN_OFF_TEXT}
 

@@ -320,7 +320,7 @@ console.log("9. The e-transfer amount waits for the chosen player");
 
   const wizard = read("src/app/enroll/[cohortId]/EnrollWizard.tsx");
   check("the sign-up page hands the wizard the account's credits and names no amount of its own for a signed-in account", enrollPage.includes("ready = creditView.ready.map((c) => ({ participantId: c.participantId, creditCents: c.creditCents }));") && !enrollPage.includes("creditView.ready[0]"));
-  check("the wizard works the amount out from the players chosen, by that rule", wizard.includes("chosenCreditCents({") && wizard.includes("seats: players.map((p) => p.participantId),") && wizard.includes("creditCents={etransferCreditCents}") && !wizard.includes("amountDueCents(total, info.creditCents)"));
+  check("the wizard works the amount out from the players chosen, by that rule", wizard.includes("chosenCreditCents({") && wizard.includes("seats: players.map((p) => p.participantId),") && wizard.includes("creditCents: etransferCreditCents,") && wizard.includes("const due = amountDueCents(total, creditCents);") && wizard.includes("details={etransferDetails}") && !wizard.includes("amountDueCents(total, info.creditCents)"));
   check("the wizard is sent no booking id, name or email of a credit", !/ready\.map\(\(c\) => \(\{[^}]*(bookingId|playerName|email)/.test(enrollPage));
 }
 

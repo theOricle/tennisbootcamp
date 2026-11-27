@@ -57,6 +57,7 @@ import {
   noteSettledBy,
   paidInviteHit,
 } from "@/lib/stripeOutcome";
+import { cardPaymentIsLive } from "@/lib/payments";
 import { runOpeningMove, type OpeningResult, type SeatRecords } from "@/lib/cohortOpening";
 import { paidSeatRows, readEnrollmentSheet } from "@/lib/seatCount";
 
@@ -1438,9 +1439,14 @@ export async function recordEtransferIntent(params: {
   }
 
   const firstName = params.participantName.trim().split(/\s+/)[0] || "";
-  const cardUrl = inviteToken
-    ? `${siteUrl()}/enroll/${cohortId}?invite=${inviteToken}`
-    : `${siteUrl()}/enroll/${cohortId}`;
+  // "Pay by card instead" is offered only while card payments are live
+  // (backlog #101), decided here on the server from the payment settings: in
+  // test mode the email carries no card line.
+  const cardUrl = !cardPaymentIsLive()
+    ? null
+    : inviteToken
+      ? `${siteUrl()}/enroll/${cohortId}?invite=${inviteToken}`
+      : `${siteUrl()}/enroll/${cohortId}`;
   await sendEtransferInstructionsEmail({
     to: email,
     firstName,

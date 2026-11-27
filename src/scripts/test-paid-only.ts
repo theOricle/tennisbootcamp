@@ -266,12 +266,23 @@ console.log("The page after a test payment says so, and promises nothing a live 
   check("…no money taken, nothing booked, no email sent", enrollTest.lead, TEST_PAYMENT_ENROLL_LINE);
   check("…no next steps at all", enrollTest.nextSteps, []);
   check("…never 'Check your email', never enrolled or reserved", /check your email|enrolled|reserved|Payment Received/i.test(words(enrollTest)), false);
+  // Signed out after a test payment (backlog #101): nothing was sent and a
+  // guest has no password, so the page offers no sign-in and names no email.
+  check("…signed out, no links at all", enrollTest.links, []);
   check("…signed in, the same", enrollConfirmation({ viaEtransfer: false, testPayment: true, signedIn: true, firstName: null }), enrollTest);
   check("…and the browser tab says so too", [enrollTest.title, enrollTest.description], ["Test payment", TEST_PAYMENT_HEADING]);
 
   const LIVE_STEPS_TAIL = "We'll send reminders before your first session with court details and what to bring.";
   const LIVE_ENROLL_META = { title: "Enrollment Confirmed", description: "Your Tennis Bootcamp enrollment has been confirmed." };
-  check("card, live, signed out: the page is as it was", enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: false, firstName: "Sam" }), {
+  // Backlog #101: signed out, two text links follow the steps; after an
+  // e-transfer the inbox sentence and the first step's on-page words stand
+  // apart from the lead. Signed in, none of the three.
+  const WAY_BACK = [
+    { label: "Sign in", href: "/login" },
+    { label: "Send a new link", href: "/auth/forgot-password" },
+  ];
+  const NO_ETRANSFER_SPLIT = { inboxLine: null, firstStepOnPage: null };
+  check("card, live, signed out: the words as they were, then the way back in", enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: false, firstName: "Sam" }), {
     ...LIVE_ENROLL_META,
     badge: "Payment Received",
     icon: "check",
@@ -282,6 +293,8 @@ console.log("The page after a test payment says so, and promises nothing a live 
       "Your dashboard then shows this enrollment, each player's level once our coaches set it, the weekly slot and, once the group is set, every session date.",
       LIVE_STEPS_TAIL,
     ],
+    links: WAY_BACK,
+    ...NO_ETRANSFER_SPLIT,
   });
   check("card, live, signed in: as it was", enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: true, firstName: null }), {
     ...LIVE_ENROLL_META,
@@ -293,6 +306,8 @@ console.log("The page after a test payment says so, and promises nothing a live 
       "This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date.",
       LIVE_STEPS_TAIL,
     ],
+    links: [],
+    ...NO_ETRANSFER_SPLIT,
   });
   check("e-transfer: as it was, and never a test page (no card was used)", enrollConfirmation({ viaEtransfer: true, testPayment: true, signedIn: true, firstName: "Sam" }), {
     ...LIVE_ENROLL_META,
@@ -305,6 +320,24 @@ console.log("The page after a test payment says so, and promises nothing a live 
       "This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date.",
       "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email.",
     ],
+    links: [],
+    ...NO_ETRANSFER_SPLIT,
+  });
+  check("e-transfer, signed out: the lead stops before the inbox sentence, which stands apart with the on-page first step", enrollConfirmation({ viaEtransfer: true, testPayment: false, signedIn: false, firstName: "Sam" }), {
+    ...LIVE_ENROLL_META,
+    badge: "Spot Held",
+    icon: "check",
+    heading: "Sam, your spot is held.",
+    lead: "Once the coach confirms your e-transfer arrived, you're in and the confirmation email follows.",
+    nextSteps: [
+      "Send the e-transfer if you haven't yet — the amount, address, and message are in your email.",
+      "Check your email for the link to set up your account: it names the players you enrolled and sets your password. Already signed in to an account with this email before? You'll get a note that this enrollment is on it instead.",
+      "Your dashboard then shows this enrollment, each player's level once our coaches set it, the weekly slot and, once the group is set, every session date.",
+      "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email.",
+    ],
+    links: WAY_BACK,
+    inboxLine: "The amount, the address, and the message to put on the transfer are in your inbox.",
+    firstStepOnPage: "Send the e-transfer if you haven't yet, with the amount, address and message above.",
   });
 
   const bookedTest = bookedConfirmation({ testPayment: true });

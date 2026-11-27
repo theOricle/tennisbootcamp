@@ -15,6 +15,28 @@ export const TEST_PAYMENT_ENROLL_LINE =
 export const TEST_PAYMENT_BOOKING_LINE =
   "Card payments are in test mode, so no money was taken. Nothing was booked and no email was sent.";
 
+/**
+ * Signed out, the two ways back in under "What happens next" (backlog #101).
+ * A guest has no password yet, and the steps above already say what the
+ * account email holds for a new address and for one that had an account, so
+ * these add no sentence: text links only, never a main button, and nothing
+ * here asks a route for anything.
+ */
+export const WAY_BACK_SIGN_IN = { label: "Sign in", href: "/login" } as const;
+
+/** For someone with no email: the words and the page /login already uses. */
+export const WAY_BACK_NEW_LINK = { label: "Send a new link", href: "/auth/forgot-password" } as const;
+
+export type ConfirmationLink = { label: string; href: string };
+
+/** After an e-transfer: where the amount, the address and the message are when the page does not show them. */
+export const ETRANSFER_INBOX_LINE =
+  "The amount, the address, and the message to put on the transfer are in your inbox.";
+
+/** After an e-transfer, the first step while the page shows them. */
+export const ETRANSFER_STEP_ON_PAGE =
+  "Send the e-transfer if you haven't yet, with the amount, address and message above.";
+
 /** The status icon: a check for what stands, an "i" for a test payment. */
 export type ConfirmationIcon = "check" | "info";
 
@@ -28,6 +50,20 @@ export type EnrollConfirmation = {
   lead: string;
   /** "What happens next"; none after a test payment, which leads nowhere. */
   nextSteps: string[];
+  /**
+   * Signed out, the text links under "What happens next". None signed in
+   * (the dashboard button stands) and none after a test payment: nothing was
+   * sent, and a guest has no password to sign in with.
+   */
+  links: readonly ConfirmationLink[];
+  /**
+   * Signed out after an e-transfer: the inbox sentence, apart from the lead,
+   * for the page to show only while it does not show the details themselves.
+   * Null otherwise (signed in it stays the lead's last sentence).
+   */
+  inboxLine: string | null;
+  /** Signed out after an e-transfer: the first step while the page shows the details. */
+  firstStepOnPage: string | null;
 };
 
 /**
@@ -50,6 +86,9 @@ export function enrollConfirmation(input: {
       heading: TEST_PAYMENT_HEADING,
       lead: TEST_PAYMENT_ENROLL_LINE,
       nextSteps: [],
+      links: [],
+      inboxLine: null,
+      firstStepOnPage: null,
     };
   }
   // Audit H5: an email that already had an account gets no activation link
@@ -71,6 +110,7 @@ export function enrollConfirmation(input: {
       ? "Once the coach confirms your transfer arrived and the group reaches its minimum, you'll get the full session schedule by email."
       : "We'll send reminders before your first session with court details and what to bring.",
   ];
+  const etransferLead = "Once the coach confirms your e-transfer arrived, you're in and the confirmation email follows.";
   return {
     title: "Enrollment Confirmed",
     description: "Your Tennis Bootcamp enrollment has been confirmed.",
@@ -86,9 +126,14 @@ export function enrollConfirmation(input: {
         ? `${firstName}, you're enrolled.`
         : "You're enrolled.",
     lead: viaEtransfer
-      ? "Once the coach confirms your e-transfer arrived, you're in and the confirmation email follows. The amount, the address, and the message to put on the transfer are in your inbox."
+      ? signedIn
+        ? `${etransferLead} ${ETRANSFER_INBOX_LINE}`
+        : etransferLead
       : "Your payment is confirmed and your spot is reserved. Everything below is what you signed up for — save this page or check your email for a receipt.",
     nextSteps,
+    links: signedIn ? [] : [WAY_BACK_SIGN_IN, WAY_BACK_NEW_LINK],
+    inboxLine: viaEtransfer && !signedIn ? ETRANSFER_INBOX_LINE : null,
+    firstStepOnPage: viaEtransfer && !signedIn ? ETRANSFER_STEP_ON_PAGE : null,
   };
 }
 

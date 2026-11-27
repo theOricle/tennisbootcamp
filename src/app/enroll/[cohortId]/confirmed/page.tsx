@@ -8,6 +8,8 @@ import { locationForCohort } from "@/content/locations";
 import { createClient } from "@/lib/supabase/server";
 import { cardPaymentIsTest } from "@/lib/payments";
 import { enrollConfirmation } from "@/lib/paymentConfirmation";
+import { EtransferDetailsFromStep, EtransferFirstStep } from "@/components/enroll/EtransferDetails";
+import { TextLink } from "@/components/ui/TextLink";
 import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
 type PageProps = {
@@ -112,6 +114,13 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
           <h1 className="mt-4 text-2xl font-semibold md:text-3xl">{copy.heading}</h1>
           <p className="mt-2 text-sm leading-relaxed text-white/65">{copy.lead}</p>
 
+          {/* After an e-transfer, signed out (backlog #101): the amount, the
+              address and the message as the step showed them, read once from
+              this tab and never from the URL. With none there (another
+              device, a later visit) the inbox sentence shows instead, so the
+              page never says both. */}
+          {copy.inboxLine && <EtransferDetailsFromStep cohortId={cohortId} inboxLine={copy.inboxLine} />}
+
           {/* Enrollment detail box */}
           <div className="mt-6 divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">
             {/* Where the cohort trains (owner, 2026-10-12): the club and its area,
@@ -157,28 +166,39 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
                     <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-xs font-bold text-[#B4E655]">
                       {i + 1}
                     </span>
-                    <span>{text}</span>
+                    <span>
+                      {i === 0 && copy.firstStepOnPage ? (
+                        <EtransferFirstStep cohortId={cohortId} inbox={text} onPage={copy.firstStepOnPage} />
+                      ) : (
+                        text
+                      )}
+                    </span>
                   </li>
                 ))}
               </ol>
+              {/* Signed out, the ways back in (backlog #101), right under
+                  the steps that explain the account email: text links,
+                  never a main button. */}
+              {copy.links.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-x-6 border-t border-white/10 pt-2">
+                  {copy.links.map((link) => (
+                    <TextLink key={link.href} href={link.href} tone="lime">
+                      {link.label}
+                    </TextLink>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Primary CTA — auth-aware */}
+          {/* Signed in: the dashboard is the main button, as before. */}
           <div className="mt-8 flex flex-wrap gap-3">
-            {user ? (
+            {user && (
               <Link
                 href="/dashboard"
                 className="rounded-full bg-[#B4E655] px-6 py-2.5 text-sm font-semibold text-[#061427] transition hover:brightness-110"
               >
                 Go to Dashboard →
-              </Link>
-            ) : (
-              <Link
-                href="/login"
-                className="rounded-full bg-[#B4E655] px-6 py-2.5 text-sm font-semibold text-[#061427] transition hover:brightness-110"
-              >
-                Sign in to your dashboard →
               </Link>
             )}
             <Link

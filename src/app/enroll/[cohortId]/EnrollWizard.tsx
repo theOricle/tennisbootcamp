@@ -29,19 +29,34 @@ import {
   type SignupWho,
 } from "@/components/participants/WhoIsThisFor";
 import {
+  GUARDIAN_OTHER_LABEL,
   ageBandBlock,
   computeAge,
   dobAgeError,
   dobIsMinor,
   groupAgesLabel,
+  guardianContact,
+  guardianHint,
   invitedLockReasons,
   isYouthGroup,
   levelNote,
   pickedButBlockedIssue,
   rightGroupHref,
   seatCapIssue,
+  youthPreselectIds,
   type BlockedPlayer,
 } from "@/lib/enrollPlayers";
+import {
+  saveEtransferDetails,
+  shouldSaveEtransferDetails,
+  tabStorage,
+  type EtransferDetails,
+} from "@/lib/etransferHandoff";
+import {
+  ETRANSFER_EMAILED_NOTE,
+  ETRANSFER_MEMO_NOTE,
+  EtransferDetailsBox,
+} from "@/components/enroll/EtransferDetails";
 import {
   FIELD_MESSAGES,
   emailError,
@@ -92,6 +107,13 @@ export type EtransferInfo = {
    * chosen (chosenCreditCents) and `creditCents` is not read.
    */
   ready?: ReadyCredit[] | null;
+  /**
+   * Card payments are live, as the server read its own payment settings
+   * (cardPaymentIsLive, backlog #101). Only then does the step offer "Pay by
+   * card instead": in test mode a card checkout takes no real card and books
+   * nothing. Never read from anything the browser sends.
+   */
+  cardOffer?: boolean;
 };
 
 /**
@@ -220,6 +242,7 @@ const FIELD_IDS = {
   guardianName: "enroll-guardian-name",
   guardianEmail: "enroll-guardian-email",
   guardianPhone: "enroll-guardian-phone",
+  guardianOther: "enroll-guardian-other",
   consent: "enroll-consent",
   signature: "enroll-signature",
 } as const;
@@ -236,7 +259,7 @@ export type EnrollPlayer = {
   isMinor: boolean;
 };
 
-type FormState = {
+export type FormState = {
   participantName: string;
   participantDob: string;
   contactEmail: string;
@@ -244,6 +267,8 @@ type FormState = {
   guardianName: string;
   guardianEmail: string;
   guardianPhone: string;
+  /** Youth groups: "The parent or guardian is someone else" (backlog #101). */
+  guardianIsOther: boolean;
   consentChecked: boolean;
   consentSignedName: string;
 };
@@ -256,6 +281,7 @@ const EMPTY_FORM: FormState = {
   guardianName: "",
   guardianEmail: "",
   guardianPhone: "",
+  guardianIsOther: false,
   consentChecked: false,
   consentSignedName: "",
 };
@@ -467,12 +493,13 @@ function OrderSummary({
   );
 }
 
-function RegistrantStep({
+export function RegistrantStep({
   form,
   setForm,
   players,
   setPlayers,
   isMinor,
+  guardianOnce,
   signedIn,
   accountEmail,
   cohortId,
@@ -485,6 +512,12 @@ function RegistrantStep({
   players: EnrollPlayer[];
   setPlayers: (next: EnrollPlayer[]) => void;
   isMinor: boolean;
+  /**
+   * A youth group (backlog #101): the email and phone are asked once, under
+   * Account holder, and serve as the guardian's unless "The parent or
+   * guardian is someone else" opens the guardian's own.
+   */
+  guardianOnce: boolean;
   signedIn: boolean;
   accountEmail: string;
   cohortId: string;
@@ -616,8 +649,9 @@ function RegistrantStep({
           <legend className="sr-only">Parent or guardian</legend>
           <p aria-hidden="true" className="mb-1 text-sm font-semibold text-[#B4E655]">Parent / Guardian</p>
           <p className="mb-3 text-xs text-white/70">
-            The guardian is the account holder and will sign the waiver for
-            every player under 18.
+            {guardianOnce
+              ? guardianHint(form.guardianIsOther)
+              : "The guardian is the account holder and will sign the waiver for every player under 18."}
           </p>
           <div className="space-y-3">
             <FieldGroup id={FIELD_IDS.guardianName} label="Full name" error={errors[FIELD_IDS.guardianName]}>
@@ -631,6 +665,30 @@ function RegistrantStep({
                 error={errors[FIELD_IDS.guardianName]}
               />
             </FieldGroup>
+            {/* One plain choice (backlog #101). Unticked, the email and phone
+                above are the guardian's and nothing is asked twice. A native
+                checkbox in a 44px card, as the waiver's is. */}
+            {guardianOnce && (
+              <label
+                className={cn(
+                  "flex min-h-[44px] cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 transition",
+                  form.guardianIsOther
+                    ? "border-[#B4E655]/40 bg-[#B4E655]/5"
+                    : "border-white/35 bg-white/5 hover:border-white/50"
+                )}
+              >
+                <input
+                  id={FIELD_IDS.guardianOther}
+                  type="checkbox"
+                  checked={form.guardianIsOther}
+                  onChange={(e) => setForm((s) => ({ ...s, guardianIsOther: e.target.checked }))}
+                  className={`h-4 w-4 shrink-0 accent-[#B4E655] ${FOCUS_RING}`}
+                />
+                <span className="text-sm text-white/80">{GUARDIAN_OTHER_LABEL}</span>
+              </label>
+            )}
+            {(!guardianOnce || form.guardianIsOther) && (
+              <>
             <FieldGroup id={FIELD_IDS.guardianEmail} label="Email" error={errors[FIELD_IDS.guardianEmail]}>
               <TextInput
                 id={FIELD_IDS.guardianEmail}
@@ -657,6 +715,8 @@ function RegistrantStep({
                 error={errors[FIELD_IDS.guardianPhone]}
               />
             </FieldGroup>
+              </>
+            )}
           </div>
         </fieldset>
       )}
@@ -776,54 +836,48 @@ function ConsentStep({
   );
 }
 
-function CopyButton({ value, label }: { value: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard blocked — the value is visible and selectable anyway.
-    }
-  }
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => void copy()}
-        aria-label={`Copy ${label}`}
-        className={`min-h-[44px] shrink-0 rounded-full border border-white/35 px-4 text-sm font-semibold text-white/80 transition hover:border-[#B4E655]/50 hover:text-white ${FOCUS_RING}`}
-      >
-        {copied ? "Copied" : "Copy"}
-      </button>
-      {/* The change of words is announced, not only shown (audit M19). */}
-      <LiveStatus message={copied ? `${label[0].toUpperCase()}${label.slice(1)} copied` : ""} />
-    </>
-  );
+/** The e-transfer step's amount, address and message, in the words it shows. */
+export function etransferStepDetails(input: {
+  /** The block: its price is one seat's. */
+  cohort: Pick<Cohort, "priceCents">;
+  /** How many players this transfer covers, one seat each. */
+  seats: number;
+  /** The assessment credit that comes off this transfer, for the players chosen. */
+  creditCents: number;
+  recipientEmail: string;
+  memo: string;
+}): EtransferDetails {
+  const { cohort, seats, creditCents } = input;
+  const priceCents = cohort.priceCents;
+  const total = cohort.priceCents * seats;
+  const due = amountDueCents(total, creditCents);
+  const breakdown =
+    seats > 1 || creditCents > 0
+      ? `${seats > 1 ? `${moneyCAD(priceCents)} × ${seats} players` : moneyCAD(priceCents)}${
+          creditCents > 0 ? ` − ${moneyCAD(creditCents)} assessment credit` : ""
+        }`
+      : null;
+  return {
+    amount: `${moneyCAD(due)} CAD`,
+    breakdown,
+    recipientEmail: input.recipientEmail,
+    memo: input.memo,
+  };
 }
 
-function EtransferStep({
-  cohort,
-  info,
-  creditCents,
-  memo,
-  seats,
+export function EtransferStep({
+  details,
+  cardOffer,
   submitting,
   onPayByCard,
 }: {
-  cohort: Cohort;
-  info: EtransferInfo;
-  /** The assessment credit that comes off this transfer, for the players chosen. */
-  creditCents: number;
-  memo: string;
-  /** How many players this transfer covers — one seat each. */
-  seats: number;
+  /** The amount, the address and the message (etransferStepDetails). */
+  details: EtransferDetails;
+  /** Card payments are live (EtransferInfo.cardOffer): offer "Pay by card instead". */
+  cardOffer: boolean;
   submitting: boolean;
   onPayByCard: () => void;
 }) {
-  const total = cohort.priceCents * seats;
-  const due = amountDueCents(total, creditCents);
   return (
     <div className="space-y-5">
       <p className="text-sm leading-relaxed text-white/70">
@@ -832,50 +886,24 @@ function EtransferStep({
         in, and the confirmation email follows.
       </p>
 
-      <div className="divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">
-        <div className="px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Amount</p>
-          <p className="mt-1 text-xl font-semibold text-white">{moneyCAD(due)} CAD</p>
-          {(seats > 1 || creditCents > 0) && (
-            <p className="mt-0.5 text-xs text-white/70">
-              {seats > 1
-                ? `${moneyCAD(cohort.priceCents)} × ${seats} players`
-                : moneyCAD(cohort.priceCents)}
-              {creditCents > 0
-                ? ` − ${moneyCAD(creditCents)} assessment credit`
-                : ""}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Send to</p>
-            <p className="mt-1 break-all font-medium text-[#B4E655]">{info.recipientEmail}</p>
-          </div>
-          <CopyButton value={info.recipientEmail} label="email address" />
-        </div>
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Message</p>
-            <p className="mt-1 font-medium text-white">{memo}</p>
-          </div>
-          <CopyButton value={memo} label="message" />
-        </div>
-      </div>
+      <EtransferDetailsBox details={details} />
 
       <p className="text-xs text-white/70">
-        Put the message on the transfer exactly as shown — it&apos;s how we match
-        your payment to your spot. We&apos;ve also emailed you these details.
+        {ETRANSFER_MEMO_NOTE} {ETRANSFER_EMAILED_NOTE}
       </p>
 
-      <button
-        type="button"
-        onClick={onPayByCard}
-        disabled={submitting}
-        className={`${TEXT_LINK_MUTED} underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-white/30`}
-      >
-        Prefer to pay by card? Pay by card instead
-      </button>
+      {/* Only while card payments are live (backlog #101): in test mode the
+          checkout behind it takes no real card and books nothing. */}
+      {cardOffer && (
+        <button
+          type="button"
+          onClick={onPayByCard}
+          disabled={submitting}
+          className={`${TEXT_LINK_MUTED} underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-white/30`}
+        >
+          Prefer to pay by card? Pay by card instead
+        </button>
+      )}
     </div>
   );
 }
@@ -1077,6 +1105,21 @@ export function EnrollWizard({
         .filter((n): n is string => Boolean(n))
     : [];
 
+  const contactEmail = household.signedIn
+    ? household.accountEmail || form.contactEmail
+    : form.contactEmail;
+
+  // The guardian's email and phone (backlog #101): on a youth group the
+  // account holder's, asked once, unless the guardian is someone else.
+  const guardian = guardianContact({
+    askOnce: youthGroup,
+    other: form.guardianIsOther,
+    holderEmail: contactEmail,
+    holderPhone: form.contactPhone,
+    guardianEmail: form.guardianEmail,
+    guardianPhone: form.guardianPhone,
+  });
+
   /** What stops the current step, one issue per field, in screen order. */
   function stepIssues(): FieldIssue[] {
     if (step === 1) {
@@ -1116,12 +1159,15 @@ export function EnrollWizard({
       if (isMinor) {
         const gn = requiredError(form.guardianName, "Add the guardian's full name.");
         if (gn) out.push({ id: FIELD_IDS.guardianName, message: gn });
-        const ge = form.guardianEmail.trim()
-          ? emailError(form.guardianEmail)
-          : "Add the guardian's email address.";
-        if (ge) out.push({ id: FIELD_IDS.guardianEmail, message: ge });
-        const gp = phoneError(form.guardianPhone);
-        if (gp) out.push({ id: FIELD_IDS.guardianPhone, message: gp });
+        // Taken from the holder's, they were checked above, where they show.
+        if (!guardian.fromHolder) {
+          const ge = form.guardianEmail.trim()
+            ? emailError(form.guardianEmail)
+            : "Add the guardian's email address.";
+          if (ge) out.push({ id: FIELD_IDS.guardianEmail, message: ge });
+          const gp = phoneError(form.guardianPhone);
+          if (gp) out.push({ id: FIELD_IDS.guardianPhone, message: gp });
+        }
       }
       return out;
     }
@@ -1139,10 +1185,6 @@ export function EnrollWizard({
   const visibleIssues = stepIssues().filter((i) => shown.has(i.id));
   const errors = issuesById(visibleIssues);
 
-  const contactEmail = household.signedIn
-    ? household.accountEmail || form.contactEmail
-    : form.contactEmail;
-
   /** The holder's own name: the guardian, else the first player (themselves). */
   const holderName = isMinor ? form.guardianName : players[0]?.name ?? "";
 
@@ -1156,8 +1198,8 @@ export function EnrollWizard({
       isMinor,
       contactPhone: form.contactPhone,
       guardianName: isMinor ? form.guardianName : undefined,
-      guardianEmail: isMinor ? form.guardianEmail : undefined,
-      guardianPhone: isMinor ? form.guardianPhone : undefined,
+      guardianEmail: isMinor ? guardian.email : undefined,
+      guardianPhone: isMinor ? guardian.phone : undefined,
       consentSignedName: form.consentSignedName,
       consentAgreedAt,
       waiverVersion: WAIVER_VERSION,
@@ -1199,8 +1241,8 @@ export function EnrollWizard({
         contactEmail,
         contactPhone: form.contactPhone,
         guardianName: isMinor ? form.guardianName : "",
-        guardianEmail: isMinor ? form.guardianEmail : "",
-        guardianPhone: isMinor ? form.guardianPhone : "",
+        guardianEmail: isMinor ? guardian.email : "",
+        guardianPhone: isMinor ? guardian.phone : "",
         consentSignedName: form.consentSignedName,
         consentAgreedAt,
         waiverVersion: WAIVER_VERSION,
@@ -1336,6 +1378,14 @@ export function EnrollWizard({
         cohort_id: cohort.id,
         program: program?.title ?? cohort.programId,
       });
+      // The page after shows the amount, the address and the message again
+      // (backlog #101), carried in this tab and never in the address below:
+      // the message names the players. Signed out only, and never for a
+      // seat the route says is already paid: there is nothing left to send.
+      const sent = (await res.json().catch(() => null)) as { alreadyPaid?: unknown } | null;
+      if (shouldSaveEtransferDetails({ signedIn: household.signedIn, alreadyPaid: sent?.alreadyPaid })) {
+        saveEtransferDetails(tabStorage(), cohort.id, etransferDetails);
+      }
       const params = new URLSearchParams({ etransfer: "1" });
       if (row.rowNumber != null) params.set("row", String(row.rowNumber));
       if (inviteToken) params.set("invite", "1");
@@ -1401,6 +1451,14 @@ export function EnrollWizard({
     players.map((p) => p.name).filter(Boolean).join(" + ") || form.participantName,
     cohort.label
   );
+
+  const etransferDetails = etransferStepDetails({
+    cohort,
+    seats: seatCount,
+    creditCents: etransferCreditCents,
+    recipientEmail: etransfer?.recipientEmail ?? "",
+    memo,
+  });
 
   let ctaLabel: string;
   if (submitting) {
@@ -1488,6 +1546,7 @@ export function EnrollWizard({
                 lockedIds={lockedIds}
                 signInHref={signInHref}
                 signup={signup}
+                youthPreselectIds={youthPreselectIds(group, household.participants)}
                 errors={errors}
               />
               <FieldError fieldId={FIELD_IDS.who} message={errors[FIELD_IDS.who]} />
@@ -1526,6 +1585,7 @@ export function EnrollWizard({
               players={players}
               setPlayers={setPlayers}
               isMinor={isMinor}
+              guardianOnce={youthGroup}
               signedIn={household.signedIn}
               accountEmail={household.accountEmail}
               cohortId={cohort.id}
@@ -1539,11 +1599,8 @@ export function EnrollWizard({
           )}
           {step === 4 && etransfer && (
             <EtransferStep
-              cohort={cohort}
-              info={etransfer}
-              creditCents={etransferCreditCents}
-              memo={memo}
-              seats={seatCount}
+              details={etransferDetails}
+              cardOffer={etransfer.cardOffer === true}
               submitting={submitting}
               onPayByCard={() => void submit()}
             />
