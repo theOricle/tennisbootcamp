@@ -678,6 +678,12 @@ async function main() {
     /async function setPaid\(paid: boolean\) \{\s*if \(await post\(\{ action: "set_paid", paid \}\)\)/.test(requestCard)
   );
   check("no paid mark anywhere on the page flips on one tap", () => !/paid: !\w+\.paid/.test(code(assessSrc)));
+  check("a failed \"Mark unpaid\" shows its error once, in the confirmation, on a booking and on a request", () =>
+    (bookingCard.match(/\{error && !undoing && <p /g) ?? []).length === 1 &&
+    !/\{error && <p /.test(bookingCard) &&
+    (requestCard.match(/\{error && !undoing && <p /g) ?? []).length === 1 &&
+    !/\{error && <p /.test(requestCard)
+  );
 
   // A 404 is "not found" on a cohort's page alone.
   const elsewhere404 = (what: string, here: string) =>

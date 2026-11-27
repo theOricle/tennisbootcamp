@@ -551,7 +551,7 @@ export function BookingCard({
             placeholder="A 2–3 sentence read on their game…"
             className={inputClass}
           />
-          {error && <p className="text-sm text-red-300">{error}</p>}
+          {error && !undoing && <p className="text-sm text-red-300">{error}</p>}
           {confirming === "complete" && level ? (
             <div className="rounded-lg border border-[#B4E655]/30 bg-[#B4E655]/5 p-3">
               <p className="text-sm text-white">
