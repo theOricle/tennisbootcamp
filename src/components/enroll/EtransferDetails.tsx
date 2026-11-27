@@ -5,7 +5,7 @@ import { LiveStatus } from "@/components/ui/Input";
 import { FOCUS_RING } from "@/components/ui/focus";
 import {
   parseEtransferDetails,
-  readEtransferRaw,
+  takeEtransferRaw,
   tabStorage,
   type EtransferDetails,
 } from "@/lib/etransferHandoff";
@@ -16,7 +16,10 @@ import {
 
 /** Under the box, on the step and on the page after it. */
 export const ETRANSFER_MEMO_NOTE =
-  "Put the message on the transfer exactly as shown — it's how we match your payment to your spot. We've also emailed you these details.";
+  "Put the message on the transfer exactly as shown — it's how we match your payment to your spot.";
+
+/** After it on the step only: the page after says nothing of an inbox while it shows the details. */
+export const ETRANSFER_EMAILED_NOTE = "We've also emailed you these details.";
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -75,21 +78,34 @@ export function EtransferDetailsBox({ details }: { details: EtransferDetails }) 
 const noSubscription = () => () => undefined;
 
 /**
- * The page after "I've sent the e-transfer": the details the step left in
- * this tab (src/lib/etransferHandoff.ts), drawn as the step drew them. With
- * none there (another device, a later visit) it renders nothing, and the
- * page's own "in your inbox" line stands. Read after hydration, so the
- * server's markup and the first paint agree.
+ * The details the step left in this tab (src/lib/etransferHandoff.ts), taken
+ * out of the store as they are read. Null on the server and on the first
+ * paint, so the server's markup and the browser's agree; null for good when
+ * nothing was left.
  */
-export function EtransferDetailsFromStep({ cohortId, className = "" }: { cohortId: string; className?: string }) {
+function useEtransferDetails(cohortId: string): EtransferDetails | null {
   const raw = useSyncExternalStore(
     noSubscription,
-    () => readEtransferRaw(tabStorage(), cohortId),
+    () => takeEtransferRaw(tabStorage(), cohortId),
     () => null
   );
-  const details = useMemo(() => parseEtransferDetails(raw), [raw]);
-  if (!details) return null;
-  return <EtransferDetailsSection details={details} className={className} />;
+  return useMemo(() => parseEtransferDetails(raw), [raw]);
+}
+
+/**
+ * The page after "I've sent the e-transfer", signed out: the details drawn
+ * as the step drew them, or, with none there (another device, a reload, a
+ * later visit), the sentence that says they are in the inbox. Never both.
+ */
+export function EtransferDetailsFromStep({ cohortId, inboxLine }: { cohortId: string; inboxLine: string }) {
+  const details = useEtransferDetails(cohortId);
+  if (!details) return <p className="mt-2 text-sm leading-relaxed text-white/65">{inboxLine}</p>;
+  return <EtransferDetailsSection details={details} className="mt-6" />;
+}
+
+/** The first "What happens next" step: it points at the details while the page shows them, else at the inbox. */
+export function EtransferFirstStep({ cohortId, inbox, onPage }: { cohortId: string; inbox: string; onPage: string }) {
+  return <>{useEtransferDetails(cohortId) ? onPage : inbox}</>;
 }
 
 /** The heading, the box and the note, as the page after the step shows them. */

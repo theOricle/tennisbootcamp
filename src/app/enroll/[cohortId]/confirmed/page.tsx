@@ -8,7 +8,7 @@ import { locationForCohort } from "@/content/locations";
 import { createClient } from "@/lib/supabase/server";
 import { cardPaymentIsTest } from "@/lib/payments";
 import { enrollConfirmation } from "@/lib/paymentConfirmation";
-import { EtransferDetailsFromStep } from "@/components/enroll/EtransferDetails";
+import { EtransferDetailsFromStep, EtransferFirstStep } from "@/components/enroll/EtransferDetails";
 import { TextLink } from "@/components/ui/TextLink";
 import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
@@ -115,11 +115,11 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
           <p className="mt-2 text-sm leading-relaxed text-white/65">{copy.lead}</p>
 
           {/* After an e-transfer, signed out (backlog #101): the amount, the
-              address and the message as the step showed them, read from this
-              tab and never from the URL. With none there (another device, a
-              later visit) it renders nothing and the lead's "in your inbox"
-              line stands. */}
-          {viaEtransfer && !user && <EtransferDetailsFromStep cohortId={cohortId} className="mt-6" />}
+              address and the message as the step showed them, read once from
+              this tab and never from the URL. With none there (another
+              device, a later visit) the inbox sentence shows instead, so the
+              page never says both. */}
+          {copy.inboxLine && <EtransferDetailsFromStep cohortId={cohortId} inboxLine={copy.inboxLine} />}
 
           {/* Enrollment detail box */}
           <div className="mt-6 divide-y divide-white/10 rounded-xl border border-white/10 bg-white/5 text-sm">
@@ -166,33 +166,33 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
                     <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-xs font-bold text-[#B4E655]">
                       {i + 1}
                     </span>
-                    <span>{text}</span>
+                    <span>
+                      {i === 0 && copy.firstStepOnPage ? (
+                        <EtransferFirstStep cohortId={cohortId} inbox={text} onPage={copy.firstStepOnPage} />
+                      ) : (
+                        text
+                      )}
+                    </span>
                   </li>
                 ))}
               </ol>
-            </div>
-          )}
-
-          {/* Signed out, the way back in (backlog #101): a guest has no
-              password yet, so no main button sends them to /login. One line
-              says where the dashboard opens from, then quiet text links. */}
-          {copy.wayBack && (
-            <div className="mt-8">
-              {copy.wayBack.line && (
-                <p className="text-sm leading-relaxed text-white/70">{copy.wayBack.line}</p>
+              {/* Signed out, the ways back in (backlog #101), right under
+                  the steps that explain the account email: text links,
+                  never a main button. */}
+              {copy.links.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-x-6 border-t border-white/10 pt-2">
+                  {copy.links.map((link) => (
+                    <TextLink key={link.href} href={link.href} tone="lime">
+                      {link.label}
+                    </TextLink>
+                  ))}
+                </div>
               )}
-              <div className="flex flex-wrap gap-x-6">
-                {copy.wayBack.links.map((link) => (
-                  <TextLink key={link.href} href={link.href} tone="lime">
-                    {link.label}
-                  </TextLink>
-                ))}
-              </div>
             </div>
           )}
 
           {/* Signed in: the dashboard is the main button, as before. */}
-          <div className={`${copy.wayBack ? "mt-3" : "mt-8"} flex flex-wrap gap-3`}>
+          <div className="mt-8 flex flex-wrap gap-3">
             {user && (
               <Link
                 href="/dashboard"

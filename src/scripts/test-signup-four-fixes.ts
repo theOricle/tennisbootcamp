@@ -35,6 +35,8 @@ import {
   parseEtransferDetails,
   readEtransferRaw,
   saveEtransferDetails,
+  shouldSaveEtransferDetails,
+  takeEtransferRaw,
   type EtransferDetails,
   type HandoffStorage,
 } from "../lib/etransferHandoff";
@@ -46,16 +48,20 @@ import {
   type FormState,
 } from "../app/enroll/[cohortId]/EnrollWizard";
 import {
+  ETRANSFER_EMAILED_NOTE,
   ETRANSFER_MEMO_NOTE,
   EtransferDetailsFromStep,
   EtransferDetailsSection,
+  EtransferFirstStep,
 } from "../components/enroll/EtransferDetails";
 import {
-  WAY_BACK_LINE,
+  ETRANSFER_INBOX_LINE,
+  ETRANSFER_STEP_ON_PAGE,
   WAY_BACK_NEW_LINK,
   WAY_BACK_SIGN_IN,
   enrollConfirmation,
 } from "../lib/paymentConfirmation";
+import * as confirmationWords from "../lib/paymentConfirmation";
 import { groupById } from "../content/programs";
 import type { ProgramGroup } from "../types/program";
 import type { AgeBand } from "../lib/ageBand";
@@ -373,7 +379,12 @@ console.log("4. After an e-transfer, signed out: the details as the step showed 
 {
   const store = (): HandoffStorage & { data: Map<string, string> } => {
     const data = new Map<string, string>();
-    return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
+    return {
+      data,
+      getItem: (k) => data.get(k) ?? null,
+      setItem: (k, v) => void data.set(k, v),
+      removeItem: (k) => void data.delete(k),
+    };
   };
   const one = etransferStepDetails({ cohort: { priceCents: 20000 }, seats: 1, creditCents: 0, recipientEmail: "pay@example.test", memo: "Maya Chen – Winter A" });
   const two = etransferStepDetails({ cohort: { priceCents: 20000 }, seats: 2, creditCents: 2000, recipientEmail: "pay@example.test", memo: "Maya Chen + Leo Chen – Winter A" });
@@ -408,11 +419,37 @@ console.log("4. After an e-transfer, signed out: the details as the step showed 
     const refusing: HandoffStorage = {
       getItem: () => { throw new Error("denied"); },
       setItem: () => { throw new Error("denied"); },
+      removeItem: () => { throw new Error("denied"); },
     };
     saveEtransferDetails(refusing, "c1", one);
     saveEtransferDetails(null, "c1", one);
-    return readEtransferRaw(refusing, "c1") === null && readEtransferRaw(null, "c1") === null;
+    return (
+      readEtransferRaw(refusing, "c1") === null &&
+      readEtransferRaw(null, "c1") === null &&
+      takeEtransferRaw(refusing, "refused") === null
+    );
   });
+  check("the page after takes them out of the store as it reads them: a reload, or the next person, finds nothing", () => {
+    const s = store();
+    saveEtransferDetails(s, "taken-1", two);
+    const first = takeEtransferRaw(s, "taken-1");
+    return (
+      JSON.stringify(parseEtransferDetails(first)) === JSON.stringify(two) &&
+      s.data.size === 0 &&
+      readEtransferRaw(s, "taken-1") === null &&
+      // The same page load still has them while it draws (it reads more than once)…
+      takeEtransferRaw(s, "taken-1") === first &&
+      // …and a store with nothing in it gives nothing.
+      takeEtransferRaw(store(), "taken-2") === null
+    );
+  });
+  check("the step leaves them only signed out, and never for a seat the route says is already paid", () =>
+    shouldSaveEtransferDetails({ signedIn: false, alreadyPaid: false }) &&
+    shouldSaveEtransferDetails({ signedIn: false, alreadyPaid: undefined }) &&
+    !shouldSaveEtransferDetails({ signedIn: true, alreadyPaid: false }) &&
+    !shouldSaveEtransferDetails({ signedIn: false, alreadyPaid: true }) &&
+    !shouldSaveEtransferDetails({ signedIn: true, alreadyPaid: true })
+  );
 
   const section = renderToStaticMarkup(createElement(EtransferDetailsSection, { details: two }));
   check("the page after draws the three rows and the note as the step does", () => {
@@ -423,6 +460,17 @@ console.log("4. After an e-transfer, signed out: the details as the step showed 
     const rows = "Amount $380 CAD $200 × 2 players − $20 assessment credit Send to pay@example.test Copy Message Maya Chen + Leo Chen – Winter A Copy";
     return w.includes(rows) && stepWords.includes(rows) && w.includes(ETRANSFER_MEMO_NOTE) && stepWords.includes(ETRANSFER_MEMO_NOTE);
   });
+  check("…and says nothing of an email or an inbox while it shows them (the step keeps its own line)", () => {
+    const stepWords = words(
+      renderToStaticMarkup(createElement(EtransferStep, { details: two, cardOffer: false, submitting: false, onPayByCard: () => undefined }))
+    );
+    return (
+      !/email(ed)? you|inbox/i.test(words(section)) &&
+      !ETRANSFER_MEMO_NOTE.includes("emailed") &&
+      stepWords.includes(`${ETRANSFER_MEMO_NOTE} ${ETRANSFER_EMAILED_NOTE}`) &&
+      ETRANSFER_EMAILED_NOTE === "We've also emailed you these details."
+    );
+  });
   check("…under a real heading", () => /<h2[^>]*>Your e-transfer details<\/h2>/.test(section));
   check("a stored value is drawn as text, never as markup", () => {
     const html = renderToStaticMarkup(
@@ -430,14 +478,36 @@ console.log("4. After an e-transfer, signed out: the details as the step showed 
     );
     return !html.includes("<img") && html.includes("&lt;img");
   });
-  check("the server's markup carries none of it: the details are read in the browser, after hydration", () =>
-    renderToStaticMarkup(createElement(EtransferDetailsFromStep, { cohortId: "c1" })) === ""
-  );
+  check("the server's markup carries none of it: with nothing read yet the page shows the inbox sentence alone", () => {
+    const html = renderToStaticMarkup(createElement(EtransferDetailsFromStep, { cohortId: "c1", inboxLine: ETRANSFER_INBOX_LINE }));
+    return words(html) === ETRANSFER_INBOX_LINE && !html.includes("Your e-transfer details");
+  });
+  check("the inbox sentence and the details are two branches of one component: never both", () => {
+    const reader = read("src/components/enroll/EtransferDetails.tsx");
+    return (
+      reader.includes('if (!details) return <p className="mt-2 text-sm leading-relaxed text-white/65">{inboxLine}</p>;') &&
+      reader.includes('return <EtransferDetailsSection details={details} className="mt-6" />;') &&
+      reader.includes("() => takeEtransferRaw(tabStorage(), cohortId),")
+    );
+  });
+  check("the first step points at the details while the page shows them, else at the inbox", () => {
+    const reader = read("src/components/enroll/EtransferDetails.tsx");
+    const html = renderToStaticMarkup(
+      createElement(EtransferFirstStep, { cohortId: "c1", inbox: "in your email", onPage: ETRANSFER_STEP_ON_PAGE })
+    );
+    return (
+      html === "in your email" &&
+      reader.includes("return <>{useEtransferDetails(cohortId) ? onPage : inbox}</>;") &&
+      ETRANSFER_STEP_ON_PAGE === "Send the e-transfer if you haven't yet, with the amount, address and message above." &&
+      confirmedPage.includes("<EtransferFirstStep cohortId={cohortId} inbox={text} onPage={copy.firstStepOnPage} />")
+    );
+  });
 
   // The wizard: saved in the tab, then an address with nothing of them in it.
   const send = /async function sendEtransfer\(\) \{[\s\S]*?\n  \}\n/.exec(wizard)?.[0] ?? "";
   check("the step leaves them in the tab as it shows them, before it leaves the page", () =>
     send.includes("saveEtransferDetails(tabStorage(), cohort.id, etransferDetails);") &&
+    /const sent = \(await res\.json\(\)\.catch\(\(\) => null\)\) as \{ alreadyPaid\?: unknown \} \| null;\s*if \(shouldSaveEtransferDetails\(\{ signedIn: household\.signedIn, alreadyPaid: sent\?\.alreadyPaid \}\)\) \{\s*saveEtransferDetails\(/.test(send) &&
     send.indexOf("saveEtransferDetails(") < send.indexOf("window.location.href") &&
     wizard.includes("<EtransferStep\n              details={etransferDetails}")
   );
@@ -451,15 +521,29 @@ console.log("4. After an e-transfer, signed out: the details as the step showed 
     );
   });
   check("the confirmation page shows them only after an e-transfer, signed out, from the tab", () =>
-    confirmedPage.includes('{viaEtransfer && !user && <EtransferDetailsFromStep cohortId={cohortId} className="mt-6" />}') &&
+    confirmedPage.includes("{copy.inboxLine && <EtransferDetailsFromStep cohortId={cohortId} inboxLine={copy.inboxLine} />}") &&
     confirmedPage.includes("searchParams: Promise<{ invite?: string | string[]; etransfer?: string | string[] }>") &&
     !/sp\.(memo|amount|to|name|email)/.test(confirmedPage)
   );
-  check("with none in the tab, today's inbox line stays (it stays either way)", () => {
+  check("signed out, the lead no longer says the details are in the inbox; that sentence is the empty branch's", () => {
     const copy = enrollConfirmation({ viaEtransfer: true, testPayment: false, signedIn: false, firstName: null });
     return (
-      copy.lead.includes("The amount, the address, and the message to put on the transfer are in your inbox.") &&
-      confirmedPage.includes("{copy.lead}")
+      copy.lead === "Once the coach confirms your e-transfer arrived, you're in and the confirmation email follows." &&
+      copy.inboxLine === ETRANSFER_INBOX_LINE &&
+      ETRANSFER_INBOX_LINE === "The amount, the address, and the message to put on the transfer are in your inbox." &&
+      copy.firstStepOnPage === ETRANSFER_STEP_ON_PAGE &&
+      copy.nextSteps[0] === "Send the e-transfer if you haven't yet — the amount, address, and message are in your email."
+    );
+  });
+  check("signed in, and after a card payment, the page has no such split", () => {
+    const signedIn = enrollConfirmation({ viaEtransfer: true, testPayment: false, signedIn: true, firstName: null });
+    const card = enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: false, firstName: null });
+    return (
+      signedIn.lead.endsWith(ETRANSFER_INBOX_LINE) &&
+      signedIn.inboxLine === null &&
+      signedIn.firstStepOnPage === null &&
+      card.inboxLine === null &&
+      card.firstStepOnPage === null
     );
   });
   const reader = read("src/components/enroll/EtransferDetails.tsx");
@@ -474,26 +558,30 @@ console.log("4. After an e-transfer, signed out: the details as the step showed 
 }
 
 // ── 5. Signed out, the way back in ──────────────────────────────────────────
-console.log("5. Signed out, the page after: no main button to /login; the account email's link, then two quiet links");
+console.log("5. Signed out, the page after: no main button to /login; two text links under What happens next");
 {
   const conf = (over: Partial<Parameters<typeof enrollConfirmation>[0]>) =>
     enrollConfirmation({ viaEtransfer: false, testPayment: false, signedIn: false, firstName: null, ...over });
-  const linkText = (c: ReturnType<typeof conf>) => (c.wayBack?.links ?? []).map((l) => `${l.label}>${l.href}`).join();
+  const linkText = (c: ReturnType<typeof conf>) => c.links.map((l) => `${l.label}>${l.href}`).join();
+  const everyWord = (c: ReturnType<typeof conf>) =>
+    [c.heading, c.badge, c.lead, c.inboxLine ?? "", c.firstStepOnPage ?? "", ...c.nextSteps, ...c.links.map((l) => l.label)].join(" ");
 
   for (const [label, c] of [
     ["after an e-transfer", conf({ viaEtransfer: true })],
     ["after a card payment", conf({})],
   ] as const) {
-    check(`${label}: the line says where the dashboard opens from`, () =>
-      c.wayBack?.line === WAY_BACK_LINE &&
-      WAY_BACK_LINE.startsWith("Your dashboard opens from the link in the account email we just sent.")
-    );
     check(`${label}: Sign in to /login, then Send a new link to /auth/forgot-password`, () =>
       linkText(c) === "Sign in>/login,Send a new link>/auth/forgot-password"
     );
+    check(`${label}: no sentence says an address gets no link; the steps' own account-email line stands`, () =>
+      !/gets no link|opens from the link/i.test(everyWord(c)) &&
+      c.nextSteps.some((t) => t.startsWith("Check your email for the link to set up your account:"))
+    );
   }
-  check("the line stays true for an address that already had an account: no link is promised to it", () =>
-    WAY_BACK_LINE.includes("An address that already had an account gets no link, so sign in with your password.")
+  check("the closing line is gone from the words altogether", () =>
+    !("WAY_BACK_LINE" in confirmationWords) &&
+    !/gets no link/.test(read("src/lib/paymentConfirmation.ts")) &&
+    !/gets no link/.test(confirmedPage)
   );
   check("the links' words are /login's own", () =>
     WAY_BACK_SIGN_IN.label === "Sign in" &&
@@ -501,20 +589,21 @@ console.log("5. Signed out, the page after: no main button to /login; the accoun
     read("src/app/login/page.tsx").includes("Send a new link") &&
     read("src/app/login/page.tsx").includes('href="/auth/forgot-password"')
   );
-  check("a test payment promises no email: no line, no new-link offer, the plain Sign in alone", () => {
+  check("a test payment, signed out: no Sign in, no new-link offer, no step, and no email promised", () => {
     const c = conf({ testPayment: true });
     return (
-      c.wayBack !== null &&
-      c.wayBack.line === null &&
-      linkText(c) === "Sign in>/login" &&
-      !/email|inbox|link/i.test([c.heading, c.badge, ...c.nextSteps, ...c.wayBack.links.map((l) => l.label)].join(" ")) &&
+      c.links.length === 0 &&
+      c.nextSteps.length === 0 &&
+      c.inboxLine === null &&
+      c.firstStepOnPage === null &&
+      !/email|inbox|link|sign in/i.test([c.heading, c.badge].join(" ")) &&
       c.lead.includes("no email was sent")
     );
   });
-  check("signed in: no way-back block, in any state", () =>
-    conf({ signedIn: true }).wayBack === null &&
-    conf({ signedIn: true, viaEtransfer: true }).wayBack === null &&
-    conf({ signedIn: true, testPayment: true }).wayBack === null
+  check("signed in: no links, in any state", () =>
+    conf({ signedIn: true }).links.length === 0 &&
+    conf({ signedIn: true, viaEtransfer: true }).links.length === 0 &&
+    conf({ signedIn: true, testPayment: true }).links.length === 0
   );
 
   const lime = "bg-[#B4E655]";
@@ -526,12 +615,20 @@ console.log("5. Signed out, the page after: no main button to /login; the accoun
     !confirmedPage.includes('href="/login"') &&
     !confirmedPage.includes("Sign in to your dashboard")
   );
-  check("the way back is drawn from those words as text links, never a button", () =>
-    confirmedPage.includes("{copy.wayBack && (") &&
-    confirmedPage.includes("{copy.wayBack.line}") &&
+  check("the two links are text links, neither the page's main button", () =>
     confirmedPage.includes('<TextLink key={link.href} href={link.href} tone="lime">') &&
-    !read("src/components/ui/TextLink.tsx").includes(lime)
+    !read("src/components/ui/TextLink.tsx").includes(lime) &&
+    !read("src/components/ui/TextLink.tsx").includes("rounded-full")
   );
+  check("…right under the What happens next list, inside its box", () => {
+    const box = confirmedPage.slice(confirmedPage.indexOf("{copy.nextSteps.length > 0 && ("), confirmedPage.indexOf("{/* Signed in: the dashboard is the main button"));
+    return (
+      box.indexOf("</ol>") > 0 &&
+      box.indexOf("</ol>") < box.indexOf("{copy.links.length > 0 && (") &&
+      (confirmedPage.match(/copy\.links\.map\(/g) ?? []).length === 1 &&
+      box.includes("copy.links.map(")
+    );
+  });
   check("nothing asks a route to send anything", () =>
     !confirmedPage.includes("fetch(") && !confirmedPage.includes("/api/auth/")
   );

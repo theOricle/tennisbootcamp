@@ -46,8 +46,17 @@ import {
   youthPreselectIds,
   type BlockedPlayer,
 } from "@/lib/enrollPlayers";
-import { saveEtransferDetails, tabStorage, type EtransferDetails } from "@/lib/etransferHandoff";
-import { ETRANSFER_MEMO_NOTE, EtransferDetailsBox } from "@/components/enroll/EtransferDetails";
+import {
+  saveEtransferDetails,
+  shouldSaveEtransferDetails,
+  tabStorage,
+  type EtransferDetails,
+} from "@/lib/etransferHandoff";
+import {
+  ETRANSFER_EMAILED_NOTE,
+  ETRANSFER_MEMO_NOTE,
+  EtransferDetailsBox,
+} from "@/components/enroll/EtransferDetails";
 import {
   FIELD_MESSAGES,
   emailError,
@@ -879,7 +888,9 @@ export function EtransferStep({
 
       <EtransferDetailsBox details={details} />
 
-      <p className="text-xs text-white/70">{ETRANSFER_MEMO_NOTE}</p>
+      <p className="text-xs text-white/70">
+        {ETRANSFER_MEMO_NOTE} {ETRANSFER_EMAILED_NOTE}
+      </p>
 
       {/* Only while card payments are live (backlog #101): in test mode the
           checkout behind it takes no real card and books nothing. */}
@@ -1369,8 +1380,12 @@ export function EnrollWizard({
       });
       // The page after shows the amount, the address and the message again
       // (backlog #101), carried in this tab and never in the address below:
-      // the message names the players.
-      saveEtransferDetails(tabStorage(), cohort.id, etransferDetails);
+      // the message names the players. Signed out only, and never for a
+      // seat the route says is already paid: there is nothing left to send.
+      const sent = (await res.json().catch(() => null)) as { alreadyPaid?: unknown } | null;
+      if (shouldSaveEtransferDetails({ signedIn: household.signedIn, alreadyPaid: sent?.alreadyPaid })) {
+        saveEtransferDetails(tabStorage(), cohort.id, etransferDetails);
+      }
       const params = new URLSearchParams({ etransfer: "1" });
       if (row.rowNumber != null) params.set("row", String(row.rowNumber));
       if (inviteToken) params.set("invite", "1");

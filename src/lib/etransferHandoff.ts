@@ -3,8 +3,10 @@
 // before sending it still needs the amount, the address and the message, so
 // the step leaves them in the browser's session storage and the confirmation
 // page shows them again. They never go in the URL: the message carries the
-// players' names. Session storage ends with the tab, so on another device, or
-// days later, nothing is there and the page keeps its "in your inbox" line.
+// players' names. Only a signed-out sign-up leaves them, and the page after
+// takes them out of the store the moment it reads them (takeEtransferRaw), so
+// a reload, the next person at a shared computer, another device or a later
+// visit finds nothing and the page shows its "in your inbox" line instead.
 //
 // Pure and client-safe. The storage is handed in, so `npm test`
 // (test-signup-four-fixes.ts) reads every path with a stand-in.
@@ -20,7 +22,7 @@ export type EtransferDetails = {
 };
 
 /** The slice of Storage this reads and writes. */
-export type HandoffStorage = Pick<Storage, "getItem" | "setItem">;
+export type HandoffStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const KEY_PREFIX = "tb:etransfer:";
 const MAX_FIELD = 300;
@@ -70,6 +72,33 @@ export function readEtransferRaw(storage: HandoffStorage | null | undefined, coh
   } catch {
     return null;
   }
+}
+
+// What this page load took out of the store, by cohort: the page reads it
+// more than once while it draws, and the store is already empty.
+const taken = new Map<string, string | null>();
+
+/**
+ * The stored string for this cohort, read once and removed from the store at
+ * that moment. Later calls in the same page load answer from memory; a
+ * reload starts with nothing.
+ */
+export function takeEtransferRaw(storage: HandoffStorage | null | undefined, cohortId: string): string | null {
+  if (taken.has(cohortId)) return taken.get(cohortId) ?? null;
+  if (!storage) return null;
+  const raw = readEtransferRaw(storage, cohortId);
+  try {
+    storage.removeItem(etransferHandoffKey(cohortId));
+  } catch {
+    // A store that refuses the removal: nothing more to do here.
+  }
+  taken.set(cohortId, raw);
+  return raw;
+}
+
+/** Whether the step should leave the details: signed out, and not for a seat that is already paid. */
+export function shouldSaveEtransferDetails(input: { signedIn: boolean; alreadyPaid: unknown }): boolean {
+  return !input.signedIn && input.alreadyPaid !== true;
 }
 
 /** This tab's session storage, or null where there is none (the server, a locked-down browser). */
