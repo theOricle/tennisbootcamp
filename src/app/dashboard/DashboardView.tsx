@@ -31,6 +31,7 @@ import { PlateMark } from "@/components/plates/PlateMark";
 import { AgeBandChips } from "@/components/programs/AgeBandChips";
 import { ProgramCardList } from "@/components/sections/ProgramCard";
 import { OPEN_GROUPS_HEADING, OpenGroupsList } from "@/components/sections/OpenGroups";
+import { QuizSideLine } from "@/components/ui/MainAction";
 import type { GroupCard } from "@/lib/groupBlocks";
 import { suggestionsSubCopy, type ProgramFit, type SuggestedProgram } from "@/lib/programCatalog";
 import { AvailabilityEditor } from "./AvailabilityEditor";
@@ -527,6 +528,9 @@ export function DashboardView(props: DashboardViewProps) {
                 )}
               </div>
             )}
+            {/* The quiz as the main action's side line, never a lime button
+                (design-system.md), on the first step of an empty account. */}
+            {step.quizSideLine && <QuizSideLine source="dashboard" className="mt-3" />}
           </div>
         </div>
       </section>
@@ -561,7 +565,7 @@ export function DashboardView(props: DashboardViewProps) {
                     ? "Nothing is enrolled yet. Claim the spot held above and the program shows here."
                     : step.kind === "etransfer"
                     ? "Nothing is enrolled yet. The program shows here once our coaches confirm the e-transfer above."
-                    : step.kind === "quiz"
+                    : step.kind === "start"
                     ? "Nothing is enrolled yet. Programs show here once you enroll."
                     : voice === "you"
                     ? "Our coaches are placing you — your group, dates and price land here."
@@ -773,9 +777,9 @@ export function DashboardView(props: DashboardViewProps) {
             add a player, or retake if the answers changed. An account that
             never took the quiz (it enrolled as a guest) is offered it here,
             as an outline link — the next-step card stays the one primary.
-            When the next step is the quiz itself, nothing here repeats it
-            (backlog #98). */}
-        {step.kind === "quiz" ? null : quizTaken ? (
+            When the next step already offers the quiz as its side line,
+            nothing here repeats it (backlog #98). */}
+        {step.quizSideLine ? null : quizTaken ? (
           <p className="mt-4 text-xs text-white/60">
             Training someone else too — a child, a partner, or yourself?{" "}
             <Link href="/intake?add=1" className={quizLinkClass}>

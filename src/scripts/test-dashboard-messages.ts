@@ -2,21 +2,25 @@
 //
 // Pins backlog #98: the signed-in dashboard stops saying five wrong or hidden
 // things. Same sections, same cards.
-//   1. Groups that fit: a player with an age band is offered a group only
-//      when the whole band sits inside the group's ages (a teen, 14–17, is
-//      never offered a 16-and-up group; a junior, 7–13, is still offered a
-//      7–17 one); a date of birth on the record decides instead, by the age
-//      on the block's first class; with neither, the old rule. The
+//   1. Groups that fit: the adult line is guarded. A group whose youngest age
+//      is 16 or more is offered only to a player whose band starts at that
+//      age or above, or to a player with no band who is not a minor; never
+//      to a teen (14–17) or junior band, never to a minor with no band. Every
+//      other group keeps the overlap rule, so a junior still sees Beginner
+//      Junior (7–10) and a 7–17 block and a teen Novice Youth (11–15). The
 //      dashboard's "Groups with dates" and the quiz's already-taken screen
 //      read the one rule (accountOpenCards).
 //   2. The $20 said once: a waiting e-transfer whose amount took a player's
 //      $20 says so in its step, once, and the credit line leaves that $20
 //      out (matched on creditBookingId); a $20 no transfer used keeps it.
 //   3. A true first step: with no quiz answers, no times, no level and
-//      nothing booked or held, the next step is the quiz, its exact label on
-//      the one lime button, never "There is nothing else you need to do." or
-//      "Our coaches are placing"; My programs says nothing is enrolled yet;
-//      the quiz line under the availability does not repeat the step.
+//      nothing booked or held, the next step says what to do, pick a group:
+//      its one lime button is the main action, "Join a bootcamp" to the
+//      groups, the quiz is its side line ("Not sure which group? Take the
+//      2-minute quiz"), never a lime button, and "Book Your Assessment" the
+//      outline; never "There is nothing else you need to do." or "Our
+//      coaches are placing"; My programs says nothing is enrolled yet; the
+//      quiz line under the availability does not repeat the side line.
 //   4. A block the account holds an open spot in leaves "Groups with dates".
 //   5. Nothing booked hidden: every other upcoming dated item (an assessment
 //      booking, another held spot's deadline, the next class) is one short
@@ -229,45 +233,61 @@ const myPrograms = (html: string) => html.slice(html.indexOf('id="my-programs"')
 const availabilityPart = (html: string) => html.slice(html.indexOf('id="availability-heading"'));
 
 // ─── 1. Groups that fit ──────────────────────────────────────────────────────
-console.log("1. Groups that fit: the whole band inside the group's ages, a date of birth first");
+console.log("1. Groups that fit: the adult line guarded, every other group by overlap");
+const noBandMinor: AgePlayer = { is_minor: true };
+const noBandAdult: AgePlayer = { is_minor: false };
 check("the lineup's ages, as the rule reads them: 7–10, 11–15, 12–17 (by approval), 16 and up, any age", () =>
   programGroups.map((g) => `${g.ageMin ?? ""}-${g.ageMax ?? ""}`).join(" ") === "7-10 11-15 12-17 16- 16- 16- -"
 );
 check("a teen (14–17) is not offered a 16-and-up group on the dashboard", () => !listed([teen]).split(",").includes("adult-beg"), () => listed([teen]));
-check("…nor on the quiz's already-taken screen", () => {
-  const html = panel([teen]);
-  return !html.includes("/enroll/adult-beg") && !html.includes("Beginner Adult Bootcamp");
+check("a minor with no band is not offered a 16-and-up group either", () => !listed([noBandMinor]).split(",").includes("adult-beg"), () => listed([noBandMinor]));
+check("an adult band is offered it, and so is a player with no band who is not a minor; neither gets a youth group", () =>
+  listed([adult]) === "adult-beg" && listed([noBandAdult]) === "adult-beg",
+  () => `${listed([adult])} | ${listed([noBandAdult])}`
+);
+check("a junior (7–13) is still offered Beginner Junior (7–10), Novice Youth (11–15) and a 7–17 block", () =>
+  listed([junior]) === "youth-junior,youth-novice,youth-wide",
+  () => listed([junior])
+);
+check("a teen is still offered Novice Youth (11–15) and the 7–17 block, and never Beginner Junior (7–10)", () =>
+  listed([teen]) === "youth-novice,youth-wide",
+  () => listed([teen])
+);
+check("a minor with no band keeps every youth group the overlap rule gives it", () => listed([noBandMinor]) === "youth-junior,youth-novice,youth-wide", () => listed([noBandMinor]));
+check("only a group that starts at 16 or later is guarded: every planned youth group reads as the overlap rule reads it", () =>
+  programGroups
+    .filter((g) => g.ageMax !== null && g.ageMax < 18)
+    .every(
+      (g) =>
+        groupTakesPlayerAge(g, junior) === (g.ageMin! <= 13) &&
+        groupTakesPlayerAge(g, teen) === (g.ageMax! >= 14) &&
+        groupTakesPlayerAge(g, noBandMinor) &&
+        !groupTakesPlayerAge(g, adult)
+    ) &&
+  programGroups.filter((g) => g.ageMin === 16).every((g) => !groupTakesPlayerAge(g, teen) && !groupTakesPlayerAge(g, noBandMinor) && groupTakesPlayerAge(g, adult))
+);
+check("the quiz's already-taken screen lists by the same rule: no 16-and-up block for a teen or a minor with no band", () => {
+  const forTeen = panel([teen]);
+  const forMinor = panel([noBandMinor]);
+  return (
+    !forTeen.includes("/enroll/adult-beg") &&
+    !forTeen.includes("Beginner Adult Bootcamp") &&
+    !forMinor.includes("/enroll/adult-beg") &&
+    panel([adult]).includes("/enroll/adult-beg")
+  );
 });
-check("a junior (7–13) is still offered a 7–17 group, and not the 7–10 or 11–15 one it may be too old or too young for", () => listed([junior]) === "youth-wide", () => listed([junior]));
-check("…the same on the quiz's screen", () => {
-  const html = panel([junior]);
-  return html.includes("/enroll/youth-wide") && !html.includes("/enroll/youth-junior") && !html.includes("/enroll/youth-novice");
+check("…and a junior still sees Beginner Junior and the 7–17 block there, a teen Novice Youth", () => {
+  const forJunior = panel([junior]);
+  const forTeen = panel([teen]);
+  return (
+    forJunior.includes("/enroll/youth-junior") &&
+    forJunior.includes("/enroll/youth-wide") &&
+    forJunior.includes("Beginner Junior Bootcamp") &&
+    forTeen.includes("/enroll/youth-novice") &&
+    !forTeen.includes("/enroll/youth-junior")
+  );
 });
-check("a teen is offered the 7–17 group; an adult (18 and up) every 16-and-up group and no youth one", () => listed([teen]) === "youth-wide" && listed([adult]) === "adult-beg");
-check("a date of birth decides when present: 16 on the first class takes the 16-and-up group, 14 does not, whatever the band says", () =>
-  groupTakesPlayerAge(ADULT_GROUP(), { ...teen, date_of_birth: "2010-12-15" }, "2027-01-10") &&
-  !groupTakesPlayerAge(ADULT_GROUP(), { ...teen, date_of_birth: "2012-06-01" }, "2027-01-10") &&
-  listed([{ ...teen, date_of_birth: "2010-12-15" }]).includes("adult-beg") &&
-  !listed([{ ...teen, date_of_birth: "2012-06-01" }]).includes("adult-beg")
-);
-check("…counted on the block's first class, not today: 15 today and 16 on Jan 10 is offered the 16-and-up block; 16 only after it is not", () =>
-  listed([{ ...teen, date_of_birth: "2011-01-05" }]).split(",").includes("adult-beg") &&
-  !listed([{ ...teen, date_of_birth: "2011-02-01" }]).split(",").includes("adult-beg")
-);
-check("…a 12-year-old by date of birth gets the 11–15 group and the 7–17 one, never the 7–10 one", () => listed([{ ...junior, date_of_birth: "2014-06-01" }]) === "youth-novice,youth-wide", () => listed([{ ...junior, date_of_birth: "2014-06-01" }]));
-check("…and the quiz's screen reads the date of birth too: 16 on the first class lists the 16-and-up block, 14 does not", () =>
-  panel([{ ...teen, date_of_birth: "2010-12-15" }]).includes("/enroll/adult-beg") &&
-  !panel([{ ...teen, date_of_birth: "2012-06-01" }]).includes("/enroll/adult-beg")
-);
-check("a player with neither keeps the old rule: under 18 overlaps every group up to 17 (and 16 and up), 18 and up the adult ones", () =>
-  listed([{ is_minor: true }]) === "youth-junior,youth-novice,youth-wide,adult-beg" && listed([{ is_minor: false }]) === "adult-beg",
-  () => `${listed([{ is_minor: true }])} | ${listed([{ is_minor: false }])}`
-);
-check("a household is offered what fits any of its players", () => listed([teen, adult]) === "youth-wide,adult-beg", () => listed([teen, adult]));
-
-function ADULT_GROUP() {
-  return CARDS.find((c) => c.block?.cohortId === "adult-beg")!.group;
-}
+check("a household is offered what fits any of its players", () => listed([teen, adult]) === "youth-novice,youth-wide,adult-beg", () => listed([teen, adult]));
 
 // ─── 2. The $20 said once ────────────────────────────────────────────────────
 console.log("2. The $20 said once: the e-transfer step says it, the credit line leaves it out");
@@ -331,7 +351,7 @@ console.log("2. The $20 said once: the e-transfer step says it, the credit line 
 }
 
 // ─── 3. A true first step ────────────────────────────────────────────────────
-console.log("3. Nothing on file: the next step is the quiz");
+console.log("3. Nothing on file: pick a group, the main action, with the quiz as its side line");
 {
   const bare = { players: [sam], enrollments: [], invites: [], bookings: [], credits: [] };
   check("nothing on file: no quiz answers, times or level, nothing booked, held, enrolled or credited", () => nothingOnFile(bare));
@@ -346,41 +366,52 @@ console.log("3. Nothing on file: the next step is the quiz");
     !nothingOnFile({ ...bare, credits: [credit("b", "p_sam", "Sam Patel")] })
   );
   const solo = { selfId: "p_sam", roster: [{ id: "p_sam", relationship: "self", full_name: "Sam Patel", level: null }], voice: "you" as const };
-  const quiz = nextStepFor(base({ ...solo, nothingOnFile: true }));
-  check("the next step is the quiz, its exact label on the one primary, to /intake; Book Your Assessment the outline second", () =>
-    quiz.kind === "quiz" &&
-    JSON.stringify(quiz.primary) === JSON.stringify({ href: "/intake", label: "Take the 2-minute quiz" }) &&
-    JSON.stringify(quiz.secondary) === JSON.stringify({ href: "/assessment/book", label: "Book Your Assessment" }),
-    () => JSON.stringify(quiz)
+  const first = nextStepFor(base({ ...solo, nothingOnFile: true }));
+  check("the one primary is the main action, exactly Join a bootcamp, to the groups; Book Your Assessment the outline second", () =>
+    first.kind === "start" &&
+    JSON.stringify(first.primary) === JSON.stringify({ href: "/programs", label: "Join a bootcamp" }) &&
+    JSON.stringify(first.secondary) === JSON.stringify({ href: "/assessment/book", label: "Book Your Assessment" }),
+    () => JSON.stringify(first)
   );
+  check("…the quiz is its side line, never the primary", () => first.quizSideLine === true && first.primary?.href !== "/intake" && !/quiz/i.test(first.primary?.label ?? ""));
   check("…and it never says there is nothing else to do, or that our coaches are placing anyone", () =>
-    !/nothing else you need to do|are placing/i.test(`${quiz.headline} ${quiz.detail}`)
+    !/nothing else you need to do|are placing/i.test(`${first.headline} ${first.detail}`)
   );
-  check("…in words: nothing on file yet, what the quiz does, and the $20 mechanic in full", () =>
-    quiz.headline === "Nothing on file for you yet." &&
-    quiz.detail.startsWith("Take the 2-minute quiz and our coaches place you by level and schedule. ") &&
-    quiz.detail.includes("It costs $20, and if you enroll in a program afterward that $20 comes off the price."),
-    () => `${quiz.headline} | ${quiz.detail}`
-  );
-  const withGroups = nextStepFor(base({ ...solo, nothingOnFile: true, groupsBelow: true }));
-  check("with groups listed below, it names the other path too", () =>
-    withGroups.kind === "quiz" && withGroups.detail.includes("by level and schedule. Or pick a group with dates below. ") && !/nothing else you need to do/i.test(withGroups.detail)
+  check("…its headline says what to do, and its detail is two short sentences with the $20 mechanic in full", () =>
+    first.headline === "Pick the group for your age and level." &&
+    first.detail ===
+      "Our coaches confirm every level on court in week one. The optional 20-minute assessment costs $20, and that $20 comes off the price if you enroll in a program afterward." &&
+    first.detail.split(/(?<=\.)\s+/).length === 2,
+    () => `${first.headline} | ${first.detail}`
   );
   const child = nextStepFor(base({ roster: [leo], nothingOnFile: true }));
   const pair = nextStepFor(base({ roster: [maya, leo], nothingOnFile: true }));
   check("a household reads by name", () =>
-    child.headline === "Nothing on file for Leo yet." && child.detail.startsWith("Take the 2-minute quiz and our coaches place Leo by level and schedule.") &&
-    pair.headline === "Nothing on file for Maya and Leo yet." && pair.detail.startsWith("Take the 2-minute quiz and our coaches place each player by level and schedule."),
-    () => `${child.headline} ${pair.headline} ${pair.detail}`
+    child.headline === "Pick the group for Leo's age and level." && pair.headline === "Pick a group for each player's age and level.",
+    () => `${child.headline} | ${pair.headline}`
   );
   check("something on file keeps our coaches placing the player", () => nextStepFor(base({ ...solo, nothingOnFile: false })).kind === "placing");
 
-  const html = dashboard(quiz);
+  const html = dashboard(first);
   const card = stepCard(html);
-  check("on the page: one lime button, exactly Take the 2-minute quiz, to /intake", () => {
+  check("on the page: one lime button, exactly Join a bootcamp, to /programs, in the next-step card", () => {
     const lime = limeLinks(html);
-    return lime.length === 1 && /href="\/intake"/.test(lime[0]) && words(lime[0]) === "Take the 2-minute quiz" && card.includes(lime[0]);
+    return lime.length === 1 && /href="\/programs"/.test(lime[0]) && words(lime[0]) === "Join a bootcamp" && card.includes(lime[0]);
   }, () => limeLinks(html).join(" | "));
+  check("…the quiz is its side line in the card, word for word, a text link and never a lime button", () => {
+    const quizLinks = html.match(/<a [^>]*href="\/intake"[^>]*>[\s\S]*?<\/a>/g) ?? [];
+    return (
+      words(card).includes("Not sure which group? Take the 2-minute quiz") &&
+      quizLinks.length === 1 &&
+      card.includes(quizLinks[0]) &&
+      !quizLinks[0].includes("bg-[#B4E655]") &&
+      words(quizLinks[0]) === "Take the 2-minute quiz"
+    );
+  }, () => card.slice(-900));
+  check("…under the two buttons, Join a bootcamp first and Book Your Assessment second", () =>
+    card.indexOf(">Join a bootcamp<") < card.indexOf(">Book Your Assessment<") &&
+    card.indexOf(">Book Your Assessment<") < card.indexOf("Not sure which group?")
+  );
   check("…nowhere on the page: nothing else you need to do, or our coaches placing anyone", () => !/nothing else you need to do|are placing/i.test(words(html)));
   check("…My programs says plainly that nothing is enrolled yet", () => words(myPrograms(html)).includes("Nothing is enrolled yet. Programs show here once you enroll."));
   check("…and the line under the times does not ask for the quiz again", () => {
@@ -404,7 +435,8 @@ console.log("4. A held block leaves Groups with dates");
     heldCohortIds([{ ...hold, status: "declined" }], NOW).length === 0
   );
   check("a held block is not in Groups with dates; the other blocks stay", () =>
-    listed([adult, junior], { heldCohortIds: heldCohortIds([hold], NOW) }) === "youth-wide" && listed([adult, junior]) === "youth-wide,adult-beg",
+    listed([adult, junior], { heldCohortIds: heldCohortIds([hold], NOW) }) === "youth-junior,youth-novice,youth-wide" &&
+      listed([adult, junior]) === "youth-junior,youth-novice,youth-wide,adult-beg",
     () => listed([adult, junior])
   );
   check("…a lapsed hold lists the block again", () => listed([adult], { heldCohortIds: heldCohortIds([{ ...hold, expires_at: "2026-11-25T23:00:00.000Z" }], NOW) }) === "adult-beg");

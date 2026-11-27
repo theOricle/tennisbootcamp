@@ -12,7 +12,8 @@
 //      never drive it)
 //   5. a paid cohort whose dates aren't generated yet
 //   6. nothing on file at all (no quiz answers, times or level, nothing
-//      booked, held or enrolled): the 2-minute quiz (backlog #98)
+//      booked, held or enrolled): pick a group, the main action, with the
+//      quiz as its side line (backlog #98)
 //   7. otherwise: our coaches are placing the players, nothing else to do.
 // Under its detail, every other upcoming dated item on the account (another
 // held spot, an assessment, the next class) is one short line, three at
@@ -21,7 +22,7 @@
 import type { Cohort } from "@/types/cohort";
 import { formatDollars, numberInWords } from "@/content/programs";
 import { hasAnyAvailability } from "@/lib/availability";
-import { QUIZ_CTA_LABEL } from "@/lib/mainAction";
+import { JOIN_CTA_HREF, JOIN_CTA_LABEL } from "@/lib/mainAction";
 import { dayNameForDate } from "@/lib/makeup";
 import { etransferMemo } from "@/lib/paymentTransitions";
 import { accountQuizStatus, type QuizEvidencePlayer } from "@/lib/quizStatus";
@@ -262,7 +263,7 @@ export type NextStepKind =
   | "assessment"
   | "session"
   | "dates-coming"
-  | "quiz"
+  | "start"
   | "placing"
   | "placed";
 
@@ -279,6 +280,12 @@ export type NextStep = {
   also?: string[];
   primary?: { href: string; label: string };
   secondary?: { href: string; label: string };
+  /**
+   * The quiz as the side line under the buttons, "Not sure which group? Take
+   * the 2-minute quiz" (QuizSideLine): on the first step of an account with
+   * nothing on file, whose primary is the main action (backlog #98).
+   */
+  quizSideLine?: boolean;
 };
 
 export type NextStepInput = {
@@ -305,7 +312,7 @@ export type NextStepInput = {
   /**
    * Nothing on file for the account (nothingOnFile): no quiz answers, no
    * times, no level, nothing booked, held or enrolled. The next step is then
-   * the quiz, never "our coaches are placing you" (backlog #98).
+   * to pick a group, never "our coaches are placing you" (backlog #98).
    */
   nothingOnFile?: boolean;
 };
@@ -396,7 +403,7 @@ export function heldCohortIds(invites: readonly Pick<DashInvite, "cohort_id" | "
  * Nothing on file for the account (backlog #98): no player has quiz answers
  * (a self-estimate or an age band), times or a coach level, and nothing is
  * booked, held, enrolled or credited. Our coaches then have nothing to place
- * from, so the next step is the quiz.
+ * from, so the next step is to pick a group, with the quiz beside it.
  */
 export function nothingOnFile(account: {
   players: readonly QuizEvidencePlayer[];
@@ -751,26 +758,27 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
 
   // 6. Nothing on file at all (backlog #98): no quiz answers, no times, no
   // level, nothing booked, held or enrolled. Our coaches have nothing to
-  // place from, so the next step is the quiz, its exact label on the one
-  // primary; the optional assessment stays the outline beside it, with its
-  // $20 spelled out. Never "nothing else you need to do".
+  // place from, so the next step is the site's own first one: pick a group.
+  // Its one primary is the main action, "Join a bootcamp" to the groups; the
+  // quiz is its side line, never a lime button (design-system.md); the
+  // optional assessment stays the outline, with its $20 spelled out. Never
+  // "nothing else you need to do".
   if (input.nothingOnFile) {
-    const placeWhom = solo ? "you" : many ? "each player" : everyone[0];
     return {
       shown: {},
       step: {
-        kind: "quiz",
+        kind: "start",
         eyebrow: "Next step",
-        headline: `Nothing on file for ${solo ? "you" : namesList(everyone)} yet.`,
-        detail: [
-          `Take the 2-minute quiz and our coaches place ${placeWhom} by level and schedule.`,
-          input.groupsBelow ? "Or pick a group with dates below." : null,
-          ASSESSMENT_LINE,
-        ]
-          .filter(Boolean)
-          .join(" "),
-        primary: { href: "/intake", label: QUIZ_CTA_LABEL },
+        headline: solo
+          ? "Pick the group for your age and level."
+          : many
+            ? "Pick a group for each player's age and level."
+            : `Pick the group for ${possessive(everyone[0] ?? "your player")} age and level.`,
+        detail:
+          "Our coaches confirm every level on court in week one. The optional 20-minute assessment costs $20, and that $20 comes off the price if you enroll in a program afterward.",
+        primary: { href: JOIN_CTA_HREF, label: JOIN_CTA_LABEL },
         secondary: { href: "/assessment/book", label: "Book Your Assessment" },
+        quizSideLine: true,
       },
     };
   }
