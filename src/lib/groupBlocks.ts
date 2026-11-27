@@ -477,18 +477,18 @@ export function groupTakesPlayerAge(g: Pick<ProgramGroup, "ageMin" | "ageMax">, 
 
 /**
  * The open blocks the dashboard lists for an account: the signed-in list,
- * less the blocks the account is already enrolled in or holds an open spot
- * in (backlog #98: its next step says "Claim my spot", so the same block
- * never also reads "Enroll" below it), and only those whose ages take at
- * least one of its players, so an adult-only household sees no youth group.
- * Ages only, never the level. An account with no player on file sees every
- * open block.
+ * less the blocks the account is already enrolled in or holds a spot in (an
+ * open hold or a waiting e-transfer, backlog #98: its next step names that
+ * spot, so the same block never also reads "Enroll" below it), and only
+ * those whose ages take at least one of its players, so an adult-only
+ * household sees no youth group. Ages only, never the level. An account with
+ * no player on file sees every open block.
  */
 export function accountOpenCards(
   cards: readonly GroupCard[],
   account: {
     enrolledCohortIds: readonly string[];
-    /** Blocks with a spot held for the account: an invite still invited, its hold not lapsed. */
+    /** Blocks with a spot held for the account: an open hold, or a waiting e-transfer (heldCohortIds). */
     heldCohortIds?: readonly string[];
     players: readonly AgePlayer[];
   }

@@ -265,8 +265,8 @@ async function DashboardContent({
   const allOpenGroups = openBlockCards(groupCards(programGroups, publicBlocks, blockSeats));
   const openGroups = accountOpenCards(allOpenGroups, {
     enrolledCohortIds,
-    // A spot held for the account is the next step's "Claim", never also
-    // "Enroll" here (backlog #98).
+    // A spot held for the account, an open hold or a waiting e-transfer, is
+    // the next step's, never also "Enroll" here (backlog #98).
     heldCohortIds: heldCohortIds(invites, now),
     players: roster.length > 0 ? roster : players,
   });

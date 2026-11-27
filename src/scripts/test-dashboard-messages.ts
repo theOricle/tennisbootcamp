@@ -441,6 +441,33 @@ console.log("4. A held block leaves Groups with dates");
   );
   check("…a lapsed hold lists the block again", () => listed([adult], { heldCohortIds: heldCohortIds([{ ...hold, expires_at: "2026-11-25T23:00:00.000Z" }], NOW) }) === "adult-beg");
   check("…and an enrolled block stays out, as before", () => listed([adult], { enrolledCohortIds: ["adult-beg"] }) === "");
+  check("accountOpenCards itself leaves out a held block, and keeps it when nothing is held", () => {
+    const ids = (cards: GroupCard[]) => cards.map((c) => c.block!.cohortId).join(",");
+    return (
+      ids(accountOpenCards(CARDS, { enrolledCohortIds: [], heldCohortIds: ["adult-beg"], players: [adult] })) === "" &&
+      ids(accountOpenCards(CARDS, { enrolledCohortIds: [], heldCohortIds: [], players: [adult] })) === "adult-beg" &&
+      ids(accountOpenCards(CARDS, { enrolledCohortIds: [], heldCohortIds: ["youth-junior"], players: [] })) === "youth-novice,youth-wide,adult-beg"
+    );
+  });
+  // A waiting e-transfer holds its spot too ("held while our coaches confirm
+  // it arrived"), even once its hold has lapsed: its block never comes back
+  // as an "Enroll" card under that step.
+  const sent = invite({ id: "inv_sent", cohort_id: "adult-beg", participant_id: "p_sam", payment_method: "etransfer", payment_note: "Sam Patel", expires_at: "2026-11-25T23:00:00.000Z" });
+  check("a waiting e-transfer's block leaves Groups with dates, invited or expired, its hold lapsed or not", () =>
+    heldCohortIds([sent], NOW).join() === "adult-beg" &&
+    heldCohortIds([{ ...sent, status: "expired" }], NOW).join() === "adult-beg" &&
+    heldCohortIds([{ ...sent, expires_at: "2026-11-28T23:00:00.000Z" }], NOW).join() === "adult-beg" &&
+    listed([adult], { heldCohortIds: heldCohortIds([{ ...sent, status: "expired" }], NOW) }) === ""
+  );
+  check("…a confirmed (paid) or declined transfer holds nothing, and the step still says the spot is held while it waits", () => {
+    const step = nextStepFor(base({ selfId: "p_sam", roster: [{ id: "p_sam", relationship: "self", full_name: "Sam Patel", level: null }], voice: "you", invites: [{ ...sent, status: "expired" }] }));
+    return (
+      heldCohortIds([{ ...sent, status: "paid" }], NOW).length === 0 &&
+      heldCohortIds([{ ...sent, status: "declined" }], NOW).length === 0 &&
+      step.kind === "etransfer" &&
+      step.detail.endsWith("Your spot in Adult Bootcamps is held while our coaches confirm it arrived.")
+    );
+  });
 }
 
 // ─── 5. Nothing booked hidden ────────────────────────────────────────────────
@@ -499,7 +526,7 @@ console.log("5. Every other dated item: one short line under the next step");
     lines(busy) ===
       JSON.stringify([
         "Maya's assessment is Sat Nov 28 at 9am.",
-        "Leo's spot in Youth Bootcamps is held until Sun, Nov 29, 12:00pm.",
+        "Leo's spot in Youth Bootcamps is held until Sun Nov 29 at 12pm.",
         "Leo's assessment is Sat Dec 5 at 10:20am.",
       ]),
     () => lines(busy)

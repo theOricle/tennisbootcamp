@@ -390,13 +390,25 @@ export function holdIsOpen(invite: Pick<DashInvite, "status" | "expires_at">, no
 }
 
 /**
- * The blocks the account holds an open spot in (backlog #98): an invite
- * still invited, its hold not lapsed. The dashboard leaves them out of
- * "Groups with dates" (accountOpenCards), so a held spot is never offered
- * twice.
+ * An e-transfer sent and not yet confirmed: an invite invited or expired (a
+ * lapsed hold), paid by e-transfer. Its spot is held while our coaches
+ * confirm it arrived.
  */
-export function heldCohortIds(invites: readonly Pick<DashInvite, "cohort_id" | "status" | "expires_at">[], now: string): string[] {
-  return [...new Set(invites.filter((i) => holdIsOpen(i, now)).map((i) => i.cohort_id))];
+function transferIsWaiting(invite: Pick<DashInvite, "status" | "payment_method">): boolean {
+  return (invite.status === "invited" || invite.status === "expired") && invite.payment_method === "etransfer";
+}
+
+/**
+ * The blocks the account holds a spot in (backlog #98): an invite still
+ * invited with its hold not lapsed, or a waiting e-transfer, lapsed hold or
+ * not. The dashboard leaves them out of "Groups with dates"
+ * (accountOpenCards), so a held spot is never offered twice.
+ */
+export function heldCohortIds(
+  invites: readonly Pick<DashInvite, "cohort_id" | "status" | "expires_at" | "payment_method">[],
+  now: string
+): string[] {
+  return [...new Set(invites.filter((i) => holdIsOpen(i, now) || transferIsWaiting(i)).map((i) => i.cohort_id))];
 }
 
 /**
@@ -442,11 +454,7 @@ function openHolds(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort>
 
 /** Step 2's waiting e-transfers: sent, not yet confirmed, in a live cohort (a lapsed hold included). */
 function isWaitingTransfer(invite: DashInvite, cohort: Cohort | undefined, today: string): boolean {
-  return (
-    (invite.status === "invited" || invite.status === "expired") &&
-    invite.payment_method === "etransfer" &&
-    cohortIsLive(cohort, today)
-  );
+  return transferIsWaiting(invite) && cohortIsLive(cohort, today);
 }
 
 /** Step 4's next class: the soonest upcoming session of a paid (or test) enrollment. */
@@ -512,9 +520,15 @@ function alsoLines(input: NextStepInput, shown: Shown, cohortById: ReadonlyMap<s
     if (invite.id === shown.inviteId) continue;
     const cohort = cohortById.get(invite.cohort_id) as Cohort;
     const who = whose(input, playerFor(input.roster, { participantId: invite.participant_id }), null);
+    // The deadline on the Toronto clock, in the other lines' own style
+    // ("Sun Nov 29 at 12pm"); the hold step's headline keeps its own.
+    const at = torontoStamp(invite.expires_at);
+    const until = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)
+      ? `${fmtDayDate(at.slice(0, 10))} at ${fmt12h(at.slice(11))}`
+      : fmtHoldDeadline(invite.expires_at);
     items.push({
-      at: torontoStamp(invite.expires_at),
-      line: `${who.Owner} spot in ${programTitle(input.programs, cohort, cohort.programId)} is held until ${keptWhole(fmtHoldDeadline(invite.expires_at))}.`,
+      at,
+      line: `${who.Owner} spot in ${programTitle(input.programs, cohort, cohort.programId)} is held until ${keptWhole(until)}.`,
     });
   }
   for (const booking of input.bookings) {
