@@ -17,6 +17,12 @@
 //   5. "Waiting on you" on /admin: its lines from sample rows (counts, links,
 //      Toronto's today and tomorrow, test rows left out), the quiet line, the
 //      couldn't-check line, and the reads only after the gate.
+//   6. The fix round: a paid request asks before it is marked unpaid, as a
+//      booking does; a 404 is "not found" on a cohort's page alone; that page
+//      tells a missing cohort (404) from a failed read (500); the desk reads
+//      only what can wait and says it couldn't check when a read comes back
+//      cut short; Toronto's today and tomorrow hold on the nights the clocks
+//      change; the schedule line keeps its date range on one line.
 //
 // The repo has no DOM test runner: views are rendered to static markup, a
 // click handler is read off the elements a component returns, and fetch is a
@@ -27,7 +33,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { blockScheduleLine } from "../lib/groupBlocks";
+import { blockScheduleLine, blockScheduleParts } from "../lib/groupBlocks";
 import {
   COHORT_NOT_FOUND,
   SIGNED_OUT_LINE,
@@ -61,7 +67,8 @@ import {
   type DeskBooking,
   type DeskInvite,
 } from "../lib/adminDesk";
-import { readAdminDesk } from "../lib/adminDeskReads";
+import { readAdminDesk, wholeRows } from "../lib/adminDeskReads";
+import { readCohortForAdmin } from "../lib/adminCohortRead";
 import { WaitingOnYou } from "../components/admin/WaitingOnYou";
 
 let failed = 0;
@@ -207,7 +214,7 @@ async function main() {
   check("no class to show: no line", () => blockScheduleLine({ startDate: "2027-01-14", weeks: 6, sessions: [] }) === "");
   const cohortsSrc = read("src/app/admin/cohorts/AdminCohortsClient.tsx");
   check("the form shows the line under the slots, announced as it changes", () =>
-    /<SlotRow[\s\S]*?id="new-cohort-schedule" aria-live="polite"[\s\S]*?\{scheduleLine\}[\s\S]*?\+ Add a session slot/.test(cohortsSrc)
+/<SlotRow[\s\S]*?id="new-cohort-schedule" aria-live="polite"[\s\S]*?\{schedule\.days\}[\s\S]*?\+ Add a session slot/.test(cohortsSrc)
   );
 
   // ─── 2. The invite row ───────────────────────────────────────────────────────
@@ -324,9 +331,11 @@ async function main() {
     )
   );
 
-  const notFoundHtml = render(createElement(AdminLoadProblem, { problem: "not_found", what: "this cohort", here: "/admin/cohorts/x", onRetry: noop }));
-  check("an unknown cohort: not found, with the way back to the list and no Retry", () =>
-    words(notFoundHtml) === `${COHORT_NOT_FOUND} Back to cohorts` && /<a[^>]*href="\/admin\/cohorts"/.test(notFoundHtml)
+  const notFoundHtml = render(
+    createElement(AdminLoadProblem, { problem: "not_found", what: "this cohort", here: "/admin/cohorts/x", notFound: COHORT_NOT_FOUND, onRetry: noop })
+  );
+  check("an unknown cohort: not found, one line, no Retry and no second way back", () =>
+    words(notFoundHtml) === COHORT_NOT_FOUND && !/<a\b|<button\b/.test(notFoundHtml)
   , () => words(notFoundHtml));
   const detailSrc = read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx");
   check("a cohort's page keeps the cohort on screen when a refresh fails", () =>
@@ -439,7 +448,8 @@ async function main() {
   check('its one button is a quiet "Undo", at 44px', () =>
     paidButtons.length === 1 &&
     paidButtons[0].text === "Undo" &&
-    /<button[^>]*class="[^"]*min-h-\[44px\][^"]*border-white\/20[^"]*"[^>]*>Undo<\/button>/.test(paidStatusHtml)
+/<button[^>]*class="[^"]*min-h-\[44px\][^"]*underline[^"]*"[^>]*>Undo<\/button>/.test(paidStatusHtml) &&
+    !/<button[^>]*class="[^"]*\bborder\b[^"]*"[^>]*>Undo/.test(paidStatusHtml)
   );
   paidButtons[0]?.onClick?.();
   check('"Undo" only opens the confirmation: nothing is marked', () => JSON.stringify(calls) === JSON.stringify(["ask-undo"]));
@@ -463,12 +473,13 @@ async function main() {
     onKeep: () => void calls.push("keep"),
   };
   const confirmButtons = clickables(UnmarkPaidConfirm(confirmProps));
-  check('the confirmation: one line, then "Mark unpaid" and "Keep it paid"', () =>
-    JSON.stringify(confirmButtons.map((b) => b.text)) === JSON.stringify(["Mark unpaid", "Keep it paid"]) &&
+  check('the confirmation: one line, then "Mark unpaid" and "Keep paid", as on the cohort page', () =>
+    JSON.stringify(confirmButtons.map((b) => b.text)) === JSON.stringify(["Mark unpaid", "Keep paid"]) &&
+    />\s*Keep paid\s*</.test(read("src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx")) &&
     words(render(createElement(UnmarkPaidConfirm, confirmProps))).startsWith(confirmProps.line)
   );
   confirmButtons[1]?.onClick?.();
-  check('"Keep it paid" marks nothing', () => JSON.stringify(calls) === JSON.stringify(["keep"]));
+  check('"Keep paid" marks nothing', () => JSON.stringify(calls) === JSON.stringify(["keep"]));
   confirmButtons[0]?.onClick?.();
   check('"Mark unpaid" is the confirmation\'s own button', () => JSON.stringify(calls) === JSON.stringify(["keep", "unpaid"]));
   const bookingCard = assessSrc.slice(assessSrc.indexOf("export function BookingCard"), assessSrc.indexOf("// ─── Request card"));
@@ -485,8 +496,9 @@ async function main() {
     const applied = unmarkPaidLine({ status: "completed", credit_status: "applied" });
     const booked = unmarkPaidLine({ status: "booked", credit_status: "unused" });
     return (
-      unused === "The booking and its time stay. The $20 stops coming off a program price until the assessment is marked paid again." &&
-      applied === "The booking and its time stay. The $20 has already come off a program price, and that does not change." &&
+      unused === "The booking and its time stay. While it is unpaid, the $20 does not come off a program price." &&
+      applied === "The booking and its time stay. The $20 already came off a program price, and that stays." &&
+      unmarkPaidLine({ status: "requested" }) === "The request stays in the queue. The $20 comes off a program price only once the assessment is paid and completed." &&
       booked === "The booking and its time stay. The $20 comes off a program price only once the assessment is paid and completed." &&
       unmarkPaidLine({ status: "completed" }) === booked
     );
@@ -645,6 +657,309 @@ async function main() {
   check("the five cards are under the list, unchanged", () =>
     /<WaitingOnYou desk=\{desk\} \/>\s*<div className="grid gap-3">\s*\{CARDS\.map/.test(pageSrc) && (pageSrc.match(/href: "\/admin\//g) ?? []).length === 5
   );
+
+  // ─── 6. The fix round ────────────────────────────────────────────────────────
+  console.log("\n6. The fix round");
+
+  // A paid request asks first, as a booking does.
+  const requestCard = assessSrc.slice(assessSrc.indexOf("export function RequestCard"), assessSrc.indexOf("// ─── Root"));
+  check("a request's paid mark is the same chip and confirmation as a booking's", () =>
+    /<PaidStatus\s+paid=\{request\.paid\}/.test(requestCard) &&
+    /\{undoing && request\.paid && \(\s*<UnmarkPaidConfirm\s+line=\{unmarkPaidLine\(\{ status: "requested" \}\)\}/.test(requestCard) &&
+    !/Paid ✓/.test(assessSrc)
+  );
+  check("a request is marked unpaid from the confirmation alone; \"Mark paid\" stays one tap", () =>
+    (requestCard.match(/setPaid\(false\)/g) ?? []).length === 1 &&
+    /<UnmarkPaidConfirm[\s\S]*?onConfirm=\{\(\) => void setPaid\(false\)\}/.test(requestCard) &&
+    /onMarkPaid=\{\(\) => void setPaid\(true\)\}/.test(requestCard) &&
+    /onAskUndo=\{\(\) => \{\s*setError\(null\);\s*setUndoing\(true\);\s*\}\}/.test(requestCard) &&
+    !/paid: !request\.paid/.test(requestCard) &&
+    (requestCard.match(/action: "set_paid"/g) ?? []).length === 1 &&
+    /async function setPaid\(paid: boolean\) \{\s*if \(await post\(\{ action: "set_paid", paid \}\)\)/.test(requestCard)
+  );
+  check("no paid mark anywhere on the page flips on one tap", () => !/paid: !\w+\.paid/.test(code(assessSrc)));
+
+  // A 404 is "not found" on a cohort's page alone.
+  const elsewhere404 = (what: string, here: string) =>
+    words(render(createElement(AdminLoadProblem, { problem: "not_found", what, here, onRetry: noop })));
+  check("a 404 on Players or Assessments is a failed load with Retry, never the cohort line", () =>
+    elsewhere404("the players", "/admin/players") === "Couldn't load the players. Retry" &&
+    section("not_found" as "failed", false) === "Couldn't load the bookings. Retry" &&
+    words(render(createElement(CohortListStatus, { loading: false, loaded: false, problem: "not_found", count: 0, onRetry: noop }))) === "Couldn't load the cohorts. Retry"
+  );
+  check("only the cohort's page passes a not-found line", () => {
+    const users = adminSources.filter((path) => /notFound=/.test(read(path)));
+    return users.length === 1 && users[0] === "src/app/admin/cohorts/[id]/AdminCohortDetailClient.tsx" && /notFound=\{COHORT_NOT_FOUND\}/.test(detailSrc);
+  });
+  check('"Back to cohorts" is gone: "← Cohorts" above the line is the way back', () =>
+    !adminSources.some((path) => /Back to cohorts/.test(read(path))) && /← Cohorts/.test(read("src/app/admin/cohorts/[id]/page.tsx"))
+  );
+
+  // The cohort page's own read: a missing row is not a failed read.
+  type Op = [string, unknown[]];
+  type Call = { table: string; ops: Op[] };
+  type DbAnswer = { data: unknown; error: unknown; count?: number | null };
+  /** A stand-in database client: every filter is recorded, and each read resolves to what `answer` gives it. */
+  function fakeDb(answer: (call: Call) => DbAnswer) {
+    const calls: Call[] = [];
+    return {
+      calls,
+      from(table: string) {
+        const call: Call = { table, ops: [] };
+        calls.push(call);
+        const query: unknown = new Proxy(
+          {},
+          {
+            get(_target, prop) {
+              if (prop === "then") {
+                return (resolve: (v: DbAnswer) => unknown, reject: (e: unknown) => unknown) =>
+                  Promise.resolve()
+                    .then(() => answer(call))
+                    .then(resolve, reject);
+              }
+              return (...args: unknown[]) => {
+                call.ops.push([String(prop), args]);
+                return query;
+              };
+            },
+          }
+        );
+        return query;
+      },
+    };
+  }
+  const has = (call: Call, op: string, ...args: unknown[]) =>
+    call.ops.some(([name, given]) => name === op && JSON.stringify(given.slice(0, args.length)) === JSON.stringify(args));
+  const cohortRow = (id: string, status: string, label: string) => ({
+    id,
+    program_id: "bootcamps",
+    label,
+    level_min: 3,
+    level_max: 3.5,
+    location_label: null,
+    start_date: "2027-01-16",
+    weeks: 6,
+    sessions: [{ day: "Sat", start: "12:00", end: "13:00" }],
+    price_cents: 19000,
+    currency: "CAD",
+    capacity_min: 3,
+    capacity_max: 6,
+    visibility: "public",
+    status,
+    invite_hold_hours: 48,
+    makeup_max_weeks: 2,
+    credit_followup: false,
+    payment_mode: "etransfer",
+    created_at: "2026-11-01T00:00:00Z",
+  });
+
+  const foundRead = await readCohortForAdmin("sat", fakeDb(() => ({ data: cohortRow("sat", "inviting", "Saturday 12pm"), error: null })));
+  const missingRead = await readCohortForAdmin("nope", fakeDb(() => ({ data: null, error: null })));
+  const failedRead = await readCohortForAdmin("sat", fakeDb(() => ({ data: null, error: { message: "connection refused" } })));
+  const thrownRead = await readCohortForAdmin("sat", fakeDb(() => { throw new Error("offline"); }));
+  const unconfiguredRead = await readCohortForAdmin("sat");
+  check("the cohort page's read: a row is found, no row is missing", () =>
+    foundRead.status === "found" && foundRead.cohort.label === "Saturday 12pm" && missingRead.status === "missing"
+  );
+  check("the cohort page's read: an error, a throw and no database are a failed read, never missing", () =>
+    failedRead.status === "failed" && thrownRead.status === "failed" && unconfiguredRead.status === "failed"
+  );
+  const detailRoute = read("src/app/api/admin/cohorts/[id]/route.ts");
+  const getHandler = detailRoute.slice(detailRoute.indexOf("export async function GET"), detailRoute.indexOf("const STATUSES"));
+  check("the admin GET answers a failed read with 500 and a missing cohort with 404", () =>
+    /const found = await readCohortForAdmin\(id\);\s*if \(found\.status === "failed"\) \{\s*return NextResponse\.json\(\{ error: "Couldn't load this cohort\." \}, \{ status: 500 \}\);/.test(getHandler) &&
+    /if \(!cohort \|\| !cohort\.dbStatus\) \{\s*return NextResponse\.json\(\s*\{ error: "We couldn't find this cohort\." \},\s*\{ status: 404 \}/.test(getHandler) &&
+    !/getCohortById/.test(getHandler)
+  );
+  const viaPage = async (status: number) =>
+    adminRead("/api/admin/cohorts/x", fakeFetch({ "/api/admin/cohorts/x": { status, body: { error: "x" } } }));
+  const page500 = await viaPage(500);
+  const page404 = await viaPage(404);
+  check("on the page a 500 reads \"Couldn't load this cohort.\" with Retry, a 404 the not-found line", () => {
+    const show = (problem: "failed" | "not_found") =>
+      words(render(createElement(AdminLoadProblem, { problem, what: "this cohort", here: "/admin/cohorts/x", notFound: COHORT_NOT_FOUND, onRetry: noop })));
+    return (
+      !page500.ok && page500.problem === "failed" && show("failed") === "Couldn't load this cohort. Retry" &&
+      !page404.ok && page404.problem === "not_found" && show("not_found") === "We couldn't find this cohort."
+    );
+  });
+  check("getCohortById is exactly as it was, for every other caller", () => {
+    const db = read("src/lib/cohortsDb.ts");
+    return (
+      /export async function getCohortById\(id: string\): Promise<Cohort \| undefined> \{\s*if \(!supabaseConfigured\(\)\) return undefined;[\s\S]*?if \(error \|\| !data\) return undefined;\s*return mapRowToCohort\(data as CohortRow\);/.test(db) &&
+      !/readCohortForAdmin/.test(db) &&
+      [...new Set([...files("src/app"), ...files("src/lib"), ...files("src/components")])].filter((path) => /readCohortForAdmin\(/.test(read(path)) && !/adminCohortRead\.ts$/.test(path)).join() === "src/app/api/admin/cohorts/[id]/route.ts"
+    );
+  });
+
+  // The desk reads only what can wait, and never undercounts.
+  const admin = { id: "coach", email: "coach@example.com" };
+  const liveCohorts = [cohortRow("sat", "inviting", "Saturday 12pm Intermediate")];
+  const transferRows = [
+    { id: "t1", cohort_id: "sat", email: "dana.chen@example.com", user_id: null, participant_id: null, status: "invited", payment_method: "etransfer", expires_at: "2026-11-28T15:00:00Z" },
+  ];
+  const holdRows = [
+    { id: "h1", cohort_id: "sat", email: "amelie.roy@example.com", user_id: null, participant_id: null, status: "invited", payment_method: null, expires_at: "2026-11-27T04:30:00Z" },
+  ];
+  const whole = (rows: unknown[]): DbAnswer => ({ data: rows, error: null, count: rows.length });
+  const deskAnswers = (overrides: Partial<Record<string, DbAnswer>> = {}) => (call: Call): DbAnswer => {
+    const key =
+      call.table === "cohort_invites"
+        ? has(call, "eq", "payment_method", "etransfer") ? "transfers" : "holds"
+        : call.table === "assessment_bookings"
+          ? has(call, "eq", "status", "requested") ? "requests" : "booked"
+          : call.table;
+    const normal: Record<string, DbAnswer> = {
+      cohorts: whole(liveCohorts),
+      transfers: whole(transferRows),
+      holds: whole(holdRows),
+      requests: whole([{ id: "r1", status: "requested" }]),
+      assessment_blocks: whole([{ id: "k-today", block_date: "2026-11-26" }, { id: "k-tomorrow", block_date: "2026-11-27" }]),
+      booked: whole([
+        { id: "a1", status: "booked", block_id: "k-today" },
+        { id: "a2", status: "booked", block_id: "k-tomorrow" },
+      ]),
+    };
+    return overrides[key] ?? normal[key];
+  };
+  const db = fakeDb(deskAnswers());
+  const readDesk = await readAdminDesk(admin, now, db);
+  check("the desk from its reads: every line, and the amount the cohort's page shows", () =>
+    JSON.stringify(readDesk.lines.map((l) => `${l.count} ${l.text}${l.detail ? ` | ${l.detail}` : ""}`)) ===
+      JSON.stringify([
+        "1 e-transfer to mark received | Saturday 12pm Intermediate · $190 due",
+        "1 assessment request without a time",
+        "1 assessment today",
+        "1 assessment tomorrow",
+        "1 held spot ends today | Saturday 12pm Intermediate",
+      ]) && readDesk.gaps.length === 0
+  , () => JSON.stringify(readDesk));
+  const callFor = (table: string, pick: (c: Call) => boolean = () => true) => db.calls.find((c) => c.table === table && pick(c));
+  check("it reads only cohorts that can still take a payment", () => {
+    const c = callFor("cohorts");
+    return !!c && has(c, "in", "status", ["draft", "inviting", "confirmed", "running"]) && db.calls.filter((x) => x.table === "cohorts").length === 1;
+  });
+  check("it reads only unpaid e-transfers and holds that end within a day, in those cohorts", () => {
+    const transfers = callFor("cohort_invites", (c) => has(c, "eq", "payment_method", "etransfer"));
+    const holds = callFor("cohort_invites", (c) => has(c, "eq", "status", "invited"));
+    return (
+      !!transfers && !!holds &&
+      has(transfers, "in", "cohort_id", ["sat"]) && has(transfers, "in", "status", ["invited", "expired"]) &&
+      has(holds, "in", "cohort_id", ["sat"]) && has(holds, "gt", "expires_at", now.toISOString()) && holds.ops.some(([name, args]) => name === "lte" && args[0] === "expires_at") &&
+      db.calls.filter((x) => x.table === "cohort_invites").length === 2
+    );
+  });
+  check("it reads only open requests and the bookings in today's and tomorrow's blocks", () => {
+    const blocks = callFor("assessment_blocks");
+    const requests = callFor("assessment_bookings", (c) => has(c, "eq", "status", "requested"));
+    const booked = callFor("assessment_bookings", (c) => has(c, "eq", "status", "booked"));
+    return (
+      !!blocks && !!requests && !!booked &&
+      has(blocks, "gte", "block_date", "2026-11-26") && has(blocks, "lte", "block_date", "2026-11-27") &&
+      has(booked, "in", "block_id", ["k-today", "k-tomorrow"])
+    );
+  });
+  check("every read asks how many rows match", () => db.calls.length === 6 && db.calls.every((c) => c.ops.some(([name, args]) => name === "select" && JSON.stringify(args[1]) === '{"count":"exact"}')));
+  check("a read is whole only when it returned every row that matches", () =>
+    wholeRows({ data: [1, 2], error: null, count: 2 })?.length === 2 &&
+    wholeRows({ data: [1, 2], error: null, count: 3 }) === null &&
+    wholeRows({ data: [1, 2], error: null, count: null }) === null &&
+    wholeRows({ data: [1, 2], error: null }) === null &&
+    wholeRows({ data: null, error: { message: "x" }, count: 0 }) === null
+  );
+  const cappedInvites = await readAdminDesk(admin, now, fakeDb(deskAnswers({ transfers: { data: transferRows, error: null, count: 1400 } })));
+  const cappedBookings = await readAdminDesk(admin, now, fakeDb(deskAnswers({ booked: { data: [{ id: "a1", status: "booked", block_id: "k-today" }], error: null, count: 1200 } })));
+  const cappedRequests = await readAdminDesk(admin, now, fakeDb(deskAnswers({ requests: { data: [{ id: "r1", status: "requested" }], error: null, count: 1001 } })));
+  check("a read cut short at the row cap: that side says it couldn't check, and shows no count", () =>
+    cappedInvites.gaps.map((g) => g.text).join() === DESK_COHORTS_GAP &&
+    !cappedInvites.lines.some((l) => /e-transfer|held spot/.test(l.text)) &&
+    cappedInvites.lines.length === 3 &&
+    cappedBookings.gaps.map((g) => g.text).join() === DESK_ASSESSMENTS_GAP &&
+    !cappedBookings.lines.some((l) => /assessment/.test(l.text)) &&
+    cappedRequests.gaps.map((g) => g.text).join() === DESK_ASSESSMENTS_GAP &&
+    !cappedInvites.quiet && !cappedBookings.quiet && !cappedRequests.quiet
+  );
+  const erroredDesk = await readAdminDesk(admin, now, fakeDb(deskAnswers({ cohorts: { data: null, error: { message: "boom" }, count: null } })));
+  const emptyDesk = await readAdminDesk(admin, now, fakeDb(() => whole([])));
+  check("a read that errors says it couldn't check; reads that answer with nothing say nothing waits", () =>
+    erroredDesk.gaps.length === 1 && !erroredDesk.quiet && emptyDesk.quiet && emptyDesk.gaps.length === 0
+  );
+  check("amounts are asked only for the invites the desk shows", () =>
+    /invites\.filter\(transferIsWaiting\)\.map\(async \(invite\) =>/.test(readsSrc) && (readsSrc.match(/inviteAmountDueCents\(/g) ?? []).length === 1
+  );
+
+  // Toronto's today and tomorrow on the nights the clocks change.
+  const dayCounts = (at: string, rows: DeskBooking[]) => {
+    const d = deskFrom({ now: new Date(at), cohorts: { ok: true, data: { cohorts: [], invites: [], amountDueCents: new Map() } }, assessments: { ok: true, data: rows } });
+    return `${d.lines.find((l) => l.key === "today")?.count ?? 0}/${d.lines.find((l) => l.key === "tomorrow")?.count ?? 0}`;
+  };
+  const fall: DeskBooking[] = [
+    { id: "o31", status: "booked", block_date: "2026-10-31" },
+    { id: "n1", status: "booked", block_date: "2026-11-01" },
+    { id: "n1b", status: "booked", block_date: "2026-11-01" },
+    { id: "n2", status: "booked", block_date: "2026-11-02" },
+    { id: "n3", status: "booked", block_date: "2026-11-03" },
+  ];
+  check("the clocks go back (Nov 1, 2026, a 25-hour day): today and tomorrow hold all day", () =>
+    // 23:30 EDT on Oct 31; 00:30 EDT, 01:30 EST and 23:30 EST on Nov 1; 00:30 EST on Nov 2.
+    dayCounts("2026-11-01T03:30:00Z", fall) === "1/2" &&
+    dayCounts("2026-11-01T04:30:00Z", fall) === "2/1" &&
+    dayCounts("2026-11-01T06:30:00Z", fall) === "2/1" &&
+    dayCounts("2026-11-02T04:30:00Z", fall) === "2/1" &&
+    dayCounts("2026-11-02T05:30:00Z", fall) === "1/1"
+  );
+  const spring: DeskBooking[] = [
+    { id: "m13", status: "booked", block_date: "2027-03-13" },
+    { id: "m14", status: "booked", block_date: "2027-03-14" },
+    { id: "m14b", status: "booked", block_date: "2027-03-14" },
+    { id: "m15", status: "booked", block_date: "2027-03-15" },
+  ];
+  check("the clocks go forward (Mar 14, 2027, a 23-hour day): today and tomorrow hold all day", () =>
+    // 23:30 EST on Mar 13; 00:30 EST, 03:30 EDT and 23:30 EDT on Mar 14; 00:30 EDT on Mar 15.
+    dayCounts("2027-03-14T04:30:00Z", spring) === "1/2" &&
+    dayCounts("2027-03-14T05:30:00Z", spring) === "2/1" &&
+    dayCounts("2027-03-14T07:30:00Z", spring) === "2/1" &&
+    dayCounts("2027-03-15T03:30:00Z", spring) === "2/1" &&
+    dayCounts("2027-03-15T04:30:00Z", spring) === "1/0"
+  );
+  check("a hold's last day is read on Toronto's clock on both nights, and the read's window covers the 25-hour day", () => {
+    const hold = (expires_at: string) => invite("h", "c", { expires_at });
+    return (
+      // Just after midnight on the 25-hour day, a hold that ends at 23:59 that night is today's, 24h49m away.
+      holdEndsToday(hold("2026-11-02T04:59:00Z"), new Date("2026-11-01T04:10:00Z")) &&
+      !holdEndsToday(hold("2026-11-02T05:01:00Z"), new Date("2026-11-01T04:10:00Z")) &&
+      holdEndsToday(hold("2027-03-15T03:59:00Z"), new Date("2027-03-14T05:10:00Z")) &&
+      !holdEndsToday(hold("2027-03-15T04:01:00Z"), new Date("2027-03-14T05:10:00Z")) &&
+      /now\.getTime\(\) \+ 26 \* 60 \* 60 \* 1000/.test(readsSrc)
+    );
+  });
+
+  // The schedule line under the slots.
+  const parts = blockScheduleParts({
+    startDate: "2027-01-14",
+    weeks: 6,
+    sessions: [
+      { day: "Thu", start: "19:00", end: "20:00" },
+      { day: "Sat", start: "12:00", end: "13:00" },
+    ],
+  });
+  check("the schedule's two parts: the class days, and the date range", () =>
+    parts.days === "Thursdays 7–8pm, Saturdays 12–1pm" && parts.dates === "Jan 14 – Feb 20" &&
+    blockScheduleParts({ startDate: "", weeks: 6, sessions: [{ day: "Sat", start: "12:00", end: "13:00" }] }).dates === null
+  , () => JSON.stringify(parts));
+  const scheduleP = /<p id="new-cohort-schedule" aria-live="polite" className="([^"]*)">([\s\S]*?)<\/p>/.exec(cohortsSrc);
+  const perClassP = /<p id="new-cohort-per-class" className="([^"]*)">/.exec(cohortsSrc);
+  check("the line shows at every width, in the per-class hint's size, its words in white", () => {
+    const cls = scheduleP?.[1].split(/\s+/) ?? [];
+    const hint = perClassP?.[1].split(/\s+/) ?? [];
+    return (
+      cls.includes("text-xs") && hint.includes("text-xs") &&
+      cls.includes("tabular-nums") && hint.includes("tabular-nums") &&
+      cls.includes("text-white") && !cls.includes("font-semibold") && !cls.includes("text-sm") &&
+      !cls.some((c) => /^(max-)?(sm|md|lg):/.test(c) || c === "hidden")
+    );
+  });
+  check("the date range never breaks inside", () => /<span className="whitespace-nowrap">\{schedule\.dates\}<\/span>/.test(scheduleP?.[2] ?? ""));
 
   console.log(failed === 0 ? "\nAll coach-tools checks passed." : `\n${failed} check(s) failed.`);
   process.exit(failed === 0 ? 0 : 1);

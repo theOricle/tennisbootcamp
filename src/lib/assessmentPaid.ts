@@ -14,15 +14,19 @@ export type PaidBooking = { status: string; credit_status?: string | null };
 const STAYS = "The booking and its time stay.";
 
 export function unmarkPaidLine(booking: PaidBooking): string {
+  // A request has no time yet: unmarking leaves it in the queue as it is.
+  if (booking.status === "requested") {
+    return "The request stays in the queue. The $20 comes off a program price only once the assessment is paid and completed.";
+  }
   if (booking.status === "completed" && booking.credit_status === "unused") {
-    return `${STAYS} The $20 stops coming off a program price until the assessment is marked paid again.`;
+    return `${STAYS} While it is unpaid, the $20 does not come off a program price.`;
   }
   if (booking.status === "completed" && booking.credit_status === "applied") {
-    return `${STAYS} The $20 has already come off a program price, and that does not change.`;
+    return `${STAYS} The $20 already came off a program price, and that stays.`;
   }
   return `${STAYS} The $20 comes off a program price only once the assessment is paid and completed.`;
 }
 
 export const UNDO_PAID = "Undo";
 export const MARK_UNPAID = "Mark unpaid";
-export const KEEP_PAID = "Keep it paid";
+export const KEEP_PAID = "Keep paid";

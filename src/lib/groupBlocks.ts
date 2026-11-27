@@ -179,12 +179,22 @@ function weekOrder(block: Pick<Cohort, "startDate" | "sessions">): SessionSlot[]
  * logic of its own.
  */
 export function blockScheduleLine(block: Pick<Cohort, "startDate" | "weeks" | "sessions">): string {
+  const { days, dates } = blockScheduleParts(block);
+  return dates ? `${days} · ${dates}` : days;
+}
+
+/** The two parts of blockScheduleLine, so a screen can keep the date range on one line. */
+export function blockScheduleParts(
+  block: Pick<Cohort, "startDate" | "weeks" | "sessions">
+): { days: string; dates: string | null } {
   const sessions = block.sessions.filter((s) => /^\d{2}:\d{2}/.test(s.start) && /^\d{2}:\d{2}/.test(s.end));
-  if (sessions.length === 0) return "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(block.startDate) || !(block.weeks >= 1)) return formatClassDays(sessions);
+  if (sessions.length === 0) return { days: "", dates: null };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(block.startDate) || !(block.weeks >= 1)) {
+    return { days: formatClassDays(sessions), dates: null };
+  }
   const dated = { startDate: block.startDate, weeks: block.weeks, sessions };
   const { first, last } = blockClassDates({ ...dated, endDate: block.startDate });
-  return `${formatClassDays(weekOrder(dated))} · ${formatBlockDates(first, last)}`;
+  return { days: formatClassDays(weekOrder(dated)), dates: formatBlockDates(first, last) };
 }
 
 /** Does a block show as a group card? Its program runs group bootcamps, and it has a class to show. */

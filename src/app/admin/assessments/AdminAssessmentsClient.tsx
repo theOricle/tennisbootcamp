@@ -266,7 +266,8 @@ function CreateBlock({ onCreated }: { onCreated: () => void }) {
 // ─── Paid: a status, and an Undo that asks first (backlog #104) ───────────────
 // A paid booking shows "Paid" as a chip beside its status, never as a button:
 // it read like the status chip next to it, and one tap marked the booking
-// unpaid. "Undo" is the quiet button under it, and it only opens the line
+// unpaid. "Undo" is the quiet button under it (words alone, so the two chips
+// stay the only shapes in the corner), and it only opens the line
 // below; the booking is marked unpaid from that line's "Mark unpaid" alone.
 
 /** The paid part of a booking's header: the chip and "Undo", or "Mark paid". */
@@ -307,7 +308,7 @@ export function PaidStatus({
           type="button"
           disabled={busy}
           onClick={onAskUndo}
-          className="ml-auto mt-1.5 block min-h-[44px] rounded-full border border-white/20 px-4 text-xs font-semibold text-white/60 transition hover:border-red-400/50 hover:text-red-200 disabled:opacity-40"
+          className="ml-auto block min-h-[44px] px-1 text-xs font-semibold text-white/70 underline underline-offset-4 transition hover:text-red-200 disabled:opacity-40"
         >
           {UNDO_PAID}
         </button>
@@ -629,7 +630,7 @@ export function BookingCard({
 
 // ─── Request card (coordinate-directly queue) ─────────────────────────────────
 
-function RequestCard({
+export function RequestCard({
   request,
   openSlots,
   slotsFailed,
@@ -647,6 +648,9 @@ function RequestCard({
   const [time, setTime] = useState("18:00");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "Undo" on a paid request opens the confirmation; nothing is sent until
+  // its "Mark unpaid" (backlog #104), as on a booking.
+  const [undoing, setUndoing] = useState(false);
 
   async function post(body: Record<string, unknown>) {
     setBusy(true);
@@ -669,6 +673,15 @@ function RequestCard({
       setError("Network error.");
       setBusy(false);
       return false;
+    }
+  }
+
+  // The request stays on screen after its paid mark changes, so its buttons
+  // come back once the answer is in.
+  async function setPaid(paid: boolean) {
+    if (await post({ action: "set_paid", paid })) {
+      setUndoing(false);
+      setBusy(false);
     }
   }
 
@@ -701,20 +714,31 @@ function RequestCard({
           <span className="inline-block rounded-full bg-violet-400/15 px-2 py-0.5 text-xs font-semibold text-violet-200">
             {statusLabel(BOOKING_STATUS_LABELS, "requested")}
           </span>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void post({ action: "set_paid", paid: !request.paid })}
-            className={`mt-1.5 block min-h-[44px] w-full rounded-full px-3 text-xs font-semibold transition disabled:opacity-40 ${
-              request.paid
-                ? "bg-[#B4E655]/15 text-[#B4E655]"
-                : "bg-white/10 text-white/80 hover:text-white"
-            }`}
-          >
-            {request.paid ? "Paid ✓" : "Mark paid"}
-          </button>
+          <PaidStatus
+            paid={request.paid}
+            busy={busy}
+            undoing={undoing}
+            onMarkPaid={() => void setPaid(true)}
+            onAskUndo={() => {
+              setError(null);
+              setUndoing(true);
+            }}
+          />
         </div>
       </div>
+
+      {undoing && request.paid && (
+        <UnmarkPaidConfirm
+          line={unmarkPaidLine({ status: "requested" })}
+          busy={busy}
+          error={error}
+          onConfirm={() => void setPaid(false)}
+          onKeep={() => {
+            setUndoing(false);
+            setError(null);
+          }}
+        />
+      )}
 
       {request.self_level && (
         <p className="mt-2 text-xs text-white/75">
@@ -744,7 +768,7 @@ function RequestCard({
         </p>
       )}
 
-      {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+      {error && !undoing && <p className="mt-3 text-sm text-red-300">{error}</p>}
 
       {mode === "idle" && (
         <div className="mt-4 flex gap-2 border-t border-white/10 pt-4">

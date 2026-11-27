@@ -29,7 +29,7 @@ import {
   type OpeningMove,
 } from "@/lib/cohortOpening";
 import { AdminLoadProblem } from "@/components/admin/LoadProblem";
-import { adminRead, type LoadProblem } from "@/lib/adminLoad";
+import { COHORT_NOT_FOUND, adminRead, type LoadProblem } from "@/lib/adminLoad";
 
 type PaymentMode = "card" | "etransfer";
 
@@ -997,6 +997,7 @@ export function AdminCohortDetailClient({ cohortId }: { cohortId: string }) {
       problem={problem}
       what="this cohort"
       here={`/admin/cohorts/${cohortId}`}
+      notFound={COHORT_NOT_FOUND}
       onRetry={() => void refresh()}
     />
   );

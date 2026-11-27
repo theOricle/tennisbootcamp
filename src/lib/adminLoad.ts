@@ -94,6 +94,5 @@ export function couldNotLoad(what: string): string {
   return `Couldn't load ${what}.`;
 }
 
-/** An unknown cohort id. */
+/** An unknown cohort id, on the cohort's own page; "← Cohorts" above it is the way back. */
 export const COHORT_NOT_FOUND = "We couldn't find this cohort.";
-export const BACK_TO_COHORTS = "Back to cohorts";

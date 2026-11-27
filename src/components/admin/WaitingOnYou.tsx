@@ -2,7 +2,8 @@ import Link from "next/link";
 import { DESK_HEADING, DESK_QUIET_LINE, type Desk } from "@/lib/adminDesk";
 
 // "Waiting on you" on /admin (backlog #104): each line a count the eye
-// lands on first, a few plain words and the page where it is done. When
+// lands on first (the only lime in the list), a few plain words and the page
+// where it is done. When
 // nothing waits, one quiet line; when a read failed, a line that says it
 // couldn't check, never that nothing waits.
 
@@ -14,14 +15,14 @@ export function WaitingOnYou({ desk }: { desk: Desk }) {
       </h2>
 
       {desk.lines.length > 0 && (
-        <ul className="mt-3 divide-y divide-white/10 overflow-hidden rounded-2xl border border-[#B4E655]/30 bg-white/5">
+        <ul className="mt-3 divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
           {desk.lines.map((line) => (
             <li key={line.key}>
               <Link
                 href={line.href}
                 className="flex min-h-[56px] items-center gap-4 px-4 py-3 transition hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#B4E655]/60"
               >
-                <span className="w-9 shrink-0 text-center text-2xl font-semibold tabular-nums leading-none text-[#B4E655]">
+                <span className="min-w-7 shrink-0 text-2xl font-semibold tabular-nums leading-none text-[#B4E655]">
                   {line.count}
                 </span>
                 <span className="min-w-0 flex-1">
@@ -30,7 +31,7 @@ export function WaitingOnYou({ desk }: { desk: Desk }) {
                     <span className="mt-0.5 block text-xs text-white/60 [overflow-wrap:anywhere]">{line.detail}</span>
                   )}
                 </span>
-                <span aria-hidden className="shrink-0 text-[#B4E655]">
+                <span aria-hidden className="shrink-0 text-white/60">
                   →
                 </span>
               </Link>

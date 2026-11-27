@@ -6,7 +6,9 @@ import { inviteAmountDueCents, type InviteRow } from "@/lib/cohortActions";
 import { todayIso } from "@/lib/cohortVisibility";
 import { addDaysISO } from "@/lib/makeup";
 import {
+  LIVE_COHORT_STATUSES,
   deskFrom,
+  holdEndsToday,
   transferIsWaiting,
   type CohortSide,
   type Desk,
@@ -19,37 +21,82 @@ import {
 // there is no way to call them without one. Read-only: nothing is written,
 // expired or emailed from here.
 //
-// Each side checks its own error, because the desk must be able to say "I
-// couldn't check" (the list helpers the admin pages use answer a failed read
-// with an empty list). What each waiting e-transfer owes is not worked out
-// here: it is inviteAmountDueCents, the function the cohort's page shows the
-// amount with.
+// Each read asks only for what can wait, so its size follows the work in
+// hand and not the history: cohorts that can still take a payment, their
+// unpaid e-transfers and the holds that end within a day, open requests, and
+// the bookings in today's and tomorrow's assessment blocks. Each read also
+// asks the database how many rows match (`count: "exact"`): an error, or
+// fewer rows returned than match (the API's row cap), makes that side read
+// as "couldn't check". The desk never shows a count it could not read whole.
+//
+// What a waiting e-transfer owes is not worked out here: it is
+// inviteAmountDueCents, the function the cohort's page shows the amount
+// with, asked only for the invites the desk shows.
 
 type DeskInviteRow = Pick<
   InviteRow,
   "id" | "cohort_id" | "email" | "user_id" | "participant_id" | "status" | "payment_method" | "expires_at"
 >;
 
+const INVITE_COLUMNS = "id, cohort_id, email, user_id, participant_id, status, payment_method, expires_at";
+
+/** The answer of one read, as the Supabase client gives it. */
+type Answer = { data: unknown[] | null; error: unknown; count?: number | null };
+
+/** The slice of the Supabase client these reads use; a test hands in a stand-in. */
+export type DeskClient = { from: (table: string) => any }; // eslint-disable-line @typescript-eslint/no-explicit-any
+
 function configured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-async function readCohortSide(): Promise<DeskRead<CohortSide>> {
+/** A read's rows, or null when it failed or came back cut short of the rows that match. */
+export function wholeRows<T>(answer: Answer): T[] | null {
+  if (answer.error || !Array.isArray(answer.data)) return null;
+  if (typeof answer.count !== "number" || answer.count > answer.data.length) return null;
+  return answer.data as T[];
+}
+
+const COUNTED = { count: "exact" as const };
+
+async function readCohortSide(client: DeskClient, now: Date): Promise<DeskRead<CohortSide>> {
   try {
-    const supabase = createServiceClient();
-    const [cohortRead, inviteRead] = await Promise.all([
-      supabase.from("cohorts").select("*").order("start_date", { ascending: true }),
-      supabase
+    const cohortRows = wholeRows<CohortRow>(
+      await client.from("cohorts").select("*", COUNTED).in("status", [...LIVE_COHORT_STATUSES])
+    );
+    if (!cohortRows) return { ok: false };
+    const cohorts = cohortRows.map(mapRowToCohort);
+    const ids = cohorts.map((c) => c.id);
+    if (ids.length === 0) return { ok: true, data: { cohorts, invites: [], amountDueCents: new Map() } };
+
+    // A hold that ends today in Toronto ends within the next day; 26 hours
+    // covers the 25-hour day when the clocks go back. holdEndsToday decides.
+    const dayAhead = new Date(now.getTime() + 26 * 60 * 60 * 1000).toISOString();
+    const [transferRead, holdRead] = await Promise.all([
+      client
         .from("cohort_invites")
-        .select("id, cohort_id, email, user_id, participant_id, status, payment_method, expires_at")
-        .in("status", ["invited", "expired"]),
+        .select(INVITE_COLUMNS, COUNTED)
+        .in("cohort_id", ids)
+        .in("status", ["invited", "expired"])
+        .eq("payment_method", "etransfer"),
+      client
+        .from("cohort_invites")
+        .select(INVITE_COLUMNS, COUNTED)
+        .in("cohort_id", ids)
+        .eq("status", "invited")
+        .gt("expires_at", now.toISOString())
+        .lte("expires_at", dayAhead),
     ]);
-    if (cohortRead.error || inviteRead.error) return { ok: false };
+    const transfers = wholeRows<DeskInviteRow>(transferRead);
+    const holds = wholeRows<DeskInviteRow>(holdRead);
+    if (!transfers || !holds) return { ok: false };
 
-    const cohorts = ((cohortRead.data as CohortRow[] | null) ?? []).map(mapRowToCohort);
-    const invites = (inviteRead.data as DeskInviteRow[] | null) ?? [];
+    // One row per invite: an e-transfer whose hold also ends today is in both reads.
+    const byInvite = new Map<string, DeskInviteRow>();
+    for (const row of [...transfers, ...holds]) byInvite.set(row.id, row);
+    const invites = [...byInvite.values()].filter((i) => transferIsWaiting(i) || holdEndsToday(deskInvite(i), now));
+
     const byId = new Map(cohorts.map((c) => [c.id, c]));
-
     const amountDueCents = new Map<string, number | null>();
     await Promise.all(
       invites.filter(transferIsWaiting).map(async (invite) => {
@@ -63,48 +110,61 @@ async function readCohortSide(): Promise<DeskRead<CohortSide>> {
       })
     );
 
-    return {
-      ok: true,
-      data: {
-        cohorts,
-        invites: invites.map((i) => ({
-          id: i.id,
-          cohort_id: i.cohort_id,
-          status: i.status,
-          payment_method: i.payment_method ?? null,
-          expires_at: i.expires_at,
-        })),
-        amountDueCents,
-      },
-    };
+    return { ok: true, data: { cohorts, invites: invites.map(deskInvite), amountDueCents } };
   } catch {
     return { ok: false };
   }
 }
 
-async function readAssessmentSide(now: Date): Promise<DeskRead<DeskBooking[]>> {
+function deskInvite(row: DeskInviteRow) {
+  return {
+    id: row.id,
+    cohort_id: row.cohort_id,
+    status: row.status,
+    payment_method: row.payment_method ?? null,
+    expires_at: row.expires_at,
+  };
+}
+
+async function readAssessmentSide(client: DeskClient, now: Date): Promise<DeskRead<DeskBooking[]>> {
   try {
-    const supabase = createServiceClient();
     const today = todayIso(now);
-    const [bookingRead, blockRead] = await Promise.all([
-      // Requests with no time, and bookings with one. A test booking is
-      // status "test" and is never read.
-      supabase.from("assessment_bookings").select("id, status, block_id").in("status", ["requested", "booked"]),
-      supabase
+    const [requestRead, blockRead] = await Promise.all([
+      // Open requests: no time yet. A test booking is status "test" and is never read.
+      client.from("assessment_bookings").select("id, status", COUNTED).eq("status", "requested"),
+      client
         .from("assessment_blocks")
-        .select("id, block_date")
+        .select("id, block_date", COUNTED)
         .gte("block_date", today)
         .lte("block_date", addDaysISO(today, 1)),
     ]);
-    if (bookingRead.error || blockRead.error) return { ok: false };
+    const requests = wholeRows<{ id: string; status: string }>(requestRead);
+    const blocks = wholeRows<{ id: string; block_date: string }>(blockRead);
+    if (!requests || !blocks) return { ok: false };
 
-    const dateByBlock = new Map(
-      ((blockRead.data as { id: string; block_date: string }[] | null) ?? []).map((b) => [b.id, b.block_date])
-    );
-    const rows = (bookingRead.data as { id: string; status: string; block_id: string | null }[] | null) ?? [];
+    let booked: { id: string; status: string; block_id: string | null }[] = [];
+    if (blocks.length > 0) {
+      const rows = wholeRows<{ id: string; status: string; block_id: string | null }>(
+        await client
+          .from("assessment_bookings")
+          .select("id, status, block_id", COUNTED)
+          .eq("status", "booked")
+          .in(
+            "block_id",
+            blocks.map((b) => b.id)
+          )
+      );
+      if (!rows) return { ok: false };
+      booked = rows;
+    }
+
+    const dateByBlock = new Map(blocks.map((b) => [b.id, b.block_date]));
     return {
       ok: true,
-      data: rows.map((r) => ({ id: r.id, status: r.status, block_date: dateByBlock.get(r.block_id ?? "") ?? null })),
+      data: [
+        ...requests.map((r) => ({ id: r.id, status: r.status, block_date: null })),
+        ...booked.map((r) => ({ id: r.id, status: r.status, block_date: dateByBlock.get(r.block_id ?? "") ?? null })),
+      ],
     };
   } catch {
     return { ok: false };
@@ -113,12 +173,14 @@ async function readAssessmentSide(now: Date): Promise<DeskRead<DeskBooking[]>> {
 
 /**
  * What waits on the coach, read for the admin the gate returned. With no
- * database configured both sides read as "couldn't check".
+ * database configured both sides read as "couldn't check". `client` is the
+ * service-role client; a test hands in a stand-in.
  */
-export async function readAdminDesk(admin: AdminUser, now: Date = new Date()): Promise<Desk> {
-  if (!admin?.id || !configured()) {
+export async function readAdminDesk(admin: AdminUser, now: Date = new Date(), client?: DeskClient): Promise<Desk> {
+  if (!admin?.id || (!client && !configured())) {
     return deskFrom({ now, cohorts: { ok: false }, assessments: { ok: false } });
   }
-  const [cohorts, assessments] = await Promise.all([readCohortSide(), readAssessmentSide(now)]);
+  const db = client ?? createServiceClient();
+  const [cohorts, assessments] = await Promise.all([readCohortSide(db, now), readAssessmentSide(db, now)]);
   return deskFrom({ now, cohorts, assessments });
 }

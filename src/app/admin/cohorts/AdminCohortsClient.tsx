@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Cohort } from "@/types/cohort";
 import { COHORT_TOTAL, COHORT_WEEKS, listedPrograms as programs } from "@/content/programs";
 import { scheduledEndDate, addDaysISO } from "@/lib/makeup";
-import { blockScheduleLine, perClassFigure, perClassLine } from "@/lib/groupBlocks";
+import { blockScheduleParts, perClassFigure, perClassLine } from "@/lib/groupBlocks";
 import { TierLine, TierRangeBadges } from "@/components/tiers";
 import { LEVEL_OPTIONS, formatLevelBand, formatTierSpan } from "@/lib/tiers";
 import { AvailabilityMatrix } from "@/components/admin/AvailabilityMatrix";
@@ -169,8 +169,8 @@ function CreateCohortForm({
 
   // The schedule in words under the slots (backlog #104): the class days and
   // dates as the group card will show them, live as the form changes.
-  const scheduleLine = useMemo(
-    () => blockScheduleLine({ startDate, weeks, sessions: slots as SessionSlot[] }),
+  const schedule = useMemo(
+    () => blockScheduleParts({ startDate, weeks, sessions: slots as SessionSlot[] }),
     [startDate, weeks, slots]
   );
 
@@ -370,10 +370,17 @@ function CreateCohortForm({
             />
           ))}
         </div>
-        {/* The schedule in words, as the group card will say it: on a phone
-            the day is otherwise only inside its dropdown. */}
-        <p id="new-cohort-schedule" aria-live="polite" className="mt-2 min-h-5 text-sm font-semibold text-white">
-          {scheduleLine}
+        {/* The schedule in words, as the group card will say it, at every
+            width: a quiet line like the per-class one under the price, its
+            words in white, the date range kept on one line. */}
+        <p id="new-cohort-schedule" aria-live="polite" className="mt-2 min-h-4 text-xs tabular-nums text-white">
+          {schedule.days}
+          {schedule.dates && (
+            <>
+              {" · "}
+              <span className="whitespace-nowrap">{schedule.dates}</span>
+            </>
+          )}
         </p>
         <button
           type="button"

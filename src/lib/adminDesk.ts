@@ -15,8 +15,8 @@ import { adminMoney } from "@/lib/adminLabels";
 //
 // Test bookings are left out, and card payments are not counted at all (a
 // test payment holds no seat). When nothing waits it says so in one quiet
-// line. When a read failed it says it could not check, and never that
-// nothing waits.
+// line. When a read failed, or came back cut short of the rows that match,
+// it says it could not check, and never that nothing waits.
 //
 // Pure, with no database: the reads live in src/lib/adminDeskReads.ts
 // (server-only, called after the admin gate), and
@@ -68,9 +68,12 @@ export const DESK_ASSESSMENTS_GAP = "Couldn't check the assessments.";
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
+/** The cohort statuses that can still take a payment: every one but cancelled and completed. */
+export const LIVE_COHORT_STATUSES = ["draft", "inviting", "confirmed", "running"] as const;
+
 /** A cohort the coach still acts on: not cancelled, not completed. */
 function cohortIsLive(cohort: DeskCohort | undefined): cohort is DeskCohort {
-  return !!cohort && cohort.dbStatus !== "cancelled" && cohort.dbStatus !== "completed";
+  return !!cohort && (LIVE_COHORT_STATUSES as readonly string[]).includes(cohort.dbStatus ?? "");
 }
 
 /**
