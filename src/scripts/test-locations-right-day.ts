@@ -150,7 +150,7 @@ function rowsOf(html: string): Row[] {
  */
 function cardSays(card: GroupCard): string[] {
   if (card.group.day === null) {
-    const html = render(createElement(ArrangedGroupRow, { group: card.group, program: { slug: card.group.programSlug } }));
+    const html = render(createElement(ArrangedGroupRow, { group: card.group }));
     return [words(/<p class="mt-0\.5[^"]*">([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "").split(" · ")[0]];
   }
   const html = render(createElement(ProgramGroupCard, { group: card.group, block: card.block }));

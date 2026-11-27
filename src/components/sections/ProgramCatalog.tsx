@@ -318,7 +318,7 @@ export function ProgramCatalogView({
               .filter((g) => g.day === null)
               .map((g) => (
                 <div key={g.id} className="mt-3.5">
-                  <ArrangedGroupRow group={g} program={program} source="programs-group" />
+                  <ArrangedGroupRow group={g} source="programs-group" />
                 </div>
               ))}
           </section>

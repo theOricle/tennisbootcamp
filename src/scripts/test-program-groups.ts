@@ -164,7 +164,6 @@ const render = (el: React.ReactElement) => renderToStaticMarkup(el);
 /** The words a card shows, in order, with the markup gone. */
 const words = (html: string) => html.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 const youth = listedPrograms.find((p) => p.slug === "youth-programs")!;
-const privateProgram = listedPrograms.find((p) => p.slug === "private-lessons")!;
 // Backlog #70 (owner, 2026-11-17): the card shows the whole price, the cohort total over the cohort length.
 // Re-pinned for backlog #85 (owner, 2026-11-20): with its class count, once a week or twice.
 const [TOTAL_LINE, LENGTH_LINE] = priceParts(GROUP_PRICE);
@@ -255,8 +254,9 @@ const plannedHp = render(createElement(ProgramGroupCard, { group: hp }));
 check("…and the High Performance Youth Bootcamp keeps By approval over Dates coming soon and Notify me", plannedHp.includes("By approval</span>") && plannedHp.includes(`${DATES_COMING_SOON}</li>`) && />Notify me<span class="sr-only"> when a new cohort opens<\/span><\/a>/.test(plannedHp) && !plannedHp.includes("/enroll") && !plannedHp.includes("/intake"));
 const cardSrc = read("src/components/sections/ProgramGroupCard.tsx");
 // Re-pinned for backlog #85: the card's button opens the block's sign-up page;
-// only the private lessons row still opens the quiz.
-check("Enroll and Ask to join open the block's sign-up page; private lessons' Ask about lessons the quiz for the program", cardSrc.includes("`/enroll/${block.cohortId}`") && cardSrc.includes("href={`/intake?program=${program.slug}`}") && cardSrc.includes('track="quiz"') && cardSrc.includes("source={source}"));
+// only the private lessons row still opened the quiz. Re-pinned for backlog
+// #103: that row's Ask about lessons emails us, so nothing in the file links the quiz.
+check("Enroll and Ask to join open the block's sign-up page; private lessons' Ask about lessons an email to us", cardSrc.includes("`/enroll/${block.cohortId}`") && cardSrc.includes("href={ASK_ABOUT_LESSONS_HREF}") && cardSrc.includes('track="lessons"') && cardSrc.includes("source={source}") && !cardSrc.includes("/intake"));
 {
   const cardOnly = cardSrc.slice(cardSrc.indexOf("export function ProgramGroupCard("), cardSrc.indexOf("export function ArrangedGroupRow"));
   const rowOnly = cardSrc.slice(cardSrc.indexOf("export function ArrangedGroupRow"));
@@ -264,7 +264,8 @@ check("Enroll and Ask to join open the block's sign-up page; private lessons' As
   // sending a signed-in taker's "Ask to join" to the dashboard. Its button no
   // longer opens the quiz, so nothing swaps: Enroll is Enroll for everyone.
   check("a card's button is a plain link, the same for everyone signed in or not: no quiz swap", !cardOnly.includes("quizAware") && !cardOnly.includes("TrackedLink") && cardSrc.indexOf("function GroupButton(") < cardSrc.indexOf("export function ProgramGroupCard(") && !cardSrc.slice(cardSrc.indexOf("function GroupButton("), cardSrc.indexOf("export function ProgramGroupCard(")).includes("quizAware"));
-  check("the private lessons row keeps Ask about lessons on the quiz for everyone (quizAware={false})", rowOnly.includes("quizAware={false}") && !rowOnly.includes('quizAware="href"'));
+  // Re-pinned for backlog #103: the row read quizAware={false}, keeping its quiz link for a quiz-taker. It emails us now, the same for everyone.
+  check("the private lessons row's Ask about lessons is the same for everyone: no quiz swap", !rowOnly.includes("quizAware") && rowOnly.includes('track="lessons"'));
 }
 check("the lime and the outline button share one height, so sibling feet line up", cardSrc.includes('const BUTTON_SHAPE = "h-[46px] whitespace-nowrap";'));
 check("on a tablet the stacked top row keeps the chip's room, so a card with no chip keeps its title level", cardSrc.includes("md:min-h-[52px] md:flex-col") && cardSrc.includes("lg:min-h-[26px] lg:flex-row"));
@@ -317,9 +318,11 @@ console.log("Seats: one read, the enroll page's count, display only");
 }
 
 console.log("A group with no fixed class: one row");
-const soloRow = render(createElement(ArrangedGroupRow, { group: g("private-lessons"), program: privateProgram, source: "programs-group" }));
+const soloRow = render(createElement(ArrangedGroupRow, { group: g("private-lessons"), source: "programs-group" }));
 check("private lessons: its name, by arrangement and the price in one line, no chip", soloRow.includes(">One-to-one coaching</h3>") && soloRow.includes(`>By arrangement · ${PRIVATE_LESSONS_PRICE}</p>`) && !soloRow.includes("Open to join") && soloRow.includes('<article id="private-lessons"'));
-check("one outline button, Ask about lessons, where the private card's link always led", count(soloRow, "<a ") === 1 && /<a [^>]*href="\/intake\?program=private-lessons"[^>]*>Ask about lessons<\/a>/.test(soloRow) && !/<a [^>]*bg-\[#B4E655\]/.test(soloRow));
+// Re-pinned for backlog #103: the button led to the quiz for the program; it
+// opens an email to us now, the subject filled in, with the address under it.
+check("one outline button, Ask about lessons, an email to us with the address written under it", count(soloRow, "<a ") === 1 && /<a [^>]*href="mailto:info@tennisbootcamp\.ca\?subject=Private%20lessons"[^>]*>Ask about lessons<\/a><p [^>]*>info@tennisbootcamp\.ca<\/p>/.test(soloRow) && !/<a [^>]*bg-\[#B4E655\]/.test(soloRow));
 
 console.log("ProgramCatalogView markup");
 const catalogPrograms: CatalogProgram[] = listedPrograms.map((p) => ({ slug: p.slug, title: p.title }));

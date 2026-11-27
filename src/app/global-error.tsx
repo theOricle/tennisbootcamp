@@ -1,11 +1,11 @@
 "use client";
 
-export default function GlobalError({
-  reset,
-}: {
-  error: Error & { digest?: string };
-  reset: () => void;
-}) {
+// The whole-site error screen. It replaces the root layout, so it has no
+// header or footer and draws itself with inline styles. Its button reloads
+// the page, which asks the server for everything again, and its text ends
+// with the error screen's way to reach us (backlog #103): reset() alone
+// redrew from what the browser already held.
+export default function GlobalError() {
   return (
     <html lang="en">
       <body style={{ margin: 0, background: "#061427" }}>
@@ -50,7 +50,15 @@ export default function GlobalError({
                 marginBottom: "32px",
               }}
             >
-              We hit an unexpected error. Try again, or head back home.
+              We hit an unexpected error. Reload the page, or head back home. If it
+              keeps happening, email{" "}
+              <a
+                href="mailto:info@tennisbootcamp.ca"
+                style={{ color: "#B4E655", textDecoration: "underline", textUnderlineOffset: "2px" }}
+              >
+                info@tennisbootcamp.ca
+              </a>
+              .
             </p>
             <div
               style={{
@@ -61,7 +69,8 @@ export default function GlobalError({
               }}
             >
               <button
-                onClick={reset}
+                type="button"
+                onClick={() => window.location.reload()}
                 style={{
                   background: "#B4E655",
                   color: "#061427",
@@ -73,7 +82,7 @@ export default function GlobalError({
                   cursor: "pointer",
                 }}
               >
-                Try again
+                Reload the page
               </button>
               {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
               <a

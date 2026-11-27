@@ -3,12 +3,15 @@
 import Link from "next/link";
 import type { ComponentProps } from "react";
 import { Button } from "@/components/ui/Button";
-import { trackAssessmentCtaClick, trackQuizCtaClick } from "@/lib/analytics";
+import { trackAssessmentCtaClick, trackLessonsCtaClick, trackQuizCtaClick } from "@/lib/analytics";
 import { useQuizStatus } from "@/lib/useQuizStatus";
 
 type TrackedButtonProps = ComponentProps<typeof Button> & {
-  /** Which funnel CTA this is: the quiz or the optional assessment. */
-  track: "quiz" | "assessment";
+  /**
+   * Which funnel CTA this is: the quiz, the optional assessment, or "Ask
+   * about lessons", which opens an email to us (backlog #103).
+   */
+  track: "quiz" | "assessment" | "lessons";
   /** Where on the site, e.g. "program-detail" (audit L13). */
   source: string;
   /**
@@ -16,9 +19,8 @@ type TrackedButtonProps = ComponentProps<typeof Button> & {
    * have taken it (owner, 2026-10-12): "Open your dashboard". Only a
    * signed-in account is ever a quiz-taker; signed out, every visitor keeps
    * the quiz (owner, 2026-11-18). Pass false for a link that must always
-   * open the quiz ("Ask about lessons"). The server render, and the first
-   * client render, keep the quiz, so a static page never flashes the wrong
-   * label.
+   * open the quiz. The server render, and the first client render, keep the
+   * quiz, so a static page never flashes the wrong label.
    */
   quizAware?: boolean;
 };
@@ -36,6 +38,7 @@ export function TrackedButton({ track, source, onClick, quizAware, href, childre
       href={swap ? quiz.next.href : href}
       onClick={(e) => {
         if (track === "quiz") trackQuizCtaClick(swap ? `${source}-taken` : source);
+        else if (track === "lessons") trackLessonsCtaClick(source);
         else trackAssessmentCtaClick(source);
         onClick?.(e);
       }}
@@ -46,7 +49,7 @@ export function TrackedButton({ track, source, onClick, quizAware, href, childre
 }
 
 type TrackedLinkProps = ComponentProps<typeof Link> & {
-  track: "quiz" | "assessment";
+  track: "quiz" | "assessment" | "lessons";
   source: string;
   /**
    * As TrackedButton's, plus "href": the link keeps its own words and only
@@ -68,6 +71,7 @@ export function TrackedLink({ track, source, onClick, quizAware, href, children,
       href={swap ? quiz.next.href : href}
       onClick={(e) => {
         if (track === "quiz") trackQuizCtaClick(swap ? `${source}-taken` : source);
+        else if (track === "lessons") trackLessonsCtaClick(source);
         else trackAssessmentCtaClick(source);
         onClick?.(e);
       }}

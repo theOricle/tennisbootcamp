@@ -123,6 +123,15 @@ export const PRIVATE_LESSONS_PRICE = "Rates on request";
 
 export const CONTACT_EMAIL = "info@tennisbootcamp.ca";
 
+/**
+ * "Ask about lessons" (private lessons) opens an email to us with its subject
+ * filled in (backlog #103). It opened the quiz until then, whose steps are
+ * about groups. Wherever the button shows, the address is written next to
+ * it, for a visitor with no mail app.
+ */
+const LESSONS_EMAIL_SUBJECT = "Private lessons";
+export const ASK_ABOUT_LESSONS_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(LESSONS_EMAIL_SUBJECT)}`;
+
 // Who each program is for at band level (audit M37), youngest first. Exact
 // ages live on the groups below; see the `ageBands` note in src/types/program.ts.
 const YOUTH_BANDS: AgeBand[] = ["junior", "teen"];

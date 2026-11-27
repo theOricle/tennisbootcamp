@@ -2,7 +2,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { CONTACT_EMAIL, groupsForProgram, priceLineFor, programs } from "@/content/programs";
+import { ASK_ABOUT_LESSONS_HREF, CONTACT_EMAIL, groupsForProgram, priceLineFor, programs } from "@/content/programs";
 import type { Program } from "@/types/program";
 import { EmailCapture } from "@/components/sections/EmailCapture";
 import { GoodToKnow } from "@/components/sections/GoodToKnow";
@@ -260,9 +260,9 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               {/* The main button (owner, 2026-11-16; "Join a bootcamp"), to this
                   page's own group list, with the quiz as a side line under
                   it, for this program. A program booked by arrangement has
-                  no group to join: its lime button asks about lessons, and
-                  leads where it always led, the quiz for the program (it
-                  keeps its own words for a quiz-taker too). Then the
+                  no group to join: its lime button asks about lessons by
+                  email, the subject filled in (backlog #103; it opened the
+                  quiz until then, whose steps are about groups). Then the
                   optional assessment as an outline pill at 44px, not 12px
                   grey text (audit M12), for a scheduled program. A signed-in
                   holder is already on our list: the panel shows them their
@@ -278,10 +278,9 @@ export default async function ProgramDetailPage({ params }: PageProps) {
                 ) : (
                   <TrackedButton
                     variant="primary"
-                    href={quizHref}
-                    track="quiz"
+                    href={ASK_ABOUT_LESSONS_HREF}
+                    track="lessons"
                     source="program-detail"
-                    quizAware={false}
                     className="mt-4 w-full"
                     data-main-cta
                   >
@@ -309,8 +308,9 @@ export default async function ProgramDetailPage({ params }: PageProps) {
               </ProgramViewerPanel>
               {/* A program booked by arrangement offers the inbox to
                   everyone, so it sits outside the panel: a signed-in holder,
-                  whose panel replaces the quiz, still has a way to ask for a
-                  lesson. */}
+                  whose panel replaces Ask about lessons, still has a way to
+                  ask for a lesson, and a visitor with no mail app reads the
+                  address right under that button (backlog #103). */}
               {arranged && (
                 <Button variant="secondary" href={`mailto:${CONTACT_EMAIL}`} className="mt-3 w-full">
                   Email {CONTACT_EMAIL}
