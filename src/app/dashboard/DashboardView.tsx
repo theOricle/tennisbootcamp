@@ -489,6 +489,16 @@ export function DashboardView(props: DashboardViewProps) {
             </p>
             <p className="mt-2 text-lg font-semibold text-white md:text-xl">{step.headline}</p>
             <p className="mt-2 text-sm leading-relaxed text-white/70">{step.detail}</p>
+            {/* Every other dated item on the account, one short line each,
+                soonest first (backlog #98): in the detail's own size and
+                colour, so they read as part of it. No label, no card. */}
+            {step.also && step.also.length > 0 && (
+              <ul role="list" className="mt-2 space-y-1 text-sm leading-relaxed text-white/70">
+                {step.also.map((line, i) => (
+                  <li key={`${i}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            )}
             {/* The unused $20, with its condition (audit M25) — unless the
                 invite above already did the sum. */}
             {creditLine && step.kind !== "invite" && (
@@ -544,12 +554,15 @@ export function DashboardView(props: DashboardViewProps) {
               // above already says what happens. A held spot or a pending
               // e-transfer means the coach has placed someone, so the card says
               // nothing is enrolled yet and points up instead of "placing".
+              // With nothing on file, nobody is being placed (backlog #98).
               <div className={`${SURFACE} p-6`}>
                 <p className="text-sm leading-relaxed text-white/75">
                   {step.kind === "invite"
                     ? "Nothing is enrolled yet. Claim the spot held above and the program shows here."
                     : step.kind === "etransfer"
                     ? "Nothing is enrolled yet. The program shows here once our coaches confirm the e-transfer above."
+                    : step.kind === "quiz"
+                    ? "Nothing is enrolled yet. Programs show here once you enroll."
                     : voice === "you"
                     ? "Our coaches are placing you — your group, dates and price land here."
                     : `Our coaches are placing ${namesList(names)} — ${several ? "groups, dates and prices" : "the group, dates and price"} land here.`}
@@ -759,8 +772,10 @@ export function DashboardView(props: DashboardViewProps) {
         {/* A quiz-taker keeps the small links only (owner, 2026-10-12):
             add a player, or retake if the answers changed. An account that
             never took the quiz (it enrolled as a guest) is offered it here,
-            as an outline link — the next-step card stays the one primary. */}
-        {quizTaken ? (
+            as an outline link — the next-step card stays the one primary.
+            When the next step is the quiz itself, nothing here repeats it
+            (backlog #98). */}
+        {step.kind === "quiz" ? null : quizTaken ? (
           <p className="mt-4 text-xs text-white/60">
             Training someone else too — a child, a partner, or yourself?{" "}
             <Link href="/intake?add=1" className={quizLinkClass}>

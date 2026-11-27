@@ -2,6 +2,7 @@ import type { Cohort, SessionSlot } from "@/types/cohort";
 import type { ClassDay, ProgramGroup } from "@/types/program";
 import { AGE_BAND_QUERIES } from "@/lib/programFilters";
 import { isAgeBand } from "@/lib/ageBand";
+import { computeAge, groupTakesExactAge } from "@/lib/enrollPlayers";
 import { formatCohortPrice } from "@/lib/cohorts";
 import { generateSessionDates } from "@/lib/makeup";
 import {
@@ -445,19 +446,45 @@ export function privateTierMatches<T extends { cohort: Pick<Cohort, "visibility"
 }
 
 /** A player as an account holds one: enough to tell which groups' ages take them. */
-export type AgePlayer = { age_band?: string | null; is_minor: boolean };
+export type AgePlayer = {
+  age_band?: string | null;
+  is_minor: boolean;
+  /**
+   * The player's date of birth ("YYYY-MM-DD"), when the record holds one.
+   * It decides before the band: the player's age on the block's first class.
+   */
+  date_of_birth?: string | null;
+};
 
 /**
- * Does a group's age range take this player? Ages only, never the level: the
- * player's band as an age range (junior 7–13, teen 14–17, adult 18 and up,
- * the catalog's own), or, with no band, under 18 or 18 and up.
+ * Does a group's age range take this player? Ages only, never the level
+ * (backlog #98: a 14-year-old was offered the 16-and-up adult groups).
+ *   1. A date of birth on the record decides: the player's age on the
+ *      block's first class (`firstClass`, ISO), inside the group's ages.
+ *   2. Else the age band, which must sit wholly inside the group's ages
+ *      (junior 7–13, teen 14–17, adult 18 and up, the catalog's own): a teen
+ *      is never offered a 16-and-up group, a junior is offered a 7–17 one.
+ *   3. Else, with neither, as before: under 18 or 18 and up, overlapping.
+ * Every planned youth group is narrower than a band (7–10, 11–15, 12–17),
+ * so a junior or a teen with no date of birth is offered only a youth block
+ * that takes 7–17 (a block off the lineup).
  */
-export function groupTakesPlayerAge(g: Pick<ProgramGroup, "ageMin" | "ageMax">, player: AgePlayer): boolean {
-  const range = isAgeBand(player.age_band)
-    ? AGE_BAND_QUERIES[player.age_band]
-    : player.is_minor
-      ? { min: 0, max: 17 }
-      : { min: 18, max: null };
+export function groupTakesPlayerAge(
+  g: Pick<ProgramGroup, "ageMin" | "ageMax">,
+  player: AgePlayer,
+  firstClass?: string | null
+): boolean {
+  if (player.date_of_birth && firstClass) {
+    const age = computeAge(player.date_of_birth, new Date(`${firstClass}T00:00:00`));
+    if (age !== null && age >= 0) return groupTakesExactAge(g, age);
+  }
+  if (isAgeBand(player.age_band)) {
+    const band = AGE_BAND_QUERIES[player.age_band];
+    const fromMin = g.ageMin === null || g.ageMin <= band.min;
+    const toMax = g.ageMax === null || (band.max !== null && band.max <= g.ageMax);
+    return fromMin && toMax;
+  }
+  const range = player.is_minor ? { min: 0, max: 17 } : { min: 18, max: null };
   const aboveMin = g.ageMin === null || range.max === null || g.ageMin <= range.max;
   const belowMax = g.ageMax === null || g.ageMax >= range.min;
   return aboveMin && belowMax;
@@ -465,21 +492,31 @@ export function groupTakesPlayerAge(g: Pick<ProgramGroup, "ageMin" | "ageMax">, 
 
 /**
  * The open blocks the dashboard lists for an account: the signed-in list,
- * less the blocks the account is already enrolled in, and only those whose
- * ages take at least one of its players, so an adult-only household sees no
- * youth group. Ages only, never the level. An account with no player on
- * file sees every open block.
+ * less the blocks the account is already enrolled in or holds an open spot
+ * in (backlog #98: its next step says "Claim my spot", so the same block
+ * never also reads "Enroll" below it), and only those whose ages take at
+ * least one of its players, so an adult-only household sees no youth group.
+ * Ages only, never the level. An account with no player on file sees every
+ * open block.
  */
 export function accountOpenCards(
   cards: readonly GroupCard[],
-  account: { enrolledCohortIds: readonly string[]; players: readonly AgePlayer[] }
+  account: {
+    enrolledCohortIds: readonly string[];
+    /** Blocks with a spot held for the account: an invite still invited, its hold not lapsed. */
+    heldCohortIds?: readonly string[];
+    players: readonly AgePlayer[];
+  }
 ): GroupCard[] {
-  const enrolled = new Set(account.enrolledCohortIds);
-  return signedInOpenCards(cards).filter(
-    (c) =>
-      !enrolled.has((c.block as BlockFacts).cohortId) &&
-      (account.players.length === 0 || account.players.some((p) => groupTakesPlayerAge(c.group, p)))
-  );
+  const taken = new Set([...account.enrolledCohortIds, ...(account.heldCohortIds ?? [])]);
+  return signedInOpenCards(cards).filter((c) => {
+    const block = c.block as BlockFacts;
+    return (
+      !taken.has(block.cohortId) &&
+      (account.players.length === 0 ||
+        account.players.some((p) => groupTakesPlayerAge(c.group, p, block.firstClass)))
+    );
+  });
 }
 
 /**

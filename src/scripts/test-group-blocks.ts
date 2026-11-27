@@ -341,8 +341,11 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   const novicePanel = youthBlock({ id: "nov-panel", levelMin: 2, levelMax: 2.5, sessions: [{ day: "Sat", start: "13:00", end: "14:00" }] });
   const mixed = groupCards(programGroups, [open, novicePanel]);
   const adultOnly = panel(mixed, 1, [{ age_band: "adult", is_minor: false }]);
-  const juniorOnly = panel(mixed, 1, [{ age_band: "junior", is_minor: true }]);
-  check("the quiz panel lists only the blocks whose ages take one of the household's players", count(adultOnly, "<article") === 1 && adultOnly.includes("/enroll/beg-sun") && !adultOnly.includes("/enroll/nov-panel") && count(juniorOnly, "<article") === 1 && juniorOnly.includes("/enroll/nov-panel") && !juniorOnly.includes("/enroll/beg-sun"));
+  // Backlog #98: a band must sit wholly inside a group's ages, so the 11–15
+  // block is listed for a child whose date of birth makes them 12 on its
+  // first class, and never for a junior band (7–13) alone.
+  const twelveOnly = panel(mixed, 1, [{ age_band: "junior", is_minor: true, date_of_birth: "2014-06-01" }]);
+  check("the quiz panel lists only the blocks whose ages take one of the household's players", count(adultOnly, "<article") === 1 && adultOnly.includes("/enroll/beg-sun") && !adultOnly.includes("/enroll/nov-panel") && count(twelveOnly, "<article") === 1 && twelveOnly.includes("/enroll/nov-panel") && !twelveOnly.includes("/enroll/beg-sun"));
   const adultsNoFit = panel(groupCards(programGroups, [novicePanel]), 1, [{ age_band: "adult", is_minor: false }]);
   check("…and with blocks open for other ages only, the panel says none is open to them", adultsNoFit.includes(`>${noOpenGroupLine("you")}</p>`) && !adultsNoFit.includes(NO_DATES_LINE) && !adultsNoFit.includes("<article") && /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(adultsNoFit));
   check("…a link to the groups, and the dashboard button the one lime action", /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(noBlocks) && lime(linkTo(noBlocks, "/intake")));
@@ -370,9 +373,12 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   check("an adult-only household sees no youth group, and every adult block whatever its level", seen([adult]) === "beg-sun,adv-sun", seen([adult]));
   const beginnerAdult = { ...adult, level: 1 };
   check("…the level never filters: a Beginner adult still sees the Advanced block", seen([beginnerAdult]) === "beg-sun,adv-sun");
-  check("a junior sees the youth blocks whose ages take juniors, and no adult group", seen([junior]) === "nov-sat", seen([junior]));
-  check("a teen sees the youth block that takes 14 and 15, and the 16-and-up adult blocks", seen([teen]) === "nov-sat,beg-sun,adv-sun", seen([teen]));
-  check("a household sees what fits any of its players; a player with no band reads as under 18 (so 16 and up still fits) or 18 and up", seen([adult, junior]) === "nov-sat,beg-sun,adv-sun" && seen([{ is_minor: true }]) === "nov-sat,beg-sun,adv-sun" && seen([{ is_minor: false }]) === "beg-sun,adv-sun" && !groupTakesPlayerAge(g("youth-7-10"), { is_minor: false }));
+  // Backlog #98: a band is offered a group only when the whole band sits
+  // inside the group's ages, so a junior (7–13) and a teen (14–17) with no
+  // date of birth see neither the 11–15 block nor a 16-and-up adult block.
+  check("a junior band alone sees no block it might be too young or too old for, and no adult group", seen([junior]) === "", seen([junior]));
+  check("a teen band alone sees neither the 11–15 block nor the 16-and-up adult blocks", seen([teen]) === "", seen([teen]));
+  check("a household sees what fits any of its players; a player with no band reads as under 18 (so 16 and up still fits) or 18 and up", seen([adult, junior]) === "beg-sun,adv-sun" && seen([{ is_minor: true }]) === "nov-sat,beg-sun,adv-sun" && seen([{ is_minor: false }]) === "beg-sun,adv-sun" && !groupTakesPlayerAge(g("youth-7-10"), { is_minor: false }));
   check("a block the account is already in drops out", seen([adult], ["beg-sun"]) === "adv-sun");
   check("by approval stays out, whoever fits it", !seen([teen]).includes("hp") && !seen([]).includes("hp"));
   check("an account with no player on file sees every open block but the by-approval one", seen([]) === "nov-sat,beg-sun,adv-sun");

@@ -562,7 +562,8 @@ sections.push(function point2() {
     const page = read("src/app/enroll/[cohortId]/page.tsx");
     check("the sign-up page reads the same rule", page.includes("accountCreditView({") && page.includes("await creditsForSeats({") && !/findUnusedCredit|listUnusedCreditsForAccount/.test(page));
     const dash = read("src/app/dashboard/page.tsx");
-    check("the dashboard's line is fed what a charge would apply, and nothing else", dash.includes("const credits = creditView.ready;") && dash.includes("creditLine={creditLine(credits, roster, self?.id ?? null)}"));
+    // Backlog #98: less any $20 a waiting e-transfer already took (its step says it once).
+    check("the dashboard's line is fed what a charge would apply, and nothing else", dash.includes("const credits = creditView.ready;") && dash.includes("creditLine={creditLine(credits, roster, self?.id ?? null, { invites, cohorts, today })}"));
     check("…and the waiting $20 is named, not promised", dash.includes("creditWaiting={creditView.waiting.length > 0}"));
     for (const file of ["src/app/api/checkout/route.ts", "src/lib/cohortActions.ts", "src/app/enroll/[cohortId]/page.tsx", "src/app/dashboard/page.tsx", "src/app/profile/page.tsx"]) {
       check(`${file}: no credit lookup of its own`, /findUnusedCredit|listUnusedCreditsForAccount|claimCredit\(/.test(read(file)), false);

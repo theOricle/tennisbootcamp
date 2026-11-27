@@ -477,8 +477,10 @@ const session = (over: Partial<DashSession> = {}): DashSession => ({
   );
   check("paid with no dated sessions → dates coming", nextStepFor(base({ enrollments: [paid] })).kind, "dates-coming");
 
-  const placing = nextStepFor(base({ roster: [parent], voice: "you" }));
-  check("nothing on the account → our coaches are placing you", placing.headline, "Our coaches are placing you in a group and time.");
+  // Something on file (quiz answers) and nothing booked; with nothing on file
+  // at all the next step is the quiz instead (backlog #98, test-dashboard-messages.ts).
+  const placing = nextStepFor(base({ roster: [{ ...parent, age_band: "adult" }], voice: "you", nothingOnFile: false }));
+  check("quiz answers on file, nothing booked → our coaches are placing you", placing.headline, "Our coaches are placing you in a group and time.");
   check("one primary, the optional assessment as the secondary", [placing.primary?.label, placing.secondary?.label], ["Update my availability", "Book Your Assessment"]);
   ok("the $20 mechanic is spelled out (voice rule 2)", placing.detail.includes("It costs $20, and if you enroll in a program afterward that $20 comes off the price."));
   check("a child-only account speaks about the child", nextStepFor(base({ roster: [leo] })).headline, "Our coaches are placing Leo in a group and time.");
