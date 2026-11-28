@@ -307,3 +307,14 @@ The club is data (`src/content/locations.ts`: id, name, area, and a Google Maps 
 - Write as a world-class coach speaking directly to a motivated player
 - Confident, athletic, premium — not salesy, casual, or exclamation-heavy
 - Refer to `ops/briefs/brand.md` for full voice guidelines before writing any public-facing copy
+
+## The dashboard (backlog #105)
+
+`src/app/dashboard/DashboardView.tsx`; lists in `src/lib/dashboardCalm.ts`; pinned by `test-dashboard-one-look.ts`. Where this section and an older line above differ about the dashboard, this section stands.
+
+- **Order:** the welcome (`Heading` h1, "Edit profile" beside it, no card) · the next step (the page's one `Card` with a lime button, and only when there is something to do) · "Coming up" · one card per group · "Groups with dates" (`OpenGroupsList`, the /programs cards, drawn quiet) · "Open for your tier" (private blocks only) · the players · "Suggested for you", one row per program, only when no group with dates is listed.
+- **Section pattern:** under the next step each section is heading left, content right from `lg` (`lg:grid-cols-[minmax(0,1fr)_minmax(0,2.3fr)]`), the "Good to know" pattern on /programs; stacked below `lg`.
+- **Rules:** no capital label over a heading; every heading on the `Heading` scale; one card style and never a card inside a card; rows sit on hairlines (`divide-y divide-white/10`); no shadow, no side stripe; no court plate and no age chips on a group card; no arrow typed after a link's words; one lime button at most.
+- **A player** is one row: the tier emblem (44px), the name, the level as one line, the week as one line with "Edit times", which opens the same `AvailabilityEditor` grid (closed by default).
+- **Loading and error** (`DashboardStates.tsx`) keep the page's shape: a skeleton of the welcome, the card and two sections; the error as a heading, one line with info@tennisbootcamp.ca and an outline "Refresh".
+- **Footer:** the newsletter line is not drawn on a signed-in page (`isPrivateAreaPath`, `src/lib/mainAction.ts`); the availability legend reads 12-hour times, display only.

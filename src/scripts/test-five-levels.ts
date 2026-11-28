@@ -311,8 +311,9 @@ async function main() {
   check("the levels strip: Five levels, the five names from tiers.ts", strip.includes("{COUNT} levels.") && strip.includes("TIER_COUNT_WORD") && strip.includes("{TIERS.map((tier, i) => (") && render(createElement(TierLine, { variant: "ladder", orientation: "horizontal", density: "compact" })).includes("High Performance"));
   check("/assessment: a five-rung ladder, and the top rung's range explained", read("src/app/assessment/page.tsx").includes("{TIER_COUNT_WORD}-rung ladder") && read("src/app/assessment/page.tsx").includes("runs from 5.0 to 7.0"));
   check("/about, /programs (through the strip) and the booking page read the count from tiers.ts", read("src/app/about/page.tsx").includes("The {TIER_COUNT_WORD} tiers") && read("src/app/programs/page.tsx").includes("<LevelsStrip") && strip.includes("TIER_COUNT_WORD") && !/>\s*Five (levels|tiers)/.test(read("src/app/programs/page.tsx")) &&read("src/app/assessment/book/page.tsx").includes("one of {TIER_COUNT_WORD}"));
-  const ghost = read("src/app/dashboard/page.tsx");
-  check("the dashboard skeleton draws five rail groups, the last five pips wide", ghost.includes('{ height: "h-[18px]", flex: "flex-[5]", pips: 5 }') && count(ghost, "pips: 2") === 4);
+  // Backlog #105: the dashboard shows a level as one line beside the emblem, so its skeleton draws no rail.
+  const ghost = read("src/app/dashboard/DashboardStates.tsx");
+  check("the dashboard skeleton draws no level rail: a level is one line beside the emblem", !ghost.includes("pips") && ghost.includes("function SectionGhost") && !read("src/app/dashboard/page.tsx").includes("RAIL_GHOST"));
   const gallery = read("src/app/admin/tiers/TierGallery.tsx");
   check("/admin/tiers shows five tiers, a 5.5 rail and the set mode", gallery.includes("Five tiers × four states") && gallery.includes("level={5.5}") && gallery.includes("tiers={[1, 2, 5]}"));
 

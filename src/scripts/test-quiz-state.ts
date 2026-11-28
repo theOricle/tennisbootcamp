@@ -486,7 +486,7 @@ const login = read("src/app/login/page.tsx");
 check("enroll gates are quiz-aware", (read("src/app/enroll/[cohortId]/page.tsx").match(/track="quiz"/g) ?? []).length >= 3);
 const dashView = read("src/app/dashboard/DashboardView.tsx");
 check("dashboard: a taker keeps Add another player and Retake the quiz; an account that never took it is offered it", dashView.includes('href="/intake?add=1"') && dashView.includes('href="/intake?retake=1"') && dashView.includes("Not placed yet? Take the 2-minute quiz") && read("src/app/dashboard/page.tsx").includes("quizTaken={accountQuizStatus(players).taken}"));
-check("dashboard: still one primary", (dashView.match(/className=\{primaryButton\}/g) ?? []).length === 1);
+check("dashboard: still one primary", (dashView.match(/<Button href=/g) ?? []).length === 1 && dashView.includes("{step.primary && <Button href={step.primary.href}>{step.primary.label}</Button>}") && (dashView.match(/<Button /g) ?? []).length === 1 + (dashView.match(/<Button variant="secondary"/g) ?? []).length);
 check("the privacy policy names the cookie: first-party, what it holds, a year, how to clear it", read("src/app/legal/privacy/page.tsx").includes("first-party cookie") && /holds no name or email/.test(read("src/app/legal/privacy/page.tsx").replace(/\s+/g, " ")) && read("src/app/legal/privacy/page.tsx").includes("kept for a year") && read("src/app/legal/privacy/page.tsx").includes("Clearing your") && read("src/app/legal/privacy/page.tsx").includes('EFFECTIVE_DATE = "October 12, 2026"'));
 
 console.log("Who is this for? — the chooser");

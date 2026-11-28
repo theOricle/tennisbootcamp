@@ -47,6 +47,18 @@ export const MAIN_CTA_ATTR = "data-main-cta";
 export const PRIVATE_AREA_PREFIXES = ["/dashboard", "/profile", "/enroll", "/admin"] as const;
 
 /**
+ * Whether a path is in one of the areas that are not public. The footer's
+ * newsletter line reads it (backlog #105): a family with an account is not
+ * asked for its email again, so the line shows on public pages only. An
+ * unknown path (null) is treated as public.
+ */
+export function isPrivateAreaPath(pathname: string | null | undefined): boolean {
+  if (!pathname) return false;
+  const path = (pathname.split(/[?#]/)[0] || "/").replace(/\/+$/, "") || "/";
+  return PRIVATE_AREA_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
+/**
  * Routes where the header and the phone menu carry no main button: the quiz
  * (its own Next button is the only primary, audit L12) and the areas that
  * are not public.

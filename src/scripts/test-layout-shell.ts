@@ -314,7 +314,7 @@ check("footer Site column: Programs, Locations, About, Assessment", FOOTER_GROUP
 check("footer columns: Site, then Policies, then Contact", FOOTER_GROUPS.map((g) => g.heading).join("|") === "Site|Policies" && at(footer, "FOOTER_GROUPS.map") < at(footer, "Contact"));
 // The one newsletter line, on every page, with an id a "Notify me" button points at.
 const footerLine = read("src/components/layout/FooterNewsletter.tsx");
-check("footer opens with the newsletter line, with an id to link to", NEWSLETTER_ANCHOR === "notify" && footer.includes("id={NEWSLETTER_ANCHOR}") && footer.includes("<FooterNewsletter />") && !footer.includes("<EmailCapture") && at(footer, "<FooterNewsletter />") < at(footer, "FOOTER_GROUPS.map"));
+check("footer opens with the newsletter line, with an id to link to", NEWSLETTER_ANCHOR === "notify" && footer.includes("id={NEWSLETTER_ANCHOR}") && footer.includes("<FooterNewsletter") && !footer.includes("<EmailCapture") && at(footer, "<FooterNewsletter") < at(footer, "FOOTER_GROUPS.map"));
 // Fix round, 2026-11-17: the line recorded one source for every page. The
 // live site tells home signups from Programs signups in the sheet's source
 // column, so the line records the page it sits on, in the same values.

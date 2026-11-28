@@ -17,12 +17,15 @@ export type Band = (typeof BANDS)[number];
 /**
  * The hour definition behind each band. This is the standard every surface
  * shows next to the grid; change it here and intake, request-a-time and the
- * dashboard all follow.
+ * dashboard all follow. `label` is display only, in 12-hour times like the
+ * rest of the site (backlog #105): nothing stored, sent to the Sheet or
+ * matched on reads it. The stored value is the band key ("mor", "aft",
+ * "eve"), and `start` and `end` stay 24-hour for the matching code.
  */
 export const BAND_HOURS: Record<Band, { start: string; end: string; label: string }> = {
-  mor: { start: "08:00", end: "12:00", label: "8:00–12:00" },
-  aft: { start: "12:00", end: "16:00", label: "12:00–16:00" },
-  eve: { start: "16:00", end: "20:00", label: "16:00–20:00" },
+  mor: { start: "08:00", end: "12:00", label: "8am–12pm" },
+  aft: { start: "12:00", end: "16:00", label: "12–4pm" },
+  eve: { start: "16:00", end: "20:00", label: "4–8pm" },
 };
 
 /** One-line caveat shown with the evening band on outdoor courts. */

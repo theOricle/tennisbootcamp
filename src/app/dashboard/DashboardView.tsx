@@ -11,44 +11,66 @@ import {
   type PlayerRecord,
 } from "@/lib/players";
 import { AGE_BAND_LABELS } from "@/lib/ageBand";
-import { locations } from "@/content/locations";
-import { LocationBlock } from "@/components/locations/LocationLine";
-import { formatTierLevel, formatTierSpan, hasLevel, levelNumber, type PlacedSpan } from "@/lib/tiers";
-import { artFocusForCohort } from "@/lib/plates/variant";
+import { locationForCohort } from "@/content/locations";
+import { programGroups } from "@/content/programs";
+import {
+  formatTierLevel,
+  formatTierSpan,
+  hasLevel,
+  levelNumber,
+  tierForLevel,
+  type PlacedSpan,
+} from "@/lib/tiers";
 import {
   ENROLLMENT_CHIP,
-  enrollmentNote,
-  enrollmentState,
-  fmt12h,
+  enrollmentIsActive,
   fmtMonthDay,
   weeklySlots,
+  type DashBooking,
+  type DashInvite,
+  type EnrollmentState,
   type NextStep,
 } from "@/lib/dashboardState";
+import {
+  comingUp,
+  enrolledGroups,
+  groupNotes,
+  timesLine,
+  type ComingUpItem,
+  type EnrolledGroup,
+} from "@/lib/dashboardCalm";
 import { firstNameOf, namesList, possessive } from "@/lib/householdView";
-import { RankCard, TierLine, TierRangeBadges } from "@/components/tiers";
-import { ProgramPlate } from "@/components/plates/ProgramPlate";
-import { PlateMark } from "@/components/plates/PlateMark";
-import { AgeBandChips } from "@/components/programs/AgeBandChips";
-import { ProgramCardList } from "@/components/sections/ProgramCard";
+import { LevelTag, TierEmblem, TierLine, TierRangeBadges, formatShortDate } from "@/components/tiers";
 import { OPEN_GROUPS_HEADING, OpenGroupsList } from "@/components/sections/OpenGroups";
 import { QuizSideLine } from "@/components/ui/MainAction";
-import type { GroupCard } from "@/lib/groupBlocks";
-import { suggestionsSubCopy, type ProgramFit, type SuggestedProgram } from "@/lib/programCatalog";
-import { AvailabilityEditor } from "./AvailabilityEditor";
+import { Button } from "@/components/ui/Button";
+import { CARD_CLASS } from "@/components/ui/Card";
+import { Heading } from "@/components/ui/Heading";
+import { TEXT_LINK_LIME, TEXT_LINK_MUTED } from "@/components/ui/TextLink";
+import { CalendarIcon, ClockIcon } from "@/components/ui/icons";
+import { PinIcon } from "@/components/locations/LocationLine";
+import { NEWSLETTER_ANCHOR } from "@/content/site";
+import { signedInOpenCards, type GroupCard } from "@/lib/groupBlocks";
+import { formatClassHours, programWhoWhenLine, type SuggestedProgram } from "@/lib/programCatalog";
+import { PlayerTimes } from "./PlayerTimes";
 
 // Presentation only. The page (page.tsx) reads everything behind the holder's
 // session and hands it over as plain data; the words for each state come
-// from src/lib/dashboardState.ts. One surface style throughout — the
-// homepage card: rounded-2xl, border white/10, bg white/5. Mobile order top
-// to bottom: next step, tiers, my programs, groups with dates, open for your
-// tier, players, availability, suggestions.
+// from src/lib/dashboardState.ts and the lists from src/lib/dashboardCalm.ts.
 //
-// The next-step card is the one primary on the page (audit M32): every other
-// action is an outline button or a text link, the open blocks' "Enroll" under
-// "Groups with dates" included (the same cards as /programs, drawn quiet).
-// The page speaks to the players
-// who train (audit M26): a parent who registered only a child reads about
-// that child by name, never "you" as an unranked player.
+// The dashboard in the site's one look (backlog #105). Top to bottom: the
+// welcome as a plain heading with "Edit profile"; the next step, the page's
+// one card with a lime button, and only when there is something to do;
+// "Coming up", every dated item; one card per group with each player's own
+// status; groups with dates, the /programs cards; one players section (level
+// emblem, the week as one line, "Edit times" opens the grid, "Add another
+// player"); suggestions only when no group with dates is listed. Under the
+// next step every section reads heading left, content right from lg, the
+// "Good to know" pattern on /programs. The rules it follows: no capital
+// label over a heading, every heading on the Heading scale, one card style
+// (Card, no shadow, never a card in a card, no side stripe), 12-hour times,
+// the group's name and never the coach's block label, no arrow typed after
+// a link's words.
 
 export type DashboardEnrollment = {
   id: string;
@@ -87,150 +109,246 @@ export type DashboardViewProps = {
   cohorts: Cohort[];
   /** Dated session rows keyed by cohort id (empty when none are generated yet). */
   sessionsByCohort: Record<string, CohortSessionRow[]>;
+  /** The account's upcoming assessment bookings, for "Coming up". */
+  bookings?: DashBooking[];
+  /** The account's invites: a held spot's deadline is listed in "Coming up". */
+  invites?: DashInvite[];
+  /** The current instant (ISO); holds are compared against it. Defaults to now. */
+  now?: string;
   /** Open cohorts a player on the account may join by level, not yet enrolled. */
   openForTier: OpenForTier[];
   /**
    * The open blocks as group cards (owner, 2026-11-19), each with "Enroll" to
    * its sign-up page: the same cards as /programs, for this account
-   * (accountOpenCards, src/lib/groupBlocks.ts: not a block it is in, not a
-   * by-approval one, ages that take one of its players). None reads one
-   * line, by anyGroupOpen: no group has dates yet, or none with dates is
-   * open to this account.
+   * (accountOpenCards, src/lib/groupBlocks.ts).
    */
   openGroups?: GroupCard[];
   /** Whether any block is open at all, listed for this account or not. */
   anyGroupOpen?: boolean;
-  /**
-   * "Suggested for you" (audit M31): programs the account isn't enrolled in
-   * that fit at least one player's age and level, with the ranked player each
-   * one fits, from suggestProgramsFor(), less any program whose groups with
-   * dates are listed above them (suggestionsBesideCards).
-   */
+  /** Programs that fit a player, shown only when no group with dates is listed. */
   suggestions: SuggestedProgram[];
   programs: Program[];
-  /**
-   * A quiz-placed player's cohort band, by player id (audit L17, owner D6-B):
-   * the RankCard's Placed state for a player with no level who trains in a
-   * tier-banded cohort. Absent or null means unranked.
-   */
+  /** A quiz-placed player's cohort band, by player id (audit L17, owner D6-B). */
   placedSpans?: Record<string, PlacedSpan | null>;
-  /** Today in Toronto as "YYYY-MM-DD" — splits upcoming from past sessions. */
+  /** Today in Toronto as "YYYY-MM-DD". */
   today: string;
-  /**
-   * Whether anyone on the account has taken the 2-minute quiz (owner,
-   * 2026-10-12; src/lib/quizStatus.ts accountQuizStatus). A quiz-taker keeps
-   * only the small "Add another player" and "Retake the quiz" links; an
-   * account that never took it (a guest enrollment) is offered the quiz.
-   */
+  /** Whether anyone on the account has taken the 2-minute quiz. */
   quizTaken?: boolean;
 };
 
-export const SURFACE = "rounded-2xl border border-white/10 bg-white/5 shadow-md";
+const FACT_GLYPH = "mt-[3px] h-[15px] w-[15px] shrink-0 opacity-65";
 
-function fmtSessionDate(iso: string): string {
-  return fmtMonthDay(iso);
-}
-
-function fmtSlot(start: string, end: string): string {
-  return `${fmt12h(start)}–${fmt12h(end)}`;
-}
+const CHIP_BASE = "inline-flex min-h-6 shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-medium";
+const CHIP_TONE: Record<"lime" | "neutral" | "warn" | "muted", string> = {
+  lime: "bg-[#B4E655]/10 text-[#B4E655]",
+  neutral: "border border-white/15 bg-white/5 text-white/85",
+  warn: "border border-yellow-400/30 bg-yellow-400/10 text-yellow-200",
+  muted: "border border-dashed border-white/25 text-white/75",
+};
 
 function relationshipLine(player: PlayerRecord): string {
-  const rel = isRelationship(player.relationship)
-    ? RELATIONSHIP_LABELS[player.relationship]
-    : "";
+  const rel = isRelationship(player.relationship) ? RELATIONSHIP_LABELS[player.relationship] : "";
   const age = player.age_band ? AGE_BAND_LABELS[player.age_band] : player.is_minor ? "Under 18" : "";
   return [rel, age].filter(Boolean).join(" · ");
 }
 
 /**
- * The player's tier in words for dense rows: "Intermediate · 3.0", "Provisional ·
- * Intermediate group" (placed, until the coach confirms the level in week one;
- * joining flow, owner 2026-10-12), "Unranked".
+ * "Groups with dates" lists a full block with "Notify me". This page carries
+ * no newsletter line of its own (FooterNewsletter), so the button opens the
+ * one on /programs.
  */
-function tierWords(player: PlayerRecord, placed: PlacedSpan | null | undefined): string {
-  if (hasLevel(player.level)) return formatTierLevel(player.level);
-  if (placed) return `Provisional · ${formatTierSpan(placed.min, placed.max)} group`;
-  return "Unranked";
-}
+const NOTIFY_HREF = `/programs#${NEWSLETTER_ANCHOR}`;
 
-/** Section heading used everywhere on the page — one style, no divider rules. */
-function SectionHeading({
-  id,
-  title,
-  sub,
-  aside,
-}: {
-  id?: string;
-  title: string;
-  sub?: string;
-  aside?: ReactNode;
-}) {
+/** A small chevron for a disclosure, drawn, never a text glyph. */
+function Chevron({ className = "" }: { className?: string }) {
   return (
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h2 id={id} className="scroll-mt-24 text-xl font-semibold text-white">
-          {title}
-        </h2>
-        {sub && <p className="mt-1 text-sm text-white/60">{sub}</p>}
-      </div>
-      {aside}
-    </div>
+    <svg viewBox="0 0 24 24" className={`h-4 w-4 ${className}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="m9 6 6 6-6 6" />
+    </svg>
   );
 }
 
-/** A text link that is still a 44px target (audit L31). */
-const linkClass =
-  "inline-flex min-h-[44px] items-center rounded text-sm font-semibold text-white/70 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
-
-const primaryButton =
-  "inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#B4E655] px-6 text-sm font-semibold text-[#061427] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
-
-const secondaryButton =
-  "inline-flex min-h-[44px] items-center justify-center rounded-full border border-white/25 px-6 text-sm font-semibold text-white/80 transition hover:border-white/45 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
-
-/** The small quiz links under the availability editor (inline, lime, with the ring). */
-const quizLinkClass =
-  "rounded font-semibold text-[#B4E655]/80 underline-offset-2 hover:text-[#B4E655] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]";
-
-const CHIP_TONE: Record<"lime" | "neutral" | "warn" | "muted", string> = {
-  lime: "bg-[#B4E655]/10 text-[#B4E655]",
-  neutral: "border border-white/15 bg-white/5 text-white/85",
-  warn: "border border-amber-300/30 bg-amber-300/10 text-amber-100",
-  muted: "border border-dashed border-white/25 text-white/75",
-};
-
-// ─── Sessions ────────────────────────────────────────────────────────────────
-
-type SessionWithMakeup = { row: CohortSessionRow; replaces?: CohortSessionRow };
-
-function splitSessions(sessions: CohortSessionRow[], today: string) {
-  const byId = new Map(sessions.map((s) => [s.id, s]));
-  const visible = sessions
-    .filter((s) => s.status !== "cancelled")
-    .map<SessionWithMakeup>((row) => ({
-      row,
-      replaces: row.makeup_for ? byId.get(row.makeup_for) : undefined,
-    }));
-  const upcoming = visible.filter((s) => s.row.session_date >= today);
-  const past = visible.filter((s) => s.row.session_date < today).reverse();
-  return { upcoming, past };
+/** "e-transfer" never breaks at its hyphen. */
+function keepWhole(text: string): string {
+  return text.replace(/e-transfer/g, "e‑transfer");
 }
 
-function SessionRow({ row, replaces, muted = false }: SessionWithMakeup & { muted?: boolean }) {
+// ─── A section: heading left, content right from lg ─────────────────────────
+
+function Section({
+  id,
+  title,
+  sub,
+  children,
+}: {
+  id: string;
+  title: string;
+  sub?: string;
+  children: ReactNode;
+}) {
   return (
-    <li
-      className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm ${
-        muted ? "text-white/60" : "text-white/80"
-      }`}
+    <section
+      aria-labelledby={`${id}-heading`}
+      id={id}
+      className="grid scroll-mt-24 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.3fr)] lg:gap-12"
     >
-      <span className="w-[7.5rem] shrink-0 font-medium">
-        {dayNameForDate(row.session_date)} {fmtSessionDate(row.session_date)}
+      <div>
+        <Heading id={`${id}-heading`} className="text-balance">
+          {title}
+        </Heading>
+        {sub && <p className="mt-2 max-w-md text-[15px] text-white/70">{sub}</p>}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </section>
+  );
+}
+
+// ─── The next step: the page's one card with a lime button ───────────────────
+
+function NextStepCard({
+  step,
+  creditLine,
+  creditWaiting,
+}: {
+  step: NextStep;
+  creditLine: string | null;
+  creditWaiting: boolean;
+}) {
+  const hasActions = Boolean(step.primary || step.secondary || step.quizSideLine);
+  return (
+    <section aria-labelledby="next-step" className={`${CARD_CLASS} p-6 md:p-8`}>
+      <Heading id="next-step" className="max-w-3xl text-balance">
+        {keepWhole(step.headline)}
+      </Heading>
+      {/* A waiting e-transfer: what to type, as three labelled values. */}
+      {step.facts && (
+        <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
+          {step.facts.map((f) => (
+            <div key={f.label} className="min-w-0">
+              <dt className="text-sm text-white/60">{f.label}</dt>
+              <dd className="mt-0.5 break-words text-[17px] font-semibold tabular-nums text-white">{f.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <p className={`${step.facts ? "mt-4" : "mt-3"} max-w-2xl text-[15px] leading-relaxed text-white/75`}>
+        {keepWhole(step.detail)}
+      </p>
+      {/* The unused $20, with its condition (audit M25), unless the
+          invite above already did the sum. */}
+      {creditLine && step.kind !== "invite" && (
+        <p className="mt-4 max-w-2xl border-t border-white/10 pt-4 text-[15px] leading-relaxed text-white/75">{creditLine}</p>
+      )}
+      {creditWaiting && (
+        <CreditWaitingNote page="dashboard" next="/dashboard" className="mt-4 border-t border-white/10 pt-4" />
+      )}
+      {hasActions && (
+        <div className="mt-6">
+          {(step.primary || step.secondary) && (
+            <div className="flex flex-wrap gap-3">
+              {/* The page's one lime button. */}
+              {step.primary && <Button href={step.primary.href}>{step.primary.label}</Button>}
+              {step.secondary && (
+                <Button variant="secondary" href={step.secondary.href}>
+                  {step.secondary.label}
+                </Button>
+              )}
+            </div>
+          )}
+          {/* The quiz as the main action's side line, never a lime button. */}
+          {step.quizSideLine && <QuizSideLine source="dashboard" className="mt-3" />}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Coming up ───────────────────────────────────────────────────────────────
+
+function ComingUpList({ items }: { items: ComingUpItem[] }) {
+  return (
+    <ul role="list" className="divide-y divide-white/10 border-y border-white/10">
+      {items.map((item) => (
+        <li key={item.id} className="flex items-start gap-5 py-3.5">
+          <p className="w-[3.75rem] shrink-0 tabular-nums">
+            <span className="block text-xs text-white/60">{item.weekday}</span>
+            <span className="block text-[15px] font-semibold text-white">{item.day}</span>
+          </p>
+          <div className="min-w-0">
+            <p className="text-[15px] font-semibold text-white">
+              {item.title}
+              <span className="whitespace-nowrap font-normal tabular-nums text-white/75"> · {item.time}</span>
+            </p>
+            <p className="text-sm text-white/70">{item.detail}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ─── Your groups: one per block, with its players ────────────────────────────
+
+function PlayerChips({ group, notes }: { group: EnrolledGroup; notes: string[] }) {
+  return (
+    <>
+      <ul role="list" className="space-y-2">
+        {group.players.map((p) => {
+          const chip = ENROLLMENT_CHIP[p.state];
+          return (
+            <li key={p.enrollmentId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <span className="text-[15px] font-medium text-white">{p.name ?? "You"}</span>
+              <span className={`${CHIP_BASE} ${CHIP_TONE[chip.tone]}`}>{chip.label}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {/* Each state's own line, once, however many players share it. */}
+      {notes.map((note) => (
+        <p key={note} className="mt-2 text-sm text-white/70">
+          {note}
+        </p>
+      ))}
+    </>
+  );
+}
+
+function GroupFacts({ group }: { group: EnrolledGroup }) {
+  const club = group.cohort ? locationForCohort(group.cohort)?.name : null;
+  return (
+    <ul role="list" className="mt-2 space-y-1 text-sm text-white/75">
+      {group.dates && (
+        <li className="flex items-start gap-2 font-medium tabular-nums text-white">
+          <CalendarIcon className={FACT_GLYPH} />
+          {group.dates}
+        </li>
+      )}
+      {group.days && (
+        <li className="flex items-start gap-2 tabular-nums">
+          <ClockIcon className={FACT_GLYPH} />
+          {group.days}
+        </li>
+      )}
+      {club && (
+        <li className="flex items-start gap-2">
+          <PinIcon className={FACT_GLYPH} />
+          {club}
+        </li>
+      )}
+    </ul>
+  );
+}
+
+function ClassRow({ row, replaces, muted = false }: { row: CohortSessionRow; replaces?: CohortSessionRow; muted?: boolean }) {
+  return (
+    <li className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm tabular-nums ${muted ? "text-white/60" : "text-white/80"}`}>
+      <span className="w-[6.5rem] shrink-0 font-medium">
+        {dayNameForDate(row.session_date)} {fmtMonthDay(row.session_date)}
       </span>
-      <span>{fmtSlot(row.start_time, row.end_time)}</span>
+      <span>{formatClassHours(row.start_time.slice(0, 5), row.end_time.slice(0, 5))}</span>
       {row.makeup_for && (
-        <span className="rounded-full bg-sky-400/15 px-2 py-0.5 text-xs font-semibold text-sky-200">
-          Make-up{replaces ? ` · replaces ${fmtSessionDate(replaces.session_date)}` : ""}
+        <span className={`${CHIP_BASE} bg-sky-400/15 text-sky-200`}>
+          Make-up{replaces ? `, replaces ${fmtMonthDay(replaces.session_date)}` : ""}
         </span>
       )}
     </li>
@@ -238,190 +356,191 @@ function SessionRow({ row, replaces, muted = false }: SessionWithMakeup & { mute
 }
 
 /**
- * Dated sessions for an enrolled cohort: upcoming first, past ones collapsed
- * behind a disclosure so a finished block no longer reads as current.
- * Make-ups are badged with the session they replace.
+ * The dated classes of a block that has them, behind one line: the ones to
+ * come, then the ones already played. A cancelled class is not listed; its
+ * make-up names the date it replaces.
  */
-function SessionList({
-  sessions,
-  today,
-}: {
-  sessions: CohortSessionRow[];
-  today: string;
-}) {
-  const { upcoming, past } = splitSessions(sessions, today);
+function ClassDates({ sessions, today }: { sessions: CohortSessionRow[]; today: string }) {
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  const held = sessions.filter((s) => s.status !== "cancelled");
+  const upcoming = held.filter((s) => s.session_date >= today);
+  const past = held.filter((s) => s.session_date < today).reverse();
+  if (held.length === 0) return null;
   return (
-    <div className="mt-4 border-t border-white/10 pt-3">
-      {upcoming.length > 0 ? (
+    <details className="group mt-4 border-t border-white/10 pt-1">
+      <summary className={`${TEXT_LINK_MUTED} cursor-pointer list-none gap-1.5 font-semibold [&::-webkit-details-marker]:hidden`}>
+        <Chevron className="transition-transform group-open:rotate-90" />
+        Class dates ({upcoming.length > 0 ? upcoming.length : held.length})
+      </summary>
+      {upcoming.length > 0 && (
+        <ul role="list" className="divide-y divide-white/10 pb-1">
+          {upcoming.map((s) => (
+            <ClassRow key={s.id} row={s} replaces={s.makeup_for ? byId.get(s.makeup_for) : undefined} />
+          ))}
+        </ul>
+      )}
+      {past.length > 0 && (
         <>
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
-            Upcoming
-          </p>
-          <ul className="mt-1 divide-y divide-white/5">
-            {upcoming.map((s) => (
-              <SessionRow key={s.row.id} {...s} />
+          <p className="pt-2 text-sm text-white/60">Past</p>
+          <ul role="list" className="divide-y divide-white/10 pb-1">
+            {past.map((s) => (
+              <ClassRow key={s.id} row={s} replaces={s.makeup_for ? byId.get(s.makeup_for) : undefined} muted />
             ))}
           </ul>
         </>
-      ) : (
-        <p className="text-sm text-white/60">No upcoming sessions.</p>
       )}
-      {past.length > 0 && (
-        <details className="group mt-3">
-          {/* A 44px target (audit L31). */}
-          <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center rounded text-sm font-semibold text-white/70 transition-colors hover:text-white [&::-webkit-details-marker]:hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061427]">
-            <span className="inline-block w-4 transition-transform group-open:rotate-90" aria-hidden="true">
-              ›
-            </span>
-            Past sessions ({past.length})
-          </summary>
-          <ul className="mt-1 divide-y divide-white/5 pl-4">
-            {past.map((s) => (
-              <SessionRow key={s.row.id} {...s} muted />
-            ))}
-          </ul>
-        </details>
-      )}
-    </div>
+    </details>
   );
 }
 
-// ─── Tiers (audit M24, M26) ──────────────────────────────────────────────────
-
-function TierSection({
-  roster,
-  self,
-  placedSpans,
-}: {
-  roster: PlayerRecord[];
-  self: PlayerRecord | null;
-  placedSpans: Record<string, PlacedSpan | null>;
-}) {
-  if (roster.length === 0) return null;
-
-  if (roster.length === 1) {
-    const player = roster[0];
-    const isSelf = player.id === self?.id;
-    const title = isSelf ? "Your tier" : `${possessive(firstNameOf(player.full_name) || "Your player")} tier`;
-    return (
-      <section aria-labelledby="tiers">
-        {/* The card's own eyebrow names the player; the heading is for the outline. */}
-        <h2 id="tiers" className="sr-only">
-          {title}
-        </h2>
-        <RankCard
-          player={player}
-          layout="wide"
-          isSelf={isSelf}
-          placedSpan={placedSpans[player.id] ?? null}
-          headingLevel="h3"
-        />
-      </section>
-    );
-  }
-
-  const columns = roster.length >= 3 ? "md:grid-cols-2 xl:grid-cols-3" : "md:grid-cols-2";
-  return (
-    <section aria-labelledby="tiers">
-      <SectionHeading id="tiers" title="Your players' tiers" sub="Each player's level, set by our coaches and confirmed on court in week one." />
-      <div className={`grid gap-4 ${columns}`}>
-        {roster.map((player) => (
-          <RankCard
-            key={player.id}
-            player={player}
-            layout="compact"
-            isSelf={player.id === self?.id}
-            placedSpan={placedSpans[player.id] ?? null}
-            headingLevel="h3"
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ─── My programs ─────────────────────────────────────────────────────────────
-
-function EnrollmentCard({
-  enrollment,
-  cohort,
-  program,
+function EnrolledGroupCard({
+  group,
   sessions,
   today,
+  quietStates,
 }: {
-  enrollment: DashboardEnrollment;
-  cohort: Cohort | undefined;
-  program: Program | undefined;
+  group: EnrolledGroup;
   sessions: CohortSessionRow[];
   today: string;
+  /** States whose line the next step already said. */
+  quietStates: readonly EnrollmentState[];
 }) {
-  const state = enrollmentState(enrollment, cohort);
-  const chip = ENROLLMENT_CHIP[state];
-  const note = enrollmentNote(state);
-  const active = state === "enrolled" || state === "test";
-  const hasDated = sessions.some((s) => s.status !== "cancelled");
+  const active = group.players.some((p) => enrollmentIsActive(p.state));
   return (
-    <article className={`${SURFACE} overflow-hidden`}>
-      {/* The program's Court Plate, flush to the top (design specs §4.8):
-          the strip frame, profiled by the cohort's band, the court side
-          picked by its id. */}
-      {program && (
-        <div className="aspect-[3/1] w-full overflow-hidden border-b border-white/10 bg-[#061427]">
-          <ProgramPlate
-            plate={program.plate}
-            frame="strip"
-            density="compact"
-            comingSoon={program.comingSoon || state === "cancelled"}
-            levelMin={cohort?.levelMin}
-            levelMax={cohort?.levelMax}
-            seed={cohort?.id ?? enrollment.cohort_id}
-            focusSlot={cohort ? artFocusForCohort(program, cohort) : null}
-          />
+    <article className={`${CARD_CLASS} p-5 md:p-6`}>
+      <div className="grid gap-5 sm:grid-cols-2 sm:gap-8">
+        <div className="min-w-0">
+          <LevelTag level={group.level} plain />
+          <Heading as="h3" className="mt-2 leading-tight">
+            {group.name}
+          </Heading>
+          <GroupFacts group={group} />
         </div>
-      )}
-      <div className="p-5 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-white">
-              {program?.title ?? enrollment.program ?? enrollment.cohort_id}
-            </h3>
-            <p className="mt-1 text-sm text-white/60">
-              {[cohort?.label, enrollment.participant_name ? `Player: ${enrollment.participant_name}` : null]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-          </div>
-          {/* The row's state in words (audit M25): never the raw status. */}
-          <span
-            className={`inline-flex min-h-6 shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold ${CHIP_TONE[chip.tone]}`}
-          >
-            {chip.label}
-          </span>
+        <div className="border-t border-white/10 pt-4 sm:border-l sm:border-t-0 sm:pl-8 sm:pt-0">
+          <PlayerChips group={group} notes={groupNotes(group, quietStates)} />
         </div>
-        {/* Age as chips, the cohort's tier span as a chip (audit M24). */}
-        {(program?.ageBands.length || cohort) && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            {program && <AgeBandChips bands={program.ageBands} />}
-            {cohort && <TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />}
-          </div>
-        )}
-        {note && <p className="mt-3 text-sm leading-relaxed text-white/70">{note}</p>}
-
-        {active && hasDated ? (
-          <SessionList sessions={sessions} today={today} />
-        ) : state !== "cancelled" && cohort && cohort.sessions.length > 0 ? (
-          <div className="mt-4 border-t border-white/10 pt-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
-              Weekly schedule
-            </p>
-            <p className="mt-1 text-sm text-white/80">
-              {weeklySlots(cohort)}
-              {cohort.startDate ? `, starting ${fmtMonthDay(cohort.startDate)}` : ""}
-            </p>
-          </div>
-        ) : null}
       </div>
+      {active && <ClassDates sessions={sessions} today={today} />}
     </article>
+  );
+}
+
+// ─── Players ─────────────────────────────────────────────────────────────────
+
+/** The player's level in one line, with the moment a provisional one is settled. */
+function levelLine(player: PlayerRecord, placed: PlacedSpan | null | undefined): string {
+  if (hasLevel(player.level)) {
+    const set = formatShortDate(player.level_assessed_at);
+    return `${formatTierLevel(player.level).replace(" · ", " · ")}${set ? ` · Set by our coaches · ${set}` : ""}`;
+  }
+  if (placed) {
+    return `${formatTierSpan(placed.min, placed.max)} group, provisional until our coaches confirm it on court in week one.`;
+  }
+  return "No level yet. Our coaches confirm it on court in week one.";
+}
+
+function PlayerRow({
+  player,
+  placed,
+  named,
+}: {
+  player: PlayerRecord;
+  placed: PlacedSpan | null | undefined;
+  named: boolean;
+}) {
+  const tier = tierForLevel(player.level) ?? (placed ? tierForLevel(placed.min) : null);
+  const meta = relationshipLine(player);
+  return (
+    <li className="py-4">
+      <div className="flex items-start gap-4">
+        <TierEmblem
+          tier={tier?.id ?? null}
+          state={hasLevel(player.level) ? "earned" : "provisional"}
+          size={44}
+          decorative
+          className="mt-0.5 shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <Heading as="h3" className="leading-tight">
+            {player.full_name?.trim() || "Unnamed player"}
+          </Heading>
+          {meta && <p className="mt-0.5 text-sm text-white/60">{meta}</p>}
+          <p className="mt-1 text-sm text-white/85">{levelLine(player, placed)}</p>
+          <div className="mt-1.5">
+            <PlayerTimes
+              participantId={player.id}
+              participantName={firstNameOf(player.full_name)}
+              showName={named}
+              line={timesLine(player.availability)}
+              availability={player.availability}
+              note={player.availability_note ?? ""}
+              updatedAt={player.availability_updated_at}
+              source={player.availability_source}
+            />
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * Under the players: add a player, and retake the quiz if the answers
+ * changed. An account that never took the quiz (it enrolled as a guest) is
+ * offered it here as a text link, unless the next step already offers it as
+ * its side line.
+ */
+function PlayerLinks({ quizTaken, quizOffered, several }: { quizTaken: boolean; quizOffered: boolean; several: boolean }) {
+  return (
+    <>
+      {!quizTaken && quizOffered && (
+        <p className="mt-4 text-sm text-white/70">
+          {several
+            ? "Not placed yet? Take the 2-minute quiz and our coaches place each player by level and schedule."
+            : "Not placed yet? Take the 2-minute quiz and our coaches place you by level and schedule."}
+        </p>
+      )}
+      <p className="mt-2 flex flex-wrap items-center gap-x-6">
+        <Link href="/intake?add=1" className={TEXT_LINK_LIME}>
+          Add another player
+        </Link>
+        {quizTaken ? (
+          <Link href="/intake?retake=1" className={TEXT_LINK_MUTED}>
+            Retake the quiz
+          </Link>
+        ) : quizOffered ? (
+          <Link href="/intake" className={TEXT_LINK_MUTED}>
+            Take the 2-minute quiz
+          </Link>
+        ) : null}
+      </p>
+    </>
+  );
+}
+
+// ─── Suggestions, as rows ────────────────────────────────────────────────────
+
+function SuggestionRows({ suggestions }: { suggestions: SuggestedProgram[] }) {
+  return (
+    <ul role="list" className="divide-y divide-white/10 border-y border-white/10">
+      {suggestions.map(({ program, fit }) => {
+        const groups = programGroups.filter((g) => g.programSlug === program.id);
+        const line = [programWhoWhenLine(groups), fit ? `Fits ${fit.name ?? "you"}` : null].filter(Boolean).join(" · ");
+        return (
+          <li key={program.id} className="flex flex-wrap items-center justify-between gap-x-6 py-3">
+            <div className="min-w-0">
+              <Heading as="h3" className="leading-tight">
+                {program.title}
+              </Heading>
+              <p className="mt-0.5 text-sm text-white/70">{line}</p>
+            </div>
+            <Link href={program.ctaHref} className={TEXT_LINK_LIME}>
+              See details<span className="sr-only">: {program.title}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -439,6 +558,8 @@ export function DashboardView(props: DashboardViewProps) {
     enrollments,
     cohorts,
     sessionsByCohort,
+    bookings = [],
+    invites = [],
     openForTier,
     openGroups = [],
     anyGroupOpen,
@@ -446,390 +567,154 @@ export function DashboardView(props: DashboardViewProps) {
     programs,
     placedSpans = {},
     today,
+    now = new Date().toISOString(),
     quizTaken = true,
   } = props;
 
   const several = roster.length > 1;
+  const named = voice === "named";
   const names = roster.map((p) => (p.id === self?.id ? "you" : firstNameOf(p.full_name) || "your player"));
-  const openCount = (playerId: string) =>
-    openForTier.filter((m) => m.players.some((p) => p.id === playerId)).length;
+  const whom = several ? "your players" : (names[0] ?? "you");
 
-  // "Open for your tier" in the voice of the players it is for.
-  const openTitle =
-    voice === "you"
-      ? "Open for your tier"
-      : several
-        ? "Open for your players"
-        : `Open for ${possessive(names[0] ?? "your player")} tier`;
+  const groups = enrolledGroups(enrollments, cohorts, programs);
+  // Every dated item on the account but the one the next step shows.
+  const upcoming = comingUp({
+    selfId: self?.id ?? null,
+    roster,
+    voice,
+    enrollments,
+    cohorts,
+    programs,
+    sessionsByCohort,
+    bookings,
+    invites,
+    today,
+    now,
+    shown: step.shown,
+  });
+  // Suggestions only when no group with dates is listed.
+  const showSuggestions = suggestions.length > 0 && signedInOpenCards(openGroups).length === 0;
+  // The e-transfer step already says the spot is held; the card's chip is enough.
+  const quietStates: EnrollmentState[] = step.kind === "etransfer" ? ["etransfer-pending"] : [];
 
   return (
-    <div className="space-y-10">
-      {/* Header card — welcome and one next step. The tier lives in its own
-          section below (audit M24), not as a badge here. */}
-      <section className={`${SURFACE} p-6 md:p-8`} aria-labelledby="dashboard-welcome">
-        <div className="grid gap-6 lg:grid-cols-5 lg:gap-10">
-          <div className="lg:col-span-2">
-            <h1 id="dashboard-welcome" className="text-2xl font-semibold text-white md:text-3xl">
-              {heading}
-            </h1>
-            <p className="mt-1 text-sm text-white/60">
-              {voice === "you"
-                ? "Your enrollments and upcoming programs."
-                : `Enrollments and programs for ${namesList(names)}.`}
-            </p>
-            <div className="mt-3">
-              <Link href="/profile" className={linkClass}>
-                Edit profile
-              </Link>
+    <div className="space-y-8 md:space-y-10">
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
+        <Heading as="h1" id="dashboard-welcome">
+          {heading}
+        </Heading>
+        <Link href="/profile" className={TEXT_LINK_MUTED}>
+          Edit profile
+        </Link>
+      </header>
+
+      <NextStepCard step={step} creditLine={creditLine} creditWaiting={creditWaiting} />
+
+      <div className="space-y-12 pt-4 md:space-y-16 md:pt-6">
+        {upcoming.length > 0 && (
+          <Section id="coming-up" title="Coming up">
+            <ComingUpList items={upcoming} />
+          </Section>
+        )}
+
+        {groups.length > 0 && (
+          <Section id="my-programs" title={groups.length === 1 ? "Your group" : "Your groups"}>
+            <div className="space-y-3">
+              {groups.map((g) => (
+                <EnrolledGroupCard
+                  key={g.cohortId}
+                  group={g}
+                  sessions={sessionsByCohort[g.cohortId] ?? []}
+                  today={today}
+                  quietStates={quietStates}
+                />
+              ))}
             </div>
-          </div>
+          </Section>
+        )}
 
-          <div className="rounded-2xl border border-[#B4E655]/20 bg-[#061427]/60 p-5 md:p-6 lg:col-span-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#B4E655]">
-              {step.eyebrow}
-            </p>
-            <p className="mt-2 text-lg font-semibold text-white md:text-xl">{step.headline}</p>
-            <p className="mt-2 text-sm leading-relaxed text-white/70">{step.detail}</p>
-            {/* Every other dated item on the account, one short line each,
-                soonest first (backlog #98): in the detail's own size and
-                colour, so they read as part of it. No label, no card. */}
-            {step.also && step.also.length > 0 && (
-              <ul role="list" className="mt-2 space-y-1 text-sm leading-relaxed text-white/70">
-                {step.also.map((line, i) => (
-                  <li key={`${i}-${line}`}>{line}</li>
-                ))}
-              </ul>
-            )}
-            {/* The unused $20, with its condition (audit M25) — unless the
-                invite above already did the sum. */}
-            {creditLine && step.kind !== "invite" && (
-              <p className="mt-3 border-t border-white/10 pt-3 text-sm leading-relaxed text-white/75">
-                {creditLine}
-              </p>
-            )}
-            {creditWaiting && (
-              <CreditWaitingNote
-                page="dashboard"
-                next="/dashboard"
-                className="mt-3 border-t border-white/10 pt-3"
-              />
-            )}
-            {(step.primary || step.secondary) && (
-              <div className="mt-5 flex flex-wrap gap-3">
-                {step.primary && (
-                  <Link href={step.primary.href} className={primaryButton}>
-                    {step.primary.label}
-                  </Link>
-                )}
-                {step.secondary && (
-                  <Link href={step.secondary.href} className={secondaryButton}>
-                    {step.secondary.label}
-                  </Link>
-                )}
-              </div>
-            )}
-            {/* The quiz as the main action's side line, never a lime button
-                (design-system.md), on the first step of an empty account. */}
-            {step.quizSideLine && <QuizSideLine source="dashboard" className="mt-3" />}
-          </div>
-        </div>
-      </section>
+        {/* Groups with dates: the same cards as /programs, each "Enroll" an
+            outline under the next step. With none listed, the one line that
+            is true. */}
+        <Section id="open-groups" title={OPEN_GROUPS_HEADING}>
+          <OpenGroupsList
+            cards={openGroups}
+            quiet
+            blocksOpen={anyGroupOpen}
+            whom={whom}
+            empty="line"
+            notifyHref={NOTIFY_HREF}
+          />
+        </Section>
 
-      {/* Tiers — the RankCard, wide for one player, compact per household player */}
-      <TierSection roster={roster} self={self} placedSpans={placedSpans} />
-
-      {/* Main + side */}
-      <div className="grid gap-10 lg:grid-cols-3 lg:gap-8">
-        <div className="space-y-10 lg:col-span-2">
-          {/* My programs */}
-          <section aria-labelledby="my-programs">
-            <SectionHeading
-              id="my-programs"
-              title="My programs"
-              sub={
-                enrollments.length > 0
-                  ? "Every cohort on your account, with its dated sessions."
-                  : undefined
-              }
-            />
-
-            {enrollments.length === 0 ? (
-              // The truth, and no second primary (audit M32): the next step
-              // above already says what happens. A held spot or a pending
-              // e-transfer means the coach has placed someone, so the card says
-              // nothing is enrolled yet and points up instead of "placing".
-              // With nothing on file, nobody is being placed (backlog #98).
-              <div className={`${SURFACE} p-6`}>
-                <p className="text-sm leading-relaxed text-white/75">
-                  {step.kind === "invite"
-                    ? "Nothing is enrolled yet. Claim the spot held above and the program shows here."
-                    : step.kind === "etransfer"
-                    ? "Nothing is enrolled yet. The program shows here once our coaches confirm the e-transfer above."
-                    : step.kind === "start"
-                    ? "Nothing is enrolled yet. Programs show here once you enroll."
-                    : voice === "you"
-                    ? "Our coaches are placing you — your group, dates and price land here."
-                    : `Our coaches are placing ${namesList(names)} — ${several ? "groups, dates and prices" : "the group, dates and price"} land here.`}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {enrollments.map((enrollment) => {
-                  const cohort = cohorts.find((c) => c.id === enrollment.cohort_id);
-                  const program = programs.find(
-                    (p) => p.id === (cohort?.programId ?? enrollment.program)
-                  );
-                  return (
-                    <EnrollmentCard
-                      key={enrollment.id}
-                      enrollment={enrollment}
-                      cohort={cohort}
-                      program={program}
-                      sessions={sessionsByCohort[enrollment.cohort_id] ?? []}
-                      today={today}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          {/* Groups with dates (owner, 2026-11-19: no dead end when signed
-              in): the account's open blocks as the same group cards as
-              /programs, each "Enroll" an outline to the block's sign-up page,
-              since the next step above is the page's one primary. With none
-              listed, one line says which is true, no group has dates yet or
-              none with dates is open to them, and points to the groups. */}
-          <section aria-labelledby="open-groups">
-            <SectionHeading id="open-groups" title={OPEN_GROUPS_HEADING} />
-            <OpenGroupsList
-              cards={openGroups}
-              quiet
-              blocksOpen={anyGroupOpen}
-              whom={several ? "your players" : (names[0] ?? "you")}
-            />
-          </section>
-
-          {/* Open cohorts a player's level admits (audit M27): per player, by
-              the same numeric rule /enroll uses. The span rail carries the
-              player's marker; the button is an outline, the next step above
-              is the page's one primary (audit M32). */}
-          {openForTier.length > 0 && (
-            <section aria-labelledby="open-for-tier">
-              <SectionHeading
-                id="open-for-tier"
-                title={openTitle}
-                sub="Cohorts whose level band fits, with room left."
-              />
-              <div className="space-y-4">
-                {openForTier.map(({ cohort: c, players: fits }) => {
-                  const program = programs.find((p) => p.id === c.programId);
-                  const first = fits[0];
-                  const firstLevel = levelNumber(first?.level);
-                  const fitNames = fits.map((p) =>
-                    p.id === self?.id ? "you" : firstNameOf(p.full_name) || "your player"
-                  );
-                  return (
-                    <article key={c.id} className={`${SURFACE} p-5 md:p-6`}>
-                      <div className="flex items-start gap-4">
-                        {program && (
-                          <PlateMark plate={program.plate} size={56} focusSlot={artFocusForCohort(program, c)} />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <h3 className="text-lg font-semibold text-white">
-                                {program?.title ?? c.programId} · {c.label}
-                              </h3>
-                              <p className="mt-1 text-sm text-white/60">
-                                Starts {fmtSessionDate(c.startDate)} · {c.weeks} week
-                                {c.weeks === 1 ? "" : "s"} · {weeklySlots(c)}
-                              </p>
-                              {voice === "named" && (
-                                <p className="mt-1 text-sm font-semibold text-white/85">
-                                  Fits {namesList(fitNames)}
-                                </p>
-                              )}
-                            </div>
-                            <TierRangeBadges levelMin={c.levelMin} levelMax={c.levelMax} />
-                          </div>
-                        </div>
+        {/* Open cohorts a player's level admits (audit M27), private blocks only. */}
+        {openForTier.length > 0 && (
+          <Section
+            id="open-for-tier"
+            title={voice === "you" ? "Open for your tier" : several ? "Open for your players" : `Open for ${possessive(names[0] ?? "your player")} tier`}
+            sub="Cohorts whose level band fits, with room left."
+          >
+            <div className="space-y-3">
+              {openForTier.map(({ cohort, players: fits }) => {
+                const program = programs.find((p) => p.id === cohort.programId);
+                const first = fits[0];
+                const firstLevel = levelNumber(first?.level);
+                const fitNames = fits.map((p) => (p.id === self?.id ? "you" : firstNameOf(p.full_name) || "your player"));
+                return (
+                  <article key={cohort.id} className={`${CARD_CLASS} p-5 md:p-6`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Heading as="h3">{program?.title ?? cohort.programId}</Heading>
+                        <p className="mt-1 text-sm text-white/70">
+                          Starts {fmtMonthDay(cohort.startDate)} · {cohort.weeks} week{cohort.weeks === 1 ? "" : "s"} · {weeklySlots(cohort)}
+                        </p>
+                        {named && <p className="mt-1 text-sm font-semibold text-white/85">Fits {namesList(fitNames)}</p>}
                       </div>
-                      <TierLine
-                        variant="rail"
-                        size="sm"
-                        span={{ min: c.levelMin, max: c.levelMax }}
-                        marker={
-                          firstLevel !== null
-                            ? {
-                                level: firstLevel,
-                                label: first.id === self?.id ? "You" : firstNameOf(first.full_name) || "Player",
-                              }
-                            : null
-                        }
-                        labels="ends"
-                        className="mt-4"
-                      />
-                      <Link href={`/enroll/${c.id}`} className={`${secondaryButton} mt-4`}>
-                        Enroll{voice === "named" && fits.length === 1 && first.id !== self?.id ? ` ${firstNameOf(first.full_name)}` : ""} →
-                      </Link>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-        </div>
+                      <TierRangeBadges levelMin={cohort.levelMin} levelMax={cohort.levelMax} />
+                    </div>
+                    <TierLine
+                      variant="rail"
+                      size="sm"
+                      span={{ min: cohort.levelMin, max: cohort.levelMax }}
+                      marker={
+                        firstLevel !== null
+                          ? { level: firstLevel, label: first.id === self?.id ? "You" : firstNameOf(first.full_name) || "Player" }
+                          : null
+                      }
+                      labels="ends"
+                      className="mt-4"
+                    />
+                    <Button variant="secondary" href={`/enroll/${cohort.id}`} className="mt-4">
+                      Enroll{named && fits.length === 1 && first.id !== self?.id ? ` ${firstNameOf(first.full_name)}` : ""}
+                    </Button>
+                  </article>
+                );
+              })}
+            </div>
+          </Section>
+        )}
 
-        {/* Side column — the players (households), then where we train. */}
-        <aside className="space-y-6">
-          {voice === "named" && (
-            <section className={`${SURFACE} p-5 md:p-6`} aria-labelledby="your-players">
-              <h2 id="your-players" className="text-base font-semibold text-white">
-                {several ? "Your players" : "Your player"}
-              </h2>
-              {/* One line per player: "Maya · Intermediate 3.0 — 1 cohort open" (audit M26). */}
-              <ul className="mt-4 divide-y divide-white/10">
-                {roster.map((player) => {
-                  const open = openCount(player.id);
-                  return (
-                    <li key={player.id} className="py-3 first:pt-0 last:pb-0">
-                      <p className="text-sm font-semibold text-white">
-                        {player.full_name?.trim() || "Unnamed player"}
-                      </p>
-                      <p className="text-xs text-white/60">{relationshipLine(player)}</p>
-                      <p className="mt-1 text-sm text-white/80">
-                        {tierWords(player, placedSpans[player.id])}
-                        {open > 0 && (
-                          <>
-                            {" — "}
-                            <Link
-                              href="#open-for-tier"
-                              className="font-semibold text-[#B4E655] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B4E655]/50"
-                            >
-                              {open} cohort{open === 1 ? "" : "s"} open
-                            </Link>
-                          </>
-                        )}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
-
-          <section className={`${SURFACE} p-5 md:p-6`} aria-labelledby="where-we-train">
-            <h2 id="where-we-train" className="text-base font-semibold text-white">
-              Where we train
-            </h2>
-            {/* The club by name (owner, 2026-10-12), with its map link. */}
-            <ul role="list" className="mt-3 space-y-3">
-              {locations.map((l) => (
-                <li key={l.id}>
-                  <LocationBlock location={l} />
-                </li>
+        <Section
+          id="availability"
+          title={named ? (several ? "Your players" : "Your player") : "Your level and times"}
+          sub="Our coaches build every group around the times its players can train. Keep this current."
+        >
+          {roster.length > 0 && (
+            <ul role="list" className="divide-y divide-white/10 border-y border-white/10">
+              {roster.map((player) => (
+                <PlayerRow key={player.id} player={player} placed={placedSpans[player.id]} named={named} />
               ))}
             </ul>
-          </section>
-        </aside>
-      </div>
+          )}
+          <PlayerLinks quizTaken={quizTaken} quizOffered={!step.quizSideLine} several={several} />
+        </Section>
 
-      {/* Availability — one card per player who trains. Explained once, here
-          (audit M32). */}
-      <section id="availability" className="scroll-mt-24" aria-labelledby="availability-heading">
-        <SectionHeading
-          id="availability-heading"
-          title={
-            voice === "you"
-              ? "Your availability"
-              : several
-                ? "Your players' availability"
-                : `${possessive(names[0] ?? "Your player")} availability`
-          }
-          sub="Our coaches build every group around the times its players can train. Keep this current."
-        />
-        <div className={`grid gap-4 ${several ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
-          {roster.map((player) => (
-            <div
-              key={player.id}
-              className={`${SURFACE} p-5 md:p-6 ${several ? "" : "lg:col-span-2"}`}
-            >
-              <div className="mb-4">
-                <p className="text-base font-semibold text-white">
-                  {player.full_name?.trim() || "Unnamed player"}
-                </p>
-                <p className="text-xs text-white/60">{relationshipLine(player)}</p>
-              </div>
-              <AvailabilityEditor
-                participantId={player.id}
-                participantName={player.full_name?.trim() ?? ""}
-                showName={voice === "named"}
-                initialAvailability={player.availability}
-                initialNote={player.availability_note ?? ""}
-                updatedAt={player.availability_updated_at}
-                source={player.availability_source}
-              />
-            </div>
-          ))}
-        </div>
-        {/* A quiz-taker keeps the small links only (owner, 2026-10-12):
-            add a player, or retake if the answers changed. An account that
-            never took the quiz (it enrolled as a guest) is offered it here,
-            as an outline link — the next-step card stays the one primary.
-            When the next step already offers the quiz as its side line,
-            nothing here repeats it (backlog #98). */}
-        {step.quizSideLine ? null : quizTaken ? (
-          <p className="mt-4 text-xs text-white/60">
-            Training someone else too — a child, a partner, or yourself?{" "}
-            <Link href="/intake?add=1" className={quizLinkClass}>
-              Add another player
-            </Link>
-            . Answers changed?{" "}
-            <Link href="/intake?retake=1" className={quizLinkClass}>
-              Retake the quiz
-            </Link>
-            .
-          </p>
-        ) : (
-          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <p className="text-sm text-white/70">
-              {several
-                ? "Not placed yet? Take the 2-minute quiz and our coaches place each player by level and schedule."
-                : "Not placed yet? Take the 2-minute quiz and our coaches place you by level and schedule."}
-            </p>
-            <Link href="/intake" className={secondaryButton}>
-              Take the 2-minute quiz
-            </Link>
-          </div>
+        {showSuggestions && (
+          <Section id="suggested" title="Suggested for you">
+            <SuggestionRows suggestions={suggestions} />
+          </Section>
         )}
-      </section>
-
-      {/* Suggested for you (audit M31, H7): the same spec-sheet card as the
-          home grid, filtered by each player's age and level, with "Fits
-          Maya" and her place on the rail. Hidden when there is nothing to
-          suggest. It never repeats a block (backlog #85): a program whose
-          groups with dates are listed above is left out, and the cards carry
-          no Next row, since the group cards are where a block's dates,
-          price and "Enroll" live. */}
-      {suggestions.length > 0 && (
-        <section aria-labelledby="suggested">
-          <SectionHeading
-            id="suggested"
-            title="Suggested for you"
-            sub={suggestionsSubCopy(roster, suggestions)}
-            aside={
-              <Link href="/programs" className={linkClass}>
-                Browse Programs →
-              </Link>
-            }
-          />
-          <ProgramCardList
-            programs={suggestions.map((s) => s.program)}
-            fits={Object.fromEntries(suggestions.map((s) => [s.program.id, s.fit])) as Record<string, ProgramFit>}
-          />
-        </section>
-      )}
+      </div>
     </div>
   );
 }

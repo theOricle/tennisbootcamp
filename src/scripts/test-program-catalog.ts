@@ -413,8 +413,9 @@ check(
 const dashboardPage = read("src/app/dashboard/page.tsx");
 check("dashboard: suggestions through suggestProgramsFor", dashboardPage.includes("suggestProgramsFor(roster, listedPrograms, enrolledProgramIds)"));
 const dashboardView = read("src/app/dashboard/DashboardView.tsx");
-check("dashboard: renders ProgramCardList with fits and the sub-copy", dashboardView.includes("<ProgramCardList") && dashboardView.includes("suggestionsSubCopy(roster, suggestions)") && dashboardView.includes("fits="));
-check("dashboard: the aside is the locked secondary label", dashboardView.includes("Browse Programs →") && !dashboardView.includes("View all"));
+// Backlog #105: one row per suggested program, and only when no group with dates is listed.
+check("dashboard: a suggestion is one row with who, when and who it fits, shown only when no group with dates is listed", dashboardView.includes("programWhoWhenLine(groups)") && dashboardView.includes("`Fits ${fit.name ?? \"you\"}`") && dashboardView.includes("const showSuggestions = suggestions.length > 0 && signedInOpenCards(openGroups).length === 0;") && !dashboardView.includes("<ProgramCardList"));
+check("dashboard: the aside is the locked secondary label, with no arrow typed after it", read("src/components/sections/OpenGroups.tsx").includes("Browse Programs") && !read("src/components/sections/OpenGroups.tsx").includes("Browse Programs →") && !dashboardView.includes("→") && !dashboardView.includes("View all"));
 const pkg = JSON.parse(read("package.json")) as { scripts: { test: string } };
 check("npm test runs this file", pkg.scripts.test.includes("npx tsx src/scripts/test-program-catalog.ts"));
 check("design-system.md documents the program cards", read("ops/briefs/design-system.md").includes("## Program cards"));
