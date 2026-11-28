@@ -57,7 +57,8 @@ async function main() {
   const actions = read("src/lib/cohortActions.ts");
   check("admin cohort actions revalidate the pages", actions.includes('import { revalidateCohortPages } from "@/lib/cohortRevalidate"') && (actions.match(/revalidateCohortPages\(\);/g) ?? []).length >= 5);
   const reval = read("src/lib/cohortRevalidate.ts");
-  check("revalidation covers home, /programs and every program page", reval.includes('["/", "/programs"]') && reval.includes('"/programs/[slug]"') && reval.includes('revalidatePath(COHORT_DETAIL_ROUTE, "page")'));
+  // Re-pinned for backlog #100: /locations lists the open blocks as /programs does, so it is rebuilt with it.
+  check("revalidation covers home, /programs, /locations and every program page", reval.includes('["/", "/programs", "/locations"]') && reval.includes('"/programs/[slug]"') && reval.includes('revalidatePath(COHORT_DETAIL_ROUTE, "page")'));
   check("revalidation never throws", reval.includes("} catch (err) {"));
 
   // ── M40: the SDK off the header's critical path ───────────────────────────

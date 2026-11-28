@@ -19,8 +19,10 @@
 //      the club, and the club-membership line stays neutral (D19).
 // Exits non-zero on any failure.
 
-// First: /locations reads the open blocks through a server-only module (backlog #99).
+// First: /locations reads the open blocks through a server-only module (backlog #99),
+// and through the stand-in database client, never the real one (backlog #100).
 import "./stub-server-only";
+import "./stub-cohort-reads";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
@@ -196,8 +198,9 @@ check("beside it, Coaching: the lead coach's name and title from coaches.ts, and
 check("the component types no club and no coach: both come from content", !read("src/components/sections/WhereAndWho.tsx").includes("Newtonbrook") && read("src/components/sections/WhereAndWho.tsx").includes("{lead.name}") && read("src/components/sections/WhereAndWho.tsx").includes("{location.name}"));
 
 // The page reads the open blocks as /programs does (backlog #99), so it
-// renders async: its checks run once it has rendered, at the end. There is no
-// database here, so every group reads as its card does with no open block.
+// renders async: its checks run once it has rendered, at the end. The
+// stand-in answers with no blocks (backlog #100: even where a database is
+// configured), so every group reads as its card does with no open block.
 async function locationsPageChecks() {
   console.log("/locations is back");
   const page = render(await LocationsPage());
