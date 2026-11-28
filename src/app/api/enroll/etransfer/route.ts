@@ -35,6 +35,7 @@ import { tooManyPlayers } from "@/lib/participantInput";
 import { enrollmentOwner } from "@/lib/enrollmentLink";
 import { SUBMISSION_LIMIT_ERROR } from "@/lib/submissionLimits";
 import { checkSubmissionLimit } from "@/lib/submissionLimitsDb";
+import { etransferTally, type EtransferPlayerOutcome } from "@/lib/etransferHandoff";
 
 // "I've sent it" on an e-transfer cohort (backlog #12). Mirrors what the card
 // path does at checkout — Supabase enrollment row + activation link — but no
@@ -210,7 +211,14 @@ export async function POST(req: NextRequest) {
     let first: Awaited<ReturnType<typeof recordEtransferIntent>> | null = null;
     let amountCents = 0;
     let creditCents = 0;
-    let alreadyPaid = true;
+    // Each player's own outcome (backlog #102): what is still due is read
+    // from these, player by player, never all-or-nothing.
+    const outcomes: EtransferPlayerOutcome[] = [];
+    // The account email goes once, with the first player who is not yet
+    // paid (backlog #102): the page after tells a guest to check their email
+    // whenever a player still owes, so it must go even when the first
+    // player on the request is already paid.
+    let accountNoticeSent = false;
     const claimedInviteIds: string[] = [];
     const claimedCreditBookingIds: string[] = [];
 
@@ -244,7 +252,12 @@ export async function POST(req: NextRequest) {
       if (!first) first = result;
       amountCents += result.amountCents;
       creditCents += result.creditCents;
-      if (!result.alreadyPaid) alreadyPaid = false;
+      outcomes.push({
+        alreadyPaid: result.alreadyPaid,
+        amountCents: result.amountCents,
+        creditCents: result.creditCents,
+        paidNamesPlayer: result.paidNamesPlayer,
+      });
 
       if (!result.alreadyPaid) {
         const enrollmentId = await saveEnrollmentToSupabase({
@@ -265,7 +278,8 @@ export async function POST(req: NextRequest) {
           status: "pending",
           userId: ownerId,
         });
-        if (i === 0) {
+        if (!accountNoticeSent) {
+          accountNoticeSent = true;
           // A new email gets the set-up email naming every player on the
           // transfer (owner, 2026-10-12); an existing, activated account
           // gets "Your spot is on your account" with the dashboard link (H5).
@@ -303,6 +317,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Per player (backlog #102): who is already paid, and what the others
+    // still owe. `alreadyPaid` stays "every player is paid".
+    const tally = etransferTally(outcomes);
+    const alreadyPaid = tally.alreadyPaid;
     if (!alreadyPaid) {
       // Flips every pending row for this cohort + email, so all the players
       // on one transfer move together.
@@ -319,6 +337,12 @@ export async function POST(req: NextRequest) {
       alreadyPaid,
       amountCents,
       creditCents,
+      // One entry per player, in the order sent, and what the players not
+      // yet paid still owe: the page after shows only that.
+      paidPlayers: tally.paidPlayers,
+      paidNamed: tally.paidNamed,
+      dueCents: tally.dueCents,
+      dueCreditCents: tally.dueCreditCents,
       recipientEmail: first?.ok ? first.recipientEmail : "",
       memo: first?.ok ? first.memo : "",
     });

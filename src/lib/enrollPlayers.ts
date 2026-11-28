@@ -152,6 +152,37 @@ export function guardianContact(input: {
   return { email: input.guardianEmail, phone: input.guardianPhone, fromHolder: false };
 }
 
+/** The holder's own name, asked on step 2 when the parent or guardian is someone else. */
+export const HOLDER_NAME_LABEL = "Your full name";
+export const HOLDER_NAME_HINT = "The account goes in your name. The parent or guardian stays as named below.";
+
+/**
+ * Whether step 2 asks the account holder's own name (backlog #102): on a
+ * youth group, with a player under 18, once "The parent or guardian is
+ * someone else" is ticked. Everywhere else the guardian is the holder, or
+ * the holder is the player, and no name is asked twice.
+ */
+export function asksHolderName(input: { askOnce: boolean; isMinor: boolean; other: boolean }): boolean {
+  return input.askOnce && input.isMinor && input.other;
+}
+
+/**
+ * The account holder's name as the page posts it (`accountName`). The
+ * holder's own when step 2 asked it; else the guardian's when a player is
+ * under 18, else the first player's, as before.
+ */
+export function postedHolderName(input: {
+  askOnce: boolean;
+  isMinor: boolean;
+  other: boolean;
+  holderName: string;
+  guardianName: string;
+  firstPlayerName: string;
+}): string {
+  if (asksHolderName(input)) return input.holderName.trim();
+  return input.isMinor ? input.guardianName : input.firstPlayerName;
+}
+
 /** Whole years from a date of birth ("2014-03-09") to today, or null when it is not a date. */
 export function computeAge(dob: string, today: Date = new Date()): number | null {
   if (!dob) return null;

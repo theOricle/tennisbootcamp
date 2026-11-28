@@ -101,6 +101,85 @@ export function shouldSaveEtransferDetails(input: { signedIn: boolean; alreadyPa
   return !input.signedIn && input.alreadyPaid !== true;
 }
 
+/** One player's outcome on a transfer, as recordEtransferIntent answers it. */
+export type EtransferPlayerOutcome = {
+  alreadyPaid: boolean;
+  amountCents: number;
+  creditCents: number;
+  /** Already paid, and the paid seat names this player. Left out, it does not. */
+  paidNamesPlayer?: boolean;
+};
+
+/**
+ * What a transfer still owes, player by player (backlog #102). A player whose
+ * seat is already paid owes nothing and takes no credit; the others' amounts
+ * and credits add up. `alreadyPaid` is true only when every player is paid:
+ * then nothing is due and no email goes.
+ */
+export function etransferTally(outcomes: readonly EtransferPlayerOutcome[]): {
+  alreadyPaid: boolean;
+  /** One entry per player, in the order the request named them. */
+  paidPlayers: boolean[];
+  /** Which of the paid players the paid seat names: only these are named on the page. */
+  paidNamed: boolean[];
+  /** The amount still due, for the players not yet paid. */
+  dueCents: number;
+  /** The assessment credit inside that amount. */
+  dueCreditCents: number;
+} {
+  const owing = outcomes.filter((o) => !o.alreadyPaid);
+  return {
+    alreadyPaid: outcomes.length > 0 && owing.length === 0,
+    paidPlayers: outcomes.map((o) => o.alreadyPaid),
+    paidNamed: outcomes.map((o) => o.alreadyPaid && o.paidNamesPlayer === true),
+    dueCents: owing.reduce((sum, o) => sum + o.amountCents, 0),
+    dueCreditCents: owing.reduce((sum, o) => sum + o.creditCents, 0),
+  };
+}
+
+/**
+ * The route's answer as the step reads it: who is already paid, which of
+ * them a paid seat names, the amount still due and the credit inside it.
+ * The amount is the route's own figure; the page never works it out again.
+ */
+export type EtransferSettled = { paid: boolean[]; named: boolean[]; dueCents: number; dueCreditCents: number };
+
+/**
+ * The route's answer, read strictly (backlog #102). Null when nobody is
+ * already paid, or when the answer is not the shape this page expects for
+ * its own players: the step then keeps the details it showed, as before.
+ * An answer that says every player is paid, without naming them, counts for
+ * all of them. With a player still owing, the answer must carry the amount
+ * due (`dueCents`); without it the answer is not read at all.
+ */
+export function settledFromAnswer(answer: unknown, playerCount: number): EtransferSettled | null {
+  if (!answer || typeof answer !== "object" || playerCount < 1) return null;
+  const a = answer as {
+    alreadyPaid?: unknown;
+    paidPlayers?: unknown;
+    paidNamed?: unknown;
+    dueCents?: unknown;
+    dueCreditCents?: unknown;
+  };
+  const flags = (v: unknown): boolean[] | null =>
+    Array.isArray(v) && v.length === playerCount && v.every((x) => typeof x === "boolean") ? (v as boolean[]) : null;
+  const cents = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
+  const paid = flags(a.paidPlayers) ?? (a.alreadyPaid === true ? Array.from({ length: playerCount }, () => true) : null);
+  if (!paid || !paid.some(Boolean)) return null;
+  const everyone = paid.every(Boolean);
+  const dueCents = everyone ? 0 : cents(a.dueCents);
+  if (dueCents === null) return null;
+  const named = flags(a.paidNamed) ?? paid.map(() => false);
+  return {
+    paid,
+    // Named only where the seat is paid: a stray flag names nobody.
+    named: named.map((n, i) => n && paid[i]),
+    dueCents,
+    dueCreditCents: everyone ? 0 : (cents(a.dueCreditCents) ?? 0),
+  };
+}
+
 /** This tab's session storage, or null where there is none (the server, a locked-down browser). */
 export function tabStorage(): HandoffStorage | null {
   try {

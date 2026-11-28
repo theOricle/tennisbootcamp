@@ -46,7 +46,7 @@ import {
 } from "@/lib/paymentTransitions";
 import { setEnrollmentStatusByEmail, setEnrollmentCredit } from "@/lib/enrollmentSheet";
 import { DECLINED_INVITE_ERROR, type CheckoutInviteRow } from "@/lib/checkoutInvite";
-import { etransferRowPlan } from "@/lib/enrollGate";
+import { etransferRowPlan, guestSeatForPlayer, paidSeatNamesPlayer } from "@/lib/enrollGate";
 import { ilikePattern, rowsWithEmail } from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
 import { INVALID_EMAIL_ERROR, isValidEmail } from "@/lib/botCheck";
@@ -1223,6 +1223,8 @@ export type EtransferIntentResult =
       recipientEmail: string;
       memo: string;
       alreadyPaid: boolean;
+      /** Already paid, and the paid seat names this player (their id or their name). */
+      paidNamesPlayer: boolean;
       /** The invite row this player's transfer lands on. */
       inviteId: string;
       /** The assessment booking whose $20 this player's amount used, if any. */
@@ -1323,7 +1325,7 @@ export async function recordEtransferIntent(params: {
     invite = (data as InviteRef | null) ?? null;
   }
   if (!invite && plan.includes("email")) {
-    let q = supabase
+    const q = supabase
       .from("cohort_invites")
       .select("*")
       .eq("cohort_id", cohortId)
@@ -1331,12 +1333,22 @@ export async function recordEtransferIntent(params: {
       .in("status", ["invited", "paid"]);
     // Signed out (#84), only an invite nobody owns: a typed email never
     // lands on the invite of the account that exists for it.
-    if (!accountId) q = q.is("user_id", null).is("participant_id", null);
-    const { data } = await q
-      .order("invited_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    invite = (data as InviteRef | null) ?? null;
+    if (!accountId) {
+      // Signed out, the paid check is by player (backlog #102): a paid seat
+      // counts only when it names this player; any other player lands on a
+      // seat still waiting on payment, or gets one of their own below.
+      const { data } = await q
+        .is("user_id", null)
+        .is("participant_id", null)
+        .order("invited_at", { ascending: false });
+      invite = guestSeatForPlayer((data as InviteRef[] | null) ?? [], params.participantName);
+    } else {
+      const { data } = await q
+        .order("invited_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      invite = (data as InviteRef | null) ?? null;
+    }
   }
   if (!invite && plan.includes("reuse")) {
     // A later player with no participant: a live e-transfer row for this
@@ -1422,7 +1434,13 @@ export async function recordEtransferIntent(params: {
   };
 
   if (invite.status === "paid") {
-    return { ok: true, ...settled, alreadyPaid: true };
+    // Whether the paid seat names this player (backlog #102): by the
+    // account's own player, or by the name on the seat. Only then does the
+    // page name them as paid.
+    const paidNamesPlayer =
+      (Boolean(params.participantId) && invite.participant_id === params.participantId) ||
+      paidSeatNamesPlayer(invite.payment_note, params.participantName);
+    return { ok: true, ...settled, alreadyPaid: true, paidNamesPlayer };
   }
 
   const { error } = await supabase
@@ -1472,7 +1490,7 @@ export async function recordEtransferIntent(params: {
     console.error("E-transfer admin notification failed (non-blocking):", err)
   );
 
-  return { ok: true, ...settled, alreadyPaid: false };
+  return { ok: true, ...settled, alreadyPaid: false, paidNamesPlayer: false };
 }
 
 /** Confirm when paid invites reach the minimum; idempotent. */

@@ -30,7 +30,10 @@ import {
 } from "@/components/participants/WhoIsThisFor";
 import {
   GUARDIAN_OTHER_LABEL,
+  HOLDER_NAME_HINT,
+  HOLDER_NAME_LABEL,
   ageBandBlock,
+  asksHolderName,
   computeAge,
   dobAgeError,
   dobIsMinor,
@@ -41,6 +44,7 @@ import {
   isYouthGroup,
   levelNote,
   pickedButBlockedIssue,
+  postedHolderName,
   rightGroupHref,
   seatCapIssue,
   youthPreselectIds,
@@ -48,10 +52,13 @@ import {
 } from "@/lib/enrollPlayers";
 import {
   saveEtransferDetails,
+  settledFromAnswer,
   shouldSaveEtransferDetails,
   tabStorage,
   type EtransferDetails,
+  type EtransferSettled,
 } from "@/lib/etransferHandoff";
+import { ETRANSFER_ALL_PAID_LINE } from "@/lib/paymentConfirmation";
 import {
   ETRANSFER_EMAILED_NOTE,
   ETRANSFER_MEMO_NOTE,
@@ -243,6 +250,7 @@ const FIELD_IDS = {
   guardianEmail: "enroll-guardian-email",
   guardianPhone: "enroll-guardian-phone",
   guardianOther: "enroll-guardian-other",
+  holderName: "enroll-holder-name",
   consent: "enroll-consent",
   signature: "enroll-signature",
 } as const;
@@ -269,6 +277,11 @@ export type FormState = {
   guardianPhone: string;
   /** Youth groups: "The parent or guardian is someone else" (backlog #101). */
   guardianIsOther: boolean;
+  /**
+   * The account holder's own name (backlog #102), asked only once the
+   * guardian is someone else: until then the guardian is the holder.
+   */
+  holderName: string;
   consentChecked: boolean;
   consentSignedName: string;
 };
@@ -282,6 +295,7 @@ const EMPTY_FORM: FormState = {
   guardianEmail: "",
   guardianPhone: "",
   guardianIsOther: false,
+  holderName: "",
   consentChecked: false,
   consentSignedName: "",
 };
@@ -506,6 +520,7 @@ export function RegistrantStep({
   onEnterSubmit,
   errors,
   group,
+  holderNameOnFile = "",
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
@@ -524,6 +539,8 @@ export function RegistrantStep({
   onEnterSubmit: () => void;
   errors: Record<string, string>;
   group: ProgramGroup | null;
+  /** Signed in: the holder's name on the account, so the field starts filled. */
+  holderNameOnFile?: string;
 }) {
   return (
     // An explicit action keeps the invite token out of GA's form_destination
@@ -607,6 +624,29 @@ export function RegistrantStep({
       <fieldset>
         <legend className="mb-3 text-sm font-semibold text-white">Account holder</legend>
         <div className="space-y-3">
+          {/* The holder's own name (backlog #102), first in this block and
+              only once "The parent or guardian is someone else" is ticked:
+              the account goes in this name, and the guardian stays the
+              guardian. */}
+          {asksHolderName({ askOnce: guardianOnce, isMinor, other: form.guardianIsOther }) && (
+            <FieldGroup
+              id={FIELD_IDS.holderName}
+              label={HOLDER_NAME_LABEL}
+              hint={HOLDER_NAME_HINT}
+              error={errors[FIELD_IDS.holderName]}
+            >
+              <TextInput
+                id={FIELD_IDS.holderName}
+                autoComplete="name"
+                value={form.holderName}
+                onChange={(v) => setForm((s) => ({ ...s, holderName: v }))}
+                placeholder="Your full name"
+                required
+                error={errors[FIELD_IDS.holderName]}
+                hint
+              />
+            </FieldGroup>
+          )}
           {signedIn ? (
             <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
               Enrolling on your account —{" "}
@@ -681,7 +721,16 @@ export function RegistrantStep({
                   id={FIELD_IDS.guardianOther}
                   type="checkbox"
                   checked={form.guardianIsOther}
-                  onChange={(e) => setForm((s) => ({ ...s, guardianIsOther: e.target.checked }))}
+                  onChange={(e) => {
+                    const other = e.target.checked;
+                    // Ticked on a signed-in account, the holder's name
+                    // field above starts on the name the account has.
+                    setForm((s) => ({
+                      ...s,
+                      guardianIsOther: other,
+                      holderName: s.holderName || (other ? holderNameOnFile : ""),
+                    }));
+                  }}
                   className={`h-4 w-4 shrink-0 accent-[#B4E655] ${FOCUS_RING}`}
                 />
                 <span className="text-sm text-white/80">{GUARDIAN_OTHER_LABEL}</span>
@@ -846,23 +895,87 @@ export function etransferStepDetails(input: {
   creditCents: number;
   recipientEmail: string;
   memo: string;
+  /**
+   * Players the route answered are already paid, by name (backlog #102).
+   * `seats`, `creditCents` and `memo` are then the others' alone, and the
+   * line under the amount says who is paid, so the family sees why the
+   * amount is smaller than the price times everyone.
+   */
+  paidNames?: readonly string[];
+  /** Players already paid whom no paid seat names: counted, never named. */
+  paidUnnamed?: number;
+  /**
+   * The amount still due as the route answered it. When given it is the
+   * amount shown, as it stands: the page does not work it out again.
+   */
+  dueCents?: number;
 }): EtransferDetails {
   const { cohort, seats, creditCents } = input;
   const priceCents = cohort.priceCents;
   const total = cohort.priceCents * seats;
   const due = amountDueCents(total, creditCents);
-  const breakdown =
+  const working =
     seats > 1 || creditCents > 0
       ? `${seats > 1 ? `${moneyCAD(priceCents)} × ${seats} players` : moneyCAD(priceCents)}${
           creditCents > 0 ? ` − ${moneyCAD(creditCents)} assessment credit` : ""
         }`
       : null;
+  const paid = alreadyPaidNote(input.paidNames ?? [], input.paidUnnamed ?? 0);
+  const breakdown = working && paid ? `${working}. ${paid}` : (working ?? paid);
   return {
-    amount: `${moneyCAD(due)} CAD`,
+    // The route's own figure when it gave one (backlog #102), as it stands.
+    amount: `${moneyCAD(input.dueCents ?? due)} CAD`,
     breakdown,
     recipientEmail: input.recipientEmail,
     memo: input.memo,
   };
+}
+
+/**
+ * Under the amount: whose seat is already paid for. "Already paid for Maya
+ * Chen." names a player only when a paid seat names them; any other paid
+ * player is counted ("Already paid for one player."). Null with nobody paid.
+ */
+export function alreadyPaidNote(names: readonly string[], unnamed = 0): string | null {
+  const list = names.map((n) => n.trim()).filter(Boolean);
+  const rest = Math.max(0, Math.floor(unnamed));
+  if (rest > 0) {
+    const other = list.length > 0 ? " other" : "";
+    list.push(rest === 1 ? `one${other} player` : `${rest}${other} players`);
+  }
+  if (list.length === 0) return null;
+  const who = list.length === 1 ? list[0] : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+  return `Already paid for ${who}.`;
+}
+
+/**
+ * The step's details once the route has answered that some players are
+ * already paid (backlog #102). The amount is the route's own figure
+ * (`dueCents`), never worked out again here; its working and the message
+ * cover only the players who still owe. A paid player is named only when a
+ * paid seat names them. Null when every player is paid: nothing is due, and
+ * nothing is shown or carried to the page after.
+ */
+export function etransferDetailsStillDue(input: {
+  cohort: Pick<Cohort, "priceCents" | "label">;
+  /** Every player on the step, in the order the route was sent them. */
+  playerNames: readonly string[];
+  settled: EtransferSettled;
+  recipientEmail: string;
+}): EtransferDetails | null {
+  const { cohort, playerNames, settled } = input;
+  const owing = playerNames.filter((_, i) => settled.paid[i] !== true);
+  if (owing.length === 0) return null;
+  return etransferStepDetails({
+    cohort,
+    seats: owing.length,
+    creditCents: Math.min(settled.dueCreditCents, cohort.priceCents * owing.length),
+    recipientEmail: input.recipientEmail,
+    memo: etransferMemo(owing.join(" + "), cohort.label),
+    paidNames: playerNames.filter((_, i) => settled.paid[i] === true && settled.named[i] === true),
+    paidUnnamed: settled.paid.filter((p, i) => p === true && settled.named[i] !== true).length,
+    dueCents: settled.dueCents,
+  });
 }
 
 export function EtransferStep({
@@ -871,13 +984,24 @@ export function EtransferStep({
   submitting,
   onPayByCard,
 }: {
-  /** The amount, the address and the message (etransferStepDetails). */
-  details: EtransferDetails;
+  /**
+   * The amount, the address and the message (etransferStepDetails). Null once
+   * the route has answered that every player is already paid (backlog #102):
+   * the step then says so and shows nothing to send.
+   */
+  details: EtransferDetails | null;
   /** Card payments are live (EtransferInfo.cardOffer): offer "Pay by card instead". */
   cardOffer: boolean;
   submitting: boolean;
   onPayByCard: () => void;
 }) {
+  if (!details) {
+    return (
+      <p className="rounded-xl border border-[#B4E655]/20 bg-[#B4E655]/5 px-4 py-3 text-sm leading-relaxed text-white/80">
+        {ETRANSFER_ALL_PAID_LINE}
+      </p>
+    );
+  }
   return (
     <div className="space-y-5">
       <p className="text-sm leading-relaxed text-white/70">
@@ -1020,6 +1144,9 @@ export function EnrollWizard({
   // Sheet row per player, so the e-transfer step and the credit write can
   // address each seat without appending a second set of rows.
   const [savedRows, setSavedRows] = useState<Record<string, number>>({});
+  // The e-transfer route's answer on who is already paid (backlog #102);
+  // null until it says someone is.
+  const [settled, setSettled] = useState<EtransferSettled | null>(null);
 
   useEffect(() => {
     trackEnrollStart(cohort.id, program?.title ?? cohort.programId);
@@ -1150,6 +1277,12 @@ export function EnrollWizard({
           if (outside) out.push({ id, message: outside });
         }
       }
+      // The holder's own name, once the guardian is someone else (#102):
+      // first in the Account holder block, so first of its problems.
+      if (asksHolderName({ askOnce: youthGroup, isMinor, other: form.guardianIsOther })) {
+        const hn = requiredError(form.holderName);
+        if (hn) out.push({ id: FIELD_IDS.holderName, message: hn });
+      }
       if (!household.signedIn) {
         const e = emailError(form.contactEmail);
         if (e) out.push({ id: FIELD_IDS.email, message: e });
@@ -1185,8 +1318,18 @@ export function EnrollWizard({
   const visibleIssues = stepIssues().filter((i) => shown.has(i.id));
   const errors = issuesById(visibleIssues);
 
-  /** The holder's own name: the guardian, else the first player (themselves). */
-  const holderName = isMinor ? form.guardianName : players[0]?.name ?? "";
+  /**
+   * The holder's own name: the one step 2 asked when the guardian is someone
+   * else (backlog #102), else the guardian, else the first player (themselves).
+   */
+  const holderName = postedHolderName({
+    askOnce: youthGroup,
+    isMinor,
+    other: form.guardianIsOther,
+    holderName: form.holderName,
+    guardianName: form.guardianName,
+    firstPlayerName: players[0]?.name ?? "",
+  });
 
   function enrollmentMeta(consentAgreedAt: string) {
     const first = players[0];
@@ -1383,10 +1526,20 @@ export function EnrollWizard({
       // the message names the players. Signed out only, and never for a
       // seat the route says is already paid: there is nothing left to send.
       const sent = (await res.json().catch(() => null)) as { alreadyPaid?: unknown } | null;
-      if (shouldSaveEtransferDetails({ signedIn: household.signedIn, alreadyPaid: sent?.alreadyPaid })) {
-        saveEtransferDetails(tabStorage(), cohort.id, etransferDetails);
+      // Per player (backlog #102): with some players already paid, the step
+      // and the page after show only what the others still owe; with every
+      // player paid nothing is carried, and the page says so.
+      const answered = settledFromAnswer(sent, players.length);
+      const allPaid = sent?.alreadyPaid === true || (answered !== null && answered.paid.every(Boolean));
+      const due = allPaid ? null : answered ? detailsAfter(answered) : etransferDetails;
+      if (answered) setSettled(answered);
+      if (due && shouldSaveEtransferDetails({ signedIn: household.signedIn, alreadyPaid: allPaid })) {
+        saveEtransferDetails(tabStorage(), cohort.id, due);
       }
       const params = new URLSearchParams({ etransfer: "1" });
+      // A flag, never a name or an amount: the page after says nothing is
+      // due and names no inbox, since no email went.
+      if (allPaid) params.set("paid", "1");
       if (row.rowNumber != null) params.set("row", String(row.rowNumber));
       if (inviteToken) params.set("invite", "1");
       window.location.href = `/enroll/${cohort.id}/confirmed?${params.toString()}`;
@@ -1459,6 +1612,17 @@ export function EnrollWizard({
     recipientEmail: etransfer?.recipientEmail ?? "",
     memo,
   });
+  /** What is still due once the route answered who is already paid; null when nobody owes. */
+  function detailsAfter(answer: EtransferSettled): EtransferDetails | null {
+    return etransferDetailsStillDue({
+      cohort,
+      playerNames: players.map((p) => p.name),
+      settled: answer,
+      recipientEmail: etransfer?.recipientEmail ?? "",
+    });
+  }
+  // The step itself follows the route's answer while it is still on screen.
+  const stepDetails = settled ? detailsAfter(settled) : etransferDetails;
 
   let ctaLabel: string;
   if (submitting) {
@@ -1592,6 +1756,9 @@ export function EnrollWizard({
               onEnterSubmit={() => void next()}
               errors={errors}
               group={group}
+              holderNameOnFile={
+                household.participants.find((p) => p.relationship === "self")?.name?.trim() ?? ""
+              }
             />
           )}
           {step === 3 && (
@@ -1599,7 +1766,7 @@ export function EnrollWizard({
           )}
           {step === 4 && etransfer && (
             <EtransferStep
-              details={etransferDetails}
+              details={stepDetails}
               cardOffer={etransfer.cardOffer === true}
               submitting={submitting}
               onPayByCard={() => void submit()}

@@ -272,6 +272,7 @@ console.log("3. Youth step 2: one email and one phone; the guardian's posted fro
     guardianEmail: "",
     guardianPhone: "",
     guardianIsOther: false,
+    holderName: "",
     consentChecked: false,
     consentSignedName: "",
   };
@@ -506,23 +507,27 @@ console.log("4. After an e-transfer, signed out: the details as the step showed 
   // The wizard: saved in the tab, then an address with nothing of them in it.
   const send = /async function sendEtransfer\(\) \{[\s\S]*?\n  \}\n/.exec(wizard)?.[0] ?? "";
   check("the step leaves them in the tab as it shows them, before it leaves the page", () =>
-    send.includes("saveEtransferDetails(tabStorage(), cohort.id, etransferDetails);") &&
-    /const sent = \(await res\.json\(\)\.catch\(\(\) => null\)\) as \{ alreadyPaid\?: unknown \} \| null;\s*if \(shouldSaveEtransferDetails\(\{ signedIn: household\.signedIn, alreadyPaid: sent\?\.alreadyPaid \}\)\) \{\s*saveEtransferDetails\(/.test(send) &&
+    // Backlog #102: what it leaves is what is still due (the step's own
+    // details unless the route answered that a player is already paid).
+    send.includes("saveEtransferDetails(tabStorage(), cohort.id, due);") &&
+    send.includes("const due = allPaid ? null : answered ? detailsAfter(answered) : etransferDetails;") &&
+    /const sent = \(await res\.json\(\)\.catch\(\(\) => null\)\) as \{ alreadyPaid\?: unknown \} \| null;/.test(send) &&
+    /if \(due && shouldSaveEtransferDetails\(\{ signedIn: household\.signedIn, alreadyPaid: allPaid \}\)\) \{\s*saveEtransferDetails\(/.test(send) &&
     send.indexOf("saveEtransferDetails(") < send.indexOf("window.location.href") &&
-    wizard.includes("<EtransferStep\n              details={etransferDetails}")
+    wizard.includes("<EtransferStep\n              details={stepDetails}")
   );
-  check("the address after it carries only etransfer, the row number and the invite flag", () => {
+  check("the address after it carries only etransfer, the already-paid flag, the row number and the invite flag", () => {
     const sets = [...send.matchAll(/params\.set\("([a-z]+)"/g)].map((m) => m[1]).join();
     return (
       send.includes('new URLSearchParams({ etransfer: "1" })') &&
-      sets === "row,invite" &&
+      sets === "paid,row,invite" &&
       send.includes("window.location.href = `/enroll/${cohort.id}/confirmed?${params.toString()}`;") &&
       !/params\.set\([^)]*(memo|amount|recipient|name|email)/i.test(send)
     );
   });
   check("the confirmation page shows them only after an e-transfer, signed out, from the tab", () =>
     confirmedPage.includes("{copy.inboxLine && <EtransferDetailsFromStep cohortId={cohortId} inboxLine={copy.inboxLine} />}") &&
-    confirmedPage.includes("searchParams: Promise<{ invite?: string | string[]; etransfer?: string | string[] }>") &&
+    confirmedPage.includes("searchParams: Promise<{ invite?: string | string[]; etransfer?: string | string[]; paid?: string | string[] }>") &&
     !/sp\.(memo|amount|to|name|email)/.test(confirmedPage)
   );
   check("signed out, the lead no longer says the details are in the inbox; that sentence is the empty branch's", () => {

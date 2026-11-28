@@ -46,6 +46,23 @@ export type GuestPlayer = {
 };
 
 /**
+ * The account holder's name on a sign-up (backlog #102): the holder's own,
+ * `accountName`, before the guardian's. On a youth group whose parent or
+ * guardian is someone else the page asks the holder's own name and posts it
+ * there, so the account carries it and the guardian stays the guardian. A
+ * request with no `accountName` falls back as it always has: the guardian,
+ * then the player.
+ */
+export function enrollHolderName(body: {
+  accountName?: unknown;
+  guardianName?: unknown;
+  participantName?: unknown;
+}): string {
+  const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  return text(body.accountName) || text(body.guardianName) || text(body.participantName);
+}
+
+/**
  * The typed block as a player, with no account read or written. The holder
  * rule and the name fallbacks are the ones src/lib/household.ts always used.
  */
