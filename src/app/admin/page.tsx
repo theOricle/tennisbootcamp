@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { adminRefusedRedirect, getAdminUser } from "@/lib/adminAuth";
+import { readAdminDesk } from "@/lib/adminDeskReads";
+import { WaitingOnYou } from "@/components/admin/WaitingOnYou";
 
 export const metadata: Metadata = {
   title: "Admin",
@@ -43,6 +45,10 @@ export default async function AdminHomePage() {
   const admin = await getAdminUser();
   if (!admin) redirect(await adminRefusedRedirect("/admin"));
 
+  // What waits on the coach (backlog #104), read only now that the gate has
+  // answered: the reads take the admin it returned.
+  const desk = await readAdminDesk(admin);
+
   return (
     <main className="min-h-screen bg-[#061427] text-white">
       <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-12">
@@ -54,6 +60,8 @@ export default async function AdminHomePage() {
             Coach&apos;s desk
           </h1>
         </header>
+
+        <WaitingOnYou desk={desk} />
 
         <div className="grid gap-3">
           {CARDS.map((card) => (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminUser } from "@/lib/adminAuth";
 import { getCohortById } from "@/lib/cohortsDb";
+import { readCohortForAdmin } from "@/lib/adminCohortRead";
 import {
   listInvites,
   listSessions,
@@ -36,10 +37,16 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
-  const cohort = await getCohortById(id);
+  // This page's own read (backlog #104): a read that failed is a 500 the
+  // page can retry, and only a cohort that does not exist is a 404.
+  const found = await readCohortForAdmin(id);
+  if (found.status === "failed") {
+    return NextResponse.json({ error: "Couldn't load this cohort." }, { status: 500 });
+  }
+  const cohort = found.status === "found" ? found.cohort : null;
   if (!cohort || !cohort.dbStatus) {
     return NextResponse.json(
-      { error: "Cohort not found in the database (run migration 0004?)." },
+      { error: "We couldn't find this cohort." },
       { status: 404 }
     );
   }
