@@ -54,23 +54,49 @@ export const metadata: Metadata = {
 
 const PROGRAM_LINK = `rounded underline-offset-4 hover:underline ${FOCUS_RING}`;
 
+/** A part that ends with a class's time: "12–1pm", "11am–12pm", "6:30–7:30pm" (formatClassHours). */
+const ENDS_WITH_TIME = /\d(?:am|pm)?–\d\S*$/;
+
 /**
- * "Saturdays 12–1pm, Wednesdays 6–7pm" with each day kept with its time: the
- * line breaks only at a comma, the comma riding the part before it, never
- * between a day and its time or inside a time range (backlog #100). Two days
- * at one time stay together with it ("Sundays and Wednesdays 4–5pm"). The
- * words are the card's own (formatClassDays).
+ * "Saturdays 12–1pm, Wednesdays 6–7pm" with each day kept with its time
+ * (backlog #100). Each part, one per time, is a box of its own
+ * (inline-block), so the line breaks between parts, at a comma, and keeps a
+ * part whole wherever it fits. A part wider than the row ("Wednesdays and
+ * Saturdays 11:30am–12:30pm" on a small phone) wraps between its words, its
+ * last day kept with the time and the time never broken, so no line of class
+ * days pushes the page sideways. The words are the card's own
+ * (formatClassDays).
  */
 function ClassDaysKeptWhole({ text }: { text: string }) {
-  const parts = text.split(", ");
+  // One part per time: a day with no time of its own ("Mondays" in "Mondays,
+  // Wednesdays and Fridays 6–7pm") joins the part whose time it shares.
+  const parts: string[] = [];
+  let pending = "";
+  for (const piece of text.split(", ")) {
+    pending = pending ? `${pending}, ${piece}` : piece;
+    if (ENDS_WITH_TIME.test(piece)) {
+      parts.push(pending);
+      pending = "";
+    }
+  }
+  if (pending) parts.push(pending);
   return (
     <>
-      {parts.map((part, i) => (
-        <Fragment key={`${i}-${part}`}>
-          {i > 0 && " "}
-          <span className="whitespace-nowrap">{i < parts.length - 1 ? `${part},` : part}</span>
-        </Fragment>
-      ))}
+      {parts.map((part, i) => {
+        const words = (i < parts.length - 1 ? `${part},` : part).split(" ");
+        // The last day and its time stay together; the words before them may wrap.
+        const kept = ENDS_WITH_TIME.test(part) ? Math.min(2, words.length) : words.length;
+        const lead = words.slice(0, words.length - kept).join(" ");
+        return (
+          <Fragment key={`${i}-${part}`}>
+            {i > 0 && " "}
+            <span className="inline-block">
+              {lead && `${lead} `}
+              <span className="whitespace-nowrap">{words.slice(words.length - kept).join(" ")}</span>
+            </span>
+          </Fragment>
+        );
+      })}
     </>
   );
 }

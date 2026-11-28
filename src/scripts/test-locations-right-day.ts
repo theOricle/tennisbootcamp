@@ -375,7 +375,7 @@ async function main() {
       "…its lines plain, in the time's own colour and size: no chip, no weight, no button, no new label",
       () =>
         (section.match(/<span [^>]*>/g) ?? []).every((t) =>
-          ['<span class="min-w-0 grow basis-28 text-white/90">', '<span class="ml-auto text-right tabular-nums text-white/70">', '<span class="block">', '<span class="whitespace-nowrap">', '<span aria-hidden="true">'].includes(t)
+          ['<span class="min-w-0 grow basis-28 text-white/90">', '<span class="ml-auto text-right tabular-nums text-white/70">', '<span class="block">', '<span class="inline-block">', '<span class="whitespace-nowrap">', '<span aria-hidden="true">'].includes(t)
         ) && !/Open to join|Enroll|Notify me|Ask to join|By approval|spots? left|>Full</.test(section),
       () => [...new Set(section.match(/<span [^>]*>/g) ?? [])].join(" ")
     );

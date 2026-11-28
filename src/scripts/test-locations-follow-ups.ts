@@ -9,10 +9,13 @@
 //      stand-in (stub-cohort-reads.ts) before anything else it loads, and run
 //      with a database configured it sends that database no request;
 //   3. each class day stays with its time and a block's dates stay on one
-//      line: a line of class days breaks only at a comma, a block's dates
-//      never break (across a new year included), and a row whose when lines
-//      do not fit beside the group's name puts them on a line of their own
-//      under it instead of squeezing the name.
+//      line: a line of class days breaks only at a comma, one box per time;
+//      a box wider than its row (two days at one long time on a small phone)
+//      wraps between its words, its last day kept with the time, so no line
+//      pushes the page sideways; a block's dates never break (across a new
+//      year included); and a row whose when lines do not fit beside the
+//      group's name puts them on a line of their own under it instead of
+//      squeezing the name.
 // The page renders here with sample blocks through a stand-in database client
 // (stub-cohort-reads.ts); their dates count from today, so they stay
 // upcoming. Every check catches its own error, so each reports on its own.
@@ -124,6 +127,28 @@ function innerOf(html: string, open: string): string[] {
   return out;
 }
 
+const PART = '<span class="inline-block">';
+type Part = { text: string; runs: string[] };
+
+/**
+ * A line of class days as its parts: each inline-block box (a browser breaks
+ * the line only between boxes, and keeps a box whole wherever it fits), with
+ * the runs it cannot break inside a box that is wider than its line. Null
+ * when anything but a space sits between the boxes.
+ */
+function partsOf(line: string): Part[] | null {
+  const boxes = innerOf(line, PART);
+  let rest = line;
+  for (const box of boxes) rest = rest.replace(`${PART}${box}</span>`, "");
+  if (rest.replace(/<!--[\s\S]*?-->/g, "").trim() !== "") return null;
+  return boxes.map((box) => ({ text: words(box), runs: unbreakableRuns(box) }));
+}
+
+/** How many day names a piece of text holds ("Saturdays", "Wednesdays"). */
+const daysIn = (s: string) => (s.match(/\b(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)days\b/g) ?? []).length;
+/** A class's time range: "12–1pm", "11am–12pm", "6:30–7:30pm". */
+const TIME = /\d(?:am|pm)?–\d/;
+
 type Row = { name: string; li: string; nameSpan: string; whenSpan: string; lines: string[] };
 
 /** The rows under "What runs here": each group's name, its row's own tags, and its when lines as markup. */
@@ -203,6 +228,21 @@ const SHARED_TIME = row({
   sessions: [
     { day: "Sun", start: "16:00", end: "17:00" },
     { day: "Wed", start: "16:00", end: "17:00" },
+  ],
+});
+/**
+ * Two days at one long time, wider than a 320px phone's row (about 290px
+ * against 222px): "Wednesdays and Saturdays 11:30am–12:30pm". Kept as one
+ * run, it pushed the page sideways (fix round, backlog #100).
+ */
+const LONG_SHARED_TIME = row({
+  id: "adv-long",
+  level_min: 4,
+  level_max: 4.5,
+  start_date: onOrAfter(addDays(todayIso(), 21), 3),
+  sessions: [
+    { day: "Wed", start: "11:30", end: "12:30" },
+    { day: "Sat", start: "11:30", end: "12:30" },
   ],
 });
 
@@ -301,15 +341,17 @@ async function main() {
   // ── 3. Each day with its time, the dates on one line ────────────────────
   console.log("Each class day stays with its time; a block's dates stay on one line");
   {
-    setCohortRows([TWICE_A_WEEK, SHARED_TIME]);
+    setCohortRows([TWICE_A_WEEK, SHARED_TIME, LONG_SHARED_TIME]);
     const html = renderToStaticMarkup(await LocationsPage());
     const cards = groupCards(programGroups, await getPublicCohorts());
     const rows = rowsOf(html);
     const twice = cards.find((c) => c.block?.cohortId === "int-twice");
     const shared = cards.find((c) => c.block?.cohortId === "beg-shared");
+    const longShared = cards.find((c) => c.block?.cohortId === "adv-long");
     const rowFor = (name: string | undefined) => rows.filter((r) => r.name === name);
     const [twiceRow] = rowFor(twice?.group.name);
     const [sharedRow] = rowFor(shared?.group.name);
+    const [longSharedRow] = rowFor(longShared?.group.name);
     const [days, dates] = twiceRow?.lines ?? [];
 
     check(
@@ -322,9 +364,14 @@ async function main() {
       () => json({ days: twice?.block?.days, dates: twice?.block?.dates, rows: rows.map((r) => r.name) })
     );
     check(
-      "its two-day line keeps each day with its time: it breaks only at the comma",
-      () => json(unbreakableRuns(days ?? "")) === json(["Saturdays 12–1pm,", "Wednesdays 6–7pm"]),
-      () => `${json(unbreakableRuns(days ?? ""))} from ${days}`
+      "its two-day line keeps each day with its time: one box per time, so it breaks only at the comma, each box its day and time as one run",
+      () =>
+        json(partsOf(days ?? "")) ===
+        json([
+          { text: "Saturdays 12–1pm,", runs: ["Saturdays 12–1pm,"] },
+          { text: "Wednesdays 6–7pm", runs: ["Wednesdays 6–7pm"] },
+        ]),
+      () => `${json(partsOf(days ?? ""))} from ${days}`
     );
     check(
       "…and its dates across a new year never break: not inside a date, not at the dash",
@@ -336,25 +383,40 @@ async function main() {
       () => words(days ?? "") === twice?.block?.days && words(dates ?? "") === twice?.block?.dates,
       () => `${words(days ?? "")} | ${words(dates ?? "")}`
     );
+    // Re-pinned in the fix round: a part was one unbreakable run, so a long
+    // line of two days at one time could not wrap and pushed a 320px phone
+    // sideways. A part is now a box that stays whole where it fits and wraps
+    // between its words where it does not, its last day kept with the time.
     check(
-      "two days at one time stay together with it: one run, no break",
-      () => shared?.block?.days === "Sundays and Wednesdays 4–5pm" && json(unbreakableRuns(sharedRow?.lines[0] ?? "")) === json(["Sundays and Wednesdays 4–5pm"]),
-      () => `${shared?.block?.days}: ${json(unbreakableRuns(sharedRow?.lines[0] ?? ""))}`
+      "two days at one time are one box: whole wherever it fits, and a long one wider than a small phone's row wraps only between its words, its last day kept with the time and the time whole",
+      () =>
+        shared?.block?.days === "Sundays and Wednesdays 4–5pm" &&
+        json(partsOf(sharedRow?.lines[0] ?? "")) === json([{ text: "Sundays and Wednesdays 4–5pm", runs: ["Sundays", "and", "Wednesdays 4–5pm"] }]) &&
+        longShared?.block?.days === "Wednesdays and Saturdays 11:30am–12:30pm" &&
+        json(partsOf(longSharedRow?.lines[0] ?? "")) ===
+          json([{ text: "Wednesdays and Saturdays 11:30am–12:30pm", runs: ["Wednesdays", "and", "Saturdays 11:30am–12:30pm"] }]),
+      () => `${shared?.block?.days}: ${json(partsOf(sharedRow?.lines[0] ?? ""))}; ${longShared?.block?.days}: ${json(partsOf(longSharedRow?.lines[0] ?? ""))}`
     );
     check(
-      "every row: each day with its time, breaking only at a comma, and its dates (or Dates coming soon) on one line; By arrangement whole",
+      "every row: one box per time, its last run its last day with the time, no run holding two days (a line never needs more room than one day and its time), and its dates (or Dates coming soon) on one line; By arrangement whole",
       () =>
         rows.length === cards.length &&
         rows.every((r) => {
           const [line, datesLine] = r.lines;
-          const parts = words(line ?? "").split(", ");
-          const runs = unbreakableRuns(line ?? "");
+          const parts = partsOf(line ?? "");
           return (
-            json(runs) === json(parts.map((p, i) => (i < parts.length - 1 ? `${p},` : p))) &&
+            parts !== null &&
+            parts.length > 0 &&
+            parts.map((p) => p.text).join(" ") === words(line ?? "") &&
+            parts.every((p) =>
+              TIME.test(p.text)
+                ? p.runs.every((run) => daysIn(run) <= 1) && /^\S+days \S*\d(?:am|pm)?–\d\S*$/.test(p.runs[p.runs.length - 1] ?? "")
+                : p.runs.length === 1
+            ) &&
             (datesLine === undefined ? r.lines.length === 1 : unbreakableRuns(datesLine).length === 1)
           );
         }),
-      () => json(rows.map((r) => [r.name, ...r.lines.map(unbreakableRuns)]))
+      () => json(rows.map((r) => [r.name, partsOf(r.lines[0] ?? ""), r.lines[1] === undefined ? null : unbreakableRuns(r.lines[1])]))
     );
     check(
       "the row makes room instead of squeezing the name: the when lines take a line of their own under it once the name would be narrower than 7rem, at the right edge, never narrower than their longest run",
