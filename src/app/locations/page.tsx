@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Fragment } from "react";
 import { locations } from "@/content/locations";
 import { programGroups } from "@/content/programs";
 import { getPublicCohorts } from "@/lib/cohortsDb";
@@ -14,7 +15,6 @@ import { Heading } from "@/components/ui/Heading";
 import { Button } from "@/components/ui/Button";
 import { FOCUS_RING } from "@/components/ui/focus";
 import { JoinClosing } from "@/components/sections/JoinClosing";
-import { TimesKeptWhole } from "@/components/sections/ProgramGroupCard";
 import { MapLink, PinIcon } from "@/components/locations/LocationLine";
 import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 
@@ -28,8 +28,10 @@ import { TEXT_LINK_LIME } from "@/components/ui/TextLink";
 
 // Incremental static regeneration, as /programs: the open blocks and their
 // seats are read the way that page reads them, at most once a minute, so a
-// row follows its group's card. A read that fails lists every planned group
-// as its card reads with no open block, never an error.
+// row follows its group's card. A change to a block in admin or payment
+// rebuilds it at once with /programs (COHORT_PAGES, src/lib/cohortRevalidate.ts;
+// backlog #100). A read that fails lists every planned group as its card
+// reads with no open block, never an error.
 export const revalidate = 60;
 
 const [first] = locations;
@@ -53,17 +55,33 @@ export const metadata: Metadata = {
 const PROGRAM_LINK = `rounded underline-offset-4 hover:underline ${FOCUS_RING}`;
 
 /**
- * "Nov 28, 2026 – Jan 2, 2027" as its two dates, each kept whole and the dash
- * riding the first, as the cards keep them; any other line as it is.
+ * "Saturdays 12–1pm, Wednesdays 6–7pm" with each day kept with its time: the
+ * line breaks only at a comma, the comma riding the part before it, never
+ * between a day and its time or inside a time range (backlog #100). Two days
+ * at one time stay together with it ("Sundays and Wednesdays 4–5pm"). The
+ * words are the card's own (formatClassDays).
  */
-function DatesKeptWhole({ text }: { text: string }) {
-  const [from, to] = text.split(" – ");
-  if (to === undefined) return <>{text}</>;
+function ClassDaysKeptWhole({ text }: { text: string }) {
+  const parts = text.split(", ");
   return (
     <>
-      <span className="whitespace-nowrap">{from} –</span> <span className="whitespace-nowrap">{to}</span>
+      {parts.map((part, i) => (
+        <Fragment key={`${i}-${part}`}>
+          {i > 0 && " "}
+          <span className="whitespace-nowrap">{i < parts.length - 1 ? `${part},` : part}</span>
+        </Fragment>
+      ))}
     </>
   );
+}
+
+/**
+ * The dates on one line: a block's "Dec 5, 2026 – Jan 13, 2027" never breaks
+ * inside a date or at its dash (backlog #100), and "Dates coming soon" stays
+ * whole too.
+ */
+function DatesKeptWhole({ text }: { text: string }) {
+  return <span className="whitespace-nowrap">{text}</span>;
 }
 
 export default async function LocationsPage() {
@@ -132,23 +150,26 @@ export default async function LocationsPage() {
                               </Link>
                             </p>
                             {/* Each row: the group's name, then its class days
-                                and times over its dates. The time column takes
-                                at most half the row, so a long line (two class
-                                days, dates across a new year) wraps inside it,
-                                each time and date kept whole, and never
-                                squeezes the name. */}
+                                and times over its dates, at the row's right
+                                edge. A line of class days breaks only at a
+                                comma and the dates never break, so when they
+                                do not fit beside a name at least 7rem wide (a
+                                block twice a week, dates across a new year, on
+                                a phone) they take a line of their own under
+                                the name, still at the right edge, and never
+                                squeeze it (backlog #100). */}
                             <ul role="list" className="mt-2 divide-y divide-white/10 border-y border-white/10">
                               {programCards.map((card) => {
                                 const when = cardWhen(card);
                                 return (
                                   <li
                                     key={card.group.id}
-                                    className="grid grid-cols-[minmax(0,1fr)_fit-content(50%)] gap-x-4 py-2.5 text-sm"
+                                    className="flex flex-wrap items-start gap-x-4 gap-y-0.5 py-2.5 text-sm"
                                   >
-                                    <span className="min-w-0 text-white/90">{card.group.name}</span>
-                                    <span className="text-right tabular-nums text-white/70">
+                                    <span className="min-w-0 grow basis-28 text-white/90">{card.group.name}</span>
+                                    <span className="ml-auto text-right tabular-nums text-white/70">
                                       <span className="block">
-                                        <TimesKeptWhole text={when.classDays} />
+                                        <ClassDaysKeptWhole text={when.classDays} />
                                       </span>
                                       {when.dates && (
                                         <span className="block">

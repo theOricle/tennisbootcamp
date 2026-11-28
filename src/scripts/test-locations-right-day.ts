@@ -133,9 +133,10 @@ function rowsOf(html: string): Row[] {
     .slice(1)
     .flatMap((chunk) => {
       const program = chunk.slice(0, chunk.indexOf('"'));
-      return [...chunk.matchAll(/<li class="grid [^"]*">([\s\S]*?)<\/li>/g)].map(([, inner]) => {
-        const name = /^<span class="min-w-0 text-white\/90">([\s\S]*?)<\/span>/.exec(inner)?.[1] ?? "";
-        const rest = inner.replace(/^<span class="min-w-0 text-white\/90">[\s\S]*?<\/span>/, "");
+      // Re-pinned for backlog #100: a row is a wrapping flex row, its name growing from a 7rem basis.
+      return [...chunk.matchAll(/<li class="flex [^"]*">([\s\S]*?)<\/li>/g)].map(([, inner]) => {
+        const name = /^<span class="min-w-0 grow basis-28 text-white\/90">([\s\S]*?)<\/span>/.exec(inner)?.[1] ?? "";
+        const rest = inner.replace(/^<span class="min-w-0 grow basis-28 text-white\/90">[\s\S]*?<\/span>/, "");
         const lines = rest.split('<span class="block">').slice(1).map(words);
         return { program, name: unescape(name), lines: lines.length > 0 ? lines : [words(rest)] };
       });
@@ -358,20 +359,23 @@ async function main() {
     const sat = await state([row({ id: "int-sat" })]);
     const section = whatRunsHere(sat.html);
     const count = (pattern: RegExp) => (section.match(pattern) ?? []).length;
+    // Re-pinned for backlog #100: the row wraps its when lines under the name
+    // when they do not fit beside it (test-locations-follow-ups.ts); the name,
+    // the time and their colours and size are unchanged.
     check(
       "the rows keep their look: one row per group, its name and its time in their own classes",
       () =>
         sat.rows.length > 0 &&
-        count(/<li class="grid grid-cols-\[minmax\(0,1fr\)_fit-content\(50%\)\] gap-x-4 py-2\.5 text-sm">/g) === sat.rows.length &&
+        count(/<li class="flex flex-wrap items-start gap-x-4 gap-y-0\.5 py-2\.5 text-sm">/g) === sat.rows.length &&
         count(/<li[ >]/g) === sat.rows.length + listedPrograms.length &&
-        count(/<span class="min-w-0 text-white\/90">/g) === sat.rows.length &&
-        count(/<span class="text-right tabular-nums text-white\/70">/g) === sat.rows.length
+        count(/<span class="min-w-0 grow basis-28 text-white\/90">/g) === sat.rows.length &&
+        count(/<span class="ml-auto text-right tabular-nums text-white\/70">/g) === sat.rows.length
     );
     check(
       "…its lines plain, in the time's own colour and size: no chip, no weight, no button, no new label",
       () =>
         (section.match(/<span [^>]*>/g) ?? []).every((t) =>
-          ['<span class="min-w-0 text-white/90">', '<span class="text-right tabular-nums text-white/70">', '<span class="block">', '<span class="whitespace-nowrap">', '<span aria-hidden="true">'].includes(t)
+          ['<span class="min-w-0 grow basis-28 text-white/90">', '<span class="ml-auto text-right tabular-nums text-white/70">', '<span class="block">', '<span class="whitespace-nowrap">', '<span aria-hidden="true">'].includes(t)
         ) && !/Open to join|Enroll|Notify me|Ask to join|By approval|spots? left|>Full</.test(section),
       () => [...new Set(section.match(/<span [^>]*>/g) ?? [])].join(" ")
     );
