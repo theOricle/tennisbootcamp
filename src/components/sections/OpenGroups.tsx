@@ -37,6 +37,7 @@ export function OpenGroupsList({
   headingLevel = 3,
   quiet = false,
   empty = "box",
+  notifyHref,
   className = "",
 }: {
   /** The open blocks' cards for this household (signedInOpenCards or accountOpenCards, src/lib/groupBlocks.ts). */
@@ -55,6 +56,12 @@ export function OpenGroupsList({
   quiet?: boolean;
   /** With none listed: a dashed box on the page, or a plain line inside a card of its own. */
   empty?: "box" | "line";
+  /**
+   * Where a full block's "Notify me" goes when this page has no newsletter
+   * line of its own (the dashboard): the line on /programs. Defaults to the
+   * footer's line on this page.
+   */
+  notifyHref?: string;
   className?: string;
 }) {
   const shown = signedInOpenCards(cards);
@@ -64,7 +71,7 @@ export function OpenGroupsList({
       <>
         <p className="text-[15px] text-white/75">{anyOpen ? noOpenGroupLine(whom) : NO_DATES_LINE}</p>
         <Link href="/programs" className={TEXT_LINK_LIME}>
-          Browse Programs →
+          Browse Programs
         </Link>
       </>
     );
@@ -78,7 +85,7 @@ export function OpenGroupsList({
     <ul role="list" className={`grid gap-3 sm:grid-cols-2 ${className}`.trim()}>
       {shown.map(({ group, block }) => (
         <li key={group.id} className="flex [&>*]:w-full">
-          <ProgramGroupCard group={group} block={block} headingLevel={headingLevel} quiet={quiet} />
+          <ProgramGroupCard group={group} block={block} headingLevel={headingLevel} quiet={quiet} notifyHref={notifyHref} />
         </li>
       ))}
     </ul>

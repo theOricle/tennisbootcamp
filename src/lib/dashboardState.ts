@@ -15,9 +15,10 @@
 //      booked, held or enrolled): pick a group, the main action, with the
 //      quiz as its side line (backlog #98)
 //   7. otherwise: our coaches are placing the players, nothing else to do.
-// Under its detail, every other upcoming dated item on the account (another
-// held spot, an assessment, the next class) is one short line, three at
-// most, soonest first (backlog #98: one status hid the others).
+// Every other dated item on the account (another held spot, an assessment,
+// each group's next class) is listed under it in "Coming up"
+// (src/lib/dashboardCalm.ts), which leaves out the one the step shows
+// (`shown`), so nothing booked is hidden and no date is said twice.
 
 import type { Cohort } from "@/types/cohort";
 import { formatDollars, numberInWords } from "@/content/programs";
@@ -27,6 +28,8 @@ import { dayNameForDate } from "@/lib/makeup";
 import { etransferMemo } from "@/lib/paymentTransitions";
 import { accountQuizStatus, type QuizEvidencePlayer } from "@/lib/quizStatus";
 import { noteWithoutMarks } from "@/lib/stripeOutcome";
+import { formatClassHours } from "@/lib/programCatalog";
+import { groupForBlock } from "@/lib/groupBlocks";
 import { formatTierSpan, hasLevel } from "@/lib/tiers";
 import { firstNameOf, namesList, possessive, type RosterPlayer } from "@/lib/householdView";
 
@@ -267,17 +270,22 @@ export type NextStepKind =
   | "placing"
   | "placed";
 
+/** The item the next step itself shows, so "Coming up" never repeats it. */
+export type NextStepShown = { inviteId?: string; bookingId?: string; sessionId?: string };
+
 export type NextStep = {
   kind: NextStepKind;
-  eyebrow: string;
+  /** The card's heading: a whole sentence, so it needs no label over it. */
   headline: string;
   detail: string;
   /**
-   * Every other upcoming dated item on the account, one short line each,
-   * soonest first, three at most: another held spot's deadline, an
-   * assessment booking, the next class. Absent when there is nothing else.
+   * What to type into a waiting e-transfer, as labelled values: the amount,
+   * who it goes to and the message. Shown between the headline and the detail.
    */
-  also?: string[];
+  facts?: { label: string; value: string }[];
+  /** The dated item this step shows; "Coming up" lists every other one. */
+  shown: NextStepShown;
+  /** The page's one lime button, only when there is something to do. */
   primary?: { href: string; label: string };
   secondary?: { href: string; label: string };
   /**
@@ -288,13 +296,17 @@ export type NextStep = {
   quizSideLine?: boolean;
 };
 
-export type NextStepInput = {
+/** Who is on the account and how its rows are worded. */
+export type AccountVoice = {
   /** The holder's own player record. */
   selfId: string | null;
   /** The people on the account who train (src/lib/householdView.ts). */
   roster: readonly RosterPlayer[];
   /** "you" when the holder is the only player; "named" otherwise. */
   voice: "you" | "named";
+};
+
+export type NextStepInput = AccountVoice & {
   enrollments: readonly DashEnrollment[];
   cohorts: readonly Cohort[];
   sessionsByCohort: Record<string, readonly DashSession[]>;
@@ -338,7 +350,7 @@ function groupName(cohort: Cohort): string {
  * is the holder's: the full name, or the first name alone, folded for case
  * and spaces.
  */
-function namesHolder(input: NextStepInput, name: string | null): boolean {
+function namesHolder(input: AccountVoice, name: string | null): boolean {
   const holder = input.roster.find((p) => p.id === input.selfId)?.full_name;
   if (!norm(holder) || !norm(name)) return false;
   return norm(name) === norm(holder) || norm(firstNameOf(name)) === norm(firstNameOf(holder));
@@ -350,8 +362,8 @@ function namesHolder(input: NextStepInput, name: string | null): boolean {
  * nobody or names the holder; a row named for someone else (a signed-out
  * enroll's note, "Leo Chen") reads by that name.
  */
-function whose(
-  input: NextStepInput,
+export function whose(
+  input: AccountVoice,
   player: RosterPlayer | null,
   fallbackName: string | null
 ): { owner: string; Owner: string; name: string | null; isSelf: boolean } {
@@ -435,7 +447,10 @@ export function nothingOnFile(account: {
 }
 
 /** Step 1's held spots, the soonest hold first: invited, not by e-transfer, in a live cohort. */
-function openHolds(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort>): DashInvite[] {
+export function openHolds(
+  input: AccountVoice & Pick<NextStepInput, "enrollments" | "invites" | "now" | "today">,
+  cohortById: ReadonlyMap<string, Cohort>
+): DashInvite[] {
   const paidCohorts = new Set(
     input.enrollments
       .filter((e) => enrollmentIsActive(enrollmentState(e, cohortById.get(e.cohort_id))))
@@ -481,7 +496,7 @@ function nextClass(
 }
 
 /** "2026-11-27T18:00": an instant on the Toronto clock, to sort beside a booking's or a class's local time. */
-function torontoStamp(iso: string): string {
+export function torontoStamp(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -495,67 +510,6 @@ function torontoStamp(iso: string): string {
   }).formatToParts(d);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
-}
-
-/** The item the next step itself shows, so the lines under it never repeat it. */
-type Shown = { inviteId?: string; bookingId?: string; sessionId?: string };
-
-/** The most lines under the next step's detail. */
-const MAX_ALSO = 3;
-
-/** A date and time kept whole on a narrow screen: the line breaks before it, never inside it. */
-function keptWhole(when: string): string {
-  return when.split(" ").join(String.fromCharCode(0xa0));
-}
-
-/**
- * Every other upcoming dated item on the account, one short line each,
- * soonest first, three at most (backlog #98): another held spot's deadline,
- * an assessment booking (who, day, date, time), the next class. Never the
- * item the next step shows; empty when there is nothing else.
- */
-function alsoLines(input: NextStepInput, shown: Shown, cohortById: ReadonlyMap<string, Cohort>): string[] {
-  const items: { at: string; line: string }[] = [];
-  for (const invite of openHolds(input, cohortById)) {
-    if (invite.id === shown.inviteId) continue;
-    const cohort = cohortById.get(invite.cohort_id) as Cohort;
-    const who = whose(input, playerFor(input.roster, { participantId: invite.participant_id }), null);
-    // The deadline on the Toronto clock, in the other lines' own style
-    // ("Sun Nov 29 at 12pm"); the hold step's headline keeps its own.
-    const at = torontoStamp(invite.expires_at);
-    const until = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)
-      ? `${fmtDayDate(at.slice(0, 10))} at ${fmt12h(at.slice(11))}`
-      : fmtHoldDeadline(invite.expires_at);
-    items.push({
-      at,
-      line: `${who.Owner} spot in ${programTitle(input.programs, cohort, cohort.programId)} is held until ${keptWhole(until)}.`,
-    });
-  }
-  for (const booking of input.bookings) {
-    if (booking.date < input.today || booking.id === shown.bookingId) continue;
-    const who = whose(
-      input,
-      playerFor(input.roster, { participantId: booking.participantId, name: booking.playerName }),
-      booking.playerName
-    );
-    items.push({
-      at: `${booking.date}T${booking.start.slice(0, 5)}`,
-      line: `${who.Owner} assessment is ${keptWhole(`${fmtDayDate(booking.date)} at ${fmt12h(booking.start)}`)}.`,
-    });
-  }
-  const next = nextClass(input, cohortById);
-  if (next && next.row.id !== shown.sessionId) {
-    const { row, enrollment } = next;
-    const who = whose(input, playerFor(input.roster, { name: enrollment.participant_name }), enrollment.participant_name);
-    items.push({
-      at: `${row.session_date}T${row.start_time.slice(0, 5)}`,
-      line: `${who.Owner} next class is ${keptWhole(`${fmtDayDate(row.session_date)} at ${fmt12h(row.start_time)}`)}.`,
-    });
-  }
-  return items
-    .sort((a, b) => a.at.localeCompare(b.at))
-    .slice(0, MAX_ALSO)
-    .map((item) => item.line);
 }
 
 /**
@@ -590,11 +544,13 @@ function transferCreditSentence(
 export function nextStepFor(input: NextStepInput): NextStep {
   const cohortById = new Map(input.cohorts.map((c) => [c.id, c]));
   const { step, shown } = mostUrgent(input, cohortById);
-  const also = alsoLines(input, shown, cohortById);
-  return also.length > 0 ? { ...step, also } : step;
+  return { ...step, shown };
 }
 
-function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort>): { step: NextStep; shown: Shown } {
+function mostUrgent(
+  input: NextStepInput,
+  cohortById: ReadonlyMap<string, Cohort>
+): { step: Omit<NextStep, "shown">; shown: NextStepShown } {
   const { roster, enrollments, sessionsByCohort, programs, today } = input;
 
   // 1. An open invite: a held spot, not yet paid for or sent by e-transfer.
@@ -612,7 +568,6 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
       shown: { inviteId: invite.id },
       step: {
         kind: "invite",
-        eyebrow: "Spot held",
         headline: `${who.Owner} spot is held until ${fmtHoldDeadline(invite.expires_at)}.`,
         detail:
           `${programTitle(programs, cohort, cohort.programId)}, ${groupName(cohort)}. ` +
@@ -689,22 +644,26 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
       shown: {},
       step: {
         kind: "etransfer",
-        eyebrow: "Payment pending",
         headline:
           !several && one.who.isSelf
             ? "Our coaches are confirming your e-transfer."
             : counted
               ? `Our coaches are confirming the e-transfer for ${people.length} spots.`
               : `Our coaches are confirming the e-transfer for ${names}.`,
+        // What to type, as three labelled values a phone can copy; the
+        // message keeps the coach's block label, which payments are matched by.
+        facts: [
+          { label: "Amount", value: money(amount) },
+          { label: "Send to", value: input.recipientEmail },
+          { label: "Message", value: memo },
+        ],
         detail:
-          `${money(amount)} to ${input.recipientEmail}, memo “${memo}”. ` +
           (credited ? `${credited} ` : "") +
           (counted
             ? `The ${people.length} spots in ${program} are held while our coaches confirm it arrived.`
             : several
               ? `The spots for ${names} in ${program} are held while our coaches confirm it arrived.`
               : `${one.who.Owner} spot in ${program} is held while our coaches confirm it arrived.`),
-        secondary: { href: "#my-programs", label: "See my programs" },
       },
     };
   }
@@ -717,8 +676,7 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
       shown: { bookingId: booking.id },
       step: {
         kind: "assessment",
-        eyebrow: who.isSelf ? "Your assessment" : `${who.Owner} assessment`,
-        headline: `${fmtDayDate(booking.date)} · ${fmt12h(booking.start)}`,
+        headline: `${who.Owner} assessment is ${fmtDayDate(booking.date)} at ${fmt12h(booking.start)}.`,
         detail: `20 minutes on court with one of our coaches${booking.locationLabel ? `, ${booking.locationLabel}` : ""}. ${BRING_LINE}`,
         secondary: { href: "#availability", label: "Update my availability" },
       },
@@ -730,20 +688,27 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
   if (soonest) {
     const { row, enrollment } = soonest;
     const cohort = cohortById.get(enrollment.cohort_id);
+    // Everyone on the account with a paid spot in that block, by first name.
+    const inClass = enrollments
+      .filter((e) => e.cohort_id === enrollment.cohort_id && enrollmentIsActive(enrollmentState(e, cohort)))
+      .map((e) => firstNameOf(e.participant_name))
+      .filter(Boolean);
+    const what = row.makeup_for ? "make-up class" : "next class";
     return {
       shown: { sessionId: row.id },
       step: {
         kind: "session",
-        eyebrow: "Next session",
-        headline: `${fmtDayDate(row.session_date)} · ${fmt12h(row.start_time)}–${fmt12h(row.end_time)}`,
+        headline: `${input.voice === "you" ? "Your" : "The"} ${what} is ${fmtDayDate(row.session_date)} at ${fmt12h(row.start_time)}.`,
+        // The group's name as a family reads it on /programs, never the
+        // coach's block label; then the class hours and who is in it.
         detail: [
-          programTitle(programs, cohort, enrollment.program ?? enrollment.cohort_id),
-          cohort?.label,
-          input.voice === "named" ? enrollment.participant_name : null,
+          (cohort && groupForBlock(cohort)?.name) ||
+            programTitle(programs, cohort, enrollment.program ?? enrollment.cohort_id),
+          formatClassHours(row.start_time.slice(0, 5), row.end_time.slice(0, 5)),
+          input.voice === "named" ? namesList([...new Set(inClass)]) : null,
         ]
           .filter(Boolean)
           .join(" · "),
-        secondary: { href: "#my-programs", label: "See all sessions" },
       },
     };
   }
@@ -758,10 +723,8 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
       shown: {},
       step: {
         kind: "dates-coming",
-        eyebrow: "Next step",
         headline: "Session dates are coming.",
         detail: `${programTitle(programs, placed, placed.programId)} trains ${weeklySlots(placed)}. Our coaches confirm the dates once the group is set.`,
-        secondary: { href: "#my-programs", label: "See my programs" },
       },
     };
   }
@@ -782,7 +745,6 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
       shown: {},
       step: {
         kind: "start",
-        eyebrow: "Next step",
         headline: solo
           ? "Pick the group for your age and level."
           : many
@@ -807,7 +769,6 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
         unplaced.length > 0 || roster.length === 0
           ? {
               kind: "placing",
-              eyebrow: "Next step",
               headline: "Our coaches are placing you in a group and time.",
               detail: `${lead} ${ASSESSMENT_LINE}`,
               primary: { href: "#availability", label: "Update my availability" },
@@ -815,7 +776,6 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
             }
           : {
               kind: "placed",
-              eyebrow: "Next step",
               headline: "Your level is set. Our coaches are placing you in a group.",
               detail: `${lead} Your group, dates and price land here once they are set.`,
               primary: { href: "#availability", label: "Update my availability" },
@@ -827,7 +787,6 @@ function mostUrgent(input: NextStepInput, cohortById: ReadonlyMap<string, Cohort
     shown: {},
     step: {
       kind: unplaced.length > 0 ? "placing" : "placed",
-      eyebrow: "Next step",
       headline: `Our coaches are placing ${namesList(everyone)} in ${many ? "groups and times" : "a group and time"}.`,
       detail:
         unplaced.length > 0

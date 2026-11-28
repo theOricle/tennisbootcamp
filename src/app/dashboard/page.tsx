@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { programGroups, programs, listedPrograms } from "@/content/programs";
 import {
@@ -29,145 +28,19 @@ import { listInvitesForAccount, type AccountInvite } from "@/lib/cohortActions";
 import { listUpcomingBookingsForAccount, type AccountBooking } from "@/lib/assessments";
 import { accountCreditView } from "@/lib/assessmentCredit";
 import { etransferRecipient } from "@/lib/paymentTransitions";
-import { locations } from "@/content/locations";
-import { LocationBlock } from "@/components/locations/LocationLine";
 import { programTakesPlayerAge, suggestProgramsFor } from "@/lib/programCatalog";
 import { hasLevel, placedSpanFor, type PlacedSpan } from "@/lib/tiers";
 import { rosterVoice, trainingRoster } from "@/lib/householdView";
 import { creditLine, heldCohortIds, nextStepFor, nothingOnFile, welcomeHeading } from "@/lib/dashboardState";
 import { accountQuizStatus } from "@/lib/quizStatus";
-import { DashboardView, SURFACE, type DashboardEnrollment } from "./DashboardView";
+import { DashboardView, type DashboardEnrollment } from "./DashboardView";
+import { DashboardErrorState, DashboardSkeleton } from "./DashboardStates";
 
 export const metadata: Metadata = {
   title: "Dashboard",
   description: "Your Tennis Bootcamp training dashboard — enrollments and upcoming programs.",
   robots: { index: false, follow: false },
 };
-
-// ─── Skeleton ────────────────────────────────────────────────────────────────
-
-/**
- * The RankCard's ghost (audit M24): emblem, three lines and the five rail
- * groups, sized like the rail's (two pips each, five for High Performance).
- */
-const RAIL_GHOST: { height: string; flex: string; pips: number }[] = [
-  { height: "h-[6px]", flex: "flex-[2]", pips: 2 },
-  { height: "h-[9px]", flex: "flex-[2]", pips: 2 },
-  { height: "h-[12px]", flex: "flex-[2]", pips: 2 },
-  { height: "h-[15px]", flex: "flex-[2]", pips: 2 },
-  { height: "h-[18px]", flex: "flex-[5]", pips: 5 },
-];
-
-function RankCardGhost() {
-  return (
-    <div className={`${SURFACE} border-t-2 border-t-white/15 p-5 md:p-6`}>
-      <div className="md:flex md:items-start md:gap-8">
-        <div className="flex items-start gap-5 md:w-[280px] md:shrink-0">
-          <div className="h-20 w-20 shrink-0 rounded-[22px] bg-white/5" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="h-3 w-16 rounded bg-[#B4E655]/20" />
-            <div className="h-3 w-20 rounded bg-white/5" />
-            <div className="h-7 w-28 rounded bg-white/10" />
-            <div className="h-3 w-16 rounded bg-white/5" />
-          </div>
-        </div>
-        <div className="mt-6 flex flex-1 items-end gap-1.5 md:mt-8">
-          {RAIL_GHOST.map((group, i) => (
-            <div key={i} className={`flex ${group.flex} items-end gap-[2px]`}>
-              {Array.from({ length: group.pips }, (_, j) => (
-                <div key={j} className={`flex-1 rounded-[1px] bg-white/[0.10] ${group.height}`} />
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="mt-4 h-3 w-48 rounded bg-white/5" />
-    </div>
-  );
-}
-
-function DashboardSkeleton() {
-  return (
-    <div className="animate-pulse space-y-10">
-      {/* Header card ghost — welcome on the left, next step on the right */}
-      <div className={`${SURFACE} p-6 md:p-8`}>
-        <div className="grid gap-6 lg:grid-cols-5 lg:gap-10">
-          <div className="space-y-3 lg:col-span-2">
-            <div className="h-8 w-56 rounded bg-white/10" />
-            <div className="h-3 w-44 rounded bg-white/5" />
-            <div className="mt-3 h-11 w-24 rounded bg-white/5" />
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-[#061427]/60 p-5 md:p-6 lg:col-span-3">
-            <div className="h-3 w-20 rounded bg-[#B4E655]/20" />
-            <div className="mt-3 h-6 w-3/4 rounded bg-white/10" />
-            <div className="mt-3 h-3 w-full rounded bg-white/5" />
-            <div className="mt-5 h-11 w-44 rounded-full bg-white/10" />
-          </div>
-        </div>
-      </div>
-
-      {/* Tier section ghost */}
-      <RankCardGhost />
-
-      <div className="grid gap-10 lg:grid-cols-3 lg:gap-8">
-        {/* My programs — two card silhouettes */}
-        <div className="space-y-4 lg:col-span-2">
-          <div className="h-6 w-32 rounded bg-white/10" />
-          {[0, 1].map((i) => (
-            <div key={i} className={`${SURFACE} p-5 md:p-6`}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-2">
-                  <div className="h-5 w-36 rounded bg-white/10" />
-                  <div className="h-3 w-48 rounded bg-white/5" />
-                </div>
-                <div className="h-6 w-16 rounded-full bg-[#B4E655]/10" />
-              </div>
-              <div className="mt-4 space-y-2 border-t border-white/10 pt-3">
-                <div className="h-3 w-40 rounded bg-white/5" />
-                <div className="h-3 w-44 rounded bg-white/5" />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Side column — week card ghost, then where we train (static) */}
-        <div className="space-y-6">
-          <div className={`${SURFACE} p-5 md:p-6`}>
-            <div className="h-5 w-24 rounded bg-white/10" />
-            <div className="mt-4 h-10 w-full rounded bg-white/5" />
-            <div className="mt-4 h-11 w-full rounded-full bg-white/5" />
-          </div>
-          <div className={`${SURFACE} p-5 md:p-6`}>
-            <h2 className="text-base font-semibold text-white">Where we train</h2>
-            <ul role="list" className="mt-3 space-y-3">
-              {locations.map((l) => (
-                <li key={l.id}>
-                  <LocationBlock location={l} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Error state ─────────────────────────────────────────────────────────────
-
-function DashboardErrorState() {
-  return (
-    <div className="py-20 text-center">
-      <p className="text-sm text-white/60">Couldn&apos;t load your dashboard right now.</p>
-      <Link
-        href="/dashboard"
-        className="mt-4 inline-block rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/15"
-      >
-        Refresh
-      </Link>
-    </div>
-  );
-}
 
 // ─── Data component ───────────────────────────────────────────────────────────
 
@@ -355,6 +228,10 @@ async function DashboardContent({
       enrollments={rows}
       cohorts={cohorts}
       sessionsByCohort={sessionsByCohort}
+      // "Coming up": every dated item the next step does not show.
+      bookings={bookings}
+      invites={invites}
+      now={now}
       openForTier={openForTier}
       openGroups={openGroups}
       anyGroupOpen={allOpenGroups.length > 0}

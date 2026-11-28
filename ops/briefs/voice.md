@@ -189,6 +189,21 @@ Tournament dialect is allowed **only on High Performance surfaces** (the High Pe
 
 "Cohort" is locked vocabulary and stays everywhere — but where it first appears on an all-levels page, add a one-line plain definition: *a fixed group that trains together for six weeks* (canonical placement: the About hero).
 
+## The dashboard (backlog #105)
+
+The signed-in dashboard reads like the rest of the site: the welcome as a plain heading, one next step, "Coming up", the account's groups, "Groups with dates", the players. Where this section and an older line above differ about the dashboard, this section stands.
+
+- **The next step is a whole sentence**, with no label over it: "Our coaches are confirming the e-transfer for Leo.", "Leo's assessment is Sat Dec 5 at 10:20am.", "Your next class is Sat Oct 18 at 12pm." ("The next class…" for a household, "make-up class" when it is one). Its one lime button shows only when there is something to do.
+- **A waiting e-transfer** reads as three labelled facts: "Amount", "Send to", "Message". The message keeps the coach's block label ("Leo Reyes – Winter Saturday"): payments are matched by it.
+- **"Coming up"** lists every other dated item, soonest first: "{Leo's} assessment", "{Leo's} held spot" with "until 6pm", "First class", "Next class", "Make-up class". Never the item the next step already shows.
+- **"Your group" / "Your groups"**: one card per group, by the group's name on /programs, never the coach's block label; each player has their own chip; "Class dates" opens the dated classes, with "Past" under the ones to come.
+- **The players section** is "Your players" ("Your player" for one child, "Your level and times" when the holder is the only player). A level set on court reads "Intermediate · 3.0 · Set by our coaches · Nov 14"; a placement, "Intermediate group, provisional until our coaches confirm it on court in week one."; neither, "No level yet. Our coaches confirm it on court in week one." The week is one line ("Wed evening · Sat morning and afternoon"), or "No times on file yet."; "Edit times" ("Add times") opens the grid and "Close" shuts it.
+- **Hours are 12-hour everywhere a family reads them**: the availability grid's legend reads "Morning 8am–12pm", "Afternoon 12–4pm", "Evening 4–8pm".
+- **No arrow is typed after a link's words** on the dashboard or the signed-in group list: "Browse Programs", "See details".
+- **The load error** says what is wrong and both ways out: "Couldn't load your dashboard right now." then "Refresh the page. If it keeps happening, email info@tennisbootcamp.ca." and "Refresh".
+- **Left the dashboard:** the "Where we train" card (each group's card names the club), the capital labels over headings, "See my programs", "See all sessions", and "Training someone else too — a child, a partner, or yourself?" ("Add another player" stands alone).
+- **No newsletter line on a signed-in page** (the dashboard, the profile, enrolling, the admin). A full block's "Notify me" on the dashboard opens the line on /programs.
+
 ## Checklist before shipping any string
 
 1. Would a world-class coach say this out loud to a player? If it sounds like a landing page, rewrite.

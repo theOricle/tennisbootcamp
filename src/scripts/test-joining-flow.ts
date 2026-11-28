@@ -809,8 +809,8 @@ check("quiz: the old wording is gone", !intake.includes("Our coaches confirm {fi
 check("quiz: the assessment is for certainty, before enrolling", intake.includes("Optional: want certainty first?") && intake.includes("before you enroll, you can book a 20-minute assessment") && !intake.includes("before you're placed"));
 check("quiz: the High Performance group is marked by approval on the match card", intake.includes('{g.joining === "approval" && <span className="text-white/70"> · By approval</span>}'));
 const dash = read("src/app/dashboard/DashboardView.tsx");
-check("dashboard: a placement reads Provisional in the player list", dash.includes("`Provisional · ${formatTierSpan(placed.min, placed.max)} group`"));
-check("dashboard: the tiers sub names the week-one check", dash.includes("Each player's level, set by our coaches and confirmed on court in week one."));
+check("dashboard: a placement reads provisional in the player list, until week one", dash.includes("`${formatTierSpan(placed.min, placed.max)} group, provisional until our coaches confirm it on court in week one.`"));
+check("dashboard: a player with no level names the week-one check", dash.includes('"No level yet. Our coaches confirm it on court in week one."'));
 const placing = nextStepFor({
   selfId: "p1",
   roster: [{ id: "p1", relationship: "self", full_name: "Dana Chen", level: null }],

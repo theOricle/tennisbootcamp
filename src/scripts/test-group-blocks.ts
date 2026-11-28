@@ -344,8 +344,8 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   const juniorOnly = panel(mixed, 1, [{ age_band: "junior", is_minor: true }]);
   check("the quiz panel lists only the blocks whose ages take one of the household's players", count(adultOnly, "<article") === 1 && adultOnly.includes("/enroll/beg-sun") && !adultOnly.includes("/enroll/nov-panel") && count(juniorOnly, "<article") === 1 && juniorOnly.includes("/enroll/nov-panel") && !juniorOnly.includes("/enroll/beg-sun"));
   const adultsNoFit = panel(groupCards(programGroups, [novicePanel]), 1, [{ age_band: "adult", is_minor: false }]);
-  check("…and with blocks open for other ages only, the panel says none is open to them", adultsNoFit.includes(`>${noOpenGroupLine("you")}</p>`) && !adultsNoFit.includes(NO_DATES_LINE) && !adultsNoFit.includes("<article") && /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(adultsNoFit));
-  check("…a link to the groups, and the dashboard button the one lime action", /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(noBlocks) && lime(linkTo(noBlocks, "/intake")));
+  check("…and with blocks open for other ages only, the panel says none is open to them", adultsNoFit.includes(`>${noOpenGroupLine("you")}</p>`) && !adultsNoFit.includes(NO_DATES_LINE) && !adultsNoFit.includes("<article") && /<a [^>]*href="\/programs"[^>]*>Browse Programs<\/a>/.test(adultsNoFit));
+  check("…a link to the groups, and the dashboard button the one lime action", /<a [^>]*href="\/programs"[^>]*>Browse Programs<\/a>/.test(noBlocks) && lime(linkTo(noBlocks, "/intake")));
   check("…promising nothing the site does not do: no email when a block opens", !/email|notify|tell you|we&#x27;ll|we will|let you know/i.test(words(noBlocks).replace("Retake the quiz", "")));
 
   // The dashboard's list, as the dashboard draws it (quiet: its one primary is the next step).
@@ -353,9 +353,9 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   const links = dash.match(/<a [^>]*>/g) ?? [];
   check("the dashboard's list: the same cards, every button an outline, never the by-approval block", count(dash, "<article") === 1 && links.length > 0 && links.every((a) => !a.includes("bg-[#B4E655]")) && />Enroll</.test(linkTo(dash, "/enroll/beg-sun")) && !dash.includes("/enroll/hp"));
   const dashEmpty = render(createElement(OpenGroupsList, { cards: [], quiet: true }));
-  check("…with none: the dashed box, the one line and the link to the groups", dashEmpty.includes("border-dashed") && dashEmpty.includes(`>${NO_DATES_LINE}</p>`) && /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(dashEmpty) && !/email|tell you|let you know/i.test(dashEmpty));
+  check("…with none: the dashed box, the one line and the link to the groups", dashEmpty.includes("border-dashed") && dashEmpty.includes(`>${NO_DATES_LINE}</p>`) && /<a [^>]*href="\/programs"[^>]*>Browse Programs<\/a>/.test(dashEmpty) && !/email|tell you|let you know/i.test(dashEmpty));
   const dashNoFit = render(createElement(OpenGroupsList, { cards: [], quiet: true, blocksOpen: true, whom: "Maya" }));
-  check("…with blocks open but none for the account: the line that is true, by name, and the link", dashNoFit.includes("border-dashed") && dashNoFit.includes(`>${noOpenGroupLine("Maya")}</p>`) && !dashNoFit.includes(NO_DATES_LINE) && /<a [^>]*href="\/programs"[^>]*>Browse Programs →<\/a>/.test(dashNoFit));
+  check("…with blocks open but none for the account: the line that is true, by name, and the link", dashNoFit.includes("border-dashed") && dashNoFit.includes(`>${noOpenGroupLine("Maya")}</p>`) && !dashNoFit.includes(NO_DATES_LINE) && /<a [^>]*href="\/programs"[^>]*>Browse Programs<\/a>/.test(dashNoFit));
   check("the heading over the open blocks, and the two lines with none listed", OPEN_GROUPS_HEADING === "Groups with dates" && NO_DATES_LINE === "No group has dates yet." && noOpenGroupLine("you") === "No group with dates is open to you right now." && noOpenGroupLine("your players") === "No group with dates is open to your players right now.");
 
   // Which open blocks an account sees: not one it is in; ages only.
@@ -383,7 +383,7 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   check("the dashboard page: the account's open blocks, by its enrollments and its players", dashPage.includes("const allOpenGroups = openBlockCards(groupCards(programGroups, publicBlocks, blockSeats));") && dashPage.includes("accountOpenCards(allOpenGroups, {") && dashPage.includes("    enrolledCohortIds,") && dashPage.includes("players: roster.length > 0 ? roster : players,"));
   check("…whether any block is open at all, for the line with none listed, and whether the list shows one, for the next step", dashPage.includes("anyGroupOpen={allOpenGroups.length > 0}") && dashPage.includes("groupsBelow: openGroups.some(cardTakesEnrollment),"));
   const view = read("src/app/dashboard/DashboardView.tsx");
-  check("the dashboard view draws them quiet under Groups with dates, under My programs", view.includes('<SectionHeading id="open-groups" title={OPEN_GROUPS_HEADING} />') && /<OpenGroupsList\s+cards=\{openGroups\}\s+quiet\s+blocksOpen=\{anyGroupOpen\}\s+whom=\{several \? "your players" : \(names\[0\] \?\? "you"\)\}\s+\/>/.test(view) && at(view, 'id="my-programs"') < at(view, 'id="open-groups"') && at(view, 'id="open-groups"') < at(view, 'id="open-for-tier"'));
+  check("the dashboard view draws them quiet under Groups with dates, under My programs", view.includes('<Section id="open-groups" title={OPEN_GROUPS_HEADING}>') && /<OpenGroupsList\s+cards=\{openGroups\}\s+quiet\s+blocksOpen=\{anyGroupOpen\}\s+whom=\{whom\}\s+empty="line"\s+notifyHref=\{NOTIFY_HREF\}\s+\/>/.test(view) && view.includes('const whom = several ? "your players" : (names[0] ?? "you");') && at(view, 'id="my-programs"') < at(view, 'id="open-groups"') && at(view, 'id="open-groups"') < at(view, 'id="open-for-tier"'));
 
   // Suggested for you never repeats a listed block (fix round 2).
   const suggestions = listedPrograms.map((program) => ({ program, fit: null }));
@@ -392,8 +392,8 @@ console.log("Signed in: the open blocks, never a by-approval one, or one plain l
   check("a program whose groups with dates are listed is left out of Suggested for you; every other stays", kept === listedPrograms.filter((p) => p.id !== "bootcamps").map((p) => p.id).join(","), kept);
   check("…with none listed, every suggestion stays, and a group with no block lists nothing", suggestionsBesideCards(suggestions, []).length === suggestions.length && suggestionsBesideCards(suggestions, groupCards(programGroups, [])).length === suggestions.length && suggestionsBesideCards(suggestions, groupCards(programGroups, [hpBlock]).filter((c) => c.block === null)).length === suggestions.length);
   check("the dashboard page takes them out beside the list it shows", /suggestionsBesideCards\(\s*suggestProgramsFor\(roster, listedPrograms, enrolledProgramIds\),\s*openGroups\s*\)/.test(dashPage));
-  const suggested = view.slice(at(view, 'aria-labelledby="suggested"'));
-  check("…and its cards carry no block in the old format: no Next row, no Next cohort chip", suggested.includes("<ProgramCardList") && !suggested.includes("publicCohorts") && !view.includes("isCohortPublic"));
+  const suggested = view.slice(at(view, 'id="suggested"'));
+  check("…and its rows carry no block in the old format: no Next row, no Next cohort chip", suggested.includes("<SuggestionRows suggestions={suggestions} />") && !view.includes("publicCohorts") && !view.includes("isCohortPublic"));
 
   // The next step above them names the groups below only when the list
   // shows one (fix round 2); with none, it keeps the old sentence.

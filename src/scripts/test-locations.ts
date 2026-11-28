@@ -231,7 +231,8 @@ const confirmed = read("src/app/enroll/[cohortId]/confirmed/page.tsx");
 check("the confirmation lists the Location first", at(confirmed, ">Location</span>") > 0 && at(confirmed, ">Location</span>") < at(confirmed, ">Program</span>") && confirmed.includes("{location.name}"));
 const block = render(createElement(LocationBlock, { location: club! }));
 check("the dashboard's block: name, area, a 44px map link", block.includes(`>${NAME}</p>`) && block.includes(`>${AREA}</p>`) && block.includes("min-h-[44px]"));
-check("the dashboard names the club where we train", read("src/app/dashboard/DashboardView.tsx").includes("<LocationBlock location={l} />") && read("src/app/dashboard/page.tsx").includes("<LocationBlock location={l} />"));
+// Backlog #105: the "Where we train" card left the dashboard; each group's card names its club.
+check("the dashboard names the club on each group's card", read("src/app/dashboard/DashboardView.tsx").includes("const club = group.cohort ? locationForCohort(group.cohort)?.name : null;") && !read("src/app/dashboard/DashboardView.tsx").includes("Where we train") && !read("src/app/dashboard/DashboardStates.tsx").includes("Where we train"));
 
 // ── 4. The stand-ins are gone ───────────────────────────────────────────────
 console.log("No venue stand-ins");

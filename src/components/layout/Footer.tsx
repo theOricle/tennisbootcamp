@@ -30,12 +30,13 @@ export function Footer() {
   return (
     <footer className="border-t border-white/10">
       <Container>
-        <div
+        {/* Not on a signed-in page (backlog #105): a family that has an
+            account is not asked for its email again. The line draws its own
+            box, so a page without it carries no empty band or anchor. */}
+        <FooterNewsletter
           id={NEWSLETTER_ANCHOR}
           className="scroll-mt-24 border-b border-white/10 py-6 md:py-7 [body:has([data-page-newsletter])_&]:hidden"
-        >
-          <FooterNewsletter />
-        </div>
+        />
 
         <div className="grid gap-6 py-7 md:grid-cols-[1.3fr_2fr_1.2fr] md:gap-8 md:py-10">
           <div>

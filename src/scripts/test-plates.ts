@@ -301,7 +301,8 @@ check("program card draws nothing over the photo but the chip", !card.includes("
 const og = read("src/app/programs/[slug]/opengraph-image.tsx");
 check("OG card embeds the strip plate at fixed density with a fallback", og.includes('"strip"') && og.includes('density: "fixed"') && og.includes("catch"));
 check("the OG card passes the program's comingSoon flag", og.includes("!!program.comingSoon"));
-check("the dashboard strip, the enroll summary and the admin preview keep the plate", ["src/app/dashboard/DashboardView.tsx", "src/app/enroll/[cohortId]/EnrollWizard.tsx", "src/components/admin/PlayerPreview.tsx"].every((f) => read(f).includes("<ProgramPlate")));
+// Backlog #105: the dashboard's group card carries no court drawing (it repeated per card).
+check("the enroll summary and the admin preview keep the plate; the dashboard draws none", ["src/app/enroll/[cohortId]/EnrollWizard.tsx", "src/components/admin/PlayerPreview.tsx"].every((f) => read(f).includes("<ProgramPlate")) && !/<ProgramPlate|<PlateMark/.test(read("src/app/dashboard/DashboardView.tsx")));
 const galleryFile = read("src/app/admin/art/ArtGallery.tsx");
 check("the admin gallery draws each plate in the program's own state", galleryFile.includes("comingSoon={programOf(id)?.comingSoon}"));
 // PR #83 fix round 2: the retired Group Lessons entry is unlisted and still

@@ -23,9 +23,10 @@
 //      quiz line under the availability does not repeat the side line.
 //   4. A block the account holds an open spot in leaves "Groups with dates".
 //   5. Nothing booked hidden: every other upcoming dated item (an assessment
-//      booking, another held spot's deadline, the next class) is one short
-//      line under the next step's detail, three at most, soonest first, in
-//      the detail's own size and colour; nothing new when there is nothing.
+//      booking, another held spot's deadline, each group's next class) is a
+//      row in "Coming up" under the next step, soonest first, with no cap
+//      (backlog #105; they were lines inside the step, three at most); never
+//      the item the step shows; no section when there is nothing.
 // Every check catches its own error, so each reports on its own. Exits
 // non-zero on any failure. Never spells the cohort length or total.
 
@@ -51,6 +52,7 @@ import {
   type NextStep,
   type NextStepInput,
 } from "../lib/dashboardState";
+import { comingUp } from "../lib/dashboardCalm";
 import { programGroups } from "../content/programs";
 import { parseAvailability } from "../lib/availability";
 import type { PlayerRecord } from "../lib/players";
@@ -84,9 +86,15 @@ const count = (hay: string, needle: string) => hay.split(needle).length - 1;
 const words = (html: string) => html.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 /** The lime links in a piece of markup. */
 const limeLinks = (html: string) => (html.match(/<a [^>]*>[\s\S]*?<\/a>/g) ?? []).filter((a) => a.includes("bg-[#B4E655]"));
-const NBSP = String.fromCharCode(0xa0);
-/** The lines under a next step as a reader reads them: a kept-whole space is a space. */
-const lines = (step: NextStep) => JSON.stringify((step.also ?? []).map((l) => l.split(NBSP).join(" ")));
+/** A waiting e-transfer's labelled facts, read as the one line they were: amount, recipient, message, then the detail. */
+const slip = (step: NextStep) => {
+  const fact = (label: string) => step.facts?.find((f) => f.label === label)?.value ?? "";
+  return `${fact("Amount")} to ${fact("Send to")}, memo “${fact("Message")}”. ${step.detail}`;
+};
+/** "Coming up" for an account, as the page lists it: every dated item but the one its next step shows. */
+const coming = (input: NextStepInput) => comingUp({ ...input, shown: nextStepFor(input).shown });
+/** Those rows as a reader reads them: day, what, when. */
+const lines = (input: NextStepInput) => JSON.stringify(coming(input).map((i) => `${i.weekday} ${i.day} · ${i.title} · ${i.time}`));
 
 const TODAY = "2026-11-26";
 const NOW = "2026-11-26T15:00:00.000Z";
@@ -227,9 +235,10 @@ function dashboard(nextStep: NextStep, over: Partial<DashboardViewProps> = {}): 
     createElement(AppRouterContext.Provider, { value: ROUTER as never }, createElement(DashboardView, props))
   );
 }
-/** The next-step card: from its tinted box to the end of the header section. */
-const stepCard = (html: string) => html.slice(html.indexOf("border-[#B4E655]/20 bg-[#061427]/60"), html.indexOf("</section>"));
-const myPrograms = (html: string) => html.slice(html.indexOf('id="my-programs"'), html.indexOf('id="open-groups"'));
+/** The next-step card: the page's one card with a lime button, to the end of its section. */
+const stepCard = (html: string) => html.slice(html.indexOf('<section aria-labelledby="next-step"'), html.indexOf("</section>"));
+/** "Coming up": from its section to the next one. */
+const comingUpPart = (html: string) => (html.includes('id="coming-up"') ? html.slice(html.indexOf('id="coming-up"'), html.indexOf("</section>", html.indexOf('id="coming-up"'))) : "");
 const availabilityPart = (html: string) => html.slice(html.indexOf('id="availability-heading"'));
 
 // ─── 1. Groups that fit ──────────────────────────────────────────────────────
@@ -295,7 +304,8 @@ console.log("2. The $20 said once: the e-transfer step says it, the credit line 
   const step = nextStepFor(base({ invites: [leoTransfer] }));
   check("a pending e-transfer that took Leo's $20 says so in its step, once", () =>
     step.kind === "etransfer" &&
-    step.detail.startsWith(`${formatDollars(COHORT_TOTAL - 20)} to info@tennisbootcamp.ca, memo “Leo Chen – Winter Saturday”. `) &&
+    slip(step).startsWith(`${formatDollars(COHORT_TOTAL - 20)} to info@tennisbootcamp.ca, memo “Leo Chen – Winter Saturday”. `) &&
+    JSON.stringify(step.facts?.map((f) => f.label)) === JSON.stringify(["Amount", "Send to", "Message"]) &&
     step.detail.includes("Leo's $20 assessment came off the price.") &&
     count(step.detail, "$20") === 1,
     () => step.detail
@@ -332,7 +342,7 @@ console.log("2. The $20 said once: the e-transfer step says it, the credit line 
     })
   );
   check("one $20 two invites found comes off once and is said once", () =>
-    shared.detail.startsWith(`${formatDollars(COHORT_TOTAL * 2 - 20)} to`) && count(shared.detail, "$20") === 1 && shared.detail.includes("Leo's $20 assessment came off the price."),
+    slip(shared).startsWith(`${formatDollars(COHORT_TOTAL * 2 - 20)} to`) && count(shared.detail, "$20") === 1 && shared.detail.includes("Leo's $20 assessment came off the price."),
     () => shared.detail
   );
   const html = dashboard(step, {
@@ -413,7 +423,7 @@ console.log("3. Nothing on file: pick a group, the main action, with the quiz as
     card.indexOf(">Book Your Assessment<") < card.indexOf("Not sure which group?")
   );
   check("…nowhere on the page: nothing else you need to do, or our coaches placing anyone", () => !/nothing else you need to do|are placing/i.test(words(html)));
-  check("…My programs says plainly that nothing is enrolled yet", () => words(myPrograms(html)).includes("Nothing is enrolled yet. Programs show here once you enroll."));
+  check("…with nothing enrolled and nothing dated, the page draws no group section and no Coming up", () => !html.includes('id="my-programs"') && !html.includes('id="coming-up"'));
   check("…and the line under the times does not ask for the quiz again", () => {
     const part = availabilityPart(html);
     return !part.includes("Not placed yet?") && !part.includes('href="/intake"');
@@ -471,81 +481,115 @@ console.log("4. A held block leaves Groups with dates");
 }
 
 // ─── 5. Nothing booked hidden ────────────────────────────────────────────────
-console.log("5. Every other dated item: one short line under the next step");
+console.log("5. Every other dated item: a row in Coming up, under the next step");
 {
-  const step = nextStepFor(base({ invites: [leoTransfer], bookings: [leoDec5] }));
-  check("a pending e-transfer and a booked assessment: the transfer leads, the assessment is a line under it", () =>
-    step.kind === "etransfer" && lines(step) === JSON.stringify(["Leo's assessment is Sat Dec 5 at 10:20am."]),
-    () => lines(step)
+  const household = { self: dana, players: [dana, mayaRecord, leoRecord], roster: [mayaRecord, leoRecord], voice: "named" as const, quizTaken: true };
+  const input = base({ invites: [leoTransfer], bookings: [leoDec5] });
+  const step = nextStepFor(input);
+  check("a pending e-transfer and a booked assessment: the transfer leads, the assessment is a row in Coming up", () =>
+    step.kind === "etransfer" && lines(input) === JSON.stringify(["Sat Dec 5 · Leo's assessment · 10:20am"]) && coming(input)[0].detail === "20 minutes on court · Newtonbrook Tennis Club",
+    () => lines(input)
   );
-  check("…its day, date and time kept whole, so a phone breaks the line before them, never inside", () =>
-    step.also?.[0] === `Leo's assessment is ${["Sat", "Dec", "5", "at", "10:20am."].join(NBSP)}`
-  );
-  const html = dashboard(step, { self: dana, players: [dana, mayaRecord, leoRecord], roster: [mayaRecord, leoRecord], voice: "named", quizTaken: true });
-  const card = stepCard(html);
-  check("…drawn right under the detail, in the detail's own size and colour, with no label and no card of its own", () => {
-    const detailAt = card.indexOf(step.detail.slice(0, 20));
-    const list = card.match(/<ul role="list" class="([^"]*)"><li>([^<]*)<\/li><\/ul>/);
+  const html = dashboard(step, { ...household, invites: input.invites as DashInvite[], bookings: [leoDec5], cohorts: [YOUTH, ADULT], now: NOW });
+  check("…drawn in its own section right under the next step, the time kept whole, with no label and no card of its own", () => {
+    const part = comingUpPart(html);
     return (
-      detailAt > -1 &&
-      !!list &&
-      list[1] === "mt-2 space-y-1 text-sm leading-relaxed text-white/70" &&
-      list[2].split(NBSP).join(" ") === "Leo&#x27;s assessment is Sat Dec 5 at 10:20am." &&
-      card.indexOf(list[0]) > detailAt &&
-      card.indexOf(list[0]) < card.indexOf("See my programs") &&
-      !/uppercase/.test(card.slice(card.indexOf(list[0]) - 200, card.indexOf(list[0])))
+      html.indexOf('id="coming-up"') > html.indexOf('aria-labelledby="next-step"') &&
+      html.indexOf('id="coming-up"') < html.indexOf('id="open-groups"') &&
+      words(part).includes("Coming up Sat Dec 5 Leo's assessment · 10:20am 20 minutes on court · Newtonbrook Tennis Club".replace("'", "&#x27;")) &&
+      part.includes('<span class="whitespace-nowrap font-normal tabular-nums text-white/75"> · 10:20am</span>') &&
+      !/uppercase|rounded-2xl/.test(part) &&
+      !stepCard(html).includes("assessment is")
     );
-  }, () => card.slice(0, 1600));
-  check("nothing new when there is nothing else", () => nextStepFor(base({ invites: [leoTransfer] })).also === undefined && !stepCard(dashboard(nextStepFor(base({ invites: [leoTransfer] })))).includes("<ul"));
-  check("the step's own item is never repeated under it", () => {
-    const assessment = nextStepFor(base({ bookings: [leoDec5] }));
-    const paid: DashEnrollment = { id: "e1", cohort_id: "coh_youth", program: null, participant_name: "Maya Chen", status: "paid", created_at: "" };
-    const session: DashSession = { id: "s1", cohort_id: "coh_youth", session_date: "2027-01-16", start_time: "13:00:00", end_time: "14:00:00", status: "scheduled", makeup_for: null };
-    const lesson = nextStepFor(base({ enrollments: [paid], sessionsByCohort: { coh_youth: [session] } }));
-    return assessment.kind === "assessment" && assessment.also === undefined && lesson.kind === "session" && lesson.also === undefined;
+  }, () => words(comingUpPart(html)));
+  check("no section when there is nothing else", () => {
+    const only = base({ invites: [leoTransfer] });
+    return coming(only).length === 0 && !dashboard(nextStepFor(only), { ...household, invites: only.invites as DashInvite[], cohorts: [YOUTH, ADULT], now: NOW }).includes('id="coming-up"');
   });
-  // A household with everything at once: two held spots, two bookings and a
-  // paid player's next class. The card leads with the soonest hold; the
-  // other four items are lines, the three soonest only, soonest first.
   const paid: DashEnrollment = { id: "e_maya", cohort_id: "coh_youth", program: null, participant_name: "Maya Chen", status: "paid", created_at: "" };
   const mayaClass: DashSession = { id: "s_maya", cohort_id: "coh_youth", session_date: "2027-01-16", start_time: "13:00:00", end_time: "14:00:00", status: "scheduled", makeup_for: null };
-  const busy = nextStepFor(
-    base({
-      enrollments: [paid],
-      sessionsByCohort: { coh_youth: [mayaClass] },
-      invites: [
-        invite({ id: "inv_leo_adult", cohort_id: "adult-beg", token: "tok_a", expires_at: "2026-11-27T23:00:00.000Z" }),
-        invite({ id: "inv_leo_youth", cohort_id: "coh_youth", token: "tok_y", expires_at: "2026-11-29T17:00:00.000Z" }),
-      ],
-      bookings: [leoDec5, { ...leoDec5, id: "bk_maya", participantId: "p_maya", playerName: "Maya Chen", date: "2026-11-28", start: "09:00" }],
-    })
-  );
-  check("three at most, soonest first, never the item the card shows", () =>
+  check("the step's own item is never repeated under it", () => {
+    const assessment = base({ bookings: [leoDec5] });
+    const lesson = base({ enrollments: [paid], sessionsByCohort: { coh_youth: [mayaClass] } });
+    return (
+      nextStepFor(assessment).kind === "assessment" &&
+      nextStepFor(assessment).shown.bookingId === "bk_leo" &&
+      coming(assessment).length === 0 &&
+      nextStepFor(lesson).kind === "session" &&
+      nextStepFor(lesson).shown.sessionId === "s_maya" &&
+      coming(lesson).length === 0
+    );
+  });
+  // A household with everything at once: two held spots, two bookings and a
+  // paid player's next class. The card leads with the soonest hold; every
+  // other item is a row, soonest first, with no cap.
+  const busyInput = base({
+    enrollments: [paid],
+    sessionsByCohort: { coh_youth: [mayaClass] },
+    invites: [
+      invite({ id: "inv_leo_adult", cohort_id: "adult-beg", token: "tok_a", expires_at: "2026-11-27T23:00:00.000Z" }),
+      invite({ id: "inv_leo_youth", cohort_id: "coh_youth", token: "tok_y", expires_at: "2026-11-29T17:00:00.000Z" }),
+    ],
+    bookings: [leoDec5, { ...leoDec5, id: "bk_maya", participantId: "p_maya", playerName: "Maya Chen", date: "2026-11-28", start: "09:00" }],
+  });
+  const busy = nextStepFor(busyInput);
+  check("every other dated item, soonest first, never the item the card shows, and no cap at three", () =>
     busy.kind === "invite" &&
     busy.headline.startsWith("Leo's spot is held until Fri, Nov 27") &&
-    lines(busy) ===
+    lines(busyInput) ===
       JSON.stringify([
-        "Maya's assessment is Sat Nov 28 at 9am.",
-        "Leo's spot in Youth Bootcamps is held until Sun Nov 29 at 12pm.",
-        "Leo's assessment is Sat Dec 5 at 10:20am.",
+        "Sat Nov 28 · Maya's assessment · 9am",
+        "Sun Nov 29 · Leo's held spot · until 12pm",
+        "Sat Dec 5 · Leo's assessment · 10:20am",
+        "Sat Jan 16 · First class · 1–2pm",
       ]),
-    () => lines(busy)
+    () => lines(busyInput)
   );
-  check("the next class is a line when the card leads with something else", () => {
-    const step = nextStepFor(base({ enrollments: [paid], sessionsByCohort: { coh_youth: [mayaClass] }, invites: [leoTransfer] }));
-    return lines(step) === JSON.stringify(["Maya's next class is Sat Jan 16 at 1pm."]);
+  check("…a held spot's row names its group as a family reads it, and a class row its group and who is in it", () => {
+    const rows = coming(busyInput);
+    return rows[1].detail === "Intermediate Youth Bootcamp" && rows[3].detail === "Intermediate Youth Bootcamp · Maya";
+  }, () => JSON.stringify(coming(busyInput).map((r) => r.detail)));
+  check("…and on the page every one of them is drawn, with one lime button, the step's", () => {
+    const page = dashboard(busy, { ...household, enrollments: [paid], sessionsByCohort: { coh_youth: [{ ...mayaClass, cancellation_reason: null }] }, invites: busyInput.invites as DashInvite[], bookings: busyInput.bookings as DashBooking[], cohorts: [YOUTH, ADULT], now: NOW });
+    const part = words(comingUpPart(page));
+    const lime = limeLinks(page);
+    return ["Nov 28", "Nov 29", "Dec 5", "Jan 16"].every((d) => part.includes(d)) && lime.length === 1 && words(lime[0]) === "Claim Leo's spot".replace("'", "&#x27;");
   });
-  check("a solo account reads its own lines as yours", () => {
-    const own = nextStepFor(
-      base({
-        selfId: "p_sam",
-        roster: [{ id: "p_sam", relationship: "self", full_name: "Sam Patel", level: null }],
-        voice: "you",
-        invites: [invite({ id: "inv_sam", participant_id: "p_sam", payment_method: "etransfer", payment_note: "Sam Patel" })],
-        bookings: [{ ...leoDec5, id: "bk_sam", participantId: "p_sam", playerName: "Sam Patel" }],
-      })
+  check("each group's next class is a row when the card leads with something else: the first class until the block starts, then the next", () => {
+    const first = base({ enrollments: [paid], sessionsByCohort: { coh_youth: [mayaClass] }, invites: [leoTransfer] });
+    const started = base({
+      enrollments: [paid],
+      invites: [leoTransfer],
+      sessionsByCohort: { coh_youth: [{ ...mayaClass, id: "s0", session_date: "2026-11-21", status: "completed" }, { ...mayaClass, id: "s1", session_date: "2026-11-28" }] },
+    });
+    const makeup = base({
+      enrollments: [paid],
+      invites: [leoTransfer],
+      sessionsByCohort: { coh_youth: [{ ...mayaClass, id: "s0", session_date: "2026-11-21", status: "completed" }, { ...mayaClass, id: "s1", session_date: "2026-11-28", status: "cancelled" }, { ...mayaClass, id: "s2", session_date: "2026-12-05", makeup_for: "s1" }] },
+    });
+    return (
+      lines(first) === JSON.stringify(["Sat Jan 16 · First class · 1–2pm"]) &&
+      lines(started) === JSON.stringify(["Sat Nov 28 · Next class · 1–2pm"]) &&
+      lines(makeup) === JSON.stringify(["Sat Dec 5 · Make-up class · 1–2pm"])
     );
-    return lines(own) === JSON.stringify(["Your assessment is Sat Dec 5 at 10:20am."]);
+  });
+  check("a paid block with no dated rows yet still shows its first class, from the block's own first day and time", () =>
+    lines(base({ enrollments: [paid], invites: [leoTransfer] })) === JSON.stringify(["Sat Jan 16 · First class · 12–1pm"]),
+    () => lines(base({ enrollments: [paid], invites: [leoTransfer] }))
+  );
+  check("a pending or cancelled enrollment is nothing booked: no class row", () =>
+    coming(base({ enrollments: [{ ...paid, status: "pending" }], sessionsByCohort: { coh_youth: [mayaClass] } })).length === 0 &&
+    coming(base({ enrollments: [paid], sessionsByCohort: { coh_youth: [mayaClass] }, cohorts: [{ ...YOUTH, dbStatus: "cancelled" }, ADULT] })).length === 0
+  );
+  check("a solo account reads its own rows as yours", () => {
+    const own = base({
+      selfId: "p_sam",
+      roster: [{ id: "p_sam", relationship: "self", full_name: "Sam Patel", level: null }],
+      voice: "you",
+      invites: [invite({ id: "inv_sam", participant_id: "p_sam", payment_method: "etransfer", payment_note: "Sam Patel" })],
+      bookings: [{ ...leoDec5, id: "bk_sam", participantId: "p_sam", playerName: "Sam Patel" }],
+    });
+    return lines(own) === JSON.stringify(["Sat Dec 5 · Your assessment · 10:20am"]);
   });
 }
 
