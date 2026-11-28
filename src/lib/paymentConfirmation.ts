@@ -37,6 +37,19 @@ export const ETRANSFER_INBOX_LINE =
 export const ETRANSFER_STEP_ON_PAGE =
   "Send the e-transfer if you haven't yet, with the amount, address and message above.";
 
+/**
+ * Every player on the sign-up was already paid (backlog #102): nothing is
+ * due, and the route sent no email. On the page after, and on the step
+ * while it is still on screen.
+ */
+export const ETRANSFER_ALL_PAID_BADGE = "Already Paid";
+export const ETRANSFER_ALL_PAID_HEADING = "This enrollment is already paid.";
+export const ETRANSFER_ALL_PAID_LINE =
+  "We already have the payment for every player you enrolled here, so there is nothing to send.";
+export const ETRANSFER_ALL_PAID_NO_EMAIL = "We haven't sent a new email.";
+export const ETRANSFER_ALL_PAID_NEXT =
+  "Once the group reaches its minimum, you'll get the full session schedule by email.";
+
 /** The status icon: a check for what stands, an "i" for a test payment. */
 export type ConfirmationIcon = "check" | "info";
 
@@ -75,6 +88,12 @@ export function enrollConfirmation(input: {
   testPayment: boolean;
   signedIn: boolean;
   firstName: string | null;
+  /**
+   * After an e-transfer step whose every player was already paid (backlog
+   * #102). Nothing is due and no email went, so the page says so and names
+   * no inbox. Read only with `viaEtransfer`.
+   */
+  allPaid?: boolean;
 }): EnrollConfirmation {
   const { viaEtransfer, signedIn, firstName } = input;
   if (input.testPayment && !viaEtransfer) {
@@ -87,6 +106,26 @@ export function enrollConfirmation(input: {
       lead: TEST_PAYMENT_ENROLL_LINE,
       nextSteps: [],
       links: [],
+      inboxLine: null,
+      firstStepOnPage: null,
+    };
+  }
+  if (viaEtransfer && input.allPaid) {
+    return {
+      title: "Enrollment Confirmed",
+      description: "Your Tennis Bootcamp enrollment has been confirmed.",
+      badge: ETRANSFER_ALL_PAID_BADGE,
+      icon: "check",
+      heading: ETRANSFER_ALL_PAID_HEADING,
+      lead: `${ETRANSFER_ALL_PAID_LINE} ${ETRANSFER_ALL_PAID_NO_EMAIL}`,
+      // No account email goes either, so no step sends anyone to one.
+      nextSteps: [
+        ...(signedIn
+          ? ["This enrollment is on your dashboard, with the weekly schedule and, once the group is set, every session date."]
+          : []),
+        ETRANSFER_ALL_PAID_NEXT,
+      ],
+      links: signedIn ? [] : [WAY_BACK_SIGN_IN, WAY_BACK_NEW_LINK],
       inboxLine: null,
       firstStepOnPage: null,
     };

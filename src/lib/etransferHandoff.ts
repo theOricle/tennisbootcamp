@@ -101,6 +101,60 @@ export function shouldSaveEtransferDetails(input: { signedIn: boolean; alreadyPa
   return !input.signedIn && input.alreadyPaid !== true;
 }
 
+/** One player's outcome on a transfer, as recordEtransferIntent answers it. */
+export type EtransferPlayerOutcome = { alreadyPaid: boolean; amountCents: number; creditCents: number };
+
+/**
+ * What a transfer still owes, player by player (backlog #102). A player whose
+ * seat is already paid owes nothing and takes no credit; the others' amounts
+ * and credits add up. `alreadyPaid` is true only when every player is paid:
+ * then nothing is due and no email goes.
+ */
+export function etransferTally(outcomes: readonly EtransferPlayerOutcome[]): {
+  alreadyPaid: boolean;
+  /** One entry per player, in the order the request named them. */
+  paidPlayers: boolean[];
+  /** The amount still due, for the players not yet paid. */
+  dueCents: number;
+  /** The assessment credit inside that amount. */
+  dueCreditCents: number;
+} {
+  const owing = outcomes.filter((o) => !o.alreadyPaid);
+  return {
+    alreadyPaid: outcomes.length > 0 && owing.length === 0,
+    paidPlayers: outcomes.map((o) => o.alreadyPaid),
+    dueCents: owing.reduce((sum, o) => sum + o.amountCents, 0),
+    dueCreditCents: owing.reduce((sum, o) => sum + o.creditCents, 0),
+  };
+}
+
+/** The route's answer as the step reads it: who is already paid, and the credit left in what is due. */
+export type EtransferSettled = { paid: boolean[]; dueCreditCents: number };
+
+/**
+ * The route's answer, read strictly (backlog #102). Null when nobody is
+ * already paid, or when the answer is not the shape this page expects for
+ * its own players: the step then keeps the details it showed, as before.
+ * An answer that says every player is paid, without naming them, counts for
+ * all of them.
+ */
+export function settledFromAnswer(answer: unknown, playerCount: number): EtransferSettled | null {
+  if (!answer || typeof answer !== "object" || playerCount < 1) return null;
+  const a = answer as { alreadyPaid?: unknown; paidPlayers?: unknown; dueCreditCents?: unknown };
+  const list = a.paidPlayers;
+  const named =
+    Array.isArray(list) && list.length === playerCount && list.every((v) => typeof v === "boolean")
+      ? (list as boolean[])
+      : null;
+  const paid = named ?? (a.alreadyPaid === true ? Array.from({ length: playerCount }, () => true) : null);
+  if (!paid || !paid.some(Boolean)) return null;
+  const credit = a.dueCreditCents;
+  return {
+    paid,
+    dueCreditCents: typeof credit === "number" && Number.isFinite(credit) && credit > 0 ? Math.floor(credit) : 0,
+  };
+}
+
 /** This tab's session storage, or null where there is none (the server, a locked-down browser). */
 export function tabStorage(): HandoffStorage | null {
   try {

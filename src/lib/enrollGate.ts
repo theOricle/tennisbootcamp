@@ -544,6 +544,28 @@ export function priceRefusal(
   return cohort && blockHasPrice(cohort) ? null : { error: PRICE_NOT_SET_ERROR, status: 409 };
 }
 
+/** What card checkout answers on an e-transfer block while card payments are not live. */
+export const ETRANSFER_ONLY_ERROR =
+  "This group is paid by e-transfer, so no card payment was started and nothing was charged. Send your e-transfer with the amount, address and message shown on the e-transfer step.";
+
+/**
+ * A block set to e-transfer takes a card only while card payments are live
+ * (backlog #102). In test mode a card checkout on it books nothing and sends
+ * nothing, and the page no longer offers one (#101), so the route refuses
+ * the request itself: a crafted one, or a tab opened before the offer went.
+ * Both inputs are the server's own, the block as stored and the payment
+ * settings' answer (cardPaymentIsLive, src/lib/payments.ts); nothing the
+ * browser sends is read. A card-mode block is never refused here, in test
+ * mode or live, and an e-transfer block takes a card once cards are live.
+ */
+export function cardRailRefusal(
+  cohort: Pick<Cohort, "paymentMode"> | null | undefined,
+  cardLive: boolean
+): { error: string; status: 409 } | null {
+  if ((cohort?.paymentMode ?? "card") !== "etransfer") return null;
+  return cardLive ? null : { error: ETRANSFER_ONLY_ERROR, status: 409 };
+}
+
 /**
  * The JSON a payment route (or /api/enroll) answers a refused gate with. A
  * declined token gets #75's own copy and status, not the generic line.

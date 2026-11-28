@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CARD_PAYMENT_UNAVAILABLE, createCheckoutSession, paymentRail } from "@/lib/payments";
+import { CARD_PAYMENT_UNAVAILABLE, cardPaymentIsLive, createCheckoutSession, paymentRail } from "@/lib/payments";
 import { saveEnrollmentToSupabase } from "@/lib/supabase/enrollmentActions";
 import { getCohortById } from "@/lib/cohortsDb";
 import { creditsForSeats } from "@/lib/assessmentCredit";
@@ -9,6 +9,7 @@ import {
   RECORDS_UNAVAILABLE_ERROR,
   ROW_MISMATCH_ERROR,
   approvalRefusal,
+  cardRailRefusal,
   checkoutCreditParticipants,
   contactEmailRefusal,
   gateRefusal,
@@ -157,6 +158,14 @@ export async function POST(req: NextRequest) {
     const noPrice = priceRefusal(cohort);
     if (noPrice) {
       return NextResponse.json({ error: noPrice.error }, { status: noPrice.status });
+    }
+    // An e-transfer block takes no card while card payments are not live
+    // (backlog #102): refused before any row, credit, coupon or Stripe
+    // session, from the block as stored and the server's own payment
+    // settings. Nothing in the request can switch it off.
+    const etransferOnly = cardRailRefusal(cohort, cardPaymentIsLive());
+    if (etransferOnly) {
+      return NextResponse.json({ error: etransferOnly.error }, { status: etransferOnly.status });
     }
 
     // Every player this payment covers. A body without the household field is

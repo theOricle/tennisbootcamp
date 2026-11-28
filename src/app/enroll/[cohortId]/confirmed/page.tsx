@@ -14,7 +14,7 @@ import { EnrollCompleteEvent } from "./EnrollCompleteEvent";
 
 type PageProps = {
   params: Promise<{ cohortId: string }>;
-  searchParams: Promise<{ invite?: string | string[]; etransfer?: string | string[] }>;
+  searchParams: Promise<{ invite?: string | string[]; etransfer?: string | string[]; paid?: string | string[] }>;
 };
 
 // The tab says what the page says: a test payment's reads "Test payment".
@@ -25,6 +25,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
     testPayment: sp.etransfer !== "1" && cardPaymentIsTest(),
     signedIn: false,
     firstName: null,
+    allPaid: sp.paid === "1",
   });
   return {
     title: meta.title,
@@ -40,6 +41,10 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
   // E-transfer cohorts land here after "I've sent it" — the spot is held,
   // not paid, until the coach confirms receipt in the admin.
   const viaEtransfer = sp.etransfer === "1";
+  // Every player on that step was already paid (backlog #102): a flag and
+  // nothing else, set by the step from the route's answer. It changes this
+  // page's words only; no payment, seat or record reads it.
+  const allPaid = viaEtransfer && sp.paid === "1";
   const cohort = await getCohortById(cohortId);
   if (!cohort) notFound();
 
@@ -76,6 +81,7 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
     testPayment: !viaEtransfer && cardPaymentIsTest(),
     signedIn: Boolean(user),
     firstName,
+    allPaid,
   });
 
   return (
