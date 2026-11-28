@@ -624,6 +624,29 @@ export function RegistrantStep({
       <fieldset>
         <legend className="mb-3 text-sm font-semibold text-white">Account holder</legend>
         <div className="space-y-3">
+          {/* The holder's own name (backlog #102), first in this block and
+              only once "The parent or guardian is someone else" is ticked:
+              the account goes in this name, and the guardian stays the
+              guardian. */}
+          {asksHolderName({ askOnce: guardianOnce, isMinor, other: form.guardianIsOther }) && (
+            <FieldGroup
+              id={FIELD_IDS.holderName}
+              label={HOLDER_NAME_LABEL}
+              hint={HOLDER_NAME_HINT}
+              error={errors[FIELD_IDS.holderName]}
+            >
+              <TextInput
+                id={FIELD_IDS.holderName}
+                autoComplete="name"
+                value={form.holderName}
+                onChange={(v) => setForm((s) => ({ ...s, holderName: v }))}
+                placeholder="Your full name"
+                required
+                error={errors[FIELD_IDS.holderName]}
+                hint
+              />
+            </FieldGroup>
+          )}
           {signedIn ? (
             <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
               Enrolling on your account —{" "}
@@ -701,7 +724,7 @@ export function RegistrantStep({
                   onChange={(e) => {
                     const other = e.target.checked;
                     // Ticked on a signed-in account, the holder's name
-                    // field below starts on the name the account has.
+                    // field above starts on the name the account has.
                     setForm((s) => ({
                       ...s,
                       guardianIsOther: other,
@@ -745,30 +768,6 @@ export function RegistrantStep({
             )}
           </div>
         </fieldset>
-      )}
-
-      {/* The holder's own name (backlog #102): asked only once the guardian
-          is someone else, and after the fields that tick opens, so nothing
-          above the tick moves. The account goes in this name; the guardian
-          stays the guardian. */}
-      {asksHolderName({ askOnce: guardianOnce, isMinor, other: form.guardianIsOther }) && (
-        <FieldGroup
-          id={FIELD_IDS.holderName}
-          label={HOLDER_NAME_LABEL}
-          hint={HOLDER_NAME_HINT}
-          error={errors[FIELD_IDS.holderName]}
-        >
-          <TextInput
-            id={FIELD_IDS.holderName}
-            autoComplete="name"
-            value={form.holderName}
-            onChange={(v) => setForm((s) => ({ ...s, holderName: v }))}
-            placeholder="Your full name"
-            required
-            error={errors[FIELD_IDS.holderName]}
-            hint
-          />
-        </FieldGroup>
       )}
 
       {/* No password is asked for here (fix round 2): a guest enrolls, and the
@@ -903,6 +902,13 @@ export function etransferStepDetails(input: {
    * amount is smaller than the price times everyone.
    */
   paidNames?: readonly string[];
+  /** Players already paid whom no paid seat names: counted, never named. */
+  paidUnnamed?: number;
+  /**
+   * The amount still due as the route answered it. When given it is the
+   * amount shown, as it stands: the page does not work it out again.
+   */
+  dueCents?: number;
 }): EtransferDetails {
   const { cohort, seats, creditCents } = input;
   const priceCents = cohort.priceCents;
@@ -914,30 +920,41 @@ export function etransferStepDetails(input: {
           creditCents > 0 ? ` − ${moneyCAD(creditCents)} assessment credit` : ""
         }`
       : null;
-  const paid = alreadyPaidNote(input.paidNames ?? []);
+  const paid = alreadyPaidNote(input.paidNames ?? [], input.paidUnnamed ?? 0);
   const breakdown = working && paid ? `${working}. ${paid}` : (working ?? paid);
   return {
-    amount: `${moneyCAD(due)} CAD`,
+    // The route's own figure when it gave one (backlog #102), as it stands.
+    amount: `${moneyCAD(input.dueCents ?? due)} CAD`,
     breakdown,
     recipientEmail: input.recipientEmail,
     memo: input.memo,
   };
 }
 
-/** "Maya Chen is already paid.", or null with nobody to name. */
-export function alreadyPaidNote(names: readonly string[]): string | null {
+/**
+ * Under the amount: whose seat is already paid for. "Already paid for Maya
+ * Chen." names a player only when a paid seat names them; any other paid
+ * player is counted ("Already paid for one player."). Null with nobody paid.
+ */
+export function alreadyPaidNote(names: readonly string[], unnamed = 0): string | null {
   const list = names.map((n) => n.trim()).filter(Boolean);
+  const rest = Math.max(0, Math.floor(unnamed));
+  if (rest > 0) {
+    const other = list.length > 0 ? " other" : "";
+    list.push(rest === 1 ? `one${other} player` : `${rest}${other} players`);
+  }
   if (list.length === 0) return null;
-  if (list.length === 1) return `${list[0]} is already paid.`;
-  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]} are already paid.`;
+  const who = list.length === 1 ? list[0] : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+  return `Already paid for ${who}.`;
 }
 
 /**
  * The step's details once the route has answered that some players are
- * already paid (backlog #102): the amount, its working and the message cover
- * only the players who still owe, with the credit the route left in what is
- * due. Null when every player is paid: nothing is due, and nothing is shown
- * or carried to the page after.
+ * already paid (backlog #102). The amount is the route's own figure
+ * (`dueCents`), never worked out again here; its working and the message
+ * cover only the players who still owe. A paid player is named only when a
+ * paid seat names them. Null when every player is paid: nothing is due, and
+ * nothing is shown or carried to the page after.
  */
 export function etransferDetailsStillDue(input: {
   cohort: Pick<Cohort, "priceCents" | "label">;
@@ -955,7 +972,9 @@ export function etransferDetailsStillDue(input: {
     creditCents: Math.min(settled.dueCreditCents, cohort.priceCents * owing.length),
     recipientEmail: input.recipientEmail,
     memo: etransferMemo(owing.join(" + "), cohort.label),
-    paidNames: playerNames.filter((_, i) => settled.paid[i] === true),
+    paidNames: playerNames.filter((_, i) => settled.paid[i] === true && settled.named[i] === true),
+    paidUnnamed: settled.paid.filter((p, i) => p === true && settled.named[i] !== true).length,
+    dueCents: settled.dueCents,
   });
 }
 
@@ -1258,6 +1277,12 @@ export function EnrollWizard({
           if (outside) out.push({ id, message: outside });
         }
       }
+      // The holder's own name, once the guardian is someone else (#102):
+      // first in the Account holder block, so first of its problems.
+      if (asksHolderName({ askOnce: youthGroup, isMinor, other: form.guardianIsOther })) {
+        const hn = requiredError(form.holderName);
+        if (hn) out.push({ id: FIELD_IDS.holderName, message: hn });
+      }
       if (!household.signedIn) {
         const e = emailError(form.contactEmail);
         if (e) out.push({ id: FIELD_IDS.email, message: e });
@@ -1276,11 +1301,6 @@ export function EnrollWizard({
           const gp = phoneError(form.guardianPhone);
           if (gp) out.push({ id: FIELD_IDS.guardianPhone, message: gp });
         }
-      }
-      // The holder's own name, once the guardian is someone else (#102).
-      if (asksHolderName({ askOnce: youthGroup, isMinor, other: form.guardianIsOther })) {
-        const hn = requiredError(form.holderName);
-        if (hn) out.push({ id: FIELD_IDS.holderName, message: hn });
       }
       return out;
     }

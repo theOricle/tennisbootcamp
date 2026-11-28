@@ -154,7 +154,7 @@ export function guardianContact(input: {
 
 /** The holder's own name, asked on step 2 when the parent or guardian is someone else. */
 export const HOLDER_NAME_LABEL = "Your full name";
-export const HOLDER_NAME_HINT = "The account goes in your name. The parent or guardian stays as named above.";
+export const HOLDER_NAME_HINT = "The account goes in your name. The parent or guardian stays as named below.";
 
 /**
  * Whether step 2 asks the account holder's own name (backlog #102): on a

@@ -24,6 +24,8 @@ import { cohortAdmitsLevel } from "@/lib/tiers";
 import { DECLINED_INVITE_ERROR } from "@/lib/checkoutInvite";
 import { emailBelongsToAccount } from "@/lib/enrollmentLink";
 import { normalizeEmail } from "@/lib/supabase/adminUsers";
+import { normalizeParticipantName } from "@/lib/participantInput";
+import { noteWithoutMarks } from "@/lib/stripeOutcome";
 
 /** What getInviteByToken reported, as far as the gate cares. */
 export type GateInviteLookup =
@@ -546,7 +548,7 @@ export function priceRefusal(
 
 /** What card checkout answers on an e-transfer block while card payments are not live. */
 export const ETRANSFER_ONLY_ERROR =
-  "This group is paid by e-transfer, so no card payment was started and nothing was charged. Send your e-transfer with the amount, address and message shown on the e-transfer step.";
+  "This group is paid by e-transfer, so we didn't start a card payment and nothing was charged. Send your e-transfer with the amount, address and message shown on the e-transfer step.";
 
 /**
  * A block set to e-transfer takes a card only while card payments are live
@@ -665,6 +667,39 @@ export function etransferRowPlan(params: {
   else steps.push("reuse");
   steps.push("create");
   return steps;
+}
+
+/**
+ * Whether a seat's note names this player: the same name, ignoring case and
+ * extra spaces (backlog #102). The note holds the player's name from the
+ * moment the seat was held; payment marks written beside it are set aside.
+ * A seat with no name, or the coach's own words in its place, names nobody.
+ */
+export function paidSeatNamesPlayer(
+  note: string | null | undefined,
+  playerName: string | null | undefined
+): boolean {
+  const player = normalizeParticipantName(playerName);
+  return player !== "" && normalizeParticipantName(noteWithoutMarks(note)) === player;
+}
+
+/**
+ * Signed out, which of an email's unowned seats a typed player lands on
+ * (backlog #102). Rows come newest first. A paid seat counts only when it
+ * names this player: a guest who paid for one child and now enrolls another
+ * is a new seat with an amount due, never "already paid". So: the paid seat
+ * that names the player, else the newest seat still waiting on payment,
+ * else none, and the caller holds a new one.
+ */
+export function guestSeatForPlayer<T extends { status: string; payment_note?: string | null }>(
+  rows: readonly T[],
+  playerName: string | null | undefined
+): T | null {
+  return (
+    rows.find((r) => r.status === "paid" && paidSeatNamesPlayer(r.payment_note, playerName)) ??
+    rows.find((r) => r.status === "invited") ??
+    null
+  );
 }
 
 /** A player the level path can read: an id and a coach level. */

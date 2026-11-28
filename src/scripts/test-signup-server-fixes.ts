@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { cardPaymentIsLive } from "../lib/payments";
-import { ETRANSFER_ONLY_ERROR, cardRailRefusal } from "../lib/enrollGate";
+import { ETRANSFER_ONLY_ERROR, cardRailRefusal, guestSeatForPlayer, paidSeatNamesPlayer } from "../lib/enrollGate";
 import { enrollHolderName } from "../lib/guestAccount";
 import { HOLDER_NAME_HINT, HOLDER_NAME_LABEL, asksHolderName, postedHolderName } from "../lib/enrollPlayers";
 import { FIELD_MESSAGES } from "../lib/formValidation";
@@ -87,6 +87,7 @@ const checkout = read("src/app/api/checkout/route.ts");
 const enrollRoute = read("src/app/api/enroll/route.ts");
 const etransferRoute = read("src/app/api/enroll/etransfer/route.ts");
 const confirmedPage = read("src/app/enroll/[cohortId]/confirmed/page.tsx");
+const actions = read("src/lib/cohortActions.ts");
 
 // ── 1. No test card checkout on an e-transfer block ─────────────────────────
 console.log("1. Card checkout on an e-transfer block: refused while card payments are not live");
@@ -123,6 +124,7 @@ console.log("1. Card checkout on an e-transfer block: refused while card payment
   );
   check("the line says what is true and points at the e-transfer step", () =>
     ETRANSFER_ONLY_ERROR.includes("paid by e-transfer") &&
+    ETRANSFER_ONLY_ERROR.includes("we didn't start a card payment") &&
     ETRANSFER_ONLY_ERROR.includes("nothing was charged") &&
     ETRANSFER_ONLY_ERROR.endsWith("shown on the e-transfer step.") &&
     !ETRANSFER_ONLY_ERROR.includes("!") &&
@@ -221,16 +223,39 @@ console.log("2. Youth group, the guardian is someone else: the holder's own name
     const html = step({ guardianOnce: true, other: true });
     return (
       words(html).includes(HOLDER_NAME_HINT) &&
-      HOLDER_NAME_HINT === "The account goes in your name. The parent or guardian stays as named above." &&
+      HOLDER_NAME_HINT === "The account goes in your name. The parent or guardian stays as named below." &&
       /aria-describedby="[^"]*enroll-holder-name[^"]*"/.test(field(html))
     );
   });
-  check("…after the fields the tick opens, so nothing above the tick moves", () => {
+  check("…first in the Account holder block, above Email, inside that fieldset and its legend", () => {
     const html = step({ guardianOnce: true, other: true });
+    const block = /<fieldset><legend[^>]*>Account holder<\/legend>[\s\S]*?<\/fieldset>/.exec(html)?.[0] ?? "";
     return (
-      html.indexOf('id="enroll-guardian-other"') < html.indexOf('id="enroll-guardian-phone"') &&
-      html.indexOf('id="enroll-guardian-phone"') < html.indexOf('id="enroll-holder-name"')
+      block.includes('id="enroll-holder-name"') &&
+      block.indexOf('id="enroll-holder-name"') < block.indexOf('id="enroll-email"') &&
+      block.indexOf('id="enroll-email"') < block.indexOf('id="enroll-phone"') &&
+      (html.match(/id="enroll-holder-name"/g) ?? []).length === 1 &&
+      html.indexOf('id="enroll-holder-name"') < html.indexOf('id="enroll-guardian-name"')
     );
+  });
+  check("…and signed in, above the line that names the account's email", () => {
+    const html = renderToStaticMarkup(
+      createElement(RegistrantStep, {
+        form: { ...form, guardianIsOther: true },
+        setForm: () => undefined,
+        players,
+        setPlayers: () => undefined,
+        isMinor: true,
+        guardianOnce: true,
+        signedIn: true,
+        accountEmail: "holder@example.com",
+        cohortId: "c1",
+        onEnterSubmit: () => undefined,
+        errors: {},
+        group: mustGroup("youth-7-10"),
+      })
+    );
+    return html.includes('id="enroll-holder-name"') && html.indexOf('id="enroll-holder-name"') < html.indexOf("Enrolling on your account");
   });
   check("…and the guardian's own name, email and phone are still asked", () => {
     const html = step({ guardianOnce: true, other: true });
@@ -246,7 +271,8 @@ console.log("2. Youth group, the guardian is someone else: the holder's own name
   });
   check("the step checks it, in screen order, with the house message", () =>
     /if \(asksHolderName\(\{ askOnce: youthGroup, isMinor, other: form\.guardianIsOther \}\)\) \{\s*const hn = requiredError\(form\.holderName\);\s*if \(hn\) out\.push\(\{ id: FIELD_IDS\.holderName, message: hn \}\);/.test(wizard) &&
-    wizard.indexOf("out.push({ id: FIELD_IDS.guardianPhone") < wizard.indexOf("out.push({ id: FIELD_IDS.holderName") &&
+    wizard.indexOf("out.push({ id: FIELD_IDS.holderName") < wizard.indexOf("out.push({ id: FIELD_IDS.email") &&
+    wizard.indexOf("out.push({ id: FIELD_IDS.holderName") > wizard.indexOf("out.push({ id, message: outside });") &&
     wizard.includes('holderName: "enroll-holder-name",')
   );
   check("without the tick: no such field, and the step is as it was", () => {
@@ -332,13 +358,18 @@ console.log("3. E-transfer: only what is still due; every player paid says so, w
     return !t.alreadyPaid && t.dueCents === 18000 && t.dueCreditCents === 2000 && t.paidPlayers.join() === "false";
   });
   check("one player, already paid: every player is paid", () => etransferTally([paid]).alreadyPaid);
+  check("a paid player is named only when the paid seat names them", () => {
+    const t = etransferTally([{ ...paid, paidNamesPlayer: true }, paid, { ...owes, paidNamesPlayer: true }]);
+    return t.paidNamed.join() === "true,false,false" && t.paidPlayers.join() === "true,true,false";
+  });
   check("nobody on the transfer is not 'already paid'", () => !etransferTally([]).alreadyPaid);
 
   check("the route answers from each player's own outcome, and still says alreadyPaid for all of them", () =>
     etransferRoute.includes("const tally = etransferTally(outcomes);") &&
     etransferRoute.includes("const alreadyPaid = tally.alreadyPaid;") &&
-    /outcomes\.push\(\{\s*alreadyPaid: result\.alreadyPaid,\s*amountCents: result\.amountCents,\s*creditCents: result\.creditCents,\s*\}\);/.test(etransferRoute) &&
+    /outcomes\.push\(\{\s*alreadyPaid: result\.alreadyPaid,\s*amountCents: result\.amountCents,\s*creditCents: result\.creditCents,\s*paidNamesPlayer: result\.paidNamesPlayer,\s*\}\);/.test(etransferRoute) &&
     etransferRoute.includes("paidPlayers: tally.paidPlayers,") &&
+    etransferRoute.includes("paidNamed: tally.paidNamed,") &&
     etransferRoute.includes("dueCents: tally.dueCents,") &&
     etransferRoute.includes("dueCreditCents: tally.dueCreditCents,") &&
     !etransferRoute.includes("let alreadyPaid = true;")
@@ -350,25 +381,111 @@ console.log("3. E-transfer: only what is still due; every player paid says so, w
     etransferRoute.includes("      alreadyPaid,\n      amountCents,\n      creditCents,")
   );
 
+  check("the account email goes with the first player who is not yet paid, once, whoever is first on the request", () => {
+    const at = etransferRoute.indexOf("if (!accountNoticeSent) {\n          accountNoticeSent = true;");
+    return (
+      at > etransferRoute.indexOf("if (!result.alreadyPaid) {\n        const enrollmentId = await saveEnrollmentToSupabase({") &&
+      at < etransferRoute.indexOf("notifyEnrollmentAccount(notice)") &&
+      etransferRoute.includes("let accountNoticeSent = false;") &&
+      !etransferRoute.includes("if (i === 0) {\n") &&
+      (etransferRoute.match(/notifyEnrollmentAccount\(/g) ?? []).length === 1
+    );
+  });
+  check("…so the page's \"Check your email\" step is true whenever a player still owes, and absent when none does", () => {
+    const owing = enrollConfirmation({ viaEtransfer: true, testPayment: false, signedIn: false, firstName: null });
+    const none = enrollConfirmation({ viaEtransfer: true, testPayment: false, signedIn: false, firstName: null, allPaid: true });
+    return owing.nextSteps.some((t) => t.startsWith("Check your email")) && !none.nextSteps.some((t) => /check your email/i.test(t));
+  });
+
+  // Signed out, the paid check is by player.
+  const seats = [
+    { id: "new", status: "invited", payment_note: "Leo Chen" },
+    { id: "paid-maya", status: "paid", payment_note: "Maya Chen" },
+    { id: "old", status: "invited", payment_note: null },
+  ];
+  const paidOnly = [{ id: "paid-maya", status: "paid", payment_note: "Maya Chen" }];
+  check("a paid seat names a player by the same name, ignoring case and extra spaces", () =>
+    paidSeatNamesPlayer("Maya Chen", "  maya   CHEN ") &&
+    !paidSeatNamesPlayer("Maya Chen", "Leo Chen") &&
+    !paidSeatNamesPlayer("Maya Chen", "Maya") &&
+    !paidSeatNamesPlayer(null, "Maya Chen") &&
+    !paidSeatNamesPlayer("", "") &&
+    !paidSeatNamesPlayer("received Jan 3", "Maya Chen")
+  );
+  check("signed out, a different child alone: never the paid seat, so a row of their own and an amount due", () =>
+    guestSeatForPlayer(paidOnly, "Leo Chen") === null &&
+    etransferTally([{ alreadyPaid: false, amountCents: 20000, creditCents: 0, paidNamesPlayer: false }]).dueCents === 20000 &&
+    !etransferTally([{ alreadyPaid: false, amountCents: 20000, creditCents: 0 }]).alreadyPaid
+  );
+  check("…or the seat of theirs still waiting on payment, never the sibling's paid one", () =>
+    guestSeatForPlayer(seats, "Leo Chen")?.id === "new" && guestSeatForPlayer(seats, "Ana Chen")?.id === "new"
+  );
+  check("signed out, the same child again: the paid seat that names them, so already paid", () =>
+    guestSeatForPlayer(paidOnly, "maya chen")?.id === "paid-maya" && guestSeatForPlayer(seats, "Maya  Chen")?.id === "paid-maya"
+  );
+  check("a paid seat with no name, or the coach's words in its place, is nobody's: the player owes", () =>
+    guestSeatForPlayer([{ id: "x", status: "paid", payment_note: null }], "Maya Chen") === null &&
+    guestSeatForPlayer([{ id: "x", status: "paid", payment_note: "received Jan 3" }], "Maya Chen") === null &&
+    guestSeatForPlayer([], "Maya Chen") === null
+  );
+  check("two players, one matched by name: only that one is paid", () => {
+    // What the recorder answers for each: Maya lands on her paid seat, Leo on none.
+    const maya = guestSeatForPlayer(paidOnly, "Maya Chen");
+    const leo = guestSeatForPlayer(paidOnly, "Leo Chen");
+    const t = etransferTally([
+      { alreadyPaid: maya?.status === "paid", amountCents: 20000, creditCents: 0, paidNamesPlayer: true },
+      { alreadyPaid: leo?.status === "paid", amountCents: 20000, creditCents: 0, paidNamesPlayer: false },
+    ]);
+    return t.paidPlayers.join() === "true,false" && t.paidNamed.join() === "true,false" && t.dueCents === 20000 && !t.alreadyPaid;
+  });
+  check("the recorder matches a signed-out player's seat through that rule, and only signed out", () => {
+    const at = actions.indexOf("invite = guestSeatForPlayer((data as InviteRef[] | null) ?? [], params.participantName);");
+    const block = actions.slice(actions.indexOf('if (!invite && plan.includes("email")) {'), actions.indexOf('if (!invite && plan.includes("reuse")) {'));
+    return (
+      at > 0 &&
+      block.includes("if (!accountId) {") &&
+      block.includes('.is("user_id", null)') &&
+      block.includes('.is("participant_id", null)') &&
+      // Signed in: the newest seat for the email, as before.
+      /\} else \{\s*const \{ data \} = await q\s*\.order\("invited_at", \{ ascending: false \}\)\s*\.limit\(1\)\s*\.maybeSingle\(\);\s*invite = \(data as InviteRef \| null\) \?\? null;/.test(block)
+    );
+  });
+  check("the recorder says whether the paid seat names the player: their id on the account, or their name", () =>
+    /const paidNamesPlayer =\s*\(Boolean\(params\.participantId\) && invite\.participant_id === params\.participantId\) \|\|\s*paidSeatNamesPlayer\(invite\.payment_note, params\.participantName\);/.test(actions) &&
+    actions.includes("return { ok: true, ...settled, alreadyPaid: true, paidNamesPlayer };") &&
+    actions.includes("return { ok: true, ...settled, alreadyPaid: false, paidNamesPlayer: false };")
+  );
+
   // The step reads the answer strictly.
   check("the step reads who is paid only from an answer shaped for its own players", () => {
-    const s = settledFromAnswer({ alreadyPaid: false, paidPlayers: [true, false], dueCreditCents: 2000 }, 2);
-    return s?.paid.join() === "true,false" && s.dueCreditCents === 2000;
+    const s = settledFromAnswer({ alreadyPaid: false, paidPlayers: [true, false], paidNamed: [true, false], dueCents: 18000, dueCreditCents: 2000 }, 2);
+    return s?.paid.join() === "true,false" && s.named.join() === "true,false" && s.dueCents === 18000 && s.dueCreditCents === 2000;
   });
   check("nobody paid, an older answer, a wrong count or a bad shape: the step keeps its details, as before", () =>
     settledFromAnswer({ alreadyPaid: false, paidPlayers: [false, false] }, 2) === null &&
     settledFromAnswer({ alreadyPaid: false }, 2) === null &&
-    settledFromAnswer({ paidPlayers: [true] }, 2) === null &&
+    settledFromAnswer({ paidPlayers: [true], dueCents: 20000 }, 2) === null &&
+    // A player still owes but the answer carries no amount: not read at all.
+    settledFromAnswer({ paidPlayers: [true, false] }, 2) === null &&
+    settledFromAnswer({ paidPlayers: [true, false], dueCents: "20000" }, 2) === null &&
+    settledFromAnswer({ paidPlayers: [true, false], dueCents: -1 }, 2) === null &&
     settledFromAnswer({ paidPlayers: ["true", false] }, 2) === null &&
     settledFromAnswer(null, 2) === null &&
     settledFromAnswer("x", 1) === null
   );
   check("an answer that only says every player is paid counts for all of them", () =>
-    settledFromAnswer({ alreadyPaid: true }, 2)?.paid.join() === "true,true"
+    settledFromAnswer({ alreadyPaid: true }, 2)?.paid.join() === "true,true" &&
+    settledFromAnswer({ alreadyPaid: true }, 2)?.dueCents === 0 &&
+    settledFromAnswer({ alreadyPaid: true }, 2)?.named.join() === "false,false"
+  );
+  check("a player is named only where the answer says the paid seat names them", () =>
+    settledFromAnswer({ paidPlayers: [true, false], dueCents: 20000 }, 2)?.named.join() === "false,false" &&
+    settledFromAnswer({ paidPlayers: [true, false], paidNamed: [true, true], dueCents: 20000 }, 2)?.named.join() === "true,false" &&
+    settledFromAnswer({ paidPlayers: [true, false], paidNamed: ["yes"], dueCents: 20000 }, 2)?.named.join() === "false,false"
   );
   check("a credit that is not a positive number is no credit", () =>
-    settledFromAnswer({ paidPlayers: [true, false], dueCreditCents: "2000" }, 2)?.dueCreditCents === 0 &&
-    settledFromAnswer({ paidPlayers: [true, false], dueCreditCents: -5 }, 2)?.dueCreditCents === 0
+    settledFromAnswer({ paidPlayers: [true, false], dueCents: 20000, dueCreditCents: "2000" }, 2)?.dueCreditCents === 0 &&
+    settledFromAnswer({ paidPlayers: [true, false], dueCents: 20000, dueCreditCents: -5 }, 2)?.dueCreditCents === 0
   );
 
   const cohort = { priceCents: 20000, label: "Winter A" };
@@ -377,16 +494,34 @@ console.log("3. E-transfer: only what is still due; every player paid says so, w
   const partial = etransferDetailsStillDue({
     cohort,
     playerNames: names,
-    settled: { paid: [true, false], dueCreditCents: 0 },
+    settled: { paid: [true, false], named: [true, false], dueCents: 20000, dueCreditCents: 0 },
     recipientEmail: "pay@example.com",
   });
   check("(the premise) before the answer the step shows both players' total", () => before.amount === "$400 CAD");
   check("one of two paid: the amount is the other player's alone, never the full total", () =>
     partial?.amount === "$200 CAD" && partial.amount !== before.amount
   );
-  check("…the line under it says who is already paid", () =>
-    partial?.breakdown === "Maya Chen is already paid." && alreadyPaidNote(["Maya Chen", "Leo Chen"]) === "Maya Chen and Leo Chen are already paid."
+  check("…the line under it says whose seat is already paid for, never that the player was paid", () =>
+    partial?.breakdown === "Already paid for Maya Chen." &&
+    alreadyPaidNote(["Maya Chen", "Leo Chen"]) === "Already paid for Maya Chen and Leo Chen." &&
+    alreadyPaidNote(["Maya Chen", "Leo Chen", "Ana Chen"]) === "Already paid for Maya Chen, Leo Chen and Ana Chen." &&
+    alreadyPaidNote([]) === null &&
+    !/\} (is|are) already paid/.test(wizard)
   );
+  check("a paid player no paid seat names is counted, never named, in the same shape", () => {
+    const d = etransferDetailsStillDue({
+      cohort,
+      playerNames: names,
+      settled: { paid: [true, false], named: [false, false], dueCents: 20000, dueCreditCents: 0 },
+      recipientEmail: "pay@example.com",
+    });
+    return (
+      d?.breakdown === "Already paid for one player." &&
+      !d.breakdown.includes("Maya") &&
+      alreadyPaidNote([], 2) === "Already paid for 2 players." &&
+      alreadyPaidNote(["Maya Chen"], 1) === "Already paid for Maya Chen and one other player."
+    );
+  });
   check("…and the message names only the player who still owes", () =>
     partial?.memo === "Leo Chen – Winter A" && partial.recipientEmail === "pay@example.com"
   );
@@ -394,27 +529,38 @@ console.log("3. E-transfer: only what is still due; every player paid says so, w
     const d = etransferDetailsStillDue({
       cohort,
       playerNames: ["Maya Chen", "Leo Chen", "Ana Chen"],
-      settled: { paid: [false, true, false], dueCreditCents: 2000 },
+      settled: { paid: [false, true, false], named: [false, true, false], dueCents: 38000, dueCreditCents: 2000 },
       recipientEmail: "pay@example.com",
     });
     return (
       d?.amount === "$380 CAD" &&
-      d.breakdown === "$200 × 2 players − $20 assessment credit. Leo Chen is already paid." &&
+      d.breakdown === "$200 × 2 players − $20 assessment credit. Already paid for Leo Chen." &&
       d.memo === "Maya Chen + Ana Chen – Winter A"
     );
   });
-  check("the amount still due is the route's own: the tally's dueCents", () => {
+  check("the amount shown is the route's own figure, from its answer to the page", () => {
     const t = etransferTally([{ ...owesWithCredit }, paid, owes]);
+    const answer = JSON.parse(JSON.stringify({ ok: true, ...t }));
+    const settled = settledFromAnswer(answer, 3);
+    const d = settled && etransferDetailsStillDue({ cohort, playerNames: ["Maya Chen", "Leo Chen", "Ana Chen"], settled, recipientEmail: "pay@example.com" });
+    return settled?.dueCents === t.dueCents && d?.amount === `$${t.dueCents / 100} CAD`;
+  });
+  check("…shown as it stands, even where the page's own arithmetic would differ", () => {
     const d = etransferDetailsStillDue({
       cohort,
-      playerNames: ["Maya Chen", "Leo Chen", "Ana Chen"],
-      settled: { paid: t.paidPlayers, dueCreditCents: t.dueCreditCents },
+      playerNames: names,
+      // A figure no price times players gives: the page shows it untouched.
+      settled: { paid: [true, false], named: [true, false], dueCents: 12345, dueCreditCents: 0 },
       recipientEmail: "pay@example.com",
     });
-    return d?.amount === `$${t.dueCents / 100} CAD`;
+    return d?.amount === "$123.45 CAD";
+  });
+  check("the wizard hands the step the route's figure and never works the amount out again", () => {
+    const fn = /export function etransferDetailsStillDue[\s\S]*?\n}\n/.exec(wizard)?.[0] ?? "";
+    return fn.includes("dueCents: settled.dueCents,") && !fn.includes("amountDueCents(") && wizard.includes("amount: `${moneyCAD(input.dueCents ?? due)} CAD`,");
   });
   check("every player paid: no details at all, so nothing can be shown or carried", () =>
-    etransferDetailsStillDue({ cohort, playerNames: names, settled: { paid: [true, true], dueCreditCents: 0 }, recipientEmail: "pay@example.com" }) === null
+    etransferDetailsStillDue({ cohort, playerNames: names, settled: { paid: [true, true], named: [true, true], dueCents: 0, dueCreditCents: 0 }, recipientEmail: "pay@example.com" }) === null
   );
   check("one player, not paid: the step's details are word for word what they were", () => {
     const d = etransferStepDetails({ cohort, seats: 1, creditCents: 2000, recipientEmail: "pay@example.com", memo: "Maya Chen – Winter A" });
@@ -430,7 +576,7 @@ console.log("3. E-transfer: only what is still due; every player paid says so, w
     renderToStaticMarkup(createElement(EtransferStep, { details, cardOffer: false, submitting: false, onPayByCard: () => undefined }));
   check("the step, one of two paid: the amount still due, who is paid, and no full total", () => {
     const w = words(stepHtml(partial));
-    return w.includes("Amount $200 CAD Maya Chen is already paid.") && !w.includes("$400") && w.includes("Message Leo Chen – Winter A");
+    return w.includes("Amount $200 CAD Already paid for Maya Chen.") && !w.includes("$400") && w.includes("Message Leo Chen – Winter A");
   });
   check("the step, every player paid: it says so, with no amount, address, message or word of an email", () => {
     const w = words(stepHtml(null));

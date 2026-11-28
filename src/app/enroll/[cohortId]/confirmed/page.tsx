@@ -169,9 +169,12 @@ export default async function EnrollConfirmedPage({ params, searchParams }: Page
               <ol className="space-y-2 text-sm text-white/70">
                 {copy.nextSteps.map((text, i) => (
                   <li key={i} className="flex gap-3">
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-xs font-bold text-[#B4E655]">
-                      {i + 1}
-                    </span>
+                    {/* Numbered only when there is an order to follow: one step alone carries no number. */}
+                    {copy.nextSteps.length > 1 && (
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B4E655]/20 text-xs font-bold text-[#B4E655]">
+                        {i + 1}
+                      </span>
+                    )}
                     <span>
                       {i === 0 && copy.firstStepOnPage ? (
                         <EtransferFirstStep cohortId={cohortId} inbox={text} onPage={copy.firstStepOnPage} />
